@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -180,6 +181,36 @@ class RoutingRule:
     cooldown: float = 30.0
 
 
+# Only these placeholders are ever substituted into a routing command template. Using an
+# explicit regex sub (NOT str.format) is the fix for a format-string injection: str.format on
+# attacker-influenced data allows '{mac.__class__.__init__.__globals__[...]}' object traversal.
+_PLACEHOLDER_RE = re.compile(r"\{(mac|ssid|channel)\}")
+# Control chars (incl. newline) must never reach the serial command — a crafted SSID like
+# "foo\nreboot" could otherwise inject extra commands (defense-in-depth with SerialConnection.write).
+_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
+_MAC_RE = re.compile(r"^[0-9A-Fa-f:]{0,17}$")
+_MAX_VALUE_LEN = 64
+
+
+def _sanitize_value(value: Any) -> str:
+    """Strip control characters and cap length on an over-the-air value before it is
+    interpolated into a serial command."""
+    s = str(value)
+    s = _CTRL_RE.sub("", s)
+    return s[:_MAX_VALUE_LEN]
+
+
+def _safe_render(template: str, mac: str, ssid: str, channel: Any) -> str:
+    """Render a routing command template by substituting ONLY the fixed {mac}/{ssid}/{channel}
+    placeholders with sanitized values — no str.format, so no attribute/format-string traversal."""
+    values = {
+        "mac": _sanitize_value(mac),
+        "ssid": _sanitize_value(ssid),
+        "channel": str(int(channel)) if str(channel).lstrip("-").isdigit() else "",
+    }
+    return _PLACEHOLDER_RE.sub(lambda m: values.get(m.group(1), ""), template)
+
+
 class AutoRouter:
     """Rules engine that routes targets to device commands.
 
@@ -246,9 +277,11 @@ class AutoRouter:
                 continue
             self._cooldowns[cooldown_key] = now
 
-            cmd = rule.command_template.format(
-                mac=mac, ssid=ssid, channel=channel,
-            )
+            # Validate the MAC shape before it is interpolated; reject anything odd outright.
+            if mac and not _MAC_RE.match(str(mac)):
+                log.warning("AutoRouter: rejecting target with malformed MAC %r", mac)
+                continue
+            cmd = _safe_render(rule.command_template, mac, ssid, channel)
             log.info("AutoRouter: rule %r matched %s -> %s", rule.name, target_key, cmd)
             try:
                 self._send(rule.device_port, cmd)

@@ -14,6 +14,9 @@ from typing import Any
 
 import requests
 
+# Reuse the flash core's vetted SSRF/path-traversal primitives (single source of truth).
+from src.core.flash_core import _require_allowed_url, _safe_cache_name
+
 log = logging.getLogger(__name__)
 
 _DEFAULT_VAULT_DIR = Path.home() / ".cyber-controller" / "firmware_vault"
@@ -22,6 +25,44 @@ _PROFILES_DIR = Path(__file__).resolve().parents[1] / "config" / "profiles"
 _GITHUB_API = "https://api.github.com"
 _DOWNLOAD_CHUNK = 8192
 _TIMEOUT = 30
+_MAX_FIRMWARE_BYTES = 64 * 1024 * 1024  # 64 MB cap — abort oversized / MITM-streamed downloads
+_MAX_REDIRECTS = 6
+
+
+def _safe_streamed_download(url: str, dest_path: Path, progress_callback, filename: str) -> int:
+    """Stream *url* to *dest_path*, SSRF-safe and size-capped.
+
+    Redirects are followed MANUALLY with every hop re-validated against the GitHub
+    host allowlist (so a 302 can't bounce us to 169.254.169.254/a LAN host), and the
+    body is hard-capped at ``_MAX_FIRMWARE_BYTES``. Returns the byte count written.
+    """
+    _require_allowed_url(url)
+    current = url
+    for _ in range(_MAX_REDIRECTS):
+        resp = requests.get(current, stream=True, timeout=_TIMEOUT, allow_redirects=False)
+        try:
+            if resp.status_code in (301, 302, 303, 307, 308):
+                loc = resp.headers.get("Location", "")
+                _require_allowed_url(loc)  # raises ValueError if off-allowlist
+                current = loc
+                continue
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length", 0) or 0)
+            if total and total > _MAX_FIRMWARE_BYTES:
+                raise ValueError(f"firmware exceeds size cap ({total} bytes)")
+            downloaded = 0
+            with dest_path.open("wb") as fh:
+                for chunk in resp.iter_content(chunk_size=_DOWNLOAD_CHUNK):
+                    fh.write(chunk)
+                    downloaded += len(chunk)
+                    if downloaded > _MAX_FIRMWARE_BYTES:
+                        raise ValueError("firmware exceeded size cap mid-stream")
+                    if progress_callback:
+                        progress_callback(downloaded, total, f"Downloading {filename}...")
+            return downloaded
+        finally:
+            resp.close()
+    raise ValueError("too many redirects")
 
 
 def _sha256_file(path: Path) -> str:
@@ -157,55 +198,70 @@ class FirmwareVault:
                 log.error("GitHub API error for %s: %s", profile_id, exc)
                 return None
 
-        # Find a .bin asset to download
+        # Find a .bin asset to download. Do NOT fall back to assets[0] — flashing an
+        # arbitrary first release asset of any type is a supply-chain hazard.
         bin_asset = None
         for asset in assets:
             name = asset.get("name", "").lower()
             if name.endswith(".bin"):
                 bin_asset = asset
                 break
-        # Fallback: first asset
-        if not bin_asset and assets:
-            bin_asset = assets[0]
-
-        if bin_asset:
-            download_url = bin_asset.get("browser_download_url", "")
-            filename = bin_asset.get("name", f"{profile_id}.bin")
-        else:
-            filename = f"{profile_id}.bin"
-
+        if not bin_asset:
+            log.error("No .bin asset in the %s release for %s — refusing to guess", resolved_version, profile_id)
+            return None
+        download_url = bin_asset.get("browser_download_url", "")
         if not download_url:
-            log.error("No downloadable asset found for %s", profile_id)
+            log.error("No downloadable asset URL for %s", profile_id)
+            return None
+        try:
+            filename = _safe_cache_name(bin_asset.get("name", f"{profile_id}.bin"))
+        except ValueError as exc:
+            log.error("Unsafe asset filename for %s: %s", profile_id, exc)
             return None
 
-        # Prepare vault directory
-        dest_dir = self.vault_dir / profile_id / resolved_version
+        # Sanitize the version tag for use as a directory name (path-traversal defense).
+        safe_version = re.sub(r"[^A-Za-z0-9._-]", "_", str(resolved_version)) or "unknown"
+        dest_dir = self.vault_dir / profile_id / safe_version
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / filename
+        # Containment: the final path must resolve to inside the vault dir.
+        try:
+            dest_path.resolve().relative_to(self.vault_dir.resolve())
+        except ValueError:
+            log.error("Refusing firmware dest that escapes the vault: %s", dest_path)
+            return None
 
-        # Download
+        # Download (SSRF-safe redirect following + size cap), then verify integrity.
         try:
             log.info("Downloading %s v%s from %s", profile_id, resolved_version, download_url)
-            resp = requests.get(download_url, stream=True, timeout=_TIMEOUT)
-            resp.raise_for_status()
-            total = int(resp.headers.get("content-length", 0))
-            downloaded = 0
-
-            with dest_path.open("wb") as fh:
-                for chunk in resp.iter_content(chunk_size=_DOWNLOAD_CHUNK):
-                    fh.write(chunk)
-                    downloaded += len(chunk)
-                    if progress_callback:
-                        progress_callback(downloaded, total, f"Downloading {filename}...")
-
+            downloaded = _safe_streamed_download(download_url, dest_path, progress_callback, filename)
             sha = _sha256_file(dest_path)
             log.info("Downloaded %s (%d bytes, sha256=%s)", dest_path.name, downloaded, sha[:16])
-
-        except (requests.RequestException, OSError) as exc:
+        except (requests.RequestException, OSError, ValueError) as exc:
             log.error("Download failed for %s: %s", profile_id, exc)
             if dest_path.exists():
                 dest_path.unlink()
             return None
+
+        # Integrity pinning: if the profile pins a sha256 for this version, ENFORCE it
+        # (hard-fail + delete on mismatch). Otherwise warn — we cannot pin a moving
+        # "latest" tag, so this is trust-on-first-use for unpinned firmware.
+        pins = profile.get("firmware_sha256")
+        expected = None
+        if isinstance(pins, dict):
+            expected = pins.get(resolved_version) or pins.get(version) or pins.get("latest")
+        if expected:
+            if sha.lower() != str(expected).strip().lower():
+                log.error("SHA-256 MISMATCH for %s %s: expected %s got %s — DELETING",
+                          profile_id, resolved_version, expected, sha)
+                dest_path.unlink(missing_ok=True)
+                return None
+            log.info("SHA-256 pin verified for %s %s", profile_id, resolved_version)
+        else:
+            log.warning("No SHA-256 pin for %s %s — firmware stored unverified (TOFU). "
+                        "Add a 'firmware_sha256' pin to the profile to enforce integrity.",
+                        profile_id, resolved_version)
+        resolved_version = safe_version
 
         # Update index
         with self._lock:

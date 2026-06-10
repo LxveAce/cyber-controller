@@ -138,14 +138,29 @@ class SerialConnection:
     # ── I/O ──────────────────────────────────────────────────────────
 
     def write(self, data: str) -> None:
-        """Send a command string (appends newline).
+        """Send a single command line (exactly one trailing newline is appended).
+
+        Security: the firmware serial protocol is newline-delimited, so an embedded
+        newline/carriage-return (or other control character) would let ONE logical
+        command expand into many — a command-injection vector when ``data`` carries
+        over-the-air values (e.g. a scanned SSID routed by :class:`AutoRouter`). We
+        reject any control character here so a caller cannot smuggle extra commands.
 
         Raises:
             RuntimeError: If not connected.
+            ValueError: If *data* contains a newline or other control character.
         """
         if not self._serial or not self._serial.is_open:
             raise RuntimeError(f"Not connected to {self.port}")
-        payload = (data.rstrip("\n") + "\n").encode(self.encoding)
+        cleaned = data.rstrip("\r\n")
+        # C0 controls (0x00–0x1F), DEL (0x7F): never legitimate inside a single command.
+        bad = [ch for ch in cleaned if ord(ch) < 0x20 or ord(ch) == 0x7F]
+        if bad:
+            raise ValueError(
+                f"Refusing to send command with embedded control character(s) "
+                f"{[hex(ord(c)) for c in bad]} — possible command injection"
+            )
+        payload = (cleaned + "\n").encode(self.encoding)
         try:
             self._serial.write(payload)
             self._serial.flush()

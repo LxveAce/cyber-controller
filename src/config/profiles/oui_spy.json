@@ -1,17 +1,22 @@
 {
   "name": "OUI-Spy",
   "id": "oui_spy",
-  "description": "MAC address OUI vendor identification scanner",
+  "description": "MAC OUI vendor-identification scanner — fingerprints nearby WiFi/BLE devices by manufacturer (OUI) prefix. Built via PlatformIO; no formal releases, flash from source/local .bin.",
   "backend": "esptool",
   "protocol": null,
   "boards": [
     {
-      "name": "ESP32 Generic",
-      "chip": "esp32",
-      "flash_size": "4MB",
+      "name": "ESP32-S3 Generic",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
       "flash_mode": "dio",
       "flash_freq": "80m"
     }
   ],
-  "default_baud": 115200
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/colonelpanichacks/oui-spy-unified-blue",
+    "latest": "https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/latest"
+  },
+  "note": "Aligned with flash_core OuiSpyProfile (colonelpanichacks/oui-spy-unified-blue — the combined/flashable build). The meta repo colonelpanichacks/oui-spy has no formal releases."
 }

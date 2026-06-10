@@ -1,23 +1,57 @@
 {
   "name": "HaleHound",
   "id": "halehound",
-  "description": "Multi-protocol IoT attack firmware — WiFi, BLE, SubGHz (CC1101), 2.4GHz (NRF24), NFC (PN532)",
+  "description": "Multi-protocol IoT attack firmware for CYD touchscreen boards — WiFi, BLE, SubGHz (CC1101), 2.4GHz (NRF24), NFC (PN532). v3.5.5.",
   "backend": "esptool",
   "protocol": "halehound",
   "boards": [
     {
-      "name": "ESP32 CYD 2.8\" Touchscreen",
+      "name": "ESP32 CYD 2.8\" (ESP32-2432S028R)",
       "chip": "esp32",
       "flash_size": "4MB",
       "flash_mode": "dio",
       "flash_freq": "80m",
       "has_display": true,
       "display_type": "ili9341",
+      "board_id": "esp32-cyd",
+      "external_modules": ["CC1101", "NRF24L01", "PN532"]
+    },
+    {
+      "name": "QDtech E32R35T CYD 3.5\"",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true,
+      "display_type": "ili9341",
+      "board_id": "E32R35T",
+      "external_modules": ["CC1101", "NRF24L01", "PN532"]
+    },
+    {
+      "name": "QDtech E32R28T CYD 2.8\"",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true,
+      "display_type": "ili9341",
+      "board_id": "E32R28T",
+      "external_modules": ["CC1101", "NRF24L01", "PN532"]
+    },
+    {
+      "name": "NM-RF-Hat",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "board_id": "NM-RF-Hat",
       "external_modules": ["CC1101", "NRF24L01", "PN532"]
     }
   ],
   "default_baud": 115200,
   "firmware_urls": {
-    "latest": "https://github.com/HaleHound/HaleHound/releases/latest"
-  }
+    "repo": "https://github.com/JesseCHale/HaleHound-CYD",
+    "latest": "https://github.com/JesseCHale/HaleHound-CYD/releases/latest"
+  },
+  "note": "Fixed from HaleHound/HaleHound to JesseCHale/HaleHound-CYD (the real upstream; matches flash_core _HALEHOUND_API)."
 }

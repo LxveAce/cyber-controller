@@ -1,17 +1,29 @@
 {
   "name": "ESP32-DIV",
   "id": "esp32_div",
-  "description": "WiFi deauth, beacon spam, and probe sniff firmware",
+  "description": "WiFi/BLE/2.4GHz pen-test multi-tool (scan, sniff, analyze). Current v2 hardware is ESP32-S3. v1.6.0.",
   "backend": "esptool",
   "protocol": null,
   "boards": [
     {
-      "name": "ESP32 Generic",
+      "name": "ESP32-S3 (DIV v2, current)",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32 Generic (DIV v1, legacy)",
       "chip": "esp32",
       "flash_size": "4MB",
       "flash_mode": "dio",
-      "flash_freq": "80m"
+      "flash_freq": "40m"
     }
   ],
-  "default_baud": 115200
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/cifertech/ESP32-DIV",
+    "latest": "https://github.com/cifertech/ESP32-DIV/releases/latest"
+  },
+  "note": "cifertech/ESP32-DIV (matches flash_core _DIV_API). Release ships the app image only (flashed at 0x10000); boot chain pulled from the repo tree."
 }

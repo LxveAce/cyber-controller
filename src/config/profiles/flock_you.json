@@ -1,20 +1,22 @@
 {
   "name": "Flock-You",
   "id": "flock_you",
-  "description": "Drone/RemoteID detection and spoofing firmware",
+  "description": "Passive Flock Safety ALPR (automated license-plate reader) camera detector — sniffs the WiFi/BLE beacons Flock cameras emit. Source-first build (PlatformIO); formal releases may 404, which the flash core tolerates.",
   "backend": "esptool",
   "protocol": null,
   "boards": [
     {
-      "name": "ESP32 Generic",
-      "chip": "esp32",
-      "flash_size": "4MB",
+      "name": "ESP32-S3 Generic",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
       "flash_mode": "dio",
       "flash_freq": "80m"
     }
   ],
   "default_baud": 115200,
   "firmware_urls": {
-    "latest": "https://github.com/lozaning/Flock-You/releases/latest"
-  }
+    "repo": "https://github.com/colonelpanichacks/flock-you",
+    "latest": "https://github.com/colonelpanichacks/flock-you/releases/latest"
+  },
+  "note": "colonelpanichacks/flock-you (NOT lozaning). Passive ALPR detector, not a drone/RemoteID tool."
 }

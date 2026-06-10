@@ -1,19 +1,22 @@
 {
-  "name": "CYT-NG",
+  "name": "Chasing Your Tail NG",
   "id": "cyt_ng",
-  "description": "WiFi/BLE multi-tool firmware for CYD touchscreen boards",
+  "description": "Counter-surveillance WiFi/BLE device-tracking detector (Chasing Your Tail — Next Gen). Flags devices that repeatedly reappear near you over time. Distinct from the HaleHound CYD multitool.",
   "backend": "esptool",
   "protocol": null,
   "boards": [
     {
-      "name": "ESP32 CYD 2.8\" Touchscreen",
+      "name": "ESP32 Generic",
       "chip": "esp32",
       "flash_size": "4MB",
       "flash_mode": "dio",
-      "flash_freq": "80m",
-      "has_display": true,
-      "display_type": "ili9341"
+      "flash_freq": "80m"
     }
   ],
-  "default_baud": 115200
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/ArgeliusLabs/Chasing-Your-Tail-NG",
+    "latest": "https://github.com/ArgeliusLabs/Chasing-Your-Tail-NG/releases/latest"
+  },
+  "note": "Aligned with flash_core CytNgProfile (ArgeliusLabs/Chasing-Your-Tail-NG) — the repo the flasher actually downloads. 'CYT' = Chasing Your Tail. Verify ESP32 flashability before field use."
 }

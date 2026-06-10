@@ -48,8 +48,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--host",
-        default="0.0.0.0",
-        help="Web UI bind address (default: 0.0.0.0).",
+        default="127.0.0.1",
+        help="Web UI bind address (default: 127.0.0.1 — local only). "
+             "Use 0.0.0.0 for LAN ONLY with CC_WEB_ALLOW_LAN=1 (TLS recommended).",
     )
     parser.add_argument(
         "--port",
@@ -90,6 +91,7 @@ def _bootstrap():
     from src.core.firmware_vault import FirmwareVault
     from src.core.health_monitor import HealthMonitor
     from src.core.macro_recorder import MacroRecorder
+    from src.security.audit_trail import AuditTrail
 
     dm = DeviceManager()
     fe = FlashEngine()
@@ -98,11 +100,13 @@ def _bootstrap():
     vault = FirmwareVault()
     health = HealthMonitor()
     macro = MacroRecorder()
+    audit = AuditTrail()
+    audit.record("app_start", {})
 
     dm.start_hotplug()
     atexit.register(dm.shutdown)
 
-    return dm, fe, bus, pool, vault, health, macro
+    return dm, fe, bus, pool, vault, health, macro, audit
 
 
 # ── UI launchers ─────────────────────────────────────────────────────
@@ -132,11 +136,12 @@ def _launch_tui(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
         return 1
 
 
-def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None, host="0.0.0.0", port=5000) -> int:
+def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None,
+                host="127.0.0.1", port=5000, audit=None) -> int:
     log.info("Launching Flask web remote UI")
     try:
         from src.ui.web.app import launch_web
-        return launch_web(dm, fe, bus, pool, host=host, port=port)
+        return launch_web(dm, fe, bus, pool, host=host, port=port, audit=audit)
     except ImportError:
         log.error("Flask is not installed.  pip install cyber-controller[web]")
         return 1
@@ -158,7 +163,7 @@ def main(argv: list[str] | None = None) -> int:
 
     log.info("Cyber Controller starting — ui=%s", args.ui)
 
-    dm, fe, bus, pool, vault, health, macro = _bootstrap()
+    dm, fe, bus, pool, vault, health, macro, audit = _bootstrap()
 
     launcher = _LAUNCHERS.get(args.ui)
     if launcher is None:
@@ -168,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.ui == "web":
             code = launcher(dm, fe, bus, pool, vault, health, macro,
-                            host=args.host, port=args.port)
+                            host=args.host, port=args.port, audit=audit)
         else:
             code = launcher(dm, fe, bus, pool, vault, health, macro)
     except KeyboardInterrupt:

@@ -65,7 +65,7 @@
 
         fetch('/api/flash', {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN},
             body: JSON.stringify({port: port, profile_id: profile}),
         })
         .then(r => r.json())

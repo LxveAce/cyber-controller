@@ -187,6 +187,37 @@ class DeviceManager:
             devices.append(dev)
         return devices
 
+    # USB VID -> serial-bridge family; presence strongly implies a flashable board.
+    _ESP_BRIDGE_VIDS = {
+        0x10C4: "CP210x",
+        0x1A86: "CH340/CH9102",
+        0x0403: "FTDI",
+        0x303A: "Espressif USB-JTAG",
+    }
+
+    @classmethod
+    def autodetect_esp_port(cls) -> str | None:
+        """Return the most-likely ESP / security-board serial port, or None.
+
+        Scores ports by USB VID (known ESP/serial-bridge chips win) and refuses to
+        guess a bare port (e.g. a Bluetooth COM or ``/dev/ttyS0``) — mirroring the
+        proven "just plug it in" autodetect from the headless-marauder lineage.
+        """
+        best: str | None = None
+        best_score = 0
+        for info in serial.tools.list_ports.comports():
+            vid = info.vid or 0
+            desc = (info.description or "").lower()
+            if vid in cls._ESP_BRIDGE_VIDS:
+                score = 3
+            elif "usb" in desc and ("serial" in desc or "uart" in desc):
+                score = 1
+            else:
+                score = 0
+            if score > best_score:
+                best_score, best = score, info.device
+        return best
+
     # ── Internal callbacks ───────────────────────────────────────────
 
     def _fire_connected(self, device: Device) -> None:
