@@ -22,12 +22,17 @@ from PyQt5.QtWidgets import (
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FlashEngine
 from src.core.cross_comm import EventBus, TargetPool
+from src.core.firmware_vault import FirmwareVault
+from src.core.health_monitor import HealthMonitor
+from src.core.macro_recorder import MacroRecorder
 from src.ui.qt.flash_tab import FlashTab
 from src.ui.qt.device_tab import DeviceTab
+from src.ui.qt.health_tab import HealthTab
+from src.ui.qt.macro_tab import MacroTab
 
 log = logging.getLogger(__name__)
 
-_VERSION = "0.1.0"
+_VERSION = "0.2.0"
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
 
@@ -74,12 +79,21 @@ class CyberControllerWindow(QMainWindow):
         flash_engine: FlashEngine,
         event_bus: EventBus,
         target_pool: TargetPool,
+        firmware_vault: FirmwareVault | None = None,
+        health_monitor: HealthMonitor | None = None,
+        macro_recorder: MacroRecorder | None = None,
     ) -> None:
         super().__init__()
         self._dm = device_manager
         self._fe = flash_engine
         self._bus = event_bus
         self._pool = target_pool
+        self._vault = firmware_vault or FirmwareVault()
+        self._health = health_monitor or HealthMonitor()
+        self._macro = macro_recorder or MacroRecorder()
+
+        # Start health monitor polling
+        self._health.start()
 
         self.setWindowTitle(f"Cyber Controller v{_VERSION}")
         self.setMinimumSize(1100, 700)
@@ -157,13 +171,21 @@ class CyberControllerWindow(QMainWindow):
         self._tabs = QTabWidget()
         self.setCentralWidget(self._tabs)
 
-        # Flash tab (functional)
-        self._flash_tab = FlashTab(self._dm, self._fe)
+        # Flash tab (functional, with vault integration)
+        self._flash_tab = FlashTab(self._dm, self._fe, self._vault)
         self._tabs.addTab(self._flash_tab, "Flash")
 
         # Device tab (functional)
         self._device_tab = DeviceTab(self._dm)
         self._tabs.addTab(self._device_tab, "Devices")
+
+        # Health tab (new)
+        self._health_tab = HealthTab(self._health)
+        self._tabs.addTab(self._health_tab, "Health")
+
+        # Macro tab (new)
+        self._macro_tab = MacroTab(self._macro, self._dm)
+        self._tabs.addTab(self._macro_tab, "Macros")
 
         # Placeholder tabs
         self._tabs.addTab(_placeholder_tab("Target Pool — coming soon"), "Targets")
@@ -182,8 +204,15 @@ class CyberControllerWindow(QMainWindow):
         n = len(self._dm.list_connected())
         total = len(self._dm.list_devices())
         targets = self._pool.count
+
+        # System health summary
+        health = self._health.latest_system_health
+        cpu = health.get("cpu_percent", 0)
+        mem = health.get("memory_percent", 0)
+
         self._status_label.setText(
-            f"  Devices: {n}/{total} connected  |  Targets: {targets}  "
+            f"  CPU: {cpu:.0f}%  |  RAM: {mem:.0f}%  "
+            f"|  Devices: {n}/{total}  |  Targets: {targets}  "
         )
 
     # ── Slots ────────────────────────────────────────────────────────
@@ -233,6 +262,7 @@ class CyberControllerWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._timer.stop()
+        self._health.stop()
         self._dm.shutdown()
         log.info("Window closed — resources released")
         event.accept()
@@ -243,6 +273,9 @@ def launch_qt(
     flash_engine: FlashEngine,
     event_bus: EventBus,
     target_pool: TargetPool,
+    firmware_vault: FirmwareVault | None = None,
+    health_monitor: HealthMonitor | None = None,
+    macro_recorder: MacroRecorder | None = None,
 ) -> int:
     """Create the QApplication, show the main window, and run the event loop.
 
@@ -255,6 +288,9 @@ def launch_qt(
     app.setFont(QFont("Segoe UI", 10))
     _apply_dark_palette(app)
 
-    win = CyberControllerWindow(device_manager, flash_engine, event_bus, target_pool)
+    win = CyberControllerWindow(
+        device_manager, flash_engine, event_bus, target_pool,
+        firmware_vault, health_monitor, macro_recorder,
+    )
     win.show()
     return app.exec_()

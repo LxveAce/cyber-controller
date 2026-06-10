@@ -1,6 +1,6 @@
 [project]
 name = "cyber-controller"
-version = "0.1.0"
+version = "0.2.0"
 description = "Flagship cyberdeck-oriented all-in-one security hardware controller"
 readme = "README.md"
 license = {text = "MIT"}
@@ -23,6 +23,7 @@ dependencies = [
     "pyserial>=3.5",
     "esptool>=4.7",
     "requests>=2.31",
+    "psutil>=5.9",
 ]
 
 [project.optional-dependencies]
