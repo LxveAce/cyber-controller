@@ -75,26 +75,32 @@ def _bootstrap():
     from src.core.device_manager import DeviceManager
     from src.core.flash_engine import FlashEngine
     from src.core.cross_comm import EventBus, TargetPool
+    from src.core.firmware_vault import FirmwareVault
+    from src.core.health_monitor import HealthMonitor
+    from src.core.macro_recorder import MacroRecorder
 
     dm = DeviceManager()
     fe = FlashEngine()
     bus = EventBus()
     pool = TargetPool(bus)
+    vault = FirmwareVault()
+    health = HealthMonitor()
+    macro = MacroRecorder()
 
     dm.start_hotplug()
     atexit.register(dm.shutdown)
 
-    return dm, fe, bus, pool
+    return dm, fe, bus, pool, vault, health, macro
 
 
 # ── UI launchers ─────────────────────────────────────────────────────
 
-def _launch_qt(dm, fe, bus, pool) -> int:
+def _launch_qt(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
     from src.ui.qt.main_window import launch_qt
-    return launch_qt(dm, fe, bus, pool)
+    return launch_qt(dm, fe, bus, pool, vault, health, macro)
 
 
-def _launch_tk(dm, fe, bus, pool) -> int:
+def _launch_tk(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
     log.info("Tkinter UI — placeholder.  Use --ui qt for the full interface.")
     try:
         import tkinter as tk
@@ -114,7 +120,7 @@ def _launch_tk(dm, fe, bus, pool) -> int:
     return 0
 
 
-def _launch_tui(dm, fe, bus, pool) -> int:
+def _launch_tui(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
     log.info("TUI — placeholder.  Use --ui qt for the full interface.")
     try:
         from textual.app import App, ComposeResult
@@ -136,7 +142,7 @@ def _launch_tui(dm, fe, bus, pool) -> int:
     return 0
 
 
-def _launch_web(dm, fe, bus, pool) -> int:
+def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
     log.info("Web UI — placeholder.  Use --ui qt for the full interface.")
     try:
         from flask import Flask
@@ -173,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
 
     log.info("Cyber Controller starting — ui=%s", args.ui)
 
-    dm, fe, bus, pool = _bootstrap()
+    dm, fe, bus, pool, vault, health, macro = _bootstrap()
 
     launcher = _LAUNCHERS.get(args.ui)
     if launcher is None:
@@ -181,7 +187,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        code = launcher(dm, fe, bus, pool)
+        code = launcher(dm, fe, bus, pool, vault, health, macro)
     except KeyboardInterrupt:
         log.info("Interrupted — shutting down")
         code = 0

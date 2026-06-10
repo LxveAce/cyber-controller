@@ -24,6 +24,7 @@ from PyQt5.QtWidgets import (
 )
 
 from src.core.device_manager import DeviceManager
+from src.core.firmware_vault import FirmwareVault
 from src.core.flash_engine import FlashEngine, FirmwareProfile
 
 log = logging.getLogger(__name__)
@@ -63,10 +64,11 @@ class _FlashWorker(QThread):
 class FlashTab(QWidget):
     """Firmware flashing tab with port/profile selectors, progress bar, and batch queue."""
 
-    def __init__(self, dm: DeviceManager, fe: FlashEngine) -> None:
+    def __init__(self, dm: DeviceManager, fe: FlashEngine, vault: FirmwareVault | None = None) -> None:
         super().__init__()
         self._dm = dm
         self._fe = fe
+        self._vault = vault or FirmwareVault()
         self._worker: _FlashWorker | None = None
         self._profiles: dict[str, Path] = {}  # display name -> path
 
@@ -163,6 +165,26 @@ class FlashTab(QWidget):
         bottom.addWidget(queue_group, stretch=1)
 
         root.addLayout(bottom)
+
+        # ── Firmware Vault section ───────────────────────────────────
+        vault_group = QGroupBox("Firmware Vault (Offline Cache)")
+        vault_layout = QHBoxLayout(vault_group)
+
+        self._vault_status = QLabel("No cached firmware")
+        self._vault_status.setStyleSheet("color: #888;")
+        vault_layout.addWidget(self._vault_status, stretch=2)
+
+        btn_download = QPushButton("Download to Vault")
+        btn_download.clicked.connect(self._on_vault_download)
+        vault_layout.addWidget(btn_download)
+
+        btn_clear_vault = QPushButton("Clear Cache")
+        btn_clear_vault.setStyleSheet("QPushButton { color: #ff8c00; }")
+        btn_clear_vault.clicked.connect(self._on_vault_clear)
+        vault_layout.addWidget(btn_clear_vault)
+
+        root.addWidget(vault_group)
+        self._refresh_vault_status()
 
     # ── Refreshers ───────────────────────────────────────────────────
 
@@ -273,3 +295,65 @@ class FlashTab(QWidget):
     def _log(self, msg: str) -> None:
         self._log_output.append(msg)
         log.info("FlashTab: %s", msg)
+
+    # ── Firmware Vault ───────────────────────────────────────────────
+
+    def _refresh_vault_status(self) -> None:
+        """Update the vault status label with cached firmware info."""
+        cached = self._vault.list_cached()
+        if cached:
+            total = sum(len(v) for v in cached.values())
+            size_mb = self._vault.vault_size_bytes() / (1024 * 1024)
+            profiles = ", ".join(cached.keys())
+            self._vault_status.setText(
+                f"Cached: {total} version(s) across {len(cached)} profile(s) "
+                f"({size_mb:.1f} MB) — {profiles}"
+            )
+            self._vault_status.setStyleSheet("color: #39ff14;")
+        else:
+            self._vault_status.setText("No cached firmware")
+            self._vault_status.setStyleSheet("color: #888;")
+
+    def _on_vault_download(self) -> None:
+        """Download the currently selected profile's firmware to the vault."""
+        profile_name = self._profile_combo.currentText()
+        profile_path = self._profiles.get(profile_name)
+        if not profile_path:
+            self._log("No firmware profile selected for vault download.")
+            return
+
+        # Load profile to get ID
+        try:
+            import json
+            data = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile_id = data.get("id", profile_path.stem)
+        except Exception:
+            profile_id = profile_path.stem
+
+        self._log(f"Downloading {profile_name} to vault...")
+
+        def progress_cb(downloaded, total, msg):
+            if total > 0:
+                pct = int((downloaded / total) * 100)
+                self._progress.setValue(pct)
+
+        # Run download in background thread
+        import threading
+
+        def _do_download():
+            result = self._vault.download_firmware(
+                profile_id, progress_callback=progress_cb
+            )
+            if result:
+                self._log(f"Vault: downloaded {profile_name} -> {result}")
+            else:
+                self._log(f"Vault: download failed for {profile_name}")
+            self._refresh_vault_status()
+
+        threading.Thread(target=_do_download, daemon=True).start()
+
+    def _on_vault_clear(self) -> None:
+        """Clear the firmware vault cache."""
+        deleted = self._vault.clear_cache()
+        self._log(f"Vault: cleared {deleted} cached file(s)")
+        self._refresh_vault_status()
