@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% set active = "dashboard" %}
+
+{% block title %}Dashboard - Cyber Controller{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Dashboard</h1>
+
+<div class="card-grid">
+    <div class="card">
+        <div class="card-icon">&#x25A3;</div>
+        <div class="card-value" id="device-count">{{ device_count }}</div>
+        <div class="card-label">Total Devices</div>
+    </div>
+    <div class="card">
+        <div class="card-icon accent">&#x25C9;</div>
+        <div class="card-value accent" id="connected-count">{{ connected_count }}</div>
+        <div class="card-label">Connected</div>
+    </div>
+    <div class="card">
+        <div class="card-icon">&#x25CE;</div>
+        <div class="card-value" id="target-count">{{ target_count }}</div>
+        <div class="card-label">Targets</div>
+    </div>
+    <div class="card">
+        <div class="card-icon accent">&#x2713;</div>
+        <div class="card-value accent" id="health-status">OK</div>
+        <div class="card-label">System Health</div>
+    </div>
+</div>
+
+<h2 class="section-title">Connected Devices</h2>
+<div class="device-list">
+    {% for dev in devices %}
+    <div class="device-row">
+        <span class="status-dot {% if dev.connected %}connected{% else %}disconnected{% endif %}"></span>
+        <span class="device-port">{{ dev.port }}</span>
+        <span class="device-name">{{ dev.name }}</span>
+        <span class="device-board">{{ dev.board_type.value }}</span>
+        {% if dev.connected %}
+        <a href="/terminal/{{ dev.port }}" class="btn btn-sm">Terminal</a>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="empty-state">No devices detected. Connect a device via USB.</div>
+    {% endfor %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function refreshHealth() {
+        fetch('/api/health')
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('device-count').textContent = data.device_count;
+                document.getElementById('connected-count').textContent = data.connected_count;
+                document.getElementById('target-count').textContent = data.target_count;
+                document.getElementById('health-status').textContent = data.status.toUpperCase();
+            })
+            .catch(() => {});
+    }
+    setInterval(refreshHealth, 5000);
+</script>
+{% endblock %}
