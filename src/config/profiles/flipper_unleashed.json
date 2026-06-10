@@ -1,0 +1,17 @@
+{
+  "name": "Flipper Zero — Unleashed",
+  "id": "flipper_unleashed",
+  "description": "Unleashed custom firmware for Flipper Zero",
+  "backend": "qflipper",
+  "protocol": "flipper",
+  "boards": [
+    {
+      "name": "Flipper Zero",
+      "chip": "stm32wb55",
+      "flash_size": "1MB"
+    }
+  ],
+  "firmware_urls": {
+    "latest": "https://github.com/DarkFlippers/unleashed-firmware/releases/latest"
+  }
+}

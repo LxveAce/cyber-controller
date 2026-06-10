@@ -1,0 +1,50 @@
+[project]
+name = "cyber-controller"
+version = "0.1.0"
+description = "Flagship cyberdeck-oriented all-in-one security hardware controller"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.12"
+authors = [
+    {name = "LxveAce", email = "extrafadexd@gmail.com"},
+]
+keywords = ["cyberdeck", "esp32", "marauder", "flasher", "security", "hardware"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "PyQt5>=5.15",
+    "pyserial>=3.5",
+    "esptool>=4.7",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+tk = []
+tui = ["textual>=0.50"]
+web = ["flask>=3.0", "flask-socketio>=5.3"]
+full = ["textual>=0.50", "flask>=3.0", "flask-socketio>=5.3"]
+dev = ["pytest>=8.0", "ruff>=0.4"]
+
+[project.scripts]
+cyber-controller = "src.app:main"
+
+[project.gui-scripts]
+cyber-controller-gui = "src.app:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"

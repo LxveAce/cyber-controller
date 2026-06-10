@@ -1,0 +1,19 @@
+{
+  "name": "CYT-NG",
+  "id": "cyt_ng",
+  "description": "WiFi/BLE multi-tool firmware for CYD touchscreen boards",
+  "backend": "esptool",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "ESP32 CYD 2.8\" Touchscreen",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true,
+      "display_type": "ili9341"
+    }
+  ],
+  "default_baud": 115200
+}

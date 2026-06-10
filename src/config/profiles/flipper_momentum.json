@@ -1,0 +1,17 @@
+{
+  "name": "Flipper Zero — Momentum",
+  "id": "flipper_momentum",
+  "description": "Momentum custom firmware for Flipper Zero",
+  "backend": "qflipper",
+  "protocol": "flipper",
+  "boards": [
+    {
+      "name": "Flipper Zero",
+      "chip": "stm32wb55",
+      "flash_size": "1MB"
+    }
+  ],
+  "firmware_urls": {
+    "latest": "https://github.com/Next-Flip/Momentum-Firmware/releases/latest"
+  }
+}
