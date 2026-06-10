@@ -1,17 +1,31 @@
 {
   "name": "MinigotchiV3",
   "id": "minigotchi",
-  "description": "Pwnagotchi-compatible AI deauth firmware for ESP32",
+  "description": "Pwnagotchi-style ESP32 firmware — passively rides nearby WiFi to collect handshakes / pwn networks. Requires a DUAL-CORE ESP32 (single-core ESP32 / ESP8266 are NOT supported).",
   "backend": "esptool",
   "protocol": null,
   "boards": [
     {
-      "name": "ESP32 Generic",
+      "name": "ESP32 Dual-Core Generic",
       "chip": "esp32",
       "flash_size": "4MB",
       "flash_mode": "dio",
       "flash_freq": "80m"
+    },
+    {
+      "name": "M5Cardputer (ESP32-S3)",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_keyboard": true
     }
   ],
-  "default_baud": 115200
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/dj1ch/minigotchi-V3",
+    "latest": "https://github.com/dj1ch/minigotchi-V3/releases/latest",
+    "alt_esp32": "https://github.com/dj1ch/minigotchi-ESP32/releases/latest"
+  },
+  "note": "ESP32 (dual-core) build, NOT the ESP8266 dj1ch/minigotchi. latest = dj1ch/minigotchi-V3 to match flash_core _MINIGOTCHI_API; dj1ch/minigotchi-ESP32 kept as alt_esp32 per researched correction."
 }

@@ -1,0 +1,20 @@
+{
+  "name": "RayHunter",
+  "id": "rayhunter",
+  "description": "IMSI-catcher / cell-site-simulator detector. Installs over ADB onto an Orbic RC400L 4G LTE hotspot and watches the radio for stingray-style attacks (2G downgrade, null-cipher, IMSI requests).",
+  "backend": "adb",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "Orbic RC400L",
+      "chip": null,
+      "device": "Orbic RC400L 4G LTE hotspot"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/EFForg/rayhunter",
+    "latest": "https://github.com/EFForg/rayhunter/releases/latest"
+  },
+  "note": "id matches adb_backend.ADB_PROFILES key 'rayhunter'. Installs via ADB push (platform-tools required); daemon serves a dashboard on :8080. Needs a deactivated SIM inserted to boot the radio stack."
+}

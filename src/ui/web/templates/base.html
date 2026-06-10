@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Cyber Controller{% endblock %}</title>
+    <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <script>window.CSRF_TOKEN = {{ csrf_token|tojson }};</script>
 </head>
 <body>
     <nav class="navbar">
@@ -33,10 +35,15 @@
     </footer>
 
     <script>
-        const socket = io();
+        // Authenticate the socket handshake with the per-session CSRF/connection token.
+        const socket = io({ auth: { csrf: window.CSRF_TOKEN } });
 
         socket.on('connect', function() {
             console.log('WebSocket connected');
+        });
+
+        socket.on('connect_error', function(err) {
+            console.warn('WebSocket rejected:', err && err.message);
         });
 
         socket.on('device_connected', function(data) {

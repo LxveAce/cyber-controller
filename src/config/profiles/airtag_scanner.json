@@ -1,7 +1,7 @@
 {
   "name": "AirTag Scanner",
   "id": "airtag_scanner",
-  "description": "Apple AirTag and BLE tracker detection firmware",
+  "description": "Apple AirTag / BLE tracker detector — scans for the FindMy BLE advertisements used by AirTags and compatible trackers to surface possible stalking devices.",
   "backend": "esptool",
   "protocol": null,
   "boards": [
@@ -11,7 +11,30 @@
       "flash_size": "4MB",
       "flash_mode": "dio",
       "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32-S3 Generic",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32 CYD 2.8\" Touchscreen",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true,
+      "display_type": "ili9341",
+      "note": "CYD build lives in fork hevnsnt/CYD_ESP32-AirTag-Scanner."
     }
   ],
-  "default_baud": 115200
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner",
+    "latest": "https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner/releases/latest",
+    "cyd_fork": "https://github.com/hevnsnt/CYD_ESP32-AirTag-Scanner"
+  },
+  "note": "MatthewKuKanich/ESP32-AirTag-Scanner. CYD touchscreen variant is the hevnsnt fork."
 }

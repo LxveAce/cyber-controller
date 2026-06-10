@@ -1,17 +1,29 @@
 {
   "name": "Sky-Spy",
   "id": "sky_spy",
-  "description": "Aircraft ADS-B and drone detection firmware",
+  "description": "Drone detector — passively listens for WiFi Remote ID / Open Drone ID broadcasts to spot nearby UAVs and surface their operator/location data. Does NOT track ADS-B aircraft.",
   "backend": "esptool",
   "protocol": null,
   "boards": [
     {
-      "name": "ESP32 Generic",
-      "chip": "esp32",
+      "name": "ESP32-S3 Generic",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32-C6 Generic",
+      "chip": "esp32c6",
       "flash_size": "4MB",
       "flash_mode": "dio",
       "flash_freq": "80m"
     }
   ],
-  "default_baud": 115200
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/colonelpanichacks/Sky-Spy",
+    "latest": "https://github.com/colonelpanichacks/Sky-Spy/releases/latest"
+  },
+  "note": "colonelpanichacks/Sky-Spy. Drone Remote ID / Open Drone ID detector — NOT ADS-B aircraft."
 }

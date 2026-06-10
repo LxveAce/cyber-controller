@@ -1,7 +1,7 @@
 {
   "name": "GhostESP",
   "id": "ghost_esp",
-  "description": "Lightweight WiFi/BLE scanning and deauth firmware",
+  "description": "Lightweight WiFi/BLE scanning, monitoring, and deauth firmware. Per-board merged single .bin (flashed at 0x0).",
   "backend": "esptool",
   "protocol": "ghost_esp",
   "boards": [
@@ -13,15 +13,40 @@
       "flash_freq": "80m"
     },
     {
-      "name": "ESP32-S3",
+      "name": "ESP32-S3 DevKitC-1",
       "chip": "esp32s3",
       "flash_size": "8MB",
       "flash_mode": "dio",
       "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32-C5 DevKitC-1",
+      "chip": "esp32c5",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32-C6 DevKitC-1",
+      "chip": "esp32c6",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32 CYD 2.8\" Touchscreen",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true,
+      "display_type": "ili9341"
     }
   ],
   "default_baud": 115200,
   "firmware_urls": {
-    "latest": "https://github.com/Spooks4576/Ghost_ESP/releases/latest"
-  }
+    "repo": "https://github.com/GhostESP-Revival/GhostESP",
+    "latest": "https://github.com/GhostESP-Revival/GhostESP/releases/latest"
+  },
+  "note": "Aligned to GhostESP-Revival/GhostESP (canonical, matches flash_core _GHOSTESP_API). Older Spooks4576/Ghost_ESP is deprecated."
 }

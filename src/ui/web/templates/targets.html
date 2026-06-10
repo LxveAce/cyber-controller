@@ -53,21 +53,37 @@
                 const summary = document.getElementById('target-summary');
                 summary.textContent = targets.length + ' targets';
 
+                // Build rows with DOM APIs + textContent. SSID / MAC / source come from
+                // over-the-air scan data (attacker-controlled), so they must NEVER be
+                // interpolated into innerHTML — that was a stored-XSS sink.
+                tbody.replaceChildren();
                 if (targets.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="6" class="empty-state">No targets discovered yet.</td></tr>';
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.colSpan = 6;
+                    td.className = 'empty-state';
+                    td.textContent = 'No targets discovered yet.';
+                    tr.appendChild(td);
+                    tbody.appendChild(tr);
                     return;
                 }
 
-                tbody.innerHTML = targets.map(t =>
-                    '<tr>' +
-                    '<td class="mono">' + (t.mac || '') + '</td>' +
-                    '<td>' + (t.ssid || '--') + '</td>' +
-                    '<td class="mono">' + (t.rssi || 0) + '</td>' +
-                    '<td class="mono">' + (t.channel || 0) + '</td>' +
-                    '<td class="mono">' + (t.device_source || '') + '</td>' +
-                    '<td>' + (t.target_type || '') + '</td>' +
-                    '</tr>'
-                ).join('');
+                const addCell = (tr, value, cls) => {
+                    const td = document.createElement('td');
+                    if (cls) td.className = cls;
+                    td.textContent = (value === undefined || value === null) ? '' : String(value);
+                    return tr.appendChild(td);
+                };
+                targets.forEach(t => {
+                    const tr = document.createElement('tr');
+                    addCell(tr, t.mac || '', 'mono');
+                    addCell(tr, t.ssid || '--', null);
+                    addCell(tr, (t.rssi ?? 0), 'mono');
+                    addCell(tr, (t.channel ?? 0), 'mono');
+                    addCell(tr, t.device_source || '', 'mono');
+                    addCell(tr, t.target_type || '', null);
+                    tbody.appendChild(tr);
+                });
             })
             .catch(() => {});
     }

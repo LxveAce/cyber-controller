@@ -8,7 +8,16 @@ requires-python = ">=3.12"
 authors = [
     {name = "LxveAce", email = "extrafadexd@gmail.com"},
 ]
-keywords = ["cyberdeck", "esp32", "marauder", "flasher", "security", "hardware"]
+keywords = [
+    "cyberdeck", "esp32", "esp32-s3", "esp32-s2", "esp32-c3", "esp32-c5", "esp32-c6", "esp8266",
+    "flipperzero", "flipper-zero", "flipper", "firmware", "firmware-flasher", "flasher", "esptool",
+    "serial", "serial-monitor", "uart", "cybersecurity", "infosec", "pentesting", "penetration-testing",
+    "red-team", "offensive-security", "hardware-hacking", "hardware", "security-tools", "wireless-security",
+    "wifi", "bluetooth", "ble", "nfc", "rfid", "subghz", "rf", "deauth", "wardriving", "kismet",
+    "iot", "iot-security", "embedded", "marauder", "esp32-marauder", "bruce", "ghost-esp", "meshtastic",
+    "espressif", "platformio", "m5stack", "cardputer", "lilygo", "controller", "device-management",
+    "cross-platform", "python",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: X11 Applications :: Qt",
@@ -21,9 +30,13 @@ classifiers = [
 dependencies = [
     "PyQt5>=5.15",
     "pyserial>=3.5",
-    "esptool>=4.7",
+    # esptool <6: v6 removes the chip_id / write_flash / --flash_size aliases the flash core relies on.
+    "esptool>=4.7,<6",
     "requests>=2.31",
     "psutil>=5.9",
+    # cryptography is MANDATORY: SecureStorage uses authenticated AES-256-GCM and fails
+    # closed (no XOR fallback). Do not move this to an optional group.
+    "cryptography>=43",
 ]
 
 [project.optional-dependencies]

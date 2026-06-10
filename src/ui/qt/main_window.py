@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import (
 
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FlashEngine
-from src.core.cross_comm import EventBus, TargetPool
+from src.core.cross_comm import AutoRouter, EventBus, TargetPool
 from src.core.firmware_vault import FirmwareVault
 from src.core.health_monitor import HealthMonitor
 from src.core.macro_recorder import MacroRecorder
@@ -29,6 +29,9 @@ from src.ui.qt.flash_tab import FlashTab
 from src.ui.qt.device_tab import DeviceTab
 from src.ui.qt.health_tab import HealthTab
 from src.ui.qt.macro_tab import MacroTab
+from src.ui.qt.targets_tab import TargetsTab
+from src.ui.qt.cross_comm_tab import CrossCommTab
+from src.ui.qt.settings_tab import SettingsTab
 
 log = logging.getLogger(__name__)
 
@@ -91,6 +94,8 @@ class CyberControllerWindow(QMainWindow):
         self._vault = firmware_vault or FirmwareVault()
         self._health = health_monitor or HealthMonitor()
         self._macro = macro_recorder or MacroRecorder()
+        # Auto-router drives cross-device routing rules; send_command writes to a port.
+        self._router = AutoRouter(self._bus, self._send_to_port)
 
         # Start health monitor polling
         self._health.start()
@@ -187,11 +192,20 @@ class CyberControllerWindow(QMainWindow):
         self._macro_tab = MacroTab(self._macro, self._dm)
         self._tabs.addTab(self._macro_tab, "Macros")
 
-        # Placeholder tabs
-        self._tabs.addTab(_placeholder_tab("Target Pool — coming soon"), "Targets")
-        self._tabs.addTab(_placeholder_tab("Cross-Comm Routing — coming soon"), "Cross-Comm")
+        # Target pool (shared discovered targets)
+        self._targets_tab = TargetsTab(self._pool, self._bus)
+        self._tabs.addTab(self._targets_tab, "Targets")
+
+        # Cross-comm routing (event stream + auto-routing rules)
+        self._cross_comm_tab = CrossCommTab(self._bus, self._pool, self._router, self._dm)
+        self._tabs.addTab(self._cross_comm_tab, "Cross-Comm")
+
+        # Mission planner (model exists; UI pending)
         self._tabs.addTab(_placeholder_tab("Mission Planner — coming soon"), "Missions")
-        self._tabs.addTab(_placeholder_tab("Settings — coming soon"), "Settings")
+
+        # Settings (persisted)
+        self._settings_tab = SettingsTab()
+        self._tabs.addTab(self._settings_tab, "Settings")
 
     # ── Status bar ───────────────────────────────────────────────────
 
@@ -257,6 +271,19 @@ class CyberControllerWindow(QMainWindow):
     def _on_github(self) -> None:
         import webbrowser
         webbrowser.open(_GITHUB_URL)
+
+    # ── Cross-comm send ──────────────────────────────────────────────
+
+    def _send_to_port(self, port: str, command: str) -> None:
+        """AutoRouter callback — write a routed command to a connected device."""
+        conn = self._dm.get_connection(port)
+        if conn and conn.is_connected:
+            try:
+                conn.write(command)  # rejects embedded control chars
+            except Exception:
+                log.exception("AutoRouter send to %s failed", port)
+        else:
+            log.warning("AutoRouter: no active connection on %s for routed command", port)
 
     # ── Cleanup ──────────────────────────────────────────────────────
 

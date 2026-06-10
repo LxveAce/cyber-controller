@@ -1,7 +1,7 @@
 {
   "name": "Bruce",
   "id": "bruce",
-  "description": "Multi-tool firmware for ESP32 with WiFi, BLE, IR, and SubGHz",
+  "description": "Multi-tool firmware for ESP32 with WiFi, BLE, IR, RF/SubGHz, RFID/NFC. Per-board merged single .bin (flashed at 0x0).",
   "backend": "esptool",
   "protocol": "bruce",
   "boards": [
@@ -13,16 +13,71 @@
       "flash_freq": "80m"
     },
     {
-      "name": "Cardputer",
+      "name": "M5Cardputer",
       "chip": "esp32s3",
       "flash_size": "8MB",
       "flash_mode": "dio",
       "flash_freq": "80m",
       "has_keyboard": true
+    },
+    {
+      "name": "M5StickC Plus2",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "LilyGo T-Embed CC1101",
+      "chip": "esp32s3",
+      "flash_size": "16MB",
+      "flash_mode": "qio",
+      "flash_freq": "80m",
+      "external_modules": ["CC1101"]
+    },
+    {
+      "name": "LilyGo T-Deck",
+      "chip": "esp32s3",
+      "flash_size": "16MB",
+      "flash_mode": "qio",
+      "flash_freq": "80m",
+      "has_keyboard": true
+    },
+    {
+      "name": "LilyGo T-Dongle-S3",
+      "chip": "esp32s3",
+      "flash_size": "16MB",
+      "flash_mode": "qio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32 CYD (CYD-2432S028)",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true,
+      "display_type": "ili9341"
+    },
+    {
+      "name": "ESP32-C5 Generic",
+      "chip": "esp32c5",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32-C6 Generic",
+      "chip": "esp32c6",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
     }
   ],
   "default_baud": 115200,
   "firmware_urls": {
+    "repo": "https://github.com/pr3y/Bruce",
     "latest": "https://github.com/pr3y/Bruce/releases/latest"
-  }
+  },
+  "note": "pr3y/Bruce. Per-board Bruce-<env>.bin merged image flashed at 0x0; flash_core derives chip family from the env name."
 }

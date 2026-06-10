@@ -1,0 +1,20 @@
+{
+  "name": "RaspyJack",
+  "id": "raspyjack",
+  "description": "Raspberry Pi network-attack toolkit (Bash Bunny / LAN-turtle style) with an LCD HAT menu UI — MITM, responder, nmap, payloads. Flashed as an SD-card .img.",
+  "backend": "sd",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "Raspberry Pi",
+      "chip": null,
+      "device": "Raspberry Pi (with LCD/GPIO HAT)"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/7h30th3r0n3/RaspyJack",
+    "latest": "https://github.com/7h30th3r0n3/RaspyJack/releases/latest"
+  },
+  "note": "id matches sd_backend.PI_IMAGE_PROFILES key 'raspyjack' (registry repo casing is 7h30th3r0n3/Raspyjack; GitHub resolves it case-insensitively). SD imaging requires an explicit removable target + confirmed=True."
+}
