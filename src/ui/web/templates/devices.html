@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% set active = "devices" %}
+
+{% block title %}Devices - Cyber Controller{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Devices</h1>
+
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Status</th>
+                <th>Port</th>
+                <th>Name</th>
+                <th>Board</th>
+                <th>Protocol</th>
+                <th>VID:PID</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="device-tbody">
+            {% for dev in devices %}
+            <tr>
+                <td>
+                    <span class="status-dot {% if dev.connected %}connected{% else %}disconnected{% endif %}"></span>
+                    {{ "Connected" if dev.connected else "Disconnected" }}
+                </td>
+                <td class="mono">{{ dev.port }}</td>
+                <td>{{ dev.name }}</td>
+                <td>{{ dev.board_type.value }}</td>
+                <td>{{ dev.protocol.value }}</td>
+                <td class="mono">{{ dev.vid }}:{{ dev.pid }}</td>
+                <td>
+                    {% if dev.connected %}
+                    <a href="/terminal/{{ dev.port }}" class="btn btn-sm">Terminal</a>
+                    {% else %}
+                    <span class="text-muted">--</span>
+                    {% endif %}
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="7" class="empty-state">No devices detected.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function onDeviceConnected(data) {
+        location.reload();
+    }
+    function onDeviceDisconnected(data) {
+        location.reload();
+    }
+</script>
+{% endblock %}

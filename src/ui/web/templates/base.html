@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Cyber Controller{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span class="brand-icon">&#x25C8;</span>
+            <span class="brand-text">Cyber Controller</span>
+        </div>
+        <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Toggle navigation">
+            &#9776;
+        </button>
+        <div class="nav-links">
+            <a href="/" class="nav-link {% if active == 'dashboard' %}active{% endif %}">Dashboard</a>
+            <a href="/devices" class="nav-link {% if active == 'devices' %}active{% endif %}">Devices</a>
+            <a href="/flash" class="nav-link {% if active == 'flash' %}active{% endif %}">Flash</a>
+            <a href="/targets" class="nav-link {% if active == 'targets' %}active{% endif %}">Targets</a>
+        </div>
+    </nav>
+
+    <main class="container">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <span>Cyber Controller &mdash; LxveAce 2026</span>
+    </footer>
+
+    <script>
+        const socket = io();
+
+        socket.on('connect', function() {
+            console.log('WebSocket connected');
+        });
+
+        socket.on('device_connected', function(data) {
+            console.log('Device connected:', data);
+            if (typeof onDeviceConnected === 'function') onDeviceConnected(data);
+        });
+
+        socket.on('device_disconnected', function(data) {
+            console.log('Device disconnected:', data);
+            if (typeof onDeviceDisconnected === 'function') onDeviceDisconnected(data);
+        });
+
+        socket.on('target_discovered', function(data) {
+            console.log('Target discovered:', data);
+            if (typeof onTargetDiscovered === 'function') onTargetDiscovered(data);
+        });
+
+        socket.on('flash_progress', function(data) {
+            console.log('Flash progress:', data);
+            if (typeof onFlashProgress === 'function') onFlashProgress(data);
+        });
+
+        socket.on('serial_output', function(data) {
+            if (typeof onSerialOutput === 'function') onSerialOutput(data);
+        });
+    </script>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

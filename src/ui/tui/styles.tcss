@@ -1,0 +1,159 @@
+/* Cyber Controller TUI — Textual CSS */
+
+Screen {
+    background: $surface;
+}
+
+/* ── Flash tab ──────────────────────────────────────────────────── */
+
+#flash-layout {
+    height: 1fr;
+    padding: 1;
+}
+
+#flash-selectors {
+    height: auto;
+    margin-bottom: 1;
+}
+
+.selector-group {
+    width: 1fr;
+    height: auto;
+    margin: 0 1;
+}
+
+.selector-label {
+    margin-bottom: 0;
+    color: $accent;
+    text-style: bold;
+}
+
+.section-label {
+    color: $accent;
+    text-style: bold;
+    margin: 1 0 0 0;
+}
+
+#btn-flash {
+    width: 100%;
+    margin-top: 1;
+}
+
+#btn-refresh-ports {
+    width: 100%;
+    margin-top: 1;
+}
+
+#flash-progress {
+    margin: 1 0;
+    height: 1;
+}
+
+#flash-log {
+    height: 1fr;
+    border: tall $accent;
+    background: $surface-darken-2;
+}
+
+/* ── Terminal tab ───────────────────────────────────────────────── */
+
+#terminal-layout {
+    height: 1fr;
+    padding: 1;
+}
+
+#terminal-top {
+    height: auto;
+    margin-bottom: 1;
+    align: left middle;
+}
+
+#terminal-port-select {
+    width: 1fr;
+    margin-right: 1;
+}
+
+#btn-connect {
+    margin-right: 1;
+}
+
+#serial-log {
+    height: 1fr;
+    border: tall $accent;
+    background: $surface-darken-2;
+}
+
+#terminal-input-row {
+    height: auto;
+    margin-top: 1;
+}
+
+#cmd-input {
+    width: 1fr;
+    margin-right: 1;
+}
+
+/* ── Targets tab ────────────────────────────────────────────────── */
+
+#targets-layout {
+    height: 1fr;
+    padding: 1;
+}
+
+#targets-toolbar {
+    height: auto;
+    margin-bottom: 1;
+    align: left middle;
+}
+
+#targets-toolbar .section-label {
+    width: 1fr;
+}
+
+#btn-refresh-targets {
+    margin-right: 1;
+}
+
+#target-table {
+    height: 1fr;
+    border: tall $accent;
+}
+
+/* ── DataTable styling ──────────────────────────────────────────── */
+
+DataTable {
+    background: $surface-darken-1;
+}
+
+DataTable > .datatable--header {
+    color: $accent;
+    text-style: bold;
+}
+
+DataTable > .datatable--cursor {
+    background: $accent 20%;
+}
+
+/* ── General widget overrides ───────────────────────────────────── */
+
+Button {
+    min-width: 12;
+}
+
+Select {
+    min-width: 20;
+}
+
+Input {
+    border: tall $accent 40%;
+}
+
+Input:focus {
+    border: tall $accent;
+}
+
+Log {
+    scrollbar-color: $accent 40%;
+    scrollbar-color-hover: $accent;
+    scrollbar-color-active: $accent;
+}

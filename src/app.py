@@ -2,6 +2,7 @@
 
 Usage:
     cyber-controller [--ui qt|tk|tui|web] [--log-level DEBUG|INFO|WARNING|ERROR]
+    cyber-controller --ui web [--host 0.0.0.0] [--port 5000]
 
 Parses CLI arguments, initialises logging, and launches the selected UI.
 """
@@ -44,6 +45,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--log-file",
         default=None,
         help="Optional path to a log file.",
+    )
+    parser.add_argument(
+        "--host",
+        default="0.0.0.0",
+        help="Web UI bind address (default: 0.0.0.0).",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=5000,
+        help="Web UI port (default: 5000).",
     )
     return parser.parse_args(argv)
 
@@ -101,66 +113,33 @@ def _launch_qt(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
 
 
 def _launch_tk(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
-    log.info("Tkinter UI — placeholder.  Use --ui qt for the full interface.")
+    log.info("Launching Tkinter lightweight UI")
     try:
-        import tkinter as tk
-        root = tk.Tk()
-        root.title("Cyber Controller (Tk — placeholder)")
-        root.geometry("600x400")
-        label = tk.Label(
-            root,
-            text="Cyber Controller\n\nTkinter UI is a placeholder.\nUse --ui qt for the full interface.",
-            font=("Segoe UI", 14),
-        )
-        label.pack(expand=True)
-        root.mainloop()
+        from src.ui.tk.app import launch_tk
+        return launch_tk(dm, fe, bus, pool)
     except ImportError:
         log.error("Tkinter is not available on this system.")
         return 1
-    return 0
 
 
 def _launch_tui(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
-    log.info("TUI — placeholder.  Use --ui qt for the full interface.")
+    log.info("Launching Textual TUI")
     try:
-        from textual.app import App, ComposeResult
-        from textual.widgets import Header, Footer, Static
-
-        class CyberTUI(App):
-            TITLE = "Cyber Controller"
-            CSS = "Screen { align: center middle; } Static { content-align: center middle; }"
-
-            def compose(self) -> ComposeResult:
-                yield Header()
-                yield Static("Cyber Controller — TUI placeholder.\nPress Q to quit.")
-                yield Footer()
-
-        CyberTUI().run()
+        from src.ui.tui.app import launch_tui
+        return launch_tui(dm, fe, bus, pool)
     except ImportError:
-        log.error("textual is not installed.  pip install textual")
+        log.error("textual is not installed.  pip install cyber-controller[tui]")
         return 1
-    return 0
 
 
-def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
-    log.info("Web UI — placeholder.  Use --ui qt for the full interface.")
+def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None, host="0.0.0.0", port=5000) -> int:
+    log.info("Launching Flask web remote UI")
     try:
-        from flask import Flask
-        app = Flask(__name__)
-
-        @app.route("/")
-        def index():
-            return (
-                "<h1>Cyber Controller — Web UI placeholder</h1>"
-                "<p>Use <code>--ui qt</code> for the full interface.</p>"
-            )
-
-        log.info("Starting Flask on http://127.0.0.1:5000")
-        app.run(host="127.0.0.1", port=5000, debug=False)
+        from src.ui.web.app import launch_web
+        return launch_web(dm, fe, bus, pool, host=host, port=port)
     except ImportError:
-        log.error("Flask is not installed.  pip install flask")
+        log.error("Flask is not installed.  pip install cyber-controller[web]")
         return 1
-    return 0
 
 
 _LAUNCHERS = {
@@ -187,7 +166,11 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     try:
-        code = launcher(dm, fe, bus, pool, vault, health, macro)
+        if args.ui == "web":
+            code = launcher(dm, fe, bus, pool, vault, health, macro,
+                            host=args.host, port=args.port)
+        else:
+            code = launcher(dm, fe, bus, pool, vault, health, macro)
     except KeyboardInterrupt:
         log.info("Interrupted — shutting down")
         code = 0

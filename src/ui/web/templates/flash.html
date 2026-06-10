@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% set active = "flash" %}
+
+{% block title %}Flash - Cyber Controller{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Flash Firmware</h1>
+
+<div class="flash-form">
+    <div class="form-group">
+        <label for="port-select">Port</label>
+        <select id="port-select" class="form-control">
+            <option value="">Select port...</option>
+            {% for p in ports %}
+            <option value="{{ p.port }}">{{ p.port }} - {{ p.name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="profile-select">Firmware Profile</label>
+        <select id="profile-select" class="form-control">
+            <option value="">Select profile...</option>
+            {% for name in profiles %}
+            <option value="{{ name }}">{{ name }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <button id="btn-flash" class="btn btn-accent btn-block" onclick="startFlash()">Flash</button>
+
+    <div class="progress-container">
+        <div class="progress-bar" id="flash-progress" style="width: 0%"></div>
+    </div>
+    <div id="flash-status" class="flash-status"></div>
+
+    <div class="log-container">
+        <h3 class="log-title">Flash Log</h3>
+        <div id="flash-log" class="log-output"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    function startFlash() {
+        const port = document.getElementById('port-select').value;
+        const profile = document.getElementById('profile-select').value;
+        const btn = document.getElementById('btn-flash');
+        const logEl = document.getElementById('flash-log');
+        const statusEl = document.getElementById('flash-status');
+
+        if (!port || !profile) {
+            statusEl.textContent = 'Select both port and profile.';
+            statusEl.className = 'flash-status error';
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Flashing...';
+        logEl.innerHTML = '';
+        statusEl.textContent = 'Starting flash...';
+        statusEl.className = 'flash-status';
+        document.getElementById('flash-progress').style.width = '0%';
+
+        fetch('/api/flash', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({port: port, profile_id: profile}),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) {
+                statusEl.textContent = data.error;
+                statusEl.className = 'flash-status error';
+                btn.disabled = false;
+                btn.textContent = 'Flash';
+            }
+        })
+        .catch(err => {
+            statusEl.textContent = 'Request failed: ' + err;
+            statusEl.className = 'flash-status error';
+            btn.disabled = false;
+            btn.textContent = 'Flash';
+        });
+    }
+
+    function onFlashProgress(data) {
+        const progressBar = document.getElementById('flash-progress');
+        const logEl = document.getElementById('flash-log');
+        const statusEl = document.getElementById('flash-status');
+        const btn = document.getElementById('btn-flash');
+
+        progressBar.style.width = data.percent + '%';
+
+        if (data.message) {
+            const line = document.createElement('div');
+            line.className = 'log-line';
+            line.textContent = data.message;
+            logEl.appendChild(line);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        if (data.done) {
+            btn.disabled = false;
+            btn.textContent = 'Flash';
+            if (data.success) {
+                statusEl.textContent = 'Flash completed successfully.';
+                statusEl.className = 'flash-status success';
+            } else {
+                statusEl.textContent = 'Flash failed.';
+                statusEl.className = 'flash-status error';
+            }
+        } else {
+            statusEl.textContent = data.message || ('Flashing... ' + data.percent + '%');
+        }
+    }
+</script>
+{% endblock %}

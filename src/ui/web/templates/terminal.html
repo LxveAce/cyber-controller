@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% set active = "devices" %}
+
+{% block title %}Terminal {{ port }} - Cyber Controller{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Terminal &mdash; {{ port }}</h1>
+{% if device %}
+<p class="subtitle">{{ device.name }} ({{ device.board_type.value }}) &mdash; {{ "Connected" if device.connected else "Disconnected" }}</p>
+{% endif %}
+
+<div class="terminal-container">
+    <div id="terminal-output" class="terminal-output"></div>
+    <div class="terminal-input-row">
+        <input type="text" id="cmd-input" class="form-control terminal-input"
+               placeholder="Type command..." autocomplete="off"
+               onkeydown="if(event.key==='Enter') sendCommand()">
+        <button class="btn btn-accent" onclick="sendCommand()">Send</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    const currentPort = "{{ port }}";
+
+    // Subscribe to serial output for this port
+    socket.emit('subscribe_serial', {port: currentPort});
+
+    function onSerialOutput(data) {
+        if (data.port !== currentPort) return;
+        const output = document.getElementById('terminal-output');
+        const line = document.createElement('div');
+        line.className = 'terminal-line';
+        if (data.line.startsWith('>')) {
+            line.classList.add('cmd');
+        } else if (data.line.startsWith('[')) {
+            line.classList.add('system');
+        }
+        line.textContent = data.line;
+        output.appendChild(line);
+        output.scrollTop = output.scrollHeight;
+    }
+
+    function sendCommand() {
+        const input = document.getElementById('cmd-input');
+        const cmd = input.value.trim();
+        if (!cmd) return;
+        socket.emit('send_command', {port: currentPort, command: cmd});
+        input.value = '';
+        input.focus();
+    }
+
+    // Focus command input on load
+    document.getElementById('cmd-input').focus();
+</script>
+{% endblock %}
