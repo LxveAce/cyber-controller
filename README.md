@@ -74,11 +74,11 @@ Produces standalone executables in `dist/`.
 
 ### Phase 1 — Core
 - [x] Project scaffold and architecture
-- [ ] Offline Firmware Vault
-- [ ] Device Health Dashboard
-- [ ] Hot-Plug Device Manager
-- [ ] Macro Recorder & Playback
-- [ ] Audit Trail with integrity hashing
+- [x] Offline Firmware Vault
+- [x] Device Health Dashboard
+- [x] Hot-Plug Device Manager
+- [x] Macro Recorder & Playback
+- [x] Audit Trail with integrity hashing
 
 ### Phase 2 — Intelligence
 - [ ] Target Dossier Panel
@@ -89,7 +89,7 @@ Produces standalone executables in `dist/`.
 
 ### Phase 3 — Orchestration
 - [ ] Attack Chain Builder
-- [ ] Headless Web Remote
+- [x] Headless Web Remote
 - [ ] Trigger / Event System
 - [ ] Scheduled Task Engine
 
