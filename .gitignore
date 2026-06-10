@@ -1,0 +1,69 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+*.whl
+*.pyo
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Distribution / Build
+dist/
+build/
+*.spec
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Environment / Secrets
+.env
+.env.*
+*.key
+*.pem
+credentials.json
+
+# Logs
+*.log
+logs/
+
+# Test / Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# MyPy / type checkers
+.mypy_cache/
+.pytype/
+
+# Ruff
+.ruff_cache/
+
+# PyInstaller
+*.manifest
+
+# Project-specific
+*.sqlite3
+*.bak
+*.tmp
+sessions/
+firmware_vault/
+
+# Secure storage vaults
+*.vault

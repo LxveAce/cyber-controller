@@ -1,0 +1,17 @@
+{
+  "name": "AirTag Scanner",
+  "id": "airtag_scanner",
+  "description": "Apple AirTag and BLE tracker detection firmware",
+  "backend": "esptool",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "ESP32 Generic",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    }
+  ],
+  "default_baud": 115200
+}

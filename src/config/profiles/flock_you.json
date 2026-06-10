@@ -1,0 +1,20 @@
+{
+  "name": "Flock-You",
+  "id": "flock_you",
+  "description": "Drone/RemoteID detection and spoofing firmware",
+  "backend": "esptool",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "ESP32 Generic",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "latest": "https://github.com/lozaning/Flock-You/releases/latest"
+  }
+}

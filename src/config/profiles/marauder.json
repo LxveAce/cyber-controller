@@ -1,0 +1,46 @@
+{
+  "name": "ESP32 Marauder",
+  "id": "marauder",
+  "description": "WiFi/BLE offensive security firmware for ESP32",
+  "backend": "esptool",
+  "protocol": "marauder",
+  "boards": [
+    {
+      "name": "Lonely Binary ESP32 Gold",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "arming_pin": 27,
+      "partitions": {
+        "bootloader": {"offset": "0x1000"},
+        "partitions": {"offset": "0x8000"},
+        "firmware": {"offset": "0x10000"}
+      }
+    },
+    {
+      "name": "ESP32 CYD 2.8\" Touchscreen",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "arming_pin": 27,
+      "has_display": true,
+      "display_type": "ili9341"
+    },
+    {
+      "name": "Waveshare ESP32-C5",
+      "chip": "esp32c5",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "arming_pin": null,
+      "arming_grove": "G2",
+      "dual_band": true
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "latest": "https://github.com/justcallmekoko/ESP32Marauder/releases/latest"
+  }
+}

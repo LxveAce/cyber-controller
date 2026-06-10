@@ -1,0 +1,27 @@
+{
+  "name": "GhostESP",
+  "id": "ghost_esp",
+  "description": "Lightweight WiFi/BLE scanning and deauth firmware",
+  "backend": "esptool",
+  "protocol": "ghost_esp",
+  "boards": [
+    {
+      "name": "ESP32 Generic",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32-S3",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "latest": "https://github.com/Spooks4576/Ghost_ESP/releases/latest"
+  }
+}

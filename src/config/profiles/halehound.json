@@ -1,0 +1,23 @@
+{
+  "name": "HaleHound",
+  "id": "halehound",
+  "description": "Multi-protocol IoT attack firmware — WiFi, BLE, SubGHz (CC1101), 2.4GHz (NRF24), NFC (PN532)",
+  "backend": "esptool",
+  "protocol": "halehound",
+  "boards": [
+    {
+      "name": "ESP32 CYD 2.8\" Touchscreen",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true,
+      "display_type": "ili9341",
+      "external_modules": ["CC1101", "NRF24L01", "PN532"]
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "latest": "https://github.com/HaleHound/HaleHound/releases/latest"
+  }
+}

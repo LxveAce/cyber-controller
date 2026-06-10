@@ -1,0 +1,28 @@
+{
+  "name": "Bruce",
+  "id": "bruce",
+  "description": "Multi-tool firmware for ESP32 with WiFi, BLE, IR, and SubGHz",
+  "backend": "esptool",
+  "protocol": "bruce",
+  "boards": [
+    {
+      "name": "ESP32 Generic",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "Cardputer",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_keyboard": true
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "latest": "https://github.com/pr3y/Bruce/releases/latest"
+  }
+}
