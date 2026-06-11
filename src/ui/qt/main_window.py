@@ -65,7 +65,7 @@ except Exception:  # noqa: BLE001
 
 log = logging.getLogger(__name__)
 
-_VERSION = "0.3.0"
+_VERSION = "1.0.0"
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
 
@@ -132,6 +132,7 @@ class CyberControllerWindow(QMainWindow):
 
         self.setWindowTitle(f"Cyber Controller v{_VERSION}")
         self.setMinimumSize(900, 600)
+        self.resize(1280, 800)
         self.setWindowIcon(create_cc_icon())
 
         # QSettings for persisting splitter state
