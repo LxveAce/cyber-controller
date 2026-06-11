@@ -162,27 +162,29 @@ TabbedContent > ContentSwitcher {
 
 Tabs {
     background: $bg-surface;
+    dock: top;
+    height: 3;
 }
 
 Tab {
-    background: $bg-surface;
-    color: $text-muted;
-    padding: 1 2;
-}
-
-Tab.-active {
-    background: $bg-deep;
-    color: $accent;
-    text-style: bold;
+    color: #c9d1d9;
+    background: transparent;
+    padding: 1 3;
+    text-style: none;
 }
 
 Tab:hover {
-    background: $bg-card;
-    color: $text-primary;
+    color: #e6edf3;
+    text-style: bold;
+}
+
+Tab.-active {
+    color: #39ff14;
+    text-style: bold;
 }
 
 Underline {
-    color: $accent;
+    color: #39ff14;
 }
 
 /* ── General widget overrides ───────────────────────────────────── */
