@@ -59,6 +59,13 @@ target-version = "py312"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
 
+[tool.pytest.ini_options]
+# Put the repo root (for `src...` imports) AND tests/ (for `from conftest import ...`) on sys.path so
+# the suite runs cleanly with a bare `pytest`.
+pythonpath = [".", "tests"]
+testpaths = ["tests"]
+addopts = "-q"
+
 [build-system]
 requires = ["setuptools>=75"]
 build-backend = "setuptools.build_meta"
