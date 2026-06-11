@@ -38,22 +38,22 @@ class CCLogo(QWidget):
         cy = letter_h / 2
 
         # --- Glow layer (larger, blurred arcs behind) ---
-        self._draw_c(painter, cx - 15, cy, radius=18, pen_width=7, color=_ACCENT_GLOW)
-        self._draw_c(painter, cx + 15, cy, radius=18, pen_width=7, color=_ACCENT_GLOW, flip=True)
+        self._draw_c(painter, cx - 11, cy, radius=18, pen_width=7, color=_ACCENT_GLOW)
+        self._draw_c(painter, cx + 11, cy, radius=18, pen_width=7, color=_ACCENT_GLOW, flip=True)
 
         # Secondary mid-opacity layer for depth
-        self._draw_c(painter, cx - 15, cy, radius=16, pen_width=5, color=_ACCENT_MID)
-        self._draw_c(painter, cx + 15, cy, radius=16, pen_width=5, color=_ACCENT_MID, flip=True)
+        self._draw_c(painter, cx - 11, cy, radius=16, pen_width=5, color=_ACCENT_MID)
+        self._draw_c(painter, cx + 11, cy, radius=16, pen_width=5, color=_ACCENT_MID, flip=True)
 
         # --- Foreground C letters ---
         accent = QColor(_ACCENT)
-        self._draw_c(painter, cx - 15, cy, radius=14, pen_width=3, color=accent)
-        self._draw_c(painter, cx + 15, cy, radius=14, pen_width=3, color=accent, flip=True)
+        self._draw_c(painter, cx - 11, cy, radius=14, pen_width=3, color=accent)
+        self._draw_c(painter, cx + 11, cy, radius=14, pen_width=3, color=accent, flip=True)
 
         # --- Endpoint nodes ---
         node_color = QColor(_ACCENT)
-        self._draw_nodes(painter, cx - 15, cy, radius=14, color=node_color)
-        self._draw_nodes(painter, cx + 15, cy, radius=14, color=node_color, flip=True)
+        self._draw_nodes(painter, cx - 11, cy, radius=14, color=node_color)
+        self._draw_nodes(painter, cx + 11, cy, radius=14, color=node_color, flip=True)
 
         # --- "CYBER CONTROLLER" text ---
         font = QFont("JetBrains Mono", 6)
