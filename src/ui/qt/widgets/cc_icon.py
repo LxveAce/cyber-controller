@@ -60,7 +60,7 @@ def _render_cc(size: int) -> QPixmap:
     cx = size / 2
     cy = size / 2
     r = size * 0.28
-    offset = size * 0.15
+    offset = size * 0.22
     pw = max(1.5, size * 0.06)
     node_r = max(1, size * 0.04)
 
