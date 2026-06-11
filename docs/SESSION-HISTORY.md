@@ -142,8 +142,18 @@ log), boards COM5 (CYD) + COM7 (blank ESP32):
   "one board's AP, another executes on it" routing), encrypted_storage, flash_core, profile_loader,
   protocols, serial_handler, web_auth. Fixed the suite to run with a bare `pytest` (added
   `[tool.pytest.ini_options]` pythonpath/testpaths — it was failing to import `conftest`).
-- STILL next-session: UI-runtime + live 2-board cross-comm stress (needs PyQt5 + two boards talking),
-  optional install-password default (C3), device-side anti-boot-bypass = T2/eFuse (C2).
+- **Live cross-comm route→deliver HARDWARE-VALIDATED** (2026-06-11): new `tests/test_cross_comm_live.py`
+  (skips without `CC_LIVE_PORT`) — wires the REAL DeviceManager + EventBus + AutoRouter, opens a real
+  board (COM7), injects a "device A discovered an AP" event, and the AutoRouter matched a rule and
+  **delivered the routed command over the real serial connection to device B**. So the cross-device
+  route→deliver chain (the "one device's AP, another executes on it" core) is proven on real hardware,
+  not just the unit logic. Suite now 107 passed + 1 skipped (108 with the live port).
+- STILL next-session: the FULL "device A's live Marauder scan auto-routes to device B's Marauder execution"
+  end-to-end needs (a) a no-display Marauder build for the bare ESP32 + (b) a Marauder serial→target.added
+  parser feeding the bus; UI-runtime smoke (PyQt5); optional install-password default (C3); device-side
+  anti-boot-bypass = T2/eFuse (C2). RESOLVED open item: `SerialConnection.write` correctly appends
+  exactly one `\n` terminator (and rejects only EMBEDDED control chars as an injection guard), so routed
+  commands DO terminate + execute on the device — the cross-comm command delivery is fully functional.
 
 ### 2.8 Docs / READMEs / website / profile
 - **Profile README** (`LxveAce/LxveAce`): added Cyber Controller as the flagship; updated Suicide
