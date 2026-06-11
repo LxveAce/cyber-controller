@@ -115,7 +115,6 @@ class SettingsTab(QWidget):
         comm_form = QFormLayout()
         comm_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._auto_share_check = QCheckBox("Auto-share discoveries to the shared target pool")
-        self._auto_share_check.setWordWrap(False)
         self._dedup_check = QCheckBox("De-duplicate targets by MAC")
         comm_form.addRow(self._auto_share_check)
         comm_form.addRow(self._dedup_check)
