@@ -1245,7 +1245,7 @@ def launch_qt(
     Returns:
         QApplication exit code.
     """
-    app = QApplication(sys.argv)
+    app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Cyber Controller")
     app.setOrganizationName("LxveAce")
     app.setWindowIcon(create_cc_icon())
