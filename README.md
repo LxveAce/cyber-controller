@@ -204,9 +204,17 @@ python build.py        # PyInstaller single-file executable in dist/
 ## Suicide Marauder Integration
 
 [Suicide Marauder](https://github.com/LxveAce/Suicide-Marauder) ships as a git submodule for
-owner-only anti-forensic provisioning: PBKDF2-HMAC-SHA256 boot-password gate, 2-fail automatic wipe,
-GPIO dead-man switch, and eFuse + Flash Encryption (T2). Bundles are flashed through the controller
-with **TOCTOU-safe per-file SHA-256 verification** (no unverified anti-forensic build is ever written).
+owner-only anti-forensic provisioning: a PBKDF2-HMAC-SHA256 boot-password gate, 2-fail automatic wipe,
+GPIO dead-man switch, and eFuse + Flash Encryption (T2). Set the password & duress config straight from
+the controller — **`cyber-controller --suicide-setup`** (interactive) or **Tools ▸ Suicide Marauder
+Setup** in the Qt UI — which hashes the password **host-side** (PBKDF2, zeroized, never stored, never on
+argv) and bakes the `guardcfg` bundle. Bundles flash through the controller with **TOCTOU-safe per-file
+SHA-256 verification** (no unverified anti-forensic build is ever written).
+
+The on-trigger wipe is **hardware-validated** to obliterate the *entire* flash — bootloader, partition
+table, the full running app, NVS/SPIFFS/logs, and the SD card — with a forensic random-overwrite pass,
+leaving an all-0xFF chip with no trace (the running app self-erases via a ROM-SPI bypass inside the IDF
+flash-only critical section; recoverable only by the owner over UART on T1).
 
 ## Ecosystem
 
