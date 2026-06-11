@@ -1,4 +1,4 @@
-"""CC Logo widget — stylized QPainter-drawn 'CC' logo with circuit-board aesthetic."""
+"""CC Logo widget — stylized QPainter-drawn interlocking 'CC' logo with glow effect."""
 
 from __future__ import annotations
 
@@ -13,11 +13,7 @@ _ACCENT_MID = QColor(57, 255, 20, 120)
 
 
 class CCLogo(QWidget):
-    """Two interlocking 'C' letters rendered with a circuit-board / digital aesthetic.
-
-    Draws a glow layer behind the letters for a subtle neon effect, plus small
-    circuit-trace tick marks along the arcs. "CYBER CONTROLLER" text appears below
-    in monospace.
+    """Two interlocking 'C' letters with glow layers and endpoint nodes.
 
     Designed for sidebar placement at approximately 180x60.
     """
@@ -42,26 +38,22 @@ class CCLogo(QWidget):
         cy = letter_h / 2
 
         # --- Glow layer (larger, blurred arcs behind) ---
-        self._draw_c(painter, cx - 22, cy, radius=18, pen_width=7, color=_ACCENT_GLOW)
-        self._draw_c(painter, cx + 8, cy, radius=18, pen_width=7, color=_ACCENT_GLOW, flip=True)
+        self._draw_c(painter, cx - 15, cy, radius=18, pen_width=7, color=_ACCENT_GLOW)
+        self._draw_c(painter, cx + 15, cy, radius=18, pen_width=7, color=_ACCENT_GLOW, flip=True)
 
         # Secondary mid-opacity layer for depth
-        self._draw_c(painter, cx - 22, cy, radius=16, pen_width=5, color=_ACCENT_MID)
-        self._draw_c(painter, cx + 8, cy, radius=16, pen_width=5, color=_ACCENT_MID, flip=True)
+        self._draw_c(painter, cx - 15, cy, radius=16, pen_width=5, color=_ACCENT_MID)
+        self._draw_c(painter, cx + 15, cy, radius=16, pen_width=5, color=_ACCENT_MID, flip=True)
 
         # --- Foreground C letters ---
         accent = QColor(_ACCENT)
-        self._draw_c(painter, cx - 22, cy, radius=14, pen_width=3, color=accent)
-        self._draw_c(painter, cx + 8, cy, radius=14, pen_width=3, color=accent, flip=True)
+        self._draw_c(painter, cx - 15, cy, radius=14, pen_width=3, color=accent)
+        self._draw_c(painter, cx + 15, cy, radius=14, pen_width=3, color=accent, flip=True)
 
-        # --- Circuit-trace tick marks along the arcs ---
-        self._draw_ticks(painter, cx - 22, cy, radius=14, color=accent)
-        self._draw_ticks(painter, cx + 8, cy, radius=14, color=accent, flip=True)
-
-        # --- Small circuit nodes at the open ends of each C ---
+        # --- Endpoint nodes ---
         node_color = QColor(_ACCENT)
-        self._draw_nodes(painter, cx - 22, cy, radius=14, color=node_color)
-        self._draw_nodes(painter, cx + 8, cy, radius=14, color=node_color, flip=True)
+        self._draw_nodes(painter, cx - 15, cy, radius=14, color=node_color)
+        self._draw_nodes(painter, cx + 15, cy, radius=14, color=node_color, flip=True)
 
         # --- "CYBER CONTROLLER" text ---
         font = QFont("JetBrains Mono", 6)
@@ -101,39 +93,7 @@ class CCLogo(QWidget):
 
         painter.drawArc(rect, start_angle, span_angle)
 
-    # ── Helper: circuit ticks ───────────────────────────────────────
-
-    @staticmethod
-    def _draw_ticks(
-        painter: QPainter,
-        cx: float,
-        cy: float,
-        radius: float,
-        color: QColor,
-        flip: bool = False,
-    ) -> None:
-        """Draw small perpendicular tick marks along the arc for a PCB-trace look."""
-        import math
-
-        tick_len = 3
-        pen = QPen(color, 1.2, Qt.SolidLine, Qt.FlatCap)
-        painter.setPen(pen)
-
-        # Place ticks at specific angles around the arc
-        if flip:
-            angles_deg = [320, 360, 40, 80, 120, 160, 200]
-        else:
-            angles_deg = [80, 120, 160, 200, 240, 280, 320]
-
-        for a in angles_deg:
-            rad = math.radians(a)
-            x0 = cx + radius * math.cos(rad)
-            y0 = cy - radius * math.sin(rad)
-            x1 = cx + (radius + tick_len) * math.cos(rad)
-            y1 = cy - (radius + tick_len) * math.sin(rad)
-            painter.drawLine(QPointF(x0, y0), QPointF(x1, y1))
-
-    # ── Helper: circuit nodes ───────────────────────────────────────
+    # ── Helper: endpoint nodes ─────────────────────────────────────
 
     @staticmethod
     def _draw_nodes(
