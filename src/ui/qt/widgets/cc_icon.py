@@ -1,67 +1,88 @@
-"""Generate CC logo as QIcon for window/taskbar icon."""
+"""Generate CC logo as QIcon for window/taskbar icon.
 
-from PyQt5.QtCore import Qt, QRectF, QPointF, QSize
-from PyQt5.QtGui import QColor, QFont, QIcon, QImage, QPainter, QPen, QPixmap
+Matches the sidebar CCLogo widget: two interlocking C arcs
+with glow layers and endpoint nodes.
+"""
+
+from PyQt5.QtCore import Qt, QRectF, QPointF
+from PyQt5.QtGui import QColor, QIcon, QImage, QPainter, QPen, QPixmap
 import math
 
 _ACCENT = QColor(57, 255, 20)
+_ACCENT_GLOW = QColor(57, 255, 20, 40)
+_ACCENT_MID = QColor(57, 255, 20, 120)
 _BG = QColor(13, 17, 23)
 
 
 def create_cc_icon() -> QIcon:
-    """Create a multi-size QIcon with the CC logo."""
     icon = QIcon()
     for size in [16, 32, 48, 64, 128, 256]:
-        pixmap = _render_cc(size)
-        icon.addPixmap(pixmap)
+        icon.addPixmap(_render_cc(size))
     return icon
 
 
+def _draw_c(p: QPainter, cx: float, cy: float, r: float, pw: float,
+            color: QColor, flip: bool = False) -> None:
+    pen = QPen(color, pw, Qt.SolidLine, Qt.FlatCap)
+    p.setPen(pen)
+    rect = QRectF(cx - r, cy - r, r * 2, r * 2)
+    if flip:
+        p.drawArc(rect, 300 * 16, 240 * 16)
+    else:
+        p.drawArc(rect, 60 * 16, 240 * 16)
+
+
+def _draw_nodes(p: QPainter, cx: float, cy: float, r: float,
+                node_r: float, color: QColor, flip: bool = False) -> None:
+    p.setPen(Qt.NoPen)
+    p.setBrush(color)
+    ends = [300, 180] if flip else [60, 300]
+    for a in ends:
+        rad = math.radians(a)
+        x = cx + r * math.cos(rad)
+        y = cy - r * math.sin(rad)
+        p.drawEllipse(QPointF(x, y), node_r, node_r)
+
+
 def _render_cc(size: int) -> QPixmap:
-    """Render the CC logo at a given pixel size."""
     img = QImage(size, size, QImage.Format_ARGB32)
     img.fill(Qt.transparent)
 
     p = QPainter(img)
     p.setRenderHint(QPainter.Antialiasing)
 
-    # Background circle
+    margin = size * 0.05
     p.setPen(Qt.NoPen)
     p.setBrush(_BG)
-    margin = size * 0.05
-    p.drawRoundedRect(QRectF(margin, margin, size - margin*2, size - margin*2), size*0.15, size*0.15)
+    p.drawRoundedRect(QRectF(margin, margin, size - margin * 2, size - margin * 2),
+                      size * 0.15, size * 0.15)
 
-    # Draw two C arcs
     cx = size / 2
     cy = size / 2
-    r = size * 0.3
-    pw = max(1.5, size * 0.08)
-    offset = size * 0.12
+    r = size * 0.28
+    offset = size * 0.15
+    pw = max(1.5, size * 0.06)
+    node_r = max(1, size * 0.04)
 
-    pen = QPen(_ACCENT, pw, Qt.SolidLine, Qt.FlatCap)
-    p.setPen(pen)
+    lx = cx - offset
+    rx = cx + offset
 
-    # Left C
-    rect_l = QRectF(cx - offset - r, cy - r, r*2, r*2)
-    p.drawArc(rect_l, 60*16, 240*16)
+    # Glow layer
+    _draw_c(p, lx, cy, r + 2, pw + 4, _ACCENT_GLOW)
+    _draw_c(p, rx, cy, r + 2, pw + 4, _ACCENT_GLOW, flip=True)
 
-    # Right C (mirrored)
-    rect_r = QRectF(cx + offset - r, cy - r, r*2, r*2)
-    p.drawArc(rect_r, 300*16, 240*16)
+    # Mid layer
+    _draw_c(p, lx, cy, r + 1, pw + 2, _ACCENT_MID)
+    _draw_c(p, rx, cy, r + 1, pw + 2, _ACCENT_MID, flip=True)
 
-    # Circuit ticks
-    tick_pen = QPen(_ACCENT, max(1, pw * 0.4), Qt.SolidLine, Qt.FlatCap)
-    p.setPen(tick_pen)
-    tick_len = size * 0.05
+    # Foreground arcs
+    _draw_c(p, lx, cy, r, pw, _ACCENT)
+    _draw_c(p, rx, cy, r, pw, _ACCENT, flip=True)
 
-    for c_cx, angles in [(cx - offset, [120, 180, 240]), (cx + offset, [0, 300, 360])]:
-        for a in angles:
-            rad = math.radians(a)
-            x0 = c_cx + r * math.cos(rad)
-            y0 = cy - r * math.sin(rad)
-            x1 = c_cx + (r + tick_len) * math.cos(rad)
-            y1 = cy - (r + tick_len) * math.sin(rad)
-            p.drawLine(QPointF(x0, y0), QPointF(x1, y1))
+    # Endpoint nodes
+    if size >= 32:
+        _draw_nodes(p, lx, cy, r, node_r, _ACCENT)
+        _draw_nodes(p, rx, cy, r, node_r, _ACCENT, flip=True)
 
     p.end()
     return QPixmap.fromImage(img)
