@@ -8,11 +8,10 @@ from typing import Any
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
-    QProgressBar,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -20,29 +19,29 @@ from PyQt5.QtWidgets import (
 )
 
 from src.core.health_monitor import HealthMonitor
+from src.ui.qt.widgets.arc_gauge import ArcGauge
 
 log = logging.getLogger(__name__)
 
 
-def _make_bar(label: str, color: str = "#39ff14") -> tuple[QLabel, QProgressBar]:
-    """Create a labelled progress bar."""
-    lbl = QLabel(label)
-    lbl.setMinimumWidth(100)
-    bar = QProgressBar()
-    bar.setRange(0, 100)
-    bar.setValue(0)
-    bar.setTextVisible(True)
-    bar.setStyleSheet(
-        f"QProgressBar::chunk {{ background-color: {color}; }}"
-        "QProgressBar { text-align: center; }"
-    )
-    return lbl, bar
+def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+    """Create a card-styled QFrame with optional title label."""
+    card = QFrame()
+    card.setObjectName("card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(8)
+    if title:
+        lbl = QLabel(title)
+        lbl.setObjectName("card_title")
+        layout.addWidget(lbl)
+    return card, layout
 
 
 class HealthTab(QWidget):
     """System and device health dashboard tab.
 
-    Displays CPU, RAM, Disk, and Battery bars plus a table of
+    Displays CPU, RAM, Disk, and Battery arc gauges plus a table of
     connected devices with firmware version, uptime, and signal.
     Auto-refreshes every 5 seconds via QTimer.
     """
@@ -66,65 +65,65 @@ class HealthTab(QWidget):
         root = QVBoxLayout(self)
 
         # ── System Health Section ────────────────────────────────────
-        sys_group = QGroupBox("System Health")
-        sys_layout = QVBoxLayout(sys_group)
+        sys_card, sys_layout = _make_card("System Health")
 
-        # CPU
-        cpu_row = QHBoxLayout()
-        self._cpu_label, self._cpu_bar = _make_bar("CPU:", "#39ff14")
-        cpu_row.addWidget(self._cpu_label)
-        cpu_row.addWidget(self._cpu_bar)
+        # Arc gauges in a horizontal row
+        gauge_row = QHBoxLayout()
+        gauge_row.setSpacing(16)
+
+        self._cpu_gauge = ArcGauge(value=0, label="CPU")
+        gauge_row.addWidget(self._cpu_gauge)
+
+        self._ram_gauge = ArcGauge(value=0, label="RAM")
+        gauge_row.addWidget(self._ram_gauge)
+
+        self._disk_gauge = ArcGauge(value=0, label="Disk")
+        gauge_row.addWidget(self._disk_gauge)
+
+        self._batt_gauge = ArcGauge(value=0, label="Battery")
+        gauge_row.addWidget(self._batt_gauge)
+
+        sys_layout.addLayout(gauge_row)
+
+        # Detail labels row
+        detail_row = QHBoxLayout()
         self._cpu_detail = QLabel("")
-        self._cpu_detail.setMinimumWidth(80)
-        cpu_row.addWidget(self._cpu_detail)
-        sys_layout.addLayout(cpu_row)
+        self._cpu_detail.setAlignment(Qt.AlignCenter)
+        self._cpu_detail.setObjectName("muted")
+        detail_row.addWidget(self._cpu_detail)
 
-        # RAM
-        ram_row = QHBoxLayout()
-        self._ram_label, self._ram_bar = _make_bar("RAM:", "#00bfff")
-        ram_row.addWidget(self._ram_label)
-        ram_row.addWidget(self._ram_bar)
         self._ram_detail = QLabel("")
-        self._ram_detail.setMinimumWidth(80)
-        ram_row.addWidget(self._ram_detail)
-        sys_layout.addLayout(ram_row)
+        self._ram_detail.setAlignment(Qt.AlignCenter)
+        self._ram_detail.setObjectName("muted")
+        detail_row.addWidget(self._ram_detail)
 
-        # Disk
-        disk_row = QHBoxLayout()
-        self._disk_label, self._disk_bar = _make_bar("Disk:", "#ff8c00")
-        disk_row.addWidget(self._disk_label)
-        disk_row.addWidget(self._disk_bar)
         self._disk_detail = QLabel("")
-        self._disk_detail.setMinimumWidth(80)
-        disk_row.addWidget(self._disk_detail)
-        sys_layout.addLayout(disk_row)
+        self._disk_detail.setAlignment(Qt.AlignCenter)
+        self._disk_detail.setObjectName("muted")
+        detail_row.addWidget(self._disk_detail)
 
-        # Battery
-        batt_row = QHBoxLayout()
-        self._batt_label, self._batt_bar = _make_bar("Battery:", "#ffd700")
-        batt_row.addWidget(self._batt_label)
-        batt_row.addWidget(self._batt_bar)
         self._batt_detail = QLabel("")
-        self._batt_detail.setMinimumWidth(80)
-        batt_row.addWidget(self._batt_detail)
-        sys_layout.addLayout(batt_row)
+        self._batt_detail.setAlignment(Qt.AlignCenter)
+        self._batt_detail.setObjectName("muted")
+        detail_row.addWidget(self._batt_detail)
+
+        sys_layout.addLayout(detail_row)
 
         # GPS status
         gps_row = QHBoxLayout()
         gps_label = QLabel("GPS:")
-        gps_label.setMinimumWidth(100)
+        gps_label.setMinimumWidth(40)
         gps_row.addWidget(gps_label)
         self._gps_status = QLabel("No Fix")
-        self._gps_status.setStyleSheet("color: #888;")
+        self._gps_status.setObjectName("muted")
         gps_row.addWidget(self._gps_status)
         gps_row.addStretch()
         sys_layout.addLayout(gps_row)
 
-        root.addWidget(sys_group)
+        root.addWidget(sys_card)
 
         # ── Device Health Section ────────────────────────────────────
-        dev_group = QGroupBox("Device Health")
-        dev_layout = QVBoxLayout(dev_group)
+        dev_card, dev_layout = _make_card("Device Health")
 
         self._device_table = QTableWidget()
         self._device_table.setColumnCount(5)
@@ -138,7 +137,7 @@ class HealthTab(QWidget):
         self._device_table.verticalHeader().setVisible(False)
         dev_layout.addWidget(self._device_table)
 
-        root.addWidget(dev_group)
+        root.addWidget(dev_card)
 
     # ── Refresh ──────────────────────────────────────────────────────
 
@@ -157,44 +156,44 @@ class HealthTab(QWidget):
             log.exception("HealthTab: device health error")
 
     def _update_system(self, health: dict[str, Any]) -> None:
-        """Update system health bars."""
+        """Update system health gauges."""
         cpu = health.get("cpu_percent", 0)
-        self._cpu_bar.setValue(int(cpu))
+        self._cpu_gauge.set_value(int(cpu))
         self._cpu_detail.setText(f"{cpu:.1f}%")
-        self._color_bar(self._cpu_bar, cpu)
 
         mem = health.get("memory_percent", 0)
         used_mb = health.get("memory_used_mb", 0)
         total_mb = health.get("memory_total_mb", 0)
-        self._ram_bar.setValue(int(mem))
+        self._ram_gauge.set_value(int(mem))
         self._ram_detail.setText(f"{used_mb}/{total_mb} MB")
-        self._color_bar(self._ram_bar, mem)
 
         disk = health.get("disk_percent", 0)
         used_gb = health.get("disk_used_gb", 0)
         total_gb = health.get("disk_total_gb", 0)
-        self._disk_bar.setValue(int(disk))
+        self._disk_gauge.set_value(int(disk))
         self._disk_detail.setText(f"{used_gb}/{total_gb} GB")
-        self._color_bar(self._disk_bar, disk)
 
         batt = health.get("battery_percent")
         if batt is not None:
-            self._batt_bar.setValue(int(batt))
+            self._batt_gauge.set_value(int(batt))
             self._batt_detail.setText(f"{batt:.0f}%")
-            self._batt_bar.setEnabled(True)
-            self._color_bar(self._batt_bar, 100 - batt)  # Invert: low battery = red
+            # Invert for color: low battery = high danger
+            self._batt_gauge._color_override = None
         else:
-            self._batt_bar.setValue(0)
+            self._batt_gauge.set_value(0)
             self._batt_detail.setText("N/A")
-            self._batt_bar.setEnabled(False)
+            self._batt_gauge._color_override = "#484f58"
+            self._batt_gauge.update()
 
         gps = health.get("gps_fix", False)
         if gps:
             self._gps_status.setText("Fix Acquired")
+            self._gps_status.setObjectName("gps_fix")
             self._gps_status.setStyleSheet("color: #39ff14; font-weight: bold;")
         else:
             self._gps_status.setText("No Fix")
-            self._gps_status.setStyleSheet("color: #888;")
+            self._gps_status.setObjectName("muted")
+            self._gps_status.setStyleSheet("color: #8b949e;")
 
     def _update_devices(self, devices: dict[str, dict[str, Any]]) -> None:
         """Update device health table."""
@@ -224,27 +223,11 @@ class HealthTab(QWidget):
 
             # Color status
             status = info.get("status", "unknown")
-            color = QColor("#39ff14") if status == "connected" else QColor("#888")
+            color = QColor("#39ff14") if status == "connected" else QColor("#8b949e")
             for col in range(5):
                 item = self._device_table.item(row, col)
                 if item:
                     item.setForeground(color)
-
-    @staticmethod
-    def _color_bar(bar: QProgressBar, value: float) -> None:
-        """Set bar chunk color based on value threshold."""
-        if value >= 90:
-            color = "#ff4444"
-        elif value >= 70:
-            color = "#ff8c00"
-        elif value >= 50:
-            color = "#ffd700"
-        else:
-            color = "#39ff14"
-        bar.setStyleSheet(
-            f"QProgressBar::chunk {{ background-color: {color}; }}"
-            "QProgressBar { text-align: center; }"
-        )
 
     @staticmethod
     def _format_uptime(seconds: float | None) -> str:

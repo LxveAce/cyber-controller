@@ -6,10 +6,10 @@ import logging
 from typing import TYPE_CHECKING
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
     QComboBox,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -79,7 +79,7 @@ class DeviceTab(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
 
         lbl = QLabel("Devices")
-        lbl.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        lbl.setObjectName("card_title")
         left_layout.addWidget(lbl)
 
         self._device_list = QListWidget()
@@ -110,13 +110,12 @@ class DeviceTab(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
 
         self._term_label = QLabel("Serial Terminal")
-        self._term_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        self._term_label.setObjectName("card_title")
         right_layout.addWidget(self._term_label)
 
         self._terminal = QTextEdit()
         self._terminal.setReadOnly(True)
-        self._terminal.setFont(QFont("Consolas", 9))
-        self._terminal.setStyleSheet("background-color: #111; color: #39ff14;")
+        self._terminal.setObjectName("terminal")
         right_layout.addWidget(self._terminal)
 
         # Command input row
@@ -131,7 +130,6 @@ class DeviceTab(QWidget):
 
         self._cmd_input = QLineEdit()
         self._cmd_input.setPlaceholderText("Type command or select from palette...")
-        self._cmd_input.setFont(QFont("Consolas", 10))
         self._cmd_input.returnPressed.connect(self._on_send)
         cmd_row.addWidget(self._cmd_input, stretch=3)
 
@@ -158,7 +156,9 @@ class DeviceTab(QWidget):
             item = QListWidgetItem(dev.display_name)
             item.setData(Qt.UserRole, dev.port)
             if dev.connected:
-                item.setForeground(Qt.green)
+                item.setForeground(QColor("#39ff14"))
+            else:
+                item.setForeground(QColor("#8b949e"))
             self._device_list.addItem(item)
             if dev.port == selected_port:
                 self._device_list.setCurrentItem(item)

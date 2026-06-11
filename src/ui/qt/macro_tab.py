@@ -11,7 +11,7 @@ from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -33,6 +33,20 @@ from src.core.macro_recorder import Macro, MacroRecorder, MacroStep
 from src.core.device_manager import DeviceManager
 
 log = logging.getLogger(__name__)
+
+
+def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+    """Create a card-styled QFrame with optional title label."""
+    card = QFrame()
+    card.setObjectName("card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(8)
+    if title:
+        lbl = QLabel(title)
+        lbl.setObjectName("card_title")
+        layout.addWidget(lbl)
+    return card, layout
 
 
 class _PlaybackSignal(QObject):
@@ -73,7 +87,7 @@ class MacroTab(QWidget):
         left_layout.setContentsMargins(0, 0, 0, 0)
 
         lbl = QLabel("Saved Macros")
-        lbl.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        lbl.setObjectName("card_title")
         left_layout.addWidget(lbl)
 
         self._macro_list = QListWidget()
@@ -86,7 +100,6 @@ class MacroTab(QWidget):
         btn_row.addWidget(btn_load)
 
         btn_delete = QPushButton("Delete")
-        btn_delete.setStyleSheet("QPushButton { color: #ff4444; }")
         btn_delete.clicked.connect(self._on_delete_macro)
         btn_row.addWidget(btn_delete)
         left_layout.addLayout(btn_row)
@@ -102,36 +115,37 @@ class MacroTab(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Variable substitution fields
-        var_group = QGroupBox("Variable Substitution")
-        var_layout = QHBoxLayout(var_group)
+        # Variable substitution fields card
+        var_card, var_layout_inner = _make_card("Variable Substitution")
+        var_row = QHBoxLayout()
 
-        var_layout.addWidget(QLabel("TARGET_MAC:"))
+        var_row.addWidget(QLabel("TARGET_MAC:"))
         self._var_mac = QLineEdit()
         self._var_mac.setPlaceholderText("AA:BB:CC:DD:EE:FF")
-        var_layout.addWidget(self._var_mac)
+        var_row.addWidget(self._var_mac)
 
-        var_layout.addWidget(QLabel("TARGET_SSID:"))
+        var_row.addWidget(QLabel("TARGET_SSID:"))
         self._var_ssid = QLineEdit()
         self._var_ssid.setPlaceholderText("MyNetwork")
-        var_layout.addWidget(self._var_ssid)
+        var_row.addWidget(self._var_ssid)
 
-        var_layout.addWidget(QLabel("CHANNEL:"))
+        var_row.addWidget(QLabel("CHANNEL:"))
         self._var_channel = QLineEdit()
         self._var_channel.setPlaceholderText("6")
         self._var_channel.setMaximumWidth(50)
-        var_layout.addWidget(self._var_channel)
+        var_row.addWidget(self._var_channel)
 
-        right_layout.addWidget(var_group)
+        var_layout_inner.addLayout(var_row)
+        right_layout.addWidget(var_card)
 
         # Macro info
         info_row = QHBoxLayout()
         self._macro_name_label = QLabel("No macro loaded")
-        self._macro_name_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        self._macro_name_label.setObjectName("card_title")
         info_row.addWidget(self._macro_name_label)
         info_row.addStretch()
         self._macro_info_label = QLabel("")
-        self._macro_info_label.setStyleSheet("color: #888;")
+        self._macro_info_label.setObjectName("muted")
         info_row.addWidget(self._macro_info_label)
         right_layout.addLayout(info_row)
 
@@ -180,9 +194,7 @@ class MacroTab(QWidget):
         ctrl_row.addWidget(self._speed_combo)
 
         self._btn_record = QPushButton("Record")
-        self._btn_record.setStyleSheet(
-            "QPushButton { background-color: #ff4444; color: #fff; font-weight: bold; }"
-        )
+        self._btn_record.setObjectName("erase_btn")  # Red styling
         self._btn_record.clicked.connect(self._on_record)
         ctrl_row.addWidget(self._btn_record)
 
@@ -192,10 +204,7 @@ class MacroTab(QWidget):
         ctrl_row.addWidget(self._btn_stop)
 
         self._btn_play = QPushButton("Play")
-        self._btn_play.setStyleSheet(
-            "QPushButton { background-color: #39ff14; color: #000; font-weight: bold; }"
-            "QPushButton:disabled { background-color: #555; color: #888; }"
-        )
+        self._btn_play.setObjectName("flash_btn")  # Green styling
         self._btn_play.setEnabled(False)
         self._btn_play.clicked.connect(self._on_play)
         ctrl_row.addWidget(self._btn_play)

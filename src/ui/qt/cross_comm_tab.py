@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFormLayout,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -53,6 +53,20 @@ log = logging.getLogger(__name__)
 
 # Maximum lines kept in the live event stream before old lines are trimmed.
 _MAX_EVENT_LINES = 500
+
+
+def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+    """Create a card-styled QFrame with optional title label."""
+    card = QFrame()
+    card.setObjectName("card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(8)
+    if title:
+        lbl = QLabel(title)
+        lbl.setObjectName("card_title")
+        layout.addWidget(lbl)
+    return card, layout
 
 
 class _BusBridge(QObject):
@@ -175,8 +189,7 @@ class CrossCommTab(QWidget):
         splitter = QSplitter(Qt.Vertical)
 
         # ── Top: shared target pool ──────────────────────────────────
-        pool_group = QGroupBox("Shared Target Pool")
-        pool_layout = QVBoxLayout(pool_group)
+        pool_card, pool_layout = _make_card("Shared Target Pool")
 
         self._pool_table = QTableWidget(0, 6)
         self._pool_table.setHorizontalHeaderLabels(
@@ -191,44 +204,38 @@ class CrossCommTab(QWidget):
 
         pool_btn_row = QHBoxLayout()
         self._pool_count_label = QLabel("0 targets")
-        self._pool_count_label.setStyleSheet("color: #888;")
+        self._pool_count_label.setObjectName("muted")
         pool_btn_row.addWidget(self._pool_count_label)
         pool_btn_row.addStretch()
         self._refresh_pool_btn = QPushButton("Refresh")
         self._refresh_pool_btn.clicked.connect(self._refresh_pool)
         self._clear_pool_btn = QPushButton("Clear Pool")
-        self._clear_pool_btn.setStyleSheet("QPushButton { color: #ff4444; }")
         self._clear_pool_btn.clicked.connect(self._on_clear_pool)
         pool_btn_row.addWidget(self._refresh_pool_btn)
         pool_btn_row.addWidget(self._clear_pool_btn)
         pool_layout.addLayout(pool_btn_row)
 
-        splitter.addWidget(pool_group)
+        splitter.addWidget(pool_card)
 
         # ── Bottom: event stream + auto-rules ────────────────────────
         bottom = QWidget()
         bottom_layout = QHBoxLayout(bottom)
         bottom_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Live event stream
-        stream_group = QGroupBox("Live Event Stream")
-        stream_layout = QVBoxLayout(stream_group)
+        # Live event stream card
+        stream_card, stream_layout = _make_card("Live Event Stream")
         self._event_log = QTextEdit()
         self._event_log.setReadOnly(True)
-        self._event_log.setFont(QFont("Consolas", 9))
-        self._event_log.setStyleSheet(
-            "QTextEdit { background-color: #1a1a1a; color: #39ff14; }"
-        )
+        self._event_log.setObjectName("terminal")
         self._event_log.setPlaceholderText("Bus events appear here in real time...")
         stream_layout.addWidget(self._event_log)
         clear_log_btn = QPushButton("Clear Log")
         clear_log_btn.clicked.connect(self._event_log.clear)
         stream_layout.addWidget(clear_log_btn)
-        bottom_layout.addWidget(stream_group, 2)
+        bottom_layout.addWidget(stream_card, 2)
 
-        # Auto-routing rules
-        rules_group = QGroupBox("Auto-Routing Rules")
-        rules_layout = QVBoxLayout(rules_group)
+        # Auto-routing rules card
+        rules_card, rules_layout = _make_card("Auto-Routing Rules")
         rules_layout.addWidget(QLabel("When a matching target is discovered:"))
         self._rule_list = QListWidget()
         self._rule_list.currentRowChanged.connect(
@@ -245,7 +252,7 @@ class CrossCommTab(QWidget):
         rule_btn_row.addWidget(self._add_rule_btn)
         rule_btn_row.addWidget(self._remove_rule_btn)
         rules_layout.addLayout(rule_btn_row)
-        bottom_layout.addWidget(rules_group, 1)
+        bottom_layout.addWidget(rules_card, 1)
 
         splitter.addWidget(bottom)
         splitter.setStretchFactor(0, 2)
@@ -271,7 +278,7 @@ class CrossCommTab(QWidget):
 
     def _append_event(self, topic: str, payload: dict[str, Any]) -> None:
         summary = self._summarize_payload(topic, payload)
-        self._event_log.append(f"<span style='color:#888'>[{topic}]</span> {summary}")
+        self._event_log.append(f"<span style='color:#8b949e'>[{topic}]</span> {summary}")
         # Trim history to keep the widget responsive.
         doc = self._event_log.document()
         if doc.blockCount() > _MAX_EVENT_LINES:
@@ -343,7 +350,7 @@ class CrossCommTab(QWidget):
         item = QListWidgetItem(text)
         item.setData(Qt.UserRole, rule.name)
         if not rule.enabled:
-            item.setForeground(Qt.gray)
+            item.setForeground(QColor("#484f58"))
         return item
 
     def _device_ports(self) -> list[str]:
