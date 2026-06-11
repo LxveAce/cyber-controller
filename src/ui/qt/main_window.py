@@ -35,7 +35,7 @@ from src.ui.qt.settings_tab import SettingsTab
 
 log = logging.getLogger(__name__)
 
-_VERSION = "0.2.0"
+_VERSION = "0.3.0"
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
 
@@ -159,6 +159,14 @@ class CyberControllerWindow(QMainWindow):
         act_font_down.triggered.connect(lambda: self._change_font_size(-1))
         view_menu.addAction(act_font_down)
 
+        # Tools
+        tools_menu = mb.addMenu("&Tools")
+
+        act_suicide = QAction("&Suicide Marauder Setup…", self)
+        act_suicide.setStatusTip("Provision the Suicide-Marauder boot password & duress config (host-side).")
+        act_suicide.triggered.connect(self._on_suicide_setup)
+        tools_menu.addAction(act_suicide)
+
         # Help
         help_menu = mb.addMenu("&Help")
 
@@ -271,6 +279,21 @@ class CyberControllerWindow(QMainWindow):
     def _on_github(self) -> None:
         import webbrowser
         webbrowser.open(_GITHUB_URL)
+
+    def _on_suicide_setup(self) -> None:
+        """Open the Suicide-Marauder host-side password & duress setup dialog."""
+        try:
+            from src.ui.qt.suicide_dialog import SuicideSetupDialog
+        except Exception as exc:  # noqa: BLE001 — missing submodule / import error
+            QMessageBox.critical(
+                self,
+                "Suicide Setup",
+                f"Could not open the setup dialog: {exc}\n\n"
+                "Ensure the suicide-marauder submodule is initialised:\n"
+                "  git submodule update --init suicide-marauder",
+            )
+            return
+        SuicideSetupDialog(self).exec_()
 
     # ── Cross-comm send ──────────────────────────────────────────────
 

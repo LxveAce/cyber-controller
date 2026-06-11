@@ -58,6 +58,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=5000,
         help="Web UI port (default: 5000).",
     )
+    parser.add_argument(
+        "--suicide-setup",
+        action="store_true",
+        help="Run the Suicide-Marauder password & duress setup (host-side provisioning) and exit. "
+             "Collects a boot password (hashed host-side, never stored) + arm/wipe config and bakes "
+             "the guardcfg bundle. Owner-only defensive use.",
+    )
     return parser.parse_args(argv)
 
 
@@ -160,6 +167,11 @@ _LAUNCHERS = {
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     _setup_logging(args.log_level, args.log_file)
+
+    # Suicide-Marauder password & duress setup is a standalone host-side flow — no UI bootstrap.
+    if args.suicide_setup:
+        from src.core.suicide_setup import run_cli
+        return run_cli()
 
     log.info("Cyber Controller starting — ui=%s", args.ui)
 
