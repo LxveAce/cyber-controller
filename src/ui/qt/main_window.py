@@ -6,11 +6,12 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, pyqtSlot
-from PyQt5.QtGui import QColor, QFont, QPalette
+from PyQt5.QtCore import Qt, QByteArray, QSettings, QTimer, pyqtSignal, pyqtSlot
+from PyQt5.QtGui import QColor, QFont, QKeySequence, QPalette
 from PyQt5.QtWidgets import (
     QAction,
     QApplication,
+    QCheckBox,
     QComboBox,
     QDialog,
     QFrame,
@@ -33,7 +34,6 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from PyQt5.QtGui import QKeySequence
 
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FlashEngine
@@ -113,8 +113,11 @@ class CyberControllerWindow(QMainWindow):
         self._health.start()
 
         self.setWindowTitle(f"Cyber Controller v{_VERSION}")
-        self.setMinimumSize(1100, 700)
+        self.setMinimumSize(900, 600)
         self.setWindowIcon(create_cc_icon())
+
+        # QSettings for persisting splitter state
+        self._qsettings = QSettings("LxveAce", "CyberController")
 
         self._build_menu_bar()
         self._build_main_layout()
@@ -236,7 +239,8 @@ class CyberControllerWindow(QMainWindow):
         # ── Sidebar ──────────────────────────────────────────────────
         sidebar = QFrame()
         sidebar.setObjectName("sidebar")
-        sidebar.setFixedWidth(200)
+        sidebar.setMinimumWidth(160)
+        sidebar.setMaximumWidth(280)
         sidebar_layout = QVBoxLayout(sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
         sidebar_layout.setSpacing(0)
@@ -313,6 +317,11 @@ class CyberControllerWindow(QMainWindow):
         self._main_splitter.setStretchFactor(0, 65)
         self._main_splitter.setStretchFactor(1, 35)
 
+        # Restore saved splitter position if available
+        saved_splitter = self._qsettings.value("main_splitter_state")
+        if saved_splitter:
+            self._main_splitter.restoreState(saved_splitter)
+
         self._build_tabs()
         # Default to Devices tab (index 1) — after initial setup/flash, users spend
         # most time on device control.
@@ -357,8 +366,11 @@ class CyberControllerWindow(QMainWindow):
 
     # ── Persistent terminal (bottom dock) ──────────────────────────
 
+    # ── Device colors for multi-device terminal ───────────────────
+    _DEVICE_COLORS = ["#39ff14", "#58a6ff", "#f0883e", "#f85149", "#d2a8ff"]
+
     def _build_persistent_terminal(self) -> None:
-        """Build the always-visible terminal panel at the bottom of the window."""
+        """Build the always-visible multi-device terminal panel at the bottom."""
         term_frame = QFrame()
         term_frame.setObjectName("persistent_terminal_frame")
         term_frame.setStyleSheet(
@@ -369,54 +381,72 @@ class CyberControllerWindow(QMainWindow):
             }
             """
         )
-        term_layout = QVBoxLayout(term_frame)
+        term_layout = QHBoxLayout(term_frame)
         term_layout.setContentsMargins(8, 4, 8, 4)
-        term_layout.setSpacing(4)
+        term_layout.setSpacing(6)
 
-        # Header row: label + port selector + connect/disconnect
-        header_row = QHBoxLayout()
-        header_row.setSpacing(8)
+        # ── Left side: device checklist ──────────────────────────────
+        device_panel = QVBoxLayout()
+        device_panel.setSpacing(4)
 
-        self._pterm_label = QLabel("Terminal")
+        self._pterm_label = QLabel("Devices")
         self._pterm_label.setStyleSheet(
-            "color: #39ff14; font-size: 10pt; font-weight: bold; "
+            "color: #39ff14; font-size: 9pt; font-weight: bold; "
             "font-family: 'JetBrains Mono', monospace; background: transparent;"
         )
-        header_row.addWidget(self._pterm_label)
+        device_panel.addWidget(self._pterm_label)
 
-        header_row.addStretch()
-
-        # Port selector
-        port_label = QLabel("Port:")
-        port_label.setStyleSheet("color: #8b949e; font-size: 8pt; background: transparent;")
-        header_row.addWidget(port_label)
-
-        self._pterm_port_combo = QComboBox()
-        self._pterm_port_combo.setMinimumWidth(140)
-        self._pterm_port_combo.setStyleSheet(
-            "QComboBox { background: #161b22; color: #e6edf3; border: 1px solid #30363d; "
-            "border-radius: 4px; padding: 2px 6px; font-size: 8pt; }"
+        # Select All checkbox
+        self._pterm_select_all = QCheckBox("Select All")
+        self._pterm_select_all.setStyleSheet(
+            "QCheckBox { color: #8b949e; font-size: 8pt; background: transparent; }"
         )
-        header_row.addWidget(self._pterm_port_combo)
+        self._pterm_select_all.stateChanged.connect(self._pterm_on_select_all)
+        device_panel.addWidget(self._pterm_select_all)
 
+        # Device checklist (replaces the old port combo)
+        self._pterm_device_list = QListWidget()
+        self._pterm_device_list.setMinimumWidth(160)
+        self._pterm_device_list.setMaximumWidth(220)
+        self._pterm_device_list.setStyleSheet(
+            "QListWidget { background: #161b22; color: #e6edf3; border: 1px solid #30363d; "
+            "border-radius: 4px; font-size: 8pt; }"
+            "QListWidget::item { padding: 2px 4px; }"
+        )
+        device_panel.addWidget(self._pterm_device_list, stretch=1)
+
+        # Connect / Disconnect buttons
+        btn_row = QHBoxLayout()
+        btn_row.setSpacing(4)
         self._pterm_btn_connect = QPushButton("Connect")
         self._pterm_btn_connect.setStyleSheet(
             "font-size: 8pt; padding: 3px 10px; background: #238636; color: #fff; "
             "border: none; border-radius: 4px;"
         )
         self._pterm_btn_connect.clicked.connect(self._pterm_on_connect)
-        header_row.addWidget(self._pterm_btn_connect)
+        btn_row.addWidget(self._pterm_btn_connect)
 
         self._pterm_btn_disconnect = QPushButton("Disconnect")
-        self._pterm_btn_disconnect.setEnabled(False)
         self._pterm_btn_disconnect.setStyleSheet(
             "font-size: 8pt; padding: 3px 10px; background: #da3633; color: #fff; "
             "border: none; border-radius: 4px;"
         )
         self._pterm_btn_disconnect.clicked.connect(self._pterm_on_disconnect)
-        header_row.addWidget(self._pterm_btn_disconnect)
+        btn_row.addWidget(self._pterm_btn_disconnect)
+        device_panel.addLayout(btn_row)
 
-        term_layout.addLayout(header_row)
+        term_layout.addLayout(device_panel)
+
+        # ── Right side: terminal output + input ──────────────────────
+        terminal_panel = QVBoxLayout()
+        terminal_panel.setSpacing(4)
+
+        term_header = QLabel("Terminal")
+        term_header.setStyleSheet(
+            "color: #39ff14; font-size: 10pt; font-weight: bold; "
+            "font-family: 'JetBrains Mono', monospace; background: transparent;"
+        )
+        terminal_panel.addWidget(term_header)
 
         # Terminal output
         self._pterm_output = QTextEdit()
@@ -427,7 +457,7 @@ class CyberControllerWindow(QMainWindow):
             "font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 9pt; "
             "border: 1px solid #30363d; border-radius: 4px; padding: 6px; }"
         )
-        term_layout.addWidget(self._pterm_output)
+        terminal_panel.addWidget(self._pterm_output, stretch=1)
 
         # Command input row
         input_row = QHBoxLayout()
@@ -441,7 +471,7 @@ class CyberControllerWindow(QMainWindow):
         input_row.addWidget(prompt_label)
 
         self._pterm_input = QLineEdit()
-        self._pterm_input.setPlaceholderText("Type command and press Enter...")
+        self._pterm_input.setPlaceholderText("Type command and press Enter (sent to all checked devices)...")
         self._pterm_input.setStyleSheet(
             "QLineEdit { background-color: #161b22; color: #e6edf3; "
             "font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 9pt; "
@@ -451,116 +481,186 @@ class CyberControllerWindow(QMainWindow):
         self._pterm_input.returnPressed.connect(self._pterm_on_send)
         input_row.addWidget(self._pterm_input)
 
-        term_layout.addLayout(input_row)
+        terminal_panel.addLayout(input_row)
+
+        term_layout.addLayout(terminal_panel, stretch=1)
 
         self._main_splitter.addWidget(term_frame)
 
-        # Internal state for the persistent terminal connection
-        self._pterm_conn = None  # active SerialConnection
-        self._pterm_port = ""
+        # Internal state for multi-device persistent terminal connections
+        # Maps port -> SerialConnection
+        self._pterm_conns: dict[str, object] = {}
+        # Maps port -> color (assigned on connect)
+        self._pterm_port_colors: dict[str, str] = {}
 
-        # Bridge serial callbacks to the Qt thread
+        # Bridge serial callbacks to the Qt thread (carries port + line)
         from PyQt5.QtCore import QObject, pyqtSignal as _sig
 
         class _PTermLineSignal(QObject):
-            line_received = _sig(str)
+            line_received = _sig(str, str)  # (port, line)
 
         self._pterm_line_signal = _PTermLineSignal()
         self._pterm_line_signal.line_received.connect(self._pterm_on_line)
 
-        # Refresh ports in the combo on a timer (piggyback on sidebar timer)
+        # Refresh device checklist
         self._pterm_refresh_ports()
 
     def _pterm_refresh_ports(self) -> None:
-        """Refresh the persistent terminal port combo from the device manager."""
-        current = self._pterm_port_combo.currentData()
-        self._pterm_port_combo.clear()
+        """Refresh the persistent terminal device checklist from the device manager."""
+        # Remember which ports were checked
+        checked_ports: set[str] = set()
+        for i in range(self._pterm_device_list.count()):
+            item = self._pterm_device_list.item(i)
+            if item.checkState() == Qt.Checked:
+                checked_ports.add(item.data(Qt.UserRole))
+
+        self._pterm_device_list.clear()
         for dev in self._dm.list_devices():
-            self._pterm_port_combo.addItem(
-                f"{dev.port} — {dev.display_name}", dev.port
-            )
-        # Restore previous selection if still present
-        if current:
-            idx = self._pterm_port_combo.findData(current)
-            if idx >= 0:
-                self._pterm_port_combo.setCurrentIndex(idx)
+            # Show connection status dot
+            prefix = "@ " if dev.port in self._pterm_conns else ""
+            item = QListWidgetItem(f"{prefix}{dev.port} -- {dev.display_name}")
+            item.setData(Qt.UserRole, dev.port)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            # Restore check state or default to unchecked
+            if dev.port in checked_ports:
+                item.setCheckState(Qt.Checked)
+            else:
+                item.setCheckState(Qt.Unchecked)
+            # Color connected devices
+            if dev.port in self._pterm_conns:
+                color = self._pterm_port_colors.get(dev.port, "#39ff14")
+                item.setForeground(QColor(color))
+            else:
+                item.setForeground(QColor("#8b949e"))
+            self._pterm_device_list.addItem(item)
+
+    def _pterm_on_select_all(self, state: int) -> None:
+        """Toggle all device checkboxes on/off."""
+        check = Qt.Checked if state == Qt.Checked else Qt.Unchecked
+        for i in range(self._pterm_device_list.count()):
+            self._pterm_device_list.item(i).setCheckState(check)
+
+    def _pterm_checked_ports(self) -> list[str]:
+        """Return a list of ports that are currently checked in the device list."""
+        ports = []
+        for i in range(self._pterm_device_list.count()):
+            item = self._pterm_device_list.item(i)
+            if item.checkState() == Qt.Checked:
+                port = item.data(Qt.UserRole)
+                if port:
+                    ports.append(port)
+        return ports
+
+    def _pterm_assign_color(self, port: str) -> str:
+        """Assign a color to a port from the cycling palette."""
+        if port in self._pterm_port_colors:
+            return self._pterm_port_colors[port]
+        used = set(self._pterm_port_colors.values())
+        for color in self._DEVICE_COLORS:
+            if color not in used:
+                self._pterm_port_colors[port] = color
+                return color
+        # All colors used, cycle based on count
+        idx = len(self._pterm_port_colors) % len(self._DEVICE_COLORS)
+        color = self._DEVICE_COLORS[idx]
+        self._pterm_port_colors[port] = color
+        return color
 
     def _pterm_on_connect(self) -> None:
-        """Connect the persistent terminal to the selected port."""
-        port = self._pterm_port_combo.currentData()
-        if not port:
+        """Connect the persistent terminal to all checked ports."""
+        ports = self._pterm_checked_ports()
+        if not ports:
             self._pterm_output.append(
-                '<span style="color:#f85149;">[No port selected]</span>'
+                '<span style="color:#f85149;">[No devices checked -- check one or more devices]</span>'
             )
             return
-        try:
-            conn = self._dm.open_connection(port)
-            self._pterm_conn = conn
-            self._pterm_port = port
-            conn.on_line(lambda line: self._pterm_line_signal.line_received.emit(line))
-            self._pterm_output.clear()
-            self._pterm_output.append(
-                f'<span style="color:#39ff14;">[Connected to {port}]</span>'
-            )
-            self._pterm_label.setText(f"Terminal — {port}")
-            self._pterm_btn_connect.setEnabled(False)
-            self._pterm_btn_disconnect.setEnabled(True)
-            self._refresh_sidebar_devices()
-        except Exception as exc:
-            self._pterm_output.append(
-                f'<span style="color:#f85149;">[Connection error: {exc}]</span>'
-            )
+        for port in ports:
+            if port in self._pterm_conns:
+                continue  # already connected
+            try:
+                conn = self._dm.open_connection(port)
+                self._pterm_conns[port] = conn
+                color = self._pterm_assign_color(port)
+                # Capture port in closure
+                _port = port
+                conn.on_line(lambda line, p=_port: self._pterm_line_signal.line_received.emit(p, line))
+                self._pterm_output.append(
+                    f'<span style="color:{color};">[{port}] Connected</span>'
+                )
+            except Exception as exc:
+                self._pterm_output.append(
+                    f'<span style="color:#f85149;">[{port}] Connection error: {exc}</span>'
+                )
+        self._pterm_refresh_ports()
+        self._refresh_sidebar_devices()
 
     def _pterm_on_disconnect(self) -> None:
-        """Disconnect the persistent terminal."""
-        port = self._pterm_port
-        if port:
-            self._dm.close_connection(port)
-        self._pterm_conn = None
-        self._pterm_port = ""
-        self._pterm_output.append(
-            f'<span style="color:#8b949e;">[Disconnected from {port}]</span>'
-        )
-        self._pterm_label.setText("Terminal")
-        self._pterm_btn_connect.setEnabled(True)
-        self._pterm_btn_disconnect.setEnabled(False)
+        """Disconnect the persistent terminal from all checked ports."""
+        ports = self._pterm_checked_ports()
+        if not ports:
+            # If nothing checked, disconnect all
+            ports = list(self._pterm_conns.keys())
+        for port in ports:
+            if port not in self._pterm_conns:
+                continue
+            try:
+                self._dm.close_connection(port)
+            except Exception:
+                pass
+            del self._pterm_conns[port]
+            color = self._pterm_port_colors.get(port, "#8b949e")
+            self._pterm_output.append(
+                f'<span style="color:{color};">[{port}] Disconnected</span>'
+            )
+        self._pterm_refresh_ports()
         self._refresh_sidebar_devices()
 
     def _pterm_on_send(self) -> None:
-        """Send a command from the persistent terminal input."""
+        """Send a command from the persistent terminal to all checked+connected devices."""
         cmd = self._pterm_input.text().strip()
         if not cmd:
             return
-        if not self._pterm_conn:
+        checked = self._pterm_checked_ports()
+        # Filter to only connected ports
+        targets = [p for p in checked if p in self._pterm_conns]
+        if not targets:
             self._pterm_output.append(
-                '<span style="color:#f85149;">[Not connected — select a port and click Connect]</span>'
+                '<span style="color:#f85149;">[No connected devices checked -- check and connect first]</span>'
             )
             return
-        try:
-            self._pterm_conn.write(cmd)
-            self._pterm_output.append(f'<span style="color:#58a6ff;">&gt; {cmd}</span>')
-            self._pterm_input.clear()
-        except Exception as exc:
-            self._pterm_output.append(
-                f'<span style="color:#f85149;">[Send error: {exc}]</span>'
-            )
+        for port in targets:
+            conn = self._pterm_conns[port]
+            color = self._pterm_port_colors.get(port, "#58a6ff")
+            try:
+                conn.write(cmd)
+                self._pterm_output.append(
+                    f'<span style="color:{color};">[{port}] &gt; {cmd}</span>'
+                )
+            except Exception as exc:
+                self._pterm_output.append(
+                    f'<span style="color:#f85149;">[{port}] Send error: {exc}</span>'
+                )
+        self._pterm_input.clear()
 
-    @pyqtSlot(str)
-    def _pterm_on_line(self, line: str) -> None:
-        """Handle a serial line in the persistent terminal, including DMS auth detection."""
+    @pyqtSlot(str, str)
+    def _pterm_on_line(self, port: str, line: str) -> None:
+        """Handle a serial line from a device in the persistent terminal."""
         # Run through Dead Man's Switch auth detection
-        if self._pterm_conn:
+        conn = self._pterm_conns.get(port)
+        if conn:
             handled = self._dms_auth.check_line(
-                line, lambda pw: self._pterm_conn.write(pw)
+                line, lambda pw: conn.write(pw)
             )
             if handled:
-                # Still show the line but don't double-process
                 pass
-        self._pterm_output.append(line)
+        color = self._pterm_port_colors.get(port, "#39ff14")
+        self._pterm_output.append(
+            f'<span style="color:{color};">[{port}]</span> {line}'
+        )
         # Also mirror to the device tab terminal if it's connected to the same port
         if (
             hasattr(self._device_tab, '_active_port')
-            and self._device_tab._active_port == self._pterm_port
+            and self._device_tab._active_port == port
             and hasattr(self._device_tab, '_terminal')
         ):
             self._device_tab._terminal.append(line)
@@ -656,8 +756,8 @@ class CyberControllerWindow(QMainWindow):
             "font-size: 8pt; padding: 4px 8px; background: transparent; color: #8b949e;"
         )
 
-        # Also refresh persistent terminal port combo
-        if hasattr(self, '_pterm_port_combo'):
+        # Also refresh persistent terminal device checklist
+        if hasattr(self, '_pterm_device_list'):
             self._pterm_refresh_ports()
 
     def _on_sidebar_device_selected(self, current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
@@ -1069,8 +1169,8 @@ class CyberControllerWindow(QMainWindow):
                 self,
                 "Dead Man's Switch Setup",
                 f"Could not open the setup dialog: {exc}\n\n"
-                "Ensure the suicide-marauder submodule is initialised:\n"
-                "  git submodule update --init suicide-marauder",
+                "Ensure the deadmans-switch submodule is initialised:\n"
+                "  git submodule update --init deadmans-switch",
             )
             return
         SuicideSetupDialog(self).exec_()
@@ -1093,13 +1193,15 @@ class CyberControllerWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         self._timer.stop()
         self._sidebar_timer.stop()
-        # Disconnect persistent terminal if active
-        if self._pterm_conn:
+        # Save splitter state
+        self._qsettings.setValue("main_splitter_state", self._main_splitter.saveState())
+        # Disconnect all persistent terminal connections
+        for port in list(self._pterm_conns.keys()):
             try:
-                self._dm.close_connection(self._pterm_port)
+                self._dm.close_connection(port)
             except Exception:
                 pass
-            self._pterm_conn = None
+        self._pterm_conns.clear()
         self._health.stop()
         self._dm.shutdown()
         log.info("Window closed — resources released")

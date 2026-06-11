@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -72,7 +73,15 @@ class TargetsTab(QWidget):
     # ── Layout ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+
+        container = QWidget()
+        root = QVBoxLayout(container)
 
         # Search / filter bar
         self._search_input = QLineEdit()
@@ -84,6 +93,7 @@ class TargetsTab(QWidget):
         toolbar = QHBoxLayout()
         self._count_label = QLabel("0 targets")
         self._count_label.setObjectName("muted")
+        self._count_label.setWordWrap(True)
         toolbar.addWidget(self._count_label)
         toolbar.addStretch()
         self._refresh_btn = QPushButton("Refresh")
@@ -103,12 +113,16 @@ class TargetsTab(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setSortingEnabled(True)
         self._table.verticalHeader().setVisible(False)
+        self._table.setMinimumHeight(100)
 
         # Use SignalBarsDelegate for the RSSI column (index 3)
         self._signal_delegate = SignalBarsDelegate(self._table)
         self._table.setItemDelegateForColumn(3, self._signal_delegate)
 
-        root.addWidget(self._table)
+        root.addWidget(self._table, stretch=1)
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
 
     # ── EventBus wiring ──────────────────────────────────────────────
 
