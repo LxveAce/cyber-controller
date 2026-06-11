@@ -314,9 +314,14 @@ def create_app(
             _audit("serial_command", user=session.get("user"), port=port, command=command)
             return jsonify({"status": "sent", "port": port, "command": command})
         except ValueError as exc:
+            # The validation message (e.g. "embedded control character") is useful to the
+            # operator and not sensitive — safe to surface.
             return jsonify({"error": str(exc)}), 400
-        except Exception as exc:
-            return jsonify({"error": str(exc)}), 500
+        except Exception:
+            # Never leak internal exception text (an AI-codegen classic). Log server-side,
+            # return a generic message.
+            log.exception("serial command failed on %s", port)
+            return jsonify({"error": "internal error sending command"}), 500
 
     @app.route("/api/devices")
     @requires_auth
