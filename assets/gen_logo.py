@@ -6,6 +6,7 @@ W, H = 800, 300
 img = Image.new("RGBA", (W, H), (13, 17, 23, 255))
 draw = ImageDraw.Draw(img)
 accent = (57, 255, 20, 255)
+accent_mid = (57, 255, 20, 120)
 accent_glow = (57, 255, 20, 60)
 
 cx, cy = W // 2, 120
@@ -17,21 +18,9 @@ pw = 6
 def draw_c_arc(d, ccx, ccy, radius, stroke_w, color, flip=False):
     bbox = [ccx - radius, ccy - radius, ccx + radius, ccy + radius]
     if flip:
-        d.arc(bbox, start=-60, end=180, fill=color, width=stroke_w)
+        d.arc(bbox, start=180, end=60, fill=color, width=stroke_w)
     else:
-        d.arc(bbox, start=0, end=240, fill=color, width=stroke_w)
-
-
-def draw_ticks(d, ccx, ccy, radius, color, flip=False):
-    tick_len = 12
-    angles = [320, 360, 40, 80, 120, 160, 200] if flip else [80, 120, 160, 200, 240, 280, 320]
-    for a in angles:
-        rad = math.radians(a)
-        x0 = ccx + radius * math.cos(rad)
-        y0 = ccy - radius * math.sin(rad)
-        x1 = ccx + (radius + tick_len) * math.cos(rad)
-        y1 = ccy - (radius + tick_len) * math.sin(rad)
-        d.line([(x0, y0), (x1, y1)], fill=color, width=2)
+        d.arc(bbox, start=60, end=300, fill=color, width=stroke_w)
 
 
 def draw_nodes(d, ccx, ccy, radius, color, flip=False):
@@ -48,13 +37,13 @@ def draw_nodes(d, ccx, ccy, radius, color, flip=False):
 draw_c_arc(draw, cx - offset, cy, r + 4, pw + 6, accent_glow)
 draw_c_arc(draw, cx + offset, cy, r + 4, pw + 6, accent_glow, flip=True)
 
+# Mid-opacity layer
+draw_c_arc(draw, cx - offset, cy, r + 2, pw + 3, accent_mid)
+draw_c_arc(draw, cx + offset, cy, r + 2, pw + 3, accent_mid, flip=True)
+
 # Main arcs
 draw_c_arc(draw, cx - offset, cy, r, pw, accent)
 draw_c_arc(draw, cx + offset, cy, r, pw, accent, flip=True)
-
-# Ticks
-draw_ticks(draw, cx - offset, cy, r, accent)
-draw_ticks(draw, cx + offset, cy, r, accent, flip=True)
 
 # Nodes
 draw_nodes(draw, cx - offset, cy, r, accent)
