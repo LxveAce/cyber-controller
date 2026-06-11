@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import re
 
+from src.models.action import ActionCategory, TargetAction
+from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for HaleHound serial output (ported verbatim) ---
@@ -287,3 +289,12 @@ class HaleHoundProtocol(BaseProtocol):
             "HaleHound",
         )
         return any(m in line for m in markers)
+
+
+# --- Target actions: what this protocol can do to each target type ---
+
+TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
+    TargetType.AP: [
+        TargetAction("Signal Analysis", "analyze {channel}", "Analyze RF signals on this channel", ActionCategory.MONITOR),
+    ],
+}

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from src.models.action import ActionCategory, TargetAction
+from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for GhostESP serial output ---
@@ -229,3 +231,24 @@ class GhostESPProtocol(BaseProtocol):
         """Return True if line looks like GhostESP output."""
         markers = ("GhostESP", "[Ghost]", "Ghost ESP", "ghost_esp")
         return any(m in line for m in markers)
+
+
+# --- Target actions: what this protocol can do to each target type ---
+
+TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
+    TargetType.AP: [
+        TargetAction("Deauth AP", "deauth", "Disconnect all clients from this AP", ActionCategory.ATTACK),
+        TargetAction("Beacon Spam", "beacon", "Broadcast beacon flood near this AP", ActionCategory.ATTACK),
+        TargetAction("Evil Portal", "portal start", "Start evil portal captive page", ActionCategory.ATTACK, chain_events=["portal_cred"]),
+        TargetAction("Capture Traffic", "capture start", "Start packet capture on this channel", ActionCategory.CAPTURE),
+        TargetAction("Probe Flood", "probe", "Flood probe requests", ActionCategory.ATTACK),
+    ],
+    TargetType.CLIENT: [
+        TargetAction("Deauth Client", "deauth", "Disconnect this client", ActionCategory.ATTACK),
+    ],
+    TargetType.BLE: [
+        TargetAction("BLE Spam", "blespam all", "Spam BLE advertisements to disrupt", ActionCategory.ATTACK),
+        TargetAction("AirTag Scan", "airtag scan", "Scan for nearby AirTags", ActionCategory.SCAN),
+        TargetAction("BLE Track", "bletrack", "Track this BLE device", ActionCategory.MONITOR),
+    ],
+}

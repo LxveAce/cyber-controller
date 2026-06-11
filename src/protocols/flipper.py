@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import re
 
+from src.models.action import ActionCategory, TargetAction
+from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for Flipper CLI output (ported verbatim) ---
@@ -224,3 +226,18 @@ class FlipperProtocol(BaseProtocol):
             "Power: Battery:",
         )
         return any(m in line for m in markers)
+
+
+# --- Target actions: what this protocol can do to each target type ---
+
+TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
+    TargetType.SUBGHZ: [
+        TargetAction("SubGHz Replay", "subghz tx", "Replay SubGHz signal via Flipper", ActionCategory.ATTACK),
+    ],
+    TargetType.NFC: [
+        TargetAction("NFC Emulate", "nfc emulate", "Emulate NFC tag via Flipper", ActionCategory.ATTACK),
+    ],
+    TargetType.BLE: [
+        TargetAction("BT Spam", "bt spam", "Bluetooth spam via Flipper", ActionCategory.ATTACK),
+    ],
+}
