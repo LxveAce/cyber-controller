@@ -21,12 +21,15 @@ jobs:
           pip install pyinstaller
           pip install .
       - name: Build executable
+        shell: cmd
         run: |
           pyinstaller --onefile --windowed --name cyber-controller ^
+            --add-data "src/config/profiles;src/config/profiles" ^
             --hidden-import serial --hidden-import serial.tools.list_ports ^
             --hidden-import PyQt5 --hidden-import PyQt5.sip ^
             src/app.py
       - name: Rename binary
+        shell: cmd
         run: |
           move dist\cyber-controller.exe dist\cyber-controller-${{ github.event.release.tag_name }}-windows-x64.exe
       - name: Upload release asset
@@ -53,6 +56,7 @@ jobs:
       - name: Build executable
         run: |
           pyinstaller --onefile --name cyber-controller \
+            --add-data "src/config/profiles:src/config/profiles" \
             --hidden-import serial --hidden-import serial.tools.list_ports \
             --hidden-import PyQt5 --hidden-import PyQt5.sip \
             src/app.py
@@ -67,20 +71,13 @@ jobs:
 
   build-linux-arm:
     runs-on: ubuntu-latest
+    # ARM/QEMU build is best-effort (slow, PyQt5 ARM wheel dependent) — never fail the release on it.
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
-      - name: Build in ARM64 container
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: .github/Dockerfile.arm64
-          platforms: linux/arm64
-          push: false
-          load: false
-          tags: cyber-controller-arm64:build
       - name: Build with QEMU
         run: |
           docker run --rm --platform linux/arm64 \
@@ -91,6 +88,7 @@ jobs:
               pip install pyinstaller && \
               pip install . && \
               pyinstaller --onefile --name cyber-controller \
+                --add-data 'src/config/profiles:src/config/profiles' \
                 --hidden-import serial --hidden-import serial.tools.list_ports \
                 src/app.py && \
               mv dist/cyber-controller dist/cyber-controller-${{ github.event.release.tag_name }}-linux-arm64 && \
@@ -116,6 +114,7 @@ jobs:
       - name: Build executable
         run: |
           pyinstaller --onefile --windowed --name cyber-controller \
+            --add-data "src/config/profiles:src/config/profiles" \
             --hidden-import serial --hidden-import serial.tools.list_ports \
             --hidden-import PyQt5 --hidden-import PyQt5.sip \
             src/app.py
