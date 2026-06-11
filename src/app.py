@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import logging
+import multiprocessing
 import sys
 from pathlib import Path
 
@@ -165,7 +166,21 @@ _LAUNCHERS = {
 
 # ── Main ─────────────────────────────────────────────────────────────
 
+def _acquire_instance_lock():
+    """Prevent multiple instances on Windows via named mutex."""
+    if sys.platform == "win32":
+        import ctypes
+        ctypes.windll.kernel32.CreateMutexW(None, False, "CyberController_SingleInstance")
+        if ctypes.windll.kernel32.GetLastError() == 183:
+            return False
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
+    if not _acquire_instance_lock():
+        print("Cyber Controller is already running.", file=sys.stderr)
+        return 0
+
     args = _parse_args(argv)
     _setup_logging(args.log_level, args.log_file)
 
@@ -212,4 +227,5 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     sys.exit(main())
