@@ -66,6 +66,9 @@ class FirmwareProfile:
     extra_args: list[str] = field(default_factory=list)
     flash_mode: str = "full"  # 'full' (blank board) or 'app' (update only)
     local_path: str = ""  # explicit local .bin to flash, if any
+    variant: str = ""  # explicit release-asset variant (name or label). Empty = per-chip default.
+                       # CRITICAL for boards a chip-ID can't distinguish (CYD/M5/etc. are all 'esp32');
+                       # picking the wrong one flashes the wrong display driver -> white screen.
     boards: list = field(default_factory=list)
     firmware_urls: dict = field(default_factory=dict)
     default_baud: int = 921600
@@ -95,6 +98,7 @@ class FirmwareProfile:
             extra_args=data.get("extra_args", []) if isinstance(data.get("extra_args"), list) else [],
             flash_mode=data.get("flash_mode", "full"),
             local_path=data.get("local_path", ""),
+            variant=data.get("variant", ""),
             boards=profile_loader.list_boards(data),
             firmware_urls=data.get("firmware_urls", {}) if isinstance(data.get("firmware_urls"), dict) else {},
             default_baud=profile_loader.default_baud(data),
@@ -225,7 +229,7 @@ class FlashEngine:
         except Exception as exc:
             on_line(f"[error] could not fetch release: {exc}")
             return False
-        variant = core.default_variant(assets, chip)
+        variant = self._resolve_variant(core, assets, chip, profile.variant, on_line)
         if not variant:
             on_line(f"[error] no firmware asset for chip {chip} in the {core_id} release")
             return False
@@ -256,6 +260,48 @@ class FlashEngine:
         if progress:
             progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
         return rc == 0
+
+    def _resolve_variant(self, core, assets, chip, requested, on_line):
+        """Pick the release asset to flash.
+
+        Honors an explicit ``requested`` variant (the UI's board selection) by exact name,
+        then name/label substring; otherwise falls back to the per-chip default. ALWAYS logs
+        which variant was chosen so a wrong board pick (e.g. old_hardware on a CYD -> white
+        screen) is visible instead of silent.
+        """
+        cands = core.variants_for_chip(assets, chip)
+        if requested:
+            req = requested.strip().lower()
+            for a in cands:  # exact asset name
+                if a.get("name", "").lower() == req:
+                    on_line(f"[variant] {a['name']} (selected)")
+                    return a
+            for a in cands:  # substring of asset name or friendly label
+                if req in a.get("name", "").lower() or req in a.get("label", "").lower():
+                    on_line(f"[variant] {a['name']} — {a.get('label', '')} (matched '{requested}')")
+                    return a
+            on_line(f"[warn] requested variant '{requested}' not found for {chip}; using default")
+        v = core.default_variant(assets, chip)
+        if v:
+            on_line(f"[variant] {v['name']} — {v.get('label', '')} (default for {chip}; "
+                    "set a variant if your board's display stays blank)")
+        return v
+
+    def list_variants(self, profile: "FirmwareProfile", chip: str | None = None) -> list[dict]:
+        """Return the selectable firmware variants (``{name, label, chip, url}``) for *profile*'s
+        firmware on *chip*, so a UI can offer a board picker. Empty list if not a download profile
+        or the release can't be fetched (offline). Never raises."""
+        core_id = profile.core_id if profile.core_id in flash_core.PROFILES else "custom"
+        if core_id == "custom":
+            return []
+        core = flash_core.get_profile(core_id)
+        chip = chip or (profile.chip if profile.chip not in ("", "auto") else "esp32")
+        try:
+            _tag, assets = core.latest_release()
+            return core.variants_for_chip(assets, chip)
+        except Exception as exc:  # noqa: BLE001 — offline / API error is non-fatal for a picker
+            log.debug("list_variants(%s,%s) failed: %s", core_id, chip, exc)
+            return []
 
     # ── qFlipper (Flipper Zero firmwares) ────────────────────────────
 
