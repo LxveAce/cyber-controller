@@ -69,6 +69,11 @@ def _build() -> int:
     if assets_dir.is_dir():
         cmd.extend(["--add-data", f"{assets_dir}{sep}assets"])
 
+    # QSS theme stylesheets
+    theme_dir = _ROOT / "src" / "ui" / "qt" / "theme"
+    for qss in theme_dir.glob("*.qss"):
+        cmd.extend(["--add-data", f"{qss}{sep}src/ui/qt/theme"])
+
     # Hidden imports — all UI variants + serial + launcher
     cmd.extend([
         # Serial / device comms
