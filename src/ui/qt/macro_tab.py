@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -79,9 +80,15 @@ class MacroTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
         splitter = QSplitter(Qt.Horizontal)
 
-        # ── Left panel: saved macros ─────────────────────────────────
+        # ── Left panel: saved macros (in scroll area) ────────────────
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setMinimumWidth(160)
+
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -91,8 +98,9 @@ class MacroTab(QWidget):
         left_layout.addWidget(lbl)
 
         self._macro_list = QListWidget()
+        self._macro_list.setMinimumHeight(80)
         self._macro_list.currentItemChanged.connect(self._on_macro_selected)
-        left_layout.addWidget(self._macro_list)
+        left_layout.addWidget(self._macro_list, stretch=1)
 
         btn_row = QHBoxLayout()
         btn_load = QPushButton("Load File...")
@@ -108,9 +116,14 @@ class MacroTab(QWidget):
         btn_refresh.clicked.connect(self._refresh_macro_list)
         left_layout.addWidget(btn_refresh)
 
-        splitter.addWidget(left)
+        left_scroll.setWidget(left)
+        splitter.addWidget(left_scroll)
 
-        # ── Right panel: editor/player ───────────────────────────────
+        # ── Right panel: editor/player (in scroll area) ─────────────
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFrameShape(QFrame.NoFrame)
+
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
@@ -119,20 +132,29 @@ class MacroTab(QWidget):
         var_card, var_layout_inner = _make_card("Variable Substitution")
         var_row = QHBoxLayout()
 
-        var_row.addWidget(QLabel("TARGET_MAC:"))
+        mac_label = QLabel("TARGET_MAC:")
+        mac_label.setWordWrap(True)
+        var_row.addWidget(mac_label)
         self._var_mac = QLineEdit()
         self._var_mac.setPlaceholderText("AA:BB:CC:DD:EE:FF")
+        self._var_mac.setMinimumWidth(100)
         var_row.addWidget(self._var_mac)
 
-        var_row.addWidget(QLabel("TARGET_SSID:"))
+        ssid_label = QLabel("TARGET_SSID:")
+        ssid_label.setWordWrap(True)
+        var_row.addWidget(ssid_label)
         self._var_ssid = QLineEdit()
         self._var_ssid.setPlaceholderText("MyNetwork")
+        self._var_ssid.setMinimumWidth(80)
         var_row.addWidget(self._var_ssid)
 
-        var_row.addWidget(QLabel("CHANNEL:"))
+        ch_label = QLabel("CHANNEL:")
+        ch_label.setWordWrap(True)
+        var_row.addWidget(ch_label)
         self._var_channel = QLineEdit()
         self._var_channel.setPlaceholderText("6")
         self._var_channel.setMaximumWidth(50)
+        self._var_channel.setMinimumWidth(40)
         var_row.addWidget(self._var_channel)
 
         var_layout_inner.addLayout(var_row)
@@ -142,10 +164,12 @@ class MacroTab(QWidget):
         info_row = QHBoxLayout()
         self._macro_name_label = QLabel("No macro loaded")
         self._macro_name_label.setObjectName("card_title")
+        self._macro_name_label.setWordWrap(True)
         info_row.addWidget(self._macro_name_label)
         info_row.addStretch()
         self._macro_info_label = QLabel("")
         self._macro_info_label.setObjectName("muted")
+        self._macro_info_label.setWordWrap(True)
         info_row.addWidget(self._macro_info_label)
         right_layout.addLayout(info_row)
 
@@ -161,7 +185,8 @@ class MacroTab(QWidget):
         self._steps_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._steps_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._steps_table.verticalHeader().setVisible(False)
-        right_layout.addWidget(self._steps_table)
+        self._steps_table.setMinimumHeight(80)
+        right_layout.addWidget(self._steps_table, stretch=1)
 
         # Progress bar
         self._progress = QProgressBar()
@@ -169,6 +194,7 @@ class MacroTab(QWidget):
         self._progress.setValue(0)
         self._progress.setTextVisible(True)
         self._progress.setFormat("Ready")
+        self._progress.setMinimumHeight(20)
         right_layout.addWidget(self._progress)
 
         # Control buttons
@@ -177,7 +203,7 @@ class MacroTab(QWidget):
         # Port selector for recording/playback
         ctrl_row.addWidget(QLabel("Port:"))
         self._port_combo = QComboBox()
-        self._port_combo.setMinimumWidth(120)
+        self._port_combo.setMinimumWidth(100)
         ctrl_row.addWidget(self._port_combo)
 
         btn_refresh_ports = QPushButton("Refresh")
@@ -216,7 +242,8 @@ class MacroTab(QWidget):
 
         right_layout.addLayout(ctrl_row)
 
-        splitter.addWidget(right)
+        right_scroll.setWidget(right)
+        splitter.addWidget(right_scroll)
 
         # Splitter proportions
         splitter.setStretchFactor(0, 1)

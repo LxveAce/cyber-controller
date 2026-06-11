@@ -20,6 +20,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -62,17 +63,28 @@ class SettingsTab(QWidget):
     # ── Layout ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        container = QWidget()
+        root = QVBoxLayout(container)
 
         # ── Serial ───────────────────────────────────────────────────
         serial_card, serial_outer = _make_card("Serial Defaults")
         serial_form = QFormLayout()
+        serial_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._baud_combo = QComboBox()
         self._baud_combo.setEditable(True)
+        self._baud_combo.setMinimumWidth(120)
         self._baud_combo.addItems(["9600", "57600", "115200", "230400", "460800", "921600"])
         self._timeout_spin = QSpinBox()
         self._timeout_spin.setRange(1, 120)
         self._timeout_spin.setSuffix(" s")
+        self._timeout_spin.setMinimumWidth(80)
         serial_form.addRow("Default Baud Rate:", self._baud_combo)
         serial_form.addRow("Connection Timeout:", self._timeout_spin)
         serial_outer.addLayout(serial_form)
@@ -81,10 +93,13 @@ class SettingsTab(QWidget):
         # ── Flash ────────────────────────────────────────────────────
         flash_card, flash_outer = _make_card("Flash Defaults")
         flash_form = QFormLayout()
+        flash_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._flash_baud_combo = QComboBox()
         self._flash_baud_combo.setEditable(True)
+        self._flash_baud_combo.setMinimumWidth(120)
         self._flash_baud_combo.addItems(["115200", "230400", "460800", "921600"])
         self._flash_mode_combo = QComboBox()
+        self._flash_mode_combo.setMinimumWidth(100)
         self._flash_mode_combo.addItems(["qio", "qout", "dio", "dout"])
         self._verify_check = QCheckBox("Verify after flash")
         self._backup_check = QCheckBox("Auto-backup before flash")
@@ -98,7 +113,9 @@ class SettingsTab(QWidget):
         # ── Cross-Comm ───────────────────────────────────────────────
         comm_card, comm_outer = _make_card("Cross-Communication")
         comm_form = QFormLayout()
+        comm_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._auto_share_check = QCheckBox("Auto-share discoveries to the shared target pool")
+        self._auto_share_check.setWordWrap(False)
         self._dedup_check = QCheckBox("De-duplicate targets by MAC")
         comm_form.addRow(self._auto_share_check)
         comm_form.addRow(self._dedup_check)
@@ -108,11 +125,13 @@ class SettingsTab(QWidget):
         # ── Firmware Vault ───────────────────────────────────────────
         vault_card, vault_outer = _make_card("Firmware Vault")
         vault_form = QFormLayout()
+        vault_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         dir_row = QHBoxLayout()
         self._vault_dir_edit = QLineEdit()
         self._vault_dir_edit.setPlaceholderText("~/.cyber-controller/firmware")
+        self._vault_dir_edit.setMinimumWidth(150)
         self._vault_browse_btn = QPushButton("Browse...")
-        dir_row.addWidget(self._vault_dir_edit)
+        dir_row.addWidget(self._vault_dir_edit, stretch=1)
         dir_row.addWidget(self._vault_browse_btn)
         vault_form.addRow("Vault Directory:", dir_row)
         vault_outer.addLayout(vault_form)
@@ -129,6 +148,9 @@ class SettingsTab(QWidget):
         root.addLayout(btn_row)
 
         root.addStretch()
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
 
     def _connect_signals(self) -> None:
         self._save_btn.clicked.connect(self._on_save)

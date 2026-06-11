@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -116,25 +117,34 @@ class FlashTab(QWidget):
     # ── Layout ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        container = QWidget()
+        root = QVBoxLayout(container)
 
         # ── Top row: port + profile selectors ────────────────────────
         top = QHBoxLayout()
+        top.setSpacing(8)
 
         # Port selector card
         port_card, port_layout = _make_card("Port")
         self._port_combo = QComboBox()
-        self._port_combo.setMinimumWidth(160)
+        self._port_combo.setMinimumWidth(140)
         port_layout.addWidget(self._port_combo)
         btn_refresh = QPushButton("Refresh")
         btn_refresh.clicked.connect(self._refresh_ports)
         port_layout.addWidget(btn_refresh)
-        top.addWidget(port_card)
+        top.addWidget(port_card, stretch=1)
 
         # Profile selector card
         prof_card, prof_layout = _make_card("Firmware Profile")
         self._profile_combo = QComboBox()
-        self._profile_combo.setMinimumWidth(220)
+        self._profile_combo.setMinimumWidth(160)
         prof_layout.addWidget(self._profile_combo)
         btn_browse = QPushButton("Browse...")
         btn_browse.clicked.connect(self._browse_profile)
@@ -142,9 +152,10 @@ class FlashTab(QWidget):
         # Board / variant picker
         variant_label = QLabel("Board / variant:")
         variant_label.setObjectName("muted")
+        variant_label.setWordWrap(True)
         prof_layout.addWidget(variant_label)
         self._variant_combo = QComboBox()
-        self._variant_combo.setMinimumWidth(220)
+        self._variant_combo.setMinimumWidth(160)
         self._variant_combo.setToolTip(
             "Pick your exact board. 'Auto' uses the firmware's per-chip default, which may be wrong "
             "for display boards (CYD/M5/etc.) — if your screen stays blank after flashing, choose the "
@@ -152,7 +163,7 @@ class FlashTab(QWidget):
         )
         self._variant_combo.addItem("Auto (default for chip)", "")
         prof_layout.addWidget(self._variant_combo)
-        top.addWidget(prof_card)
+        top.addWidget(prof_card, stretch=2)
 
         # Flash + Backup buttons
         btn_col = QVBoxLayout()
@@ -211,6 +222,7 @@ class FlashTab(QWidget):
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.setTextVisible(True)
+        self._progress.setMinimumHeight(20)
         root.addWidget(self._progress)
 
         # ── Bottom: log output + batch queue ─────────────────────────
@@ -221,12 +233,14 @@ class FlashTab(QWidget):
         self._log_output = QTextEdit()
         self._log_output.setReadOnly(True)
         self._log_output.setObjectName("terminal")
+        self._log_output.setMinimumHeight(100)
         log_layout.addWidget(self._log_output)
         bottom.addWidget(log_card, stretch=3)
 
         # Batch queue card
         queue_card, queue_layout = _make_card("Batch Queue")
         self._queue_list = QListWidget()
+        self._queue_list.setMinimumHeight(60)
         queue_layout.addWidget(self._queue_list)
         btn_add = QPushButton("Add to Queue")
         btn_add.clicked.connect(self._add_to_queue)
@@ -236,7 +250,7 @@ class FlashTab(QWidget):
         queue_layout.addWidget(btn_clear)
         bottom.addWidget(queue_card, stretch=1)
 
-        root.addLayout(bottom)
+        root.addLayout(bottom, stretch=1)
 
         # ── Firmware Vault section ───────────────────────────────────
         vault_card, vault_layout = _make_card("Firmware Vault (Offline Cache)")
@@ -244,6 +258,7 @@ class FlashTab(QWidget):
 
         self._vault_status = QLabel("No cached firmware")
         self._vault_status.setObjectName("muted")
+        self._vault_status.setWordWrap(True)
         vault_row.addWidget(self._vault_status, stretch=2)
 
         btn_download = QPushButton("Download to Vault")
@@ -256,6 +271,9 @@ class FlashTab(QWidget):
 
         vault_layout.addLayout(vault_row)
         root.addWidget(vault_card)
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
         self._refresh_vault_status()
 
     # ── Refreshers ───────────────────────────────────────────────────

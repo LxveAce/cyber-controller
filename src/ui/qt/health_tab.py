@@ -12,6 +12,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -62,7 +63,15 @@ class HealthTab(QWidget):
     # ── Layout ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        container = QWidget()
+        root = QVBoxLayout(container)
 
         # ── System Health Section ────────────────────────────────────
         sys_card, sys_layout = _make_card("System Health")
@@ -72,16 +81,20 @@ class HealthTab(QWidget):
         gauge_row.setSpacing(16)
 
         self._cpu_gauge = ArcGauge(value=0, label="CPU")
-        gauge_row.addWidget(self._cpu_gauge)
+        self._cpu_gauge.setMinimumSize(100, 120)
+        gauge_row.addWidget(self._cpu_gauge, stretch=1)
 
         self._ram_gauge = ArcGauge(value=0, label="RAM")
-        gauge_row.addWidget(self._ram_gauge)
+        self._ram_gauge.setMinimumSize(100, 120)
+        gauge_row.addWidget(self._ram_gauge, stretch=1)
 
         self._disk_gauge = ArcGauge(value=0, label="Disk")
-        gauge_row.addWidget(self._disk_gauge)
+        self._disk_gauge.setMinimumSize(100, 120)
+        gauge_row.addWidget(self._disk_gauge, stretch=1)
 
         self._batt_gauge = ArcGauge(value=0, label="Battery")
-        gauge_row.addWidget(self._batt_gauge)
+        self._batt_gauge.setMinimumSize(100, 120)
+        gauge_row.addWidget(self._batt_gauge, stretch=1)
 
         sys_layout.addLayout(gauge_row)
 
@@ -90,22 +103,26 @@ class HealthTab(QWidget):
         self._cpu_detail = QLabel("")
         self._cpu_detail.setAlignment(Qt.AlignCenter)
         self._cpu_detail.setObjectName("muted")
-        detail_row.addWidget(self._cpu_detail)
+        self._cpu_detail.setWordWrap(True)
+        detail_row.addWidget(self._cpu_detail, stretch=1)
 
         self._ram_detail = QLabel("")
         self._ram_detail.setAlignment(Qt.AlignCenter)
         self._ram_detail.setObjectName("muted")
-        detail_row.addWidget(self._ram_detail)
+        self._ram_detail.setWordWrap(True)
+        detail_row.addWidget(self._ram_detail, stretch=1)
 
         self._disk_detail = QLabel("")
         self._disk_detail.setAlignment(Qt.AlignCenter)
         self._disk_detail.setObjectName("muted")
-        detail_row.addWidget(self._disk_detail)
+        self._disk_detail.setWordWrap(True)
+        detail_row.addWidget(self._disk_detail, stretch=1)
 
         self._batt_detail = QLabel("")
         self._batt_detail.setAlignment(Qt.AlignCenter)
         self._batt_detail.setObjectName("muted")
-        detail_row.addWidget(self._batt_detail)
+        self._batt_detail.setWordWrap(True)
+        detail_row.addWidget(self._batt_detail, stretch=1)
 
         sys_layout.addLayout(detail_row)
 
@@ -113,9 +130,11 @@ class HealthTab(QWidget):
         gps_row = QHBoxLayout()
         gps_label = QLabel("GPS:")
         gps_label.setMinimumWidth(40)
+        gps_label.setWordWrap(True)
         gps_row.addWidget(gps_label)
         self._gps_status = QLabel("No Fix")
         self._gps_status.setObjectName("muted")
+        self._gps_status.setWordWrap(True)
         gps_row.addWidget(self._gps_status)
         gps_row.addStretch()
         sys_layout.addLayout(gps_row)
@@ -135,9 +154,13 @@ class HealthTab(QWidget):
         self._device_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._device_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._device_table.verticalHeader().setVisible(False)
+        self._device_table.setMinimumHeight(100)
         dev_layout.addWidget(self._device_table)
 
-        root.addWidget(dev_card)
+        root.addWidget(dev_card, stretch=1)
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
 
     # ── Refresh ──────────────────────────────────────────────────────
 

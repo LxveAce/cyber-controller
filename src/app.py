@@ -32,8 +32,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--ui",
         choices=_UI_CHOICES,
-        default="qt",
-        help="UI backend to launch (default: qt).",
+        default=None,
+        help="UI backend to launch. If omitted, a graphical launcher dialog "
+             "is shown to select the interface.",
     )
     parser.add_argument(
         "--log-level",
@@ -59,9 +60,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Web UI port (default: 5000).",
     )
     parser.add_argument(
-        "--suicide-setup",
+        "--deadman-setup",
         action="store_true",
-        help="Run the Suicide-Marauder password & duress setup (host-side provisioning) and exit. "
+        help="Run the Dead Man's Switch password & duress setup (host-side provisioning) and exit. "
              "Collects a boot password (hashed host-side, never stored) + arm/wipe config and bakes "
              "the guardcfg bundle. Owner-only defensive use.",
     )
@@ -168,10 +169,19 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     _setup_logging(args.log_level, args.log_file)
 
-    # Suicide-Marauder password & duress setup is a standalone host-side flow — no UI bootstrap.
-    if args.suicide_setup:
+    # Dead Man's Switch password & duress setup is a standalone host-side flow — no UI bootstrap.
+    if args.deadman_setup:
         from src.core.suicide_setup import run_cli
         return run_cli()
+
+    # If no --ui flag was given, show the launcher dialog to let the user pick.
+    if args.ui is None:
+        try:
+            from src.ui.launcher import select_ui
+            args.ui = select_ui()
+        except Exception:
+            log.warning("Launcher dialog unavailable, defaulting to qt")
+            args.ui = "qt"
 
     log.info("Cyber Controller starting — ui=%s", args.ui)
 

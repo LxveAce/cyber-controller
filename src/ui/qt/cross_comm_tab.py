@@ -36,6 +36,7 @@ from PyQt5.QtWidgets import (
     QListWidgetItem,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QSplitter,
     QTableWidget,
@@ -185,7 +186,16 @@ class CrossCommTab(QWidget):
     # ── Layout ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        scroll_container = QWidget()
+        root = QVBoxLayout(scroll_container)
+
         splitter = QSplitter(Qt.Vertical)
 
         # ── Top: shared target pool ──────────────────────────────────
@@ -200,11 +210,13 @@ class CrossCommTab(QWidget):
         self._pool_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._pool_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._pool_table.verticalHeader().setVisible(False)
+        self._pool_table.setMinimumHeight(80)
         pool_layout.addWidget(self._pool_table)
 
         pool_btn_row = QHBoxLayout()
         self._pool_count_label = QLabel("0 targets")
         self._pool_count_label.setObjectName("muted")
+        self._pool_count_label.setWordWrap(True)
         pool_btn_row.addWidget(self._pool_count_label)
         pool_btn_row.addStretch()
         self._refresh_pool_btn = QPushButton("Refresh")
@@ -228,6 +240,7 @@ class CrossCommTab(QWidget):
         self._event_log.setReadOnly(True)
         self._event_log.setObjectName("terminal")
         self._event_log.setPlaceholderText("Bus events appear here in real time...")
+        self._event_log.setMinimumHeight(80)
         stream_layout.addWidget(self._event_log)
         clear_log_btn = QPushButton("Clear Log")
         clear_log_btn.clicked.connect(self._event_log.clear)
@@ -236,8 +249,11 @@ class CrossCommTab(QWidget):
 
         # Auto-routing rules card
         rules_card, rules_layout = _make_card("Auto-Routing Rules")
-        rules_layout.addWidget(QLabel("When a matching target is discovered:"))
+        rules_desc = QLabel("When a matching target is discovered:")
+        rules_desc.setWordWrap(True)
+        rules_layout.addWidget(rules_desc)
         self._rule_list = QListWidget()
+        self._rule_list.setMinimumHeight(60)
         self._rule_list.currentRowChanged.connect(
             lambda row: self._remove_rule_btn.setEnabled(row >= 0)
         )
@@ -257,7 +273,10 @@ class CrossCommTab(QWidget):
         splitter.addWidget(bottom)
         splitter.setStretchFactor(0, 2)
         splitter.setStretchFactor(1, 1)
-        root.addWidget(splitter)
+        root.addWidget(splitter, stretch=1)
+
+        scroll.setWidget(scroll_container)
+        outer.addWidget(scroll)
 
     # ── EventBus wiring ──────────────────────────────────────────────
 

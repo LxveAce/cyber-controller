@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTextEdit,
     QVBoxLayout,
@@ -72,9 +73,15 @@ class DeviceTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
         splitter = QSplitter(Qt.Horizontal)
 
-        # ── Left: device list ────────────────────────────────────────
+        # ── Left: device list (in scroll area) ──────────────────────
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setMinimumWidth(160)
+
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -84,8 +91,9 @@ class DeviceTab(QWidget):
         left_layout.addWidget(lbl)
 
         self._device_list = QListWidget()
+        self._device_list.setMinimumHeight(80)
         self._device_list.currentItemChanged.connect(self._on_device_selected)
-        left_layout.addWidget(self._device_list)
+        left_layout.addWidget(self._device_list, stretch=1)
 
         btn_row = QHBoxLayout()
         self._btn_connect = QPushButton("Connect")
@@ -103,7 +111,8 @@ class DeviceTab(QWidget):
         btn_refresh.clicked.connect(self._scan_and_add)
         left_layout.addWidget(btn_refresh)
 
-        splitter.addWidget(left)
+        left_scroll.setWidget(left)
+        splitter.addWidget(left_scroll)
 
         # ── Right: serial terminal ───────────────────────────────────
         right = QWidget()
@@ -112,19 +121,21 @@ class DeviceTab(QWidget):
 
         self._term_label = QLabel("Serial Terminal")
         self._term_label.setObjectName("card_title")
+        self._term_label.setWordWrap(True)
         right_layout.addWidget(self._term_label)
 
         self._terminal = QTextEdit()
         self._terminal.setReadOnly(True)
         self._terminal.setObjectName("terminal")
-        right_layout.addWidget(self._terminal)
+        self._terminal.setMinimumHeight(100)
+        right_layout.addWidget(self._terminal, stretch=1)
 
         # Command input row
         cmd_row = QHBoxLayout()
 
         self._cmd_palette = QComboBox()
         self._cmd_palette.setEditable(False)
-        self._cmd_palette.setMinimumWidth(200)
+        self._cmd_palette.setMinimumWidth(140)
         self._populate_palette()
         self._cmd_palette.currentIndexChanged.connect(self._on_palette_select)
         cmd_row.addWidget(self._cmd_palette, stretch=1)
