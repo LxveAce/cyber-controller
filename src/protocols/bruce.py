@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import re
 
+from src.models.action import ActionCategory, TargetAction
+from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for Bruce serial output (ported verbatim) ---
@@ -175,3 +177,27 @@ class BruceProtocol(BaseProtocol):
         """Return True if line looks like Bruce output."""
         markers = ("[WIFI]", "[SUBGHZ]", "Bruce", "[BLE] Device:", "[NFC] Type:")
         return any(m in line for m in markers)
+
+
+# --- Target actions: what this protocol can do to each target type ---
+
+TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
+    TargetType.AP: [
+        TargetAction("WiFi Deauth", "wifi deauth", "Deauth attack on this AP", ActionCategory.ATTACK),
+        TargetAction("WiFi Beacon", "wifi beacon", "Beacon flood near this AP", ActionCategory.ATTACK),
+    ],
+    TargetType.CLIENT: [
+        TargetAction("WiFi Deauth", "wifi deauth", "Deauth this client", ActionCategory.ATTACK),
+    ],
+    TargetType.BLE: [
+        TargetAction("BLE Spam", "ble spam", "BLE advertisement spam", ActionCategory.ATTACK),
+    ],
+    TargetType.SUBGHZ: [
+        TargetAction("SubGHz Replay", "subghz replay", "Replay captured SubGHz signal", ActionCategory.ATTACK),
+        TargetAction("SubGHz Scan", "subghz scan", "Scan for SubGHz transmissions", ActionCategory.SCAN),
+    ],
+    TargetType.NFC: [
+        TargetAction("NFC Read", "nfc read", "Read NFC tag data", ActionCategory.SCAN),
+        TargetAction("NFC Emulate", "nfc emulate", "Emulate this NFC tag", ActionCategory.ATTACK),
+    ],
+}
