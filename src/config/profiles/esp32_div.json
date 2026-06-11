@@ -3,7 +3,7 @@
   "id": "esp32_div",
   "description": "WiFi/BLE/2.4GHz pen-test multi-tool (scan, sniff, analyze). Current v2 hardware is ESP32-S3. v1.6.0.",
   "backend": "esptool",
-  "protocol": null,
+  "protocol": "esp32-div",
   "boards": [
     {
       "name": "ESP32-S3 (DIV v2, current)",

@@ -29,6 +29,7 @@ from src.protocols.bruce import BruceProtocol
 from src.protocols.flipper import FlipperProtocol
 from src.protocols.halehound import HaleHoundProtocol
 from src.protocols.meshtastic import MeshtasticProtocol
+from src.protocols.esp32_div import Esp32DivProtocol
 
 
 class GenericProtocol(BaseProtocol):
@@ -73,6 +74,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "flipper": FlipperProtocol,
     "halehound": HaleHoundProtocol,
     "meshtastic": MeshtasticProtocol,
+    "esp32-div": Esp32DivProtocol,
     # Fallbacks (both names map to the same passthrough class).
     "generic": GenericProtocol,
     "raw": GenericProtocol,
@@ -87,6 +89,7 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "flipper": "Flipper Zero",
     "halehound": "HaleHound",
     "meshtastic": "Meshtastic",
+    "esp32-div": "ESP32-DIV",
     "generic": "Generic / Raw",
     "raw": "Generic / Raw",
 }
@@ -146,6 +149,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "flipper": "src.protocols.flipper",
     "halehound": "src.protocols.halehound",
     "meshtastic": "src.protocols.meshtastic",
+    "esp32-div": "src.protocols.esp32_div",
     "generic": "src.protocols",  # GenericProtocol lives in __init__
     "raw": "src.protocols",
 }
@@ -181,6 +185,7 @@ __all__ = [
     "FlipperProtocol",
     "HaleHoundProtocol",
     "MeshtasticProtocol",
+    "Esp32DivProtocol",
     "GenericProtocol",
     "PROTOCOLS",
     "PROTOCOL_DISPLAY_NAMES",
