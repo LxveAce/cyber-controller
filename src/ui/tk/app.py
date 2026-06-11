@@ -29,11 +29,16 @@ _PROFILES_DIR = Path(__file__).resolve().parents[3] / "src" / "config" / "profil
 
 # ── Dark theme colours ──────────────────────────────────────────────
 
-_BG = "#1e1e1e"
-_BG_LIGHT = "#2d2d2d"
-_FG = "#dcdcdc"
+_BG = "#0d1117"
+_BG_LIGHT = "#161b22"
+_BG_CARD = "#1c2128"
+_FG = "#e6edf3"
 _ACCENT = "#39ff14"
-_TERM_BG = "#111111"
+_BORDER = "#30363d"
+_INPUT_BG = "#2d333b"
+_WARNING = "#f0883e"
+_ERROR = "#f85149"
+_TERM_BG = "#0d1117"
 _TERM_FG = "#39ff14"
 
 
@@ -41,47 +46,63 @@ def _apply_dark_theme(style: ttk.Style) -> None:
     """Configure a dark ttk theme."""
     style.theme_use("clam")
 
-    style.configure(".", background=_BG, foreground=_FG, fieldbackground=_BG_LIGHT,
-                     borderwidth=1, focusthickness=0)
-    style.configure("TNotebook", background=_BG, borderwidth=0)
+    style.configure(".", background=_BG, foreground=_FG, fieldbackground=_INPUT_BG,
+                     borderwidth=1, focusthickness=0, bordercolor=_BORDER)
+    style.configure("TNotebook", background=_BG, borderwidth=0, tabmargins=[0, 0, 0, 0])
     style.configure("TNotebook.Tab", background=_BG_LIGHT, foreground=_FG,
-                     padding=[12, 4])
+                     padding=[14, 5], borderwidth=0)
     style.map("TNotebook.Tab",
               background=[("selected", _BG), ("!selected", _BG_LIGHT)],
-              foreground=[("selected", _ACCENT), ("!selected", _FG)])
+              foreground=[("selected", _ACCENT), ("!selected", _FG)],
+              bordercolor=[("selected", _ACCENT)])
 
     style.configure("TFrame", background=_BG)
     style.configure("TLabel", background=_BG, foreground=_FG)
-    style.configure("TButton", background=_BG_LIGHT, foreground=_FG, padding=[8, 4])
+    style.configure("TButton", background=_BG_LIGHT, foreground=_FG, padding=[10, 5],
+                     bordercolor=_BORDER, relief="flat")
     style.map("TButton",
-              background=[("active", "#3a3a3a"), ("pressed", "#444444")])
+              background=[("active", _INPUT_BG), ("pressed", _BG_CARD)],
+              bordercolor=[("focus", _ACCENT)])
 
-    style.configure("TCombobox", fieldbackground=_BG_LIGHT, foreground=_FG,
+    style.configure("TEntry", fieldbackground=_INPUT_BG, foreground=_FG,
+                     bordercolor=_BORDER, insertcolor=_ACCENT)
+    style.map("TEntry", bordercolor=[("focus", _ACCENT)])
+
+    style.configure("TCombobox", fieldbackground=_INPUT_BG, foreground=_FG,
                      background=_BG_LIGHT, selectbackground=_ACCENT,
-                     selectforeground="#000000")
-    style.map("TCombobox", fieldbackground=[("readonly", _BG_LIGHT)])
+                     selectforeground="#000000", bordercolor=_BORDER)
+    style.map("TCombobox", fieldbackground=[("readonly", _INPUT_BG)],
+              bordercolor=[("focus", _ACCENT)])
 
     style.configure("TProgressbar", background=_ACCENT, troughcolor=_BG_LIGHT,
-                     borderwidth=0, thickness=20)
+                     borderwidth=0, thickness=20, bordercolor=_BORDER)
 
     style.configure("Treeview", background=_BG_LIGHT, foreground=_FG,
-                     fieldbackground=_BG_LIGHT, borderwidth=0, rowheight=24)
+                     fieldbackground=_BG_LIGHT, borderwidth=0, rowheight=26)
     style.configure("Treeview.Heading", background=_BG, foreground=_ACCENT,
-                     borderwidth=1)
+                     borderwidth=1, relief="flat", bordercolor=_BORDER)
     style.map("Treeview",
-              background=[("selected", "#333333")],
+              background=[("selected", _INPUT_BG)],
               foreground=[("selected", _ACCENT)])
 
-    style.configure("TLabelframe", background=_BG, foreground=_ACCENT)
+    style.configure("TLabelframe", background=_BG, foreground=_ACCENT,
+                     bordercolor=_BORDER)
     style.configure("TLabelframe.Label", background=_BG, foreground=_ACCENT)
 
-    style.configure("Flash.TButton", background="#39ff14", foreground="#000000",
-                     font=("Segoe UI", 10, "bold"))
+    style.configure("TPanedwindow", background=_BG)
+    style.configure("Sash", sashthickness=4, background=_BORDER)
+
+    style.configure("TScrollbar", background=_BG_LIGHT, troughcolor=_BG,
+                     bordercolor=_BORDER, arrowcolor=_FG)
+    style.map("TScrollbar", background=[("active", _INPUT_BG)])
+
+    style.configure("Flash.TButton", background=_ACCENT, foreground="#000000",
+                     font=("Segoe UI", 10, "bold"), borderwidth=0)
     style.map("Flash.TButton",
               background=[("active", "#2de00f"), ("pressed", "#1fc00a")])
 
-    style.configure("Status.TLabel", background="#141414", foreground="#888888",
-                     padding=[6, 2])
+    style.configure("Status.TLabel", background=_BG_LIGHT, foreground="#8b949e",
+                     padding=[8, 3], bordercolor=_BORDER)
 
 
 class TkLightApp:
@@ -203,8 +224,10 @@ class TkLightApp:
         log_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
 
         self._flash_log = tk.Text(log_frame, bg=_TERM_BG, fg=_TERM_FG,
-                                  font=("Consolas", 9), insertbackground=_TERM_FG,
-                                  relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD)
+                                  font=("Consolas", 10), insertbackground=_ACCENT,
+                                  relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD,
+                                  highlightbackground=_BORDER, highlightcolor=_ACCENT,
+                                  highlightthickness=1)
         flash_scroll = ttk.Scrollbar(log_frame, command=self._flash_log.yview)
         self._flash_log.configure(yscrollcommand=flash_scroll.set)
         flash_scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -229,8 +252,11 @@ class TkLightApp:
         self._device_listbox = tk.Listbox(left, bg=_BG_LIGHT, fg=_FG,
                                           selectbackground=_ACCENT,
                                           selectforeground="#000",
-                                          font=("Consolas", 9),
-                                          relief=tk.FLAT, borderwidth=0)
+                                          font=("Consolas", 10),
+                                          relief=tk.FLAT, borderwidth=0,
+                                          highlightbackground=_BORDER,
+                                          highlightcolor=_ACCENT,
+                                          highlightthickness=1)
         self._device_listbox.pack(fill=tk.BOTH, expand=True, padx=6, pady=2)
         self._device_listbox.bind("<<ListboxSelect>>", self._on_device_select)
 
@@ -254,8 +280,11 @@ class TkLightApp:
         self._dev_term_label.pack(anchor=tk.W, padx=6, pady=(6, 2))
 
         self._serial_output = tk.Text(right, bg=_TERM_BG, fg=_TERM_FG,
-                                      font=("Consolas", 9), insertbackground=_TERM_FG,
-                                      relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD)
+                                      font=("Consolas", 10), insertbackground=_ACCENT,
+                                      relief=tk.FLAT, state=tk.DISABLED, wrap=tk.WORD,
+                                      highlightbackground=_BORDER,
+                                      highlightcolor=_ACCENT,
+                                      highlightthickness=1)
         serial_scroll = ttk.Scrollbar(right, command=self._serial_output.yview)
         self._serial_output.configure(yscrollcommand=serial_scroll.set)
         serial_scroll.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 6), pady=(0, 4))
@@ -263,7 +292,10 @@ class TkLightApp:
 
         cmd_frame = ttk.Frame(right)
         cmd_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
-        self._cmd_entry = ttk.Entry(cmd_frame, font=("Consolas", 10))
+        self._cmd_entry = tk.Entry(cmd_frame, font=("Consolas", 10),
+                                   bg=_INPUT_BG, fg=_FG, insertbackground=_ACCENT,
+                                   relief=tk.FLAT, highlightbackground=_BORDER,
+                                   highlightcolor=_ACCENT, highlightthickness=1)
         self._cmd_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 4))
         self._cmd_entry.bind("<Return>", lambda _e: self._on_send_cmd())
         self._btn_send = ttk.Button(cmd_frame, text="Send",
@@ -303,6 +335,13 @@ class TkLightApp:
         self._target_tree.column("channel", width=60, minwidth=40, anchor=tk.CENTER)
         self._target_tree.column("source", width=120, minwidth=80)
         self._target_tree.column("type", width=70, minwidth=50, anchor=tk.CENTER)
+
+        # Alternating row colours + RSSI colour tags
+        self._target_tree.tag_configure("oddrow", background=_BG_LIGHT)
+        self._target_tree.tag_configure("evenrow", background=_BG_CARD)
+        self._target_tree.tag_configure("rssi_good", foreground=_ACCENT)
+        self._target_tree.tag_configure("rssi_mid", foreground=_WARNING)
+        self._target_tree.tag_configure("rssi_bad", foreground=_ERROR)
 
         tree_scroll = ttk.Scrollbar(tab, command=self._target_tree.yview)
         self._target_tree.configure(yscrollcommand=tree_scroll.set)
@@ -484,11 +523,23 @@ class TkLightApp:
     def _refresh_targets(self) -> None:
         for item in self._target_tree.get_children():
             self._target_tree.delete(item)
-        for t in self._pool.all():
+        for idx, t in enumerate(self._pool.all()):
+            row_tag = "oddrow" if idx % 2 else "evenrow"
+            # RSSI-based colour tag
+            try:
+                rssi_val = int(t.rssi) if t.rssi is not None else -100
+            except (ValueError, TypeError):
+                rssi_val = -100
+            if rssi_val > -50:
+                rssi_tag = "rssi_good"
+            elif rssi_val > -65:
+                rssi_tag = "rssi_mid"
+            else:
+                rssi_tag = "rssi_bad"
             self._target_tree.insert("", tk.END, values=(
                 t.mac, t.ssid, t.rssi, t.channel,
                 t.device_source, t.target_type.value,
-            ))
+            ), tags=(row_tag, rssi_tag))
 
     def _clear_targets(self) -> None:
         self._pool.clear()
