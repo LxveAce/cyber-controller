@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import (
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FlashEngine
 from src.core.cross_comm import AutoRouter, EventBus, TargetPool
+from src.core.target_ingest import TargetIngestor
 from src.core.firmware_vault import FirmwareVault
 from src.core.health_monitor import HealthMonitor
 from src.core.macro_recorder import MacroRecorder
@@ -96,6 +97,10 @@ class CyberControllerWindow(QMainWindow):
         self._macro = macro_recorder or MacroRecorder()
         # Auto-router drives cross-device routing rules; send_command writes to a port.
         self._router = AutoRouter(self._bus, self._send_to_port)
+        # Target ingestor feeds each connected device's parsed serial output (APs/clients) into the
+        # shared pool, completing the cross-comm loop: a scan on device A -> target.added -> AutoRouter
+        # -> a command on device B. DeviceTab attaches it per-connection.
+        self._ingestor = TargetIngestor(self._pool)
 
         # Start health monitor polling
         self._health.start()
@@ -189,7 +194,7 @@ class CyberControllerWindow(QMainWindow):
         self._tabs.addTab(self._flash_tab, "Flash")
 
         # Device tab (functional)
-        self._device_tab = DeviceTab(self._dm)
+        self._device_tab = DeviceTab(self._dm, self._pool, self._ingestor)
         self._tabs.addTab(self._device_tab, "Devices")
 
         # Health tab (new)
