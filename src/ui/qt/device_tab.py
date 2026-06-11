@@ -56,6 +56,7 @@ class DeviceTab(QWidget):
             self._ingestor = TargetIngestor(self._pool)
         self._active_conn: SerialConnection | None = None
         self._active_port: str = ""
+        self._dms_auth = None  # Optional DeadManAuth instance, set by main window
         self._line_signal = _LineSignal()
         self._line_signal.line_received.connect(self._on_line_received)
 
@@ -236,6 +237,11 @@ class DeviceTab(QWidget):
             self._terminal.append(f"[Send error: {exc}]")
 
     def _on_line_received(self, line: str) -> None:
+        # Run through Dead Man's Switch auth detection if available
+        if self._dms_auth and self._active_conn:
+            self._dms_auth.check_line(
+                line, lambda pw: self._active_conn.write(pw)
+            )
         self._terminal.append(line)
 
     # ── Command palette ──────────────────────────────────────────────

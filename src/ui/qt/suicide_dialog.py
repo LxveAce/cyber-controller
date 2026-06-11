@@ -1,9 +1,9 @@
-"""PyQt5 dialog — Suicide Marauder password & duress setup (host-side, "Approach A").
+"""PyQt5 dialog — Dead Man's Switch password & duress setup (host-side, "Approach A").
 
 Owner-only DEFENSIVE provisioning for hardware you own. The boot password is hashed **host-side**
 (PBKDF2-HMAC-SHA256) and the buffer is **zeroized** by the provisioner — it is never stored, logged,
 or sent to the device (only {salt, pwhash, params} reach the board). A disarmed or unprovisioned
-board can NEVER wipe (fail-safe). Set the password here BEFORE flashing the Suicide build; this
+board can NEVER wipe (fail-safe). Set the password here BEFORE flashing the DMS build; this
 mints ``guardcfg.bin`` + a flash bundle manifest via :func:`src.core.suicide_setup.build`.
 """
 
@@ -49,11 +49,11 @@ def _path_row(line_edit: QLineEdit, on_browse) -> QWidget:
 
 
 class SuicideSetupDialog(QDialog):
-    """Collects target hardware, duress config, and a boot password; bakes the guardcfg bundle."""
+    """Collects target hardware, duress config, and a boot password; bakes the DMS guardcfg bundle."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Suicide Marauder — Password & Duress Setup")
+        self.setWindowTitle("Dead Man's Switch — Password & Duress Setup")
         self.setMinimumWidth(540)
         self._build_ui()
 
