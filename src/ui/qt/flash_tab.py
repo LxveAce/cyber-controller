@@ -259,6 +259,10 @@ class FlashTab(QWidget):
         self._variant_loader.start()
 
     def _on_variants_loaded(self, variants: list) -> None:
+        # Ignore results from a superseded loader (rapid profile switching) so a late-arriving
+        # stale list can't repopulate the picker for the wrong profile.
+        if self.sender() is not self._variant_loader:
+            return
         # Drop the "Loading…" placeholder, keep "Auto" at index 0.
         for i in range(self._variant_combo.count() - 1, 0, -1):
             self._variant_combo.removeItem(i)
