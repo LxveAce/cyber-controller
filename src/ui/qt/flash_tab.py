@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QFrame,
@@ -173,6 +174,38 @@ class FlashTab(QWidget):
         top.addLayout(btn_col)
         root.addLayout(top)
 
+        # ── Dead Man's Switch card ───────────────────────────────────
+        self._suicide_card = QFrame()
+        self._suicide_card.setObjectName("card")
+        self._suicide_card.setStyleSheet(
+            """
+            QFrame#suicide_card_active {
+                background-color: #161b22;
+                border: 2px solid #f0883e;
+                border-radius: 8px;
+                padding: 8px 16px;
+            }
+            """
+        )
+        suicide_layout = QVBoxLayout(self._suicide_card)
+        suicide_layout.setContentsMargins(12, 8, 12, 8)
+        suicide_layout.setSpacing(4)
+
+        self._suicide_checkbox = QCheckBox("Enable Dead Man's Switch")
+        self._suicide_checkbox.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        self._suicide_checkbox.toggled.connect(self._on_suicide_toggled)
+        suicide_layout.addWidget(self._suicide_checkbox)
+
+        suicide_desc = QLabel(
+            "Integrates Dead Man's Switch anti-forensic wipe into the flash. Opens setup before flashing."
+        )
+        suicide_desc.setObjectName("muted")
+        suicide_desc.setWordWrap(True)
+        suicide_desc.setStyleSheet("color: #8b949e; font-size: 9pt; background: transparent;")
+        suicide_layout.addWidget(suicide_desc)
+
+        root.addWidget(self._suicide_card)
+
         # ── Progress bar ─────────────────────────────────────────────
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
@@ -290,6 +323,37 @@ class FlashTab(QWidget):
             self._profile_combo.addItem(name)
             self._profile_combo.setCurrentText(name)
 
+    # ── Dead Man's Switch toggle ───────────────────────────────────
+
+    def _on_suicide_toggled(self, checked: bool) -> None:
+        """Update the card border to orange when the checkbox is active."""
+        if checked:
+            self._suicide_card.setObjectName("suicide_card_active")
+            self._suicide_card.setStyleSheet(
+                """
+                QFrame#suicide_card_active {
+                    background-color: #161b22;
+                    border: 2px solid #f0883e;
+                    border-radius: 8px;
+                    padding: 8px 16px;
+                }
+                QCheckBox { background: transparent; }
+                QLabel { background: transparent; }
+                """
+            )
+        else:
+            self._suicide_card.setObjectName("card")
+            self._suicide_card.setStyleSheet("")
+
+    @property
+    def suicide_enabled(self) -> bool:
+        """Whether the Dead Man's Switch checkbox is checked."""
+        return self._suicide_checkbox.isChecked()
+
+    @suicide_enabled.setter
+    def suicide_enabled(self, value: bool) -> None:
+        self._suicide_checkbox.setChecked(value)
+
     # ── Actions ──────────────────────────────────────────────────────
 
     def _on_flash(self) -> None:
@@ -302,6 +366,36 @@ class FlashTab(QWidget):
         if not profile_path:
             self._log("No firmware profile selected.")
             return
+
+        # If Dead Man's Switch is enabled, open setup dialog before flashing
+        if self._suicide_checkbox.isChecked():
+            try:
+                from src.ui.qt.suicide_dialog import SuicideSetupDialog
+            except Exception as exc:
+                self._log(f"Could not load Dead Man's Switch setup dialog: {exc}")
+                return
+
+            dlg = SuicideSetupDialog(self)
+            # Pre-populate with current port and profile info
+            profile = self._fe.load_profile(profile_path)
+            variant = self._variant_combo.currentData() or ""
+            # Set chip from profile if available
+            if hasattr(profile, "chip") and profile.chip:
+                idx = dlg.chip.findText(profile.chip.lower())
+                if idx >= 0:
+                    dlg.chip.setCurrentIndex(idx)
+            # Set variant from profile if available
+            if hasattr(profile, "variant_type") and profile.variant_type:
+                idx = dlg.variant.findText(profile.variant_type)
+                if idx >= 0:
+                    dlg.variant.setCurrentIndex(idx)
+            self._log(f"Dead Man's Switch enabled — opening setup for {profile_name} on {port}...")
+
+            result = dlg.exec_()
+            if result != SuicideSetupDialog.Accepted:
+                self._log("Dead Man's Switch setup cancelled — flash aborted.")
+                return
+            self._log("Dead Man's Switch setup complete — proceeding to flash.")
 
         profile = self._fe.load_profile(profile_path)
         variant = self._variant_combo.currentData() or ""

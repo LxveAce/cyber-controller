@@ -1,6 +1,8 @@
 <div align="center">
 
-# ⬢ Cyber Controller
+<img src="assets/cc-logo.png" alt="Cyber Controller Logo" width="400">
+
+# Cyber Controller
 
 ### The all-in-one security hardware controller for cyberdecks & field deployments.
 
@@ -27,7 +29,7 @@ Cyber Controller is the flagship convergence of the **Lxve ESP32 security toolch
 [Headless Marauder GUI](https://github.com/LxveAce/headless-marauder-gui),
 [Universal Flasher](https://github.com/LxveAce/universal-flasher), and
 [Universal Flasher & UI](https://github.com/LxveAce/universal-flasher-ui) into a single unified tool,
-with [Suicide Marauder](https://github.com/LxveAce/Suicide-Marauder) anti-forensic provisioning built in.
+with [Dead Man's Switch](https://github.com/LxveAce/Suicide-Marauder) anti-forensic provisioning built in.
 It is built for **cyberdecks, field deployments, and security research** — runs on ARM + x64, on a
 7" touchscreen or headless over SSH or a phone.
 
