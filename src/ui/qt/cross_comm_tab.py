@@ -21,7 +21,7 @@ import logging
 from typing import Any
 
 from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
     QComboBox,
     QDialog,
@@ -54,6 +54,9 @@ log = logging.getLogger(__name__)
 
 # Maximum lines kept in the live event stream before old lines are trimmed.
 _MAX_EVENT_LINES = 500
+
+# Maximum entries in the action history table.
+_MAX_ACTION_HISTORY = 100
 
 
 def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
@@ -271,8 +274,39 @@ class CrossCommTab(QWidget):
         bottom_layout.addWidget(rules_card, 1)
 
         splitter.addWidget(bottom)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 1)
+
+        # ── Action History card ──────────────────────────────────────
+        action_card, action_layout = _make_card("Action History")
+
+        self._action_table = QTableWidget(0, 5)
+        self._action_table.setHorizontalHeaderLabels(
+            ["Time", "Action", "Target", "Device", "Status"]
+        )
+        self._action_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self._action_table.setAlternatingRowColors(True)
+        self._action_table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self._action_table.setSelectionBehavior(QTableWidget.SelectRows)
+        self._action_table.verticalHeader().setVisible(False)
+        self._action_table.setMinimumHeight(80)
+        self._action_table.setMaximumHeight(220)
+        action_layout.addWidget(self._action_table)
+
+        action_btn_row = QHBoxLayout()
+        self._action_count_label = QLabel("0 actions")
+        self._action_count_label.setObjectName("muted")
+        self._action_count_label.setWordWrap(True)
+        action_btn_row.addWidget(self._action_count_label)
+        action_btn_row.addStretch()
+        clear_actions_btn = QPushButton("Clear History")
+        clear_actions_btn.clicked.connect(self._on_clear_action_history)
+        action_btn_row.addWidget(clear_actions_btn)
+        action_layout.addLayout(action_btn_row)
+
+        splitter.addWidget(action_card)
+
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 2)
+        splitter.setStretchFactor(2, 1)
         root.addWidget(splitter, stretch=1)
 
         scroll.setWidget(scroll_container)
@@ -294,6 +328,8 @@ class CrossCommTab(QWidget):
         self._append_event(topic, payload)
         if topic in ("target.added", "target.updated", "target.removed", "target.cleared"):
             self._refresh_pool()
+        if topic == "action.executed":
+            self._append_action_history(payload)
 
     def _append_event(self, topic: str, payload: dict[str, Any]) -> None:
         summary = self._summarize_payload(topic, payload)
@@ -400,6 +436,72 @@ class CrossCommTab(QWidget):
         name = item.data(Qt.UserRole)
         if name and self._router.remove_rule(name):
             self._refresh_rules()
+
+    # ── Action history ──────────────────────────────────────────────
+
+    # Status -> color mapping for the action history table.
+    _STATUS_COLORS: dict[str, str] = {
+        "success": "#39ff14",
+        "sent": "#ffd700",
+        "failed": "#f85149",
+    }
+
+    def _append_action_history(self, payload: dict[str, Any]) -> None:
+        """Append an action execution event to the action history table."""
+        from datetime import datetime, timezone
+
+        now = datetime.now(timezone.utc).strftime("%H:%M:%S")
+        action_name = payload.get("action", "?")
+        target_ssid = payload.get("target_ssid", "")
+        target_mac = payload.get("target_mac", "")
+        port = payload.get("port", "?")
+        status = payload.get("status", "?")
+        detail = payload.get("detail", "")
+
+        target_label = target_ssid or target_mac or "?"
+        device_label = port
+
+        # Insert at top (row 0)
+        self._action_table.insertRow(0)
+
+        # Time column
+        time_item = QTableWidgetItem(now)
+        self._action_table.setItem(0, 0, time_item)
+
+        # Action column
+        action_item = QTableWidgetItem(action_name)
+        self._action_table.setItem(0, 1, action_item)
+
+        # Target column
+        target_item = QTableWidgetItem(target_label)
+        target_item.setToolTip(f"MAC: {target_mac}\nSSID: {target_ssid}")
+        self._action_table.setItem(0, 2, target_item)
+
+        # Device column
+        device_item = QTableWidgetItem(device_label)
+        device_item.setToolTip(detail)
+        self._action_table.setItem(0, 3, device_item)
+
+        # Status column — color-coded
+        status_item = QTableWidgetItem(status.upper())
+        color = self._STATUS_COLORS.get(status.lower(), "#8b949e")
+        status_item.setForeground(QColor(color))
+        self._action_table.setItem(0, 4, status_item)
+
+        # Trim to max entries
+        while self._action_table.rowCount() > _MAX_ACTION_HISTORY:
+            self._action_table.removeRow(self._action_table.rowCount() - 1)
+
+        # Update count label
+        count = self._action_table.rowCount()
+        self._action_count_label.setText(
+            f"{count} action{'s' if count != 1 else ''}"
+        )
+
+    def _on_clear_action_history(self) -> None:
+        """Clear all entries from the action history table."""
+        self._action_table.setRowCount(0)
+        self._action_count_label.setText("0 actions")
 
     # ── Qt overrides ─────────────────────────────────────────────────
 

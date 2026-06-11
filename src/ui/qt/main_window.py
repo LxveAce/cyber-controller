@@ -55,6 +55,14 @@ from src.ui.qt.widgets.cc_icon import create_cc_icon
 from src.ui.qt.widgets.command_palette import CommandPalette
 from src.core.deadman_auth import DeadManAuth
 
+# Graceful import for the action resolver (created by a parallel agent).
+try:
+    from src.core.action_resolver import ActionResolver
+    _HAS_ACTION_RESOLVER = True
+except Exception:  # noqa: BLE001
+    ActionResolver = None  # type: ignore[assignment,misc]
+    _HAS_ACTION_RESOLVER = False
+
 log = logging.getLogger(__name__)
 
 _VERSION = "0.3.0"
@@ -103,6 +111,16 @@ class CyberControllerWindow(QMainWindow):
         # shared pool, completing the cross-comm loop: a scan on device A -> target.added -> AutoRouter
         # -> a command on device B. DeviceTab attaches it per-connection.
         self._ingestor = TargetIngestor(self._pool)
+
+        # Action resolver — maps targets to firmware-specific actions per connected device.
+        # Created by a parallel agent; gracefully absent if not yet available.
+        self._action_resolver = None
+        if _HAS_ACTION_RESOLVER and ActionResolver is not None:
+            try:
+                self._action_resolver = ActionResolver(self._dm)
+                log.info("ActionResolver initialized")
+            except Exception:
+                log.warning("ActionResolver creation failed — actions disabled", exc_info=True)
 
         # Dead Man's Switch auth flow
         self._dms_auth = DeadManAuth()
@@ -349,8 +367,13 @@ class CyberControllerWindow(QMainWindow):
         self._macro_tab = MacroTab(self._macro, self._dm)
         self._tabs.addTab(self._macro_tab, "Macros")
 
-        # Target pool (shared discovered targets)
-        self._targets_tab = TargetsTab(self._pool, self._bus)
+        # Target pool (shared discovered targets) — with action resolver + device manager
+        self._targets_tab = TargetsTab(
+            self._pool,
+            self._bus,
+            device_manager=self._dm,
+            action_resolver=self._action_resolver,
+        )
         self._tabs.addTab(self._targets_tab, "Targets")
 
         # Cross-comm routing (event stream + auto-routing rules)
