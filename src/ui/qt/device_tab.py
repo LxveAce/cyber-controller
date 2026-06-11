@@ -43,9 +43,17 @@ class _LineSignal(QObject):
 class DeviceTab(QWidget):
     """Device management tab with list, serial terminal, and command palette."""
 
-    def __init__(self, dm: DeviceManager) -> None:
+    def __init__(self, dm: DeviceManager, pool=None, ingestor=None) -> None:
         super().__init__()
         self._dm = dm
+        # Cross-comm: feed this device's parsed serial output (APs/clients) into the shared TargetPool
+        # so the AutoRouter can act on it across devices. Optional (backward-compatible) — when a pool
+        # is supplied without an ingestor we make one. See src/core/target_ingest.py.
+        self._pool = pool
+        self._ingestor = ingestor
+        if self._pool is not None and self._ingestor is None:
+            from src.core.target_ingest import TargetIngestor
+            self._ingestor = TargetIngestor(self._pool)
         self._active_conn: SerialConnection | None = None
         self._active_port: str = ""
         self._line_signal = _LineSignal()
@@ -185,6 +193,14 @@ class DeviceTab(QWidget):
             conn = self._dm.open_connection(port)
             self._active_conn = conn
             conn.on_line(lambda line: self._line_signal.line_received.emit(line))
+            # Cross-comm ingestion: parse this device's serial output into the shared target pool so a
+            # scan here can auto-route a command to another connected device (AutoRouter). Defaults to
+            # the Marauder parser; a per-device firmware selector can refine this later.
+            if self._ingestor is not None:
+                try:
+                    self._ingestor.attach(conn, MarauderProtocol())
+                except Exception as exc:
+                    self._terminal.append(f"[cross-comm ingest attach failed: {exc}]")
             self._terminal.clear()
             self._terminal.append(f"[Connected to {port}]")
             self._btn_connect.setEnabled(False)
