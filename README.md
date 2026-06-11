@@ -17,7 +17,7 @@
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)](#contributing)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
 
-[**Website**](https://lxveace.com) · [**ESP32 Marauder Tools Hub**](https://esp32marauder.com) · [**Build Guide**](https://esp32marauder.com/builds.html) · [**Downloads**](https://esp32marauder.com/downloads.html)
+[**Website**](https://cybercontroller.org) · [**ESP32 Marauder Tools Hub**](https://esp32marauder.com) · [**Build Guide**](https://esp32marauder.com/builds.html) · [**Downloads**](https://cybercontroller.org/#downloads)
 
 </div>
 
