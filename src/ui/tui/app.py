@@ -22,6 +22,7 @@ from textual.containers import Horizontal, Vertical
 from textual.reactive import reactive
 from textual.widgets import (
     Button,
+    Checkbox,
     DataTable,
     Footer,
     Header,
@@ -166,6 +167,8 @@ class CyberControllerTUI(App):
                 with Vertical(id="flash-btn-group", classes="selector-group"):
                     yield Button("Flash", id="btn-flash", variant="success")
                     yield Button("Refresh Ports", id="btn-refresh-ports")
+            yield Checkbox("Enable Dead Man's Switch", id="deadman-toggle")
+            yield Label("Anti-forensic wipe — prompts for setup before flashing", classes="selector-label", id="deadman-desc")
             yield ProgressBar(id="flash-progress", total=100, show_eta=False)
             yield Label("Flash Log", classes="section-label")
             yield Log(id="flash-log", auto_scroll=True)
@@ -298,6 +301,14 @@ class CyberControllerTUI(App):
             return
 
         profile = self._fe.load_profile(profile_path)
+
+        deadman_cb = self.query_one("#deadman-toggle", Checkbox)
+        if deadman_cb.value:
+            flash_log.write_line("[Dead Man's Switch] Setup required before flash.")
+            flash_log.write_line("Run with --deadman-setup flag or use the full GUI for interactive setup.")
+            flash_log.write_line("Aborting flash — complete DMS provisioning first.")
+            return
+
         flash_log.write_line(f"Flashing {profile.name} to {port}...")
         btn.disabled = True
         progress.update(progress=0)

@@ -55,6 +55,17 @@ Screen {
     margin-top: 1;
 }
 
+#deadman-toggle {
+    margin: 1 0 0 1;
+    color: $warning;
+}
+
+#deadman-desc {
+    margin: 0 0 0 4;
+    color: $text-muted;
+    text-style: italic;
+}
+
 #flash-progress {
     margin: 1 0;
     height: 1;
