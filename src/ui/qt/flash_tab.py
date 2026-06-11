@@ -61,6 +61,24 @@ class _FlashWorker(QThread):
         self.progress.emit(pct, msg)
 
 
+class _VariantLoader(QThread):
+    """Fetch a profile's selectable firmware variants off the UI thread (hits the network)."""
+
+    loaded = pyqtSignal(list)  # list[dict] of {name, label, chip, url}
+
+    def __init__(self, engine: FlashEngine, profile: FirmwareProfile) -> None:
+        super().__init__()
+        self._engine = engine
+        self._profile = profile
+
+    def run(self) -> None:
+        try:
+            variants = self._engine.list_variants(self._profile)
+        except Exception:  # noqa: BLE001 — a picker must never crash the UI
+            variants = []
+        self.loaded.emit(variants)
+
+
 class FlashTab(QWidget):
     """Firmware flashing tab with port/profile selectors, progress bar, and batch queue."""
 
@@ -70,11 +88,15 @@ class FlashTab(QWidget):
         self._fe = fe
         self._vault = vault or FirmwareVault()
         self._worker: _FlashWorker | None = None
+        self._variant_loader: _VariantLoader | None = None
         self._profiles: dict[str, Path] = {}  # display name -> path
 
         self._build_ui()
         self._refresh_ports()
         self._refresh_profiles()
+        # Populate variants for the initial profile, then react to profile changes.
+        self._profile_combo.currentIndexChanged.connect(self._reload_variants)
+        self._reload_variants()
 
     # ── Layout ───────────────────────────────────────────────────────
 
@@ -104,6 +126,18 @@ class FlashTab(QWidget):
         btn_browse = QPushButton("Browse...")
         btn_browse.clicked.connect(self._browse_profile)
         prof_layout.addWidget(btn_browse)
+        # Board / variant picker — chip auto-detect can't tell a CYD from a generic ESP32
+        # (both are 'esp32'); the wrong variant flashes the wrong display driver -> white screen.
+        prof_layout.addWidget(QLabel("Board / variant:"))
+        self._variant_combo = QComboBox()
+        self._variant_combo.setMinimumWidth(220)
+        self._variant_combo.setToolTip(
+            "Pick your exact board. 'Auto' uses the firmware's per-chip default, which may be wrong "
+            "for display boards (CYD/M5/etc.) — if your screen stays blank after flashing, choose the "
+            "matching variant here and re-flash."
+        )
+        self._variant_combo.addItem("Auto (default for chip)", "")
+        prof_layout.addWidget(self._variant_combo)
         top.addWidget(prof_group)
 
         # Flash + Backup buttons
@@ -206,6 +240,32 @@ class FlashTab(QWidget):
                 self._profiles[name] = f
                 self._profile_combo.addItem(name)
 
+    def _reload_variants(self) -> None:
+        """Load the selected profile's board variants in the background and repopulate the picker."""
+        self._variant_combo.clear()
+        self._variant_combo.addItem("Auto (default for chip)", "")
+        profile_name = self._profile_combo.currentText()
+        profile_path = self._profiles.get(profile_name)
+        if not profile_path:
+            return
+        try:
+            profile = FirmwareProfile.from_file(profile_path)
+        except Exception:
+            return
+        self._variant_combo.addItem("Loading variants…", "")
+        self._variant_combo.model().item(1).setEnabled(False)
+        self._variant_loader = _VariantLoader(self._fe, profile)
+        self._variant_loader.loaded.connect(self._on_variants_loaded)
+        self._variant_loader.start()
+
+    def _on_variants_loaded(self, variants: list) -> None:
+        # Drop the "Loading…" placeholder, keep "Auto" at index 0.
+        for i in range(self._variant_combo.count() - 1, 0, -1):
+            self._variant_combo.removeItem(i)
+        for v in variants:
+            label = v.get("label") or v.get("name", "")
+            self._variant_combo.addItem(f"{label}  ({v.get('name', '')})", v.get("name", ""))
+
     def _browse_profile(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
             self, "Select firmware profile", "", "JSON Files (*.json)"
@@ -235,7 +295,12 @@ class FlashTab(QWidget):
             return
 
         profile = self._fe.load_profile(profile_path)
-        self._log(f"Flashing {profile.name} to {port}...")
+        variant = self._variant_combo.currentData() or ""
+        profile.variant = variant
+        if variant:
+            self._log(f"Flashing {profile.name} [{variant}] to {port}...")
+        else:
+            self._log(f"Flashing {profile.name} to {port}...")
         self._btn_flash.setEnabled(False)
         self._progress.setValue(0)
 
