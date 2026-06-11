@@ -11,7 +11,7 @@ from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -30,6 +30,20 @@ from src.core.flash_engine import FlashEngine, FirmwareProfile
 log = logging.getLogger(__name__)
 
 _PROFILES_DIR = Path(__file__).resolve().parents[3] / "src" / "config" / "profiles"
+
+
+def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+    """Create a card-styled QFrame with optional title label."""
+    card = QFrame()
+    card.setObjectName("card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(8)
+    if title:
+        lbl = QLabel(title)
+        lbl.setObjectName("card_title")
+        layout.addWidget(lbl)
+    return card, layout
 
 
 class _FlashWorker(QThread):
@@ -106,29 +120,28 @@ class FlashTab(QWidget):
         # ── Top row: port + profile selectors ────────────────────────
         top = QHBoxLayout()
 
-        # Port selector
-        port_group = QGroupBox("Port")
-        port_layout = QVBoxLayout(port_group)
+        # Port selector card
+        port_card, port_layout = _make_card("Port")
         self._port_combo = QComboBox()
         self._port_combo.setMinimumWidth(160)
         port_layout.addWidget(self._port_combo)
         btn_refresh = QPushButton("Refresh")
         btn_refresh.clicked.connect(self._refresh_ports)
         port_layout.addWidget(btn_refresh)
-        top.addWidget(port_group)
+        top.addWidget(port_card)
 
-        # Profile selector
-        prof_group = QGroupBox("Firmware Profile")
-        prof_layout = QVBoxLayout(prof_group)
+        # Profile selector card
+        prof_card, prof_layout = _make_card("Firmware Profile")
         self._profile_combo = QComboBox()
         self._profile_combo.setMinimumWidth(220)
         prof_layout.addWidget(self._profile_combo)
         btn_browse = QPushButton("Browse...")
         btn_browse.clicked.connect(self._browse_profile)
         prof_layout.addWidget(btn_browse)
-        # Board / variant picker — chip auto-detect can't tell a CYD from a generic ESP32
-        # (both are 'esp32'); the wrong variant flashes the wrong display driver -> white screen.
-        prof_layout.addWidget(QLabel("Board / variant:"))
+        # Board / variant picker
+        variant_label = QLabel("Board / variant:")
+        variant_label.setObjectName("muted")
+        prof_layout.addWidget(variant_label)
         self._variant_combo = QComboBox()
         self._variant_combo.setMinimumWidth(220)
         self._variant_combo.setToolTip(
@@ -138,16 +151,13 @@ class FlashTab(QWidget):
         )
         self._variant_combo.addItem("Auto (default for chip)", "")
         prof_layout.addWidget(self._variant_combo)
-        top.addWidget(prof_group)
+        top.addWidget(prof_card)
 
         # Flash + Backup buttons
         btn_col = QVBoxLayout()
         self._btn_flash = QPushButton("Flash")
+        self._btn_flash.setObjectName("flash_btn")
         self._btn_flash.setMinimumHeight(40)
-        self._btn_flash.setStyleSheet(
-            "QPushButton { background-color: #39ff14; color: #000; font-weight: bold; }"
-            "QPushButton:disabled { background-color: #555; color: #888; }"
-        )
         self._btn_flash.clicked.connect(self._on_flash)
         btn_col.addWidget(self._btn_flash)
 
@@ -156,9 +166,7 @@ class FlashTab(QWidget):
         btn_col.addWidget(self._btn_backup)
 
         self._btn_erase = QPushButton("Erase Flash")
-        self._btn_erase.setStyleSheet(
-            "QPushButton { color: #ff4444; }"
-        )
+        self._btn_erase.setObjectName("erase_btn")
         self._btn_erase.clicked.connect(self._on_erase)
         btn_col.addWidget(self._btn_erase)
 
@@ -175,19 +183,16 @@ class FlashTab(QWidget):
         # ── Bottom: log output + batch queue ─────────────────────────
         bottom = QHBoxLayout()
 
-        # Log output
-        log_group = QGroupBox("Flash Log")
-        log_layout = QVBoxLayout(log_group)
+        # Log output card
+        log_card, log_layout = _make_card("Flash Log")
         self._log_output = QTextEdit()
         self._log_output.setReadOnly(True)
-        self._log_output.setFont(QFont("Consolas", 9))
-        self._log_output.setStyleSheet("background-color: #111; color: #39ff14;")
+        self._log_output.setObjectName("terminal")
         log_layout.addWidget(self._log_output)
-        bottom.addWidget(log_group, stretch=3)
+        bottom.addWidget(log_card, stretch=3)
 
-        # Batch queue
-        queue_group = QGroupBox("Batch Queue")
-        queue_layout = QVBoxLayout(queue_group)
+        # Batch queue card
+        queue_card, queue_layout = _make_card("Batch Queue")
         self._queue_list = QListWidget()
         queue_layout.addWidget(self._queue_list)
         btn_add = QPushButton("Add to Queue")
@@ -196,28 +201,28 @@ class FlashTab(QWidget):
         btn_clear = QPushButton("Clear Queue")
         btn_clear.clicked.connect(self._queue_list.clear)
         queue_layout.addWidget(btn_clear)
-        bottom.addWidget(queue_group, stretch=1)
+        bottom.addWidget(queue_card, stretch=1)
 
         root.addLayout(bottom)
 
         # ── Firmware Vault section ───────────────────────────────────
-        vault_group = QGroupBox("Firmware Vault (Offline Cache)")
-        vault_layout = QHBoxLayout(vault_group)
+        vault_card, vault_layout = _make_card("Firmware Vault (Offline Cache)")
+        vault_row = QHBoxLayout()
 
         self._vault_status = QLabel("No cached firmware")
-        self._vault_status.setStyleSheet("color: #888;")
-        vault_layout.addWidget(self._vault_status, stretch=2)
+        self._vault_status.setObjectName("muted")
+        vault_row.addWidget(self._vault_status, stretch=2)
 
         btn_download = QPushButton("Download to Vault")
         btn_download.clicked.connect(self._on_vault_download)
-        vault_layout.addWidget(btn_download)
+        vault_row.addWidget(btn_download)
 
         btn_clear_vault = QPushButton("Clear Cache")
-        btn_clear_vault.setStyleSheet("QPushButton { color: #ff8c00; }")
         btn_clear_vault.clicked.connect(self._on_vault_clear)
-        vault_layout.addWidget(btn_clear_vault)
+        vault_row.addWidget(btn_clear_vault)
 
-        root.addWidget(vault_group)
+        vault_layout.addLayout(vault_row)
+        root.addWidget(vault_card)
         self._refresh_vault_status()
 
     # ── Refreshers ───────────────────────────────────────────────────
@@ -378,10 +383,10 @@ class FlashTab(QWidget):
                 f"Cached: {total} version(s) across {len(cached)} profile(s) "
                 f"({size_mb:.1f} MB) — {profiles}"
             )
-            self._vault_status.setStyleSheet("color: #39ff14;")
+            self._vault_status.setObjectName("vault_active")
         else:
             self._vault_status.setText("No cached firmware")
-            self._vault_status.setStyleSheet("color: #888;")
+            self._vault_status.setObjectName("muted")
 
     def _on_vault_download(self) -> None:
         """Download the currently selected profile's firmware to the vault."""

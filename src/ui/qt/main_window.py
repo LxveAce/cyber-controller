@@ -6,14 +6,19 @@ import logging
 import sys
 from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QPalette
 from PyQt5.QtWidgets import (
     QAction,
     QApplication,
+    QFrame,
+    QHBoxLayout,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QPushButton,
     QTabWidget,
     QVBoxLayout,
     QWidget,
@@ -33,33 +38,12 @@ from src.ui.qt.macro_tab import MacroTab
 from src.ui.qt.targets_tab import TargetsTab
 from src.ui.qt.cross_comm_tab import CrossCommTab
 from src.ui.qt.settings_tab import SettingsTab
+from src.ui.qt.theme import apply_theme
 
 log = logging.getLogger(__name__)
 
 _VERSION = "0.3.0"
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
-
-
-def _apply_dark_palette(app: QApplication) -> None:
-    """Apply a dark colour palette to the entire application."""
-    palette = QPalette()
-    palette.setColor(QPalette.Window, QColor(30, 30, 30))
-    palette.setColor(QPalette.WindowText, QColor(220, 220, 220))
-    palette.setColor(QPalette.Base, QColor(20, 20, 20))
-    palette.setColor(QPalette.AlternateBase, QColor(40, 40, 40))
-    palette.setColor(QPalette.ToolTipBase, QColor(30, 30, 30))
-    palette.setColor(QPalette.ToolTipText, QColor(220, 220, 220))
-    palette.setColor(QPalette.Text, QColor(220, 220, 220))
-    palette.setColor(QPalette.Button, QColor(45, 45, 45))
-    palette.setColor(QPalette.ButtonText, QColor(220, 220, 220))
-    palette.setColor(QPalette.BrightText, QColor(255, 50, 50))
-    palette.setColor(QPalette.Link, QColor(57, 255, 20))
-    palette.setColor(QPalette.Highlight, QColor(57, 255, 20))
-    palette.setColor(QPalette.HighlightedText, QColor(0, 0, 0))
-    app.setPalette(palette)
-    app.setStyleSheet(
-        "QToolTip { color: #dcdcdc; background-color: #2b2b2b; border: 1px solid #555; }"
-    )
 
 
 def _placeholder_tab(label_text: str) -> QWidget:
@@ -69,13 +53,16 @@ def _placeholder_tab(label_text: str) -> QWidget:
     lbl = QLabel(label_text)
     lbl.setAlignment(Qt.AlignCenter)
     lbl.setFont(QFont("Segoe UI", 14))
-    lbl.setStyleSheet("color: #555;")
+    lbl.setObjectName("muted")
     layout.addWidget(lbl)
     return w
 
 
 class CyberControllerWindow(QMainWindow):
     """Main application window with tabbed interface."""
+
+    # Signal emitted when a device is selected in the sidebar
+    device_selected = pyqtSignal(str)  # port string
 
     def __init__(
         self,
@@ -109,13 +96,18 @@ class CyberControllerWindow(QMainWindow):
         self.setMinimumSize(1100, 700)
 
         self._build_menu_bar()
-        self._build_tabs()
+        self._build_main_layout()
         self._build_status_bar()
 
         # Periodic status-bar refresh
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._refresh_status)
         self._timer.start(2000)
+
+        # Sidebar device list refresh
+        self._sidebar_timer = QTimer(self)
+        self._sidebar_timer.timeout.connect(self._refresh_sidebar_devices)
+        self._sidebar_timer.start(3000)
 
     # ── Menu bar ─────────────────────────────────────────────────────
 
@@ -150,10 +142,6 @@ class CyberControllerWindow(QMainWindow):
         # View
         view_menu = mb.addMenu("&View")
 
-        act_theme = QAction("Toggle &Theme", self)
-        act_theme.triggered.connect(self._on_toggle_theme)
-        view_menu.addAction(act_theme)
-
         act_font_up = QAction("Font Size &+", self)
         act_font_up.setShortcut("Ctrl+=")
         act_font_up.triggered.connect(lambda: self._change_font_size(1))
@@ -183,12 +171,62 @@ class CyberControllerWindow(QMainWindow):
         act_github.triggered.connect(self._on_github)
         help_menu.addAction(act_github)
 
+    # ── Main layout with sidebar + tabs ──────────────────────────────
+
+    def _build_main_layout(self) -> None:
+        central = QWidget()
+        self.setCentralWidget(central)
+        main_layout = QHBoxLayout(central)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        # ── Sidebar ──────────────────────────────────────────────────
+        sidebar = QFrame()
+        sidebar.setObjectName("sidebar")
+        sidebar.setFixedWidth(200)
+        sidebar_layout = QVBoxLayout(sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setSpacing(0)
+
+        # Title
+        title_label = QLabel("CYBER CONTROLLER")
+        title_label.setObjectName("sidebar_title")
+        title_label.setAlignment(Qt.AlignCenter)
+        sidebar_layout.addWidget(title_label)
+
+        # Separator
+        sep = QFrame()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background-color: #30363d;")
+        sidebar_layout.addWidget(sep)
+
+        # Device count
+        self._device_count_label = QLabel("0 devices")
+        self._device_count_label.setObjectName("device_count")
+        sidebar_layout.addWidget(self._device_count_label)
+
+        # Device list
+        self._sidebar_device_list = QListWidget()
+        self._sidebar_device_list.currentItemChanged.connect(self._on_sidebar_device_selected)
+        sidebar_layout.addWidget(self._sidebar_device_list)
+
+        # Scan ports button
+        scan_btn = QPushButton("Scan Ports")
+        scan_btn.clicked.connect(self._on_sidebar_scan)
+        sidebar_layout.addWidget(scan_btn)
+
+        main_layout.addWidget(sidebar)
+
+        # ── Tab widget (right side) ──────────────────────────────────
+        self._tabs = QTabWidget()
+        main_layout.addWidget(self._tabs)
+
+        self._build_tabs()
+        self._refresh_sidebar_devices()
+
     # ── Tabs ─────────────────────────────────────────────────────────
 
     def _build_tabs(self) -> None:
-        self._tabs = QTabWidget()
-        self.setCentralWidget(self._tabs)
-
         # Flash tab (functional, with vault integration)
         self._flash_tab = FlashTab(self._dm, self._fe, self._vault)
         self._tabs.addTab(self._flash_tab, "Flash")
@@ -214,11 +252,62 @@ class CyberControllerWindow(QMainWindow):
         self._tabs.addTab(self._cross_comm_tab, "Cross-Comm")
 
         # Mission planner (model exists; UI pending)
-        self._tabs.addTab(_placeholder_tab("Mission Planner — coming soon"), "Missions")
+        self._tabs.addTab(_placeholder_tab("Mission Planner -- coming soon"), "Missions")
 
         # Settings (persisted)
         self._settings_tab = SettingsTab()
         self._tabs.addTab(self._settings_tab, "Settings")
+
+    # ── Sidebar helpers ──────────────────────────────────────────────
+
+    def _refresh_sidebar_devices(self) -> None:
+        """Refresh the sidebar device list from DeviceManager."""
+        current_port = None
+        current_item = self._sidebar_device_list.currentItem()
+        if current_item:
+            current_port = current_item.data(Qt.UserRole)
+
+        self._sidebar_device_list.clear()
+        devices = self._dm.list_devices()
+        connected_count = 0
+
+        for dev in devices:
+            # Unicode status dot: green for connected, gray for disconnected
+            if dev.connected:
+                prefix = "● "  # green dot (colored via foreground)
+                connected_count += 1
+            else:
+                prefix = "○ "  # open circle for disconnected
+
+            item = QListWidgetItem(f"{prefix}{dev.display_name}")
+            item.setData(Qt.UserRole, dev.port)
+            if dev.connected:
+                item.setForeground(QColor("#39ff14"))
+            else:
+                item.setForeground(QColor("#8b949e"))
+            self._sidebar_device_list.addItem(item)
+
+            if dev.port == current_port:
+                self._sidebar_device_list.setCurrentItem(item)
+
+        total = len(devices)
+        self._device_count_label.setText(
+            f"{connected_count}/{total} device{'s' if total != 1 else ''}"
+        )
+
+    def _on_sidebar_device_selected(self, current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
+        if current is None:
+            return
+        port = current.data(Qt.UserRole)
+        if port:
+            self.device_selected.emit(port)
+
+    def _on_sidebar_scan(self) -> None:
+        """Scan ports and refresh the sidebar."""
+        for dev in self._dm.scan_ports():
+            if not self._dm.get_device(dev.port):
+                self._dm.add_device(dev)
+        self._refresh_sidebar_devices()
 
     # ── Status bar ───────────────────────────────────────────────────
 
@@ -252,18 +341,6 @@ class CyberControllerWindow(QMainWindow):
 
     def _on_save_session(self) -> None:
         log.info("Save session requested")
-
-    def _on_toggle_theme(self) -> None:
-        # Simple toggle: if the window bg is dark, switch to light
-        app = QApplication.instance()
-        if app is None:
-            return
-        current = app.palette().color(QPalette.Window).lightness()
-        if current < 128:
-            app.setPalette(app.style().standardPalette())
-            app.setStyleSheet("")
-        else:
-            _apply_dark_palette(app)
 
     def _change_font_size(self, delta: int) -> None:
         font = QApplication.font()
@@ -317,6 +394,7 @@ class CyberControllerWindow(QMainWindow):
 
     def closeEvent(self, event) -> None:
         self._timer.stop()
+        self._sidebar_timer.stop()
         self._health.stop()
         self._dm.shutdown()
         log.info("Window closed — resources released")
@@ -340,8 +418,7 @@ def launch_qt(
     app = QApplication(sys.argv)
     app.setApplicationName("Cyber Controller")
     app.setOrganizationName("LxveAce")
-    app.setFont(QFont("Segoe UI", 10))
-    _apply_dark_palette(app)
+    apply_theme(app)
 
     win = CyberControllerWindow(
         device_manager, flash_engine, event_bus, target_pool,

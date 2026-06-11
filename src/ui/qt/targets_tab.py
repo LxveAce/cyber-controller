@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -27,6 +28,7 @@ from PyQt5.QtWidgets import (
 )
 
 from src.core.cross_comm import EventBus, TargetPool
+from src.ui.qt.widgets.signal_bars import SignalBarsDelegate
 
 log = logging.getLogger(__name__)
 
@@ -72,16 +74,21 @@ class TargetsTab(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
 
+        # Search / filter bar
+        self._search_input = QLineEdit()
+        self._search_input.setPlaceholderText("Filter by SSID, MAC, or type...")
+        self._search_input.textChanged.connect(self._apply_filter)
+        root.addWidget(self._search_input)
+
         # Toolbar row
         toolbar = QHBoxLayout()
         self._count_label = QLabel("0 targets")
-        self._count_label.setStyleSheet("color: #888;")
+        self._count_label.setObjectName("muted")
         toolbar.addWidget(self._count_label)
         toolbar.addStretch()
         self._refresh_btn = QPushButton("Refresh")
         self._refresh_btn.clicked.connect(self._refresh)
         self._clear_btn = QPushButton("Clear All")
-        self._clear_btn.setStyleSheet("QPushButton { color: #ff4444; }")
         self._clear_btn.clicked.connect(self._on_clear)
         toolbar.addWidget(self._refresh_btn)
         toolbar.addWidget(self._clear_btn)
@@ -96,6 +103,11 @@ class TargetsTab(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setSortingEnabled(True)
         self._table.verticalHeader().setVisible(False)
+
+        # Use SignalBarsDelegate for the RSSI column (index 3)
+        self._signal_delegate = SignalBarsDelegate(self._table)
+        self._table.setItemDelegateForColumn(3, self._signal_delegate)
+
         root.addWidget(self._table)
 
     # ── EventBus wiring ──────────────────────────────────────────────
@@ -123,7 +135,6 @@ class TargetsTab(QWidget):
             self._table.setItem(row, 2, QTableWidgetItem(t.mac or ""))
 
             rssi_item = QTableWidgetItem(str(t.rssi))
-            rssi_item.setForeground(self._rssi_color(t.rssi))
             self._table.setItem(row, 3, rssi_item)
 
             self._table.setItem(row, 4, QTableWidgetItem(str(t.channel)))
@@ -133,6 +144,25 @@ class TargetsTab(QWidget):
         self._table.setSortingEnabled(True)
 
         self._count_label.setText(f"{len(targets)} target{'s' if len(targets) != 1 else ''}")
+
+        # Re-apply any active filter
+        self._apply_filter(self._search_input.text())
+
+    def _apply_filter(self, text: str) -> None:
+        """Show/hide table rows based on search text matching SSID, MAC, or Type."""
+        filter_text = text.strip().lower()
+        for row in range(self._table.rowCount()):
+            if not filter_text:
+                self._table.setRowHidden(row, False)
+                continue
+            # Check Type (col 0), SSID (col 1), MAC (col 2)
+            match = False
+            for col in (0, 1, 2):
+                item = self._table.item(row, col)
+                if item and filter_text in (item.text() or "").lower():
+                    match = True
+                    break
+            self._table.setRowHidden(row, not match)
 
     def _on_clear(self) -> None:
         reply = QMessageBox.question(
