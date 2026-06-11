@@ -148,12 +148,20 @@ log), boards COM5 (CYD) + COM7 (blank ESP32):
   **delivered the routed command over the real serial connection to device B**. So the cross-device
   route→deliver chain (the "one device's AP, another executes on it" core) is proven on real hardware,
   not just the unit logic. Suite now 107 passed + 1 skipped (108 with the live port).
-- STILL next-session: the FULL "device A's live Marauder scan auto-routes to device B's Marauder execution"
-  end-to-end needs (a) a no-display Marauder build for the bare ESP32 + (b) a Marauder serial→target.added
-  parser feeding the bus; UI-runtime smoke (PyQt5); optional install-password default (C3); device-side
-  anti-boot-bypass = T2/eFuse (C2). RESOLVED open item: `SerialConnection.write` correctly appends
-  exactly one `\n` terminator (and rejects only EMBEDDED control chars as an injection guard), so routed
-  commands DO terminate + execute on the device — the cross-comm command delivery is fully functional.
+- **CROSS-COMM LOOP COMPLETED (2026-06-11, HEAD 1395d85):** filled the missing glue. The parsers
+  (`src/protocols/marauder.py` etc.), pool, and router all existed, but nothing wired a device's serial
+  output into the pool. New **`src/core/target_ingest.py` TargetIngestor** registers an `on_line` handler
+  per connection that runs the device's protocol parser and feeds discovered APs/clients into the shared
+  `TargetPool` → `target.added` → AutoRouter → a command on another device. Wired into the Qt app
+  (`main_window` creates it; `DeviceTab` attaches it per-connection — backward-compatible optional args,
+  compile-validated since PyQt5 isn't installed). **+4 tests** prove the FULL loop with the REAL
+  parser/pool/router (a Marauder AP line → routed `attack <mac> ch 6` to device B). Suite **111 passed +
+  1 skipped**. `SerialConnection.write` confirmed to append exactly one `\n` (rejects only EMBEDDED
+  controls), so routed commands DO terminate + execute — delivery is fully functional.
+- STILL next-session: a LIVE 2-board demo (Marauder on both, scan on A auto-commands B — needs a
+  no-display Marauder build for a bare ESP32 + a DeviceTab firmware→protocol picker beyond the Marauder
+  default), Qt UI-runtime smoke (PyQt5), optional install-password default (C3), device-side
+  anti-boot-bypass = T2/eFuse (C2).
 
 ### 2.8 Docs / READMEs / website / profile
 - **Profile README** (`LxveAce/LxveAce`): added Cyber Controller as the flagship; updated Suicide
