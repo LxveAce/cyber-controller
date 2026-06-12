@@ -67,3 +67,4 @@ firmware_vault/
 
 # Secure storage vaults
 *.vault
+suicide-marauder/
