@@ -153,6 +153,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "halehound": "src.protocols.halehound",
     "meshtastic": "src.protocols.meshtastic",
     "esp32-div": "src.protocols.esp32_div",
+    "bw16": "src.protocols.bw16",
     "generic": "src.protocols",  # GenericProtocol lives in __init__
     "raw": "src.protocols",
 }
