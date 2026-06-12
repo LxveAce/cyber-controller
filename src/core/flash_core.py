@@ -884,6 +884,60 @@ class HaleHoundProfile(FirmwareProfile):
 
 
 # --------------------------------------------------------------------------- #
+# RTL8720DN / BW16 (AmebaD) — flashed by the 'rtl8720' backend, NOT esptool
+# --------------------------------------------------------------------------- #
+
+_RTL8720_BUNDLE_BASE = "https://raw.githubusercontent.com/vampel/vampel.github.io/main"
+#: Realtek's AmebaD ImageTool flashes these three images at fixed offsets, plus the SRAM
+#: loader. The Vampire Deauther serves them as raw files; we fetch them as one bundle and
+#: hand the directory to rtl8720_backend.flash_ambd().
+_RTL8720_BUNDLE_FILES = (
+    "km0_boot_all.bin",
+    "km4_boot_all.bin",
+    "km0_km4_image2.bin",
+    "imgtool_flashloader_amebad.bin",
+)
+
+
+class RtlAmeba8720Profile(FirmwareProfile):
+    """BW16 / RTL8720DN (Realtek AmebaD), dual-band 2.4/5 GHz WiFi + BLE.
+
+    NOT an Espressif chip — flashed by the ``rtl8720`` backend (Realtek's AmebaD ImageTool /
+    rtltool), never esptool. Its "release" is a fixed AmebaD bundle (km0_boot + km4_boot +
+    app image2) plus the SRAM loader, served as raw files by the Vampire Deauther repo. The
+    engine's ``_flash_rtl8720`` downloads the whole bundle and drives the ImageTool.
+    """
+
+    id = "rtl8720"
+    label = "BW16 RTL8720DN — Vampire Deauther (AmebaD)"
+    repo = "vampel/vampel.github.io"
+    supports_suicide = False
+    image_model = IMAGE_MERGED  # nominal; the backend handles the real 3-file layout
+
+    def latest_release(self) -> Tuple[str, List[Dict]]:
+        assets = [{
+            "name": n,
+            "url": f"{_RTL8720_BUNDLE_BASE}/{n}",
+            "chip": "rtl8720",
+            "label": "BW16 Vampire Deauther bundle (dual-band 2.4/5 GHz)",
+            "bundle": True,
+        } for n in _RTL8720_BUNDLE_FILES]
+        return ("vampire", assets)
+
+    def variants_for_chip(self, assets: List[Dict], chip: str) -> List[Dict]:
+        return [a for a in assets if a.get("chip") == "rtl8720"]
+
+    def default_variant(self, assets: List[Dict], chip: str) -> Optional[Dict]:
+        return assets[0] if assets else None
+
+    def support_files(self, chip: str, cache: str, on_line: Line) -> Optional[Dict[str, str]]:
+        return None
+
+    def app_offset(self, chip: str) -> str:
+        return "0x0"
+
+
+# --------------------------------------------------------------------------- #
 # Meshtastic profile  (meshtastic/firmware — many boards, merged factory bins)
 # --------------------------------------------------------------------------- #
 #
@@ -1423,6 +1477,7 @@ PROFILES: Dict[str, FirmwareProfile] = {
         BruceProfile(),
         GhostEspProfile(),
         HaleHoundProfile(),
+        RtlAmeba8720Profile(),
         MeshtasticProfile(),
         FlockYouProfile(),
         OuiSpyProfile(),

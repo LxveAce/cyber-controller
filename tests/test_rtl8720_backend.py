@@ -510,3 +510,90 @@ def test_download_mode_help_mentions_pin_sequence():
     help_text = rtl.download_mode_help().lower()
     assert "download mode" in help_text
     assert "pa7" in help_text or "reset" in help_text
+
+
+# --------------------------------------------------------------------------- #
+# AmebaD ImageTool path (flash_ambd) — the hardware-proven flash method
+# --------------------------------------------------------------------------- #
+
+def _make_bundle(tmp_path):
+    """Create a complete AmebaD bundle dir (3 images + SRAM loader) under tmp_path."""
+    d = tmp_path / "bundle"
+    d.mkdir()
+    for n in rtl.AMBD_BUNDLE_FILES:
+        (d / n).write_bytes(b"\x00" * 16)
+    (d / rtl.FLASH_LOADER_NAME).write_bytes(b"\x00" * 16)
+    return str(d)
+
+
+def test_find_ambd_tool_explicit(tmp_path):
+    exe = tmp_path / "upload_image_tool_linux"
+    exe.write_text("#!/bin/sh\n")
+    assert rtl.find_ambd_tool(str(exe)) == os.path.abspath(str(exe))
+    assert rtl.find_ambd_tool(str(tmp_path / "nope")) is None
+
+
+def test_find_ambd_tool_env(tmp_path, monkeypatch):
+    exe = tmp_path / "upload_image_tool_linux"
+    exe.write_text("#!/bin/sh\n")
+    monkeypatch.setenv("CYBERC_AMEBAD_TOOL", str(exe))
+    monkeypatch.setattr(rtl, "_realtek_tool_dirs", lambda: [])
+    monkeypatch.setattr(rtl.shutil, "which", lambda name: None)
+    assert rtl.find_ambd_tool() == os.path.abspath(str(exe))
+
+
+def test_ambd_tool_available_false(monkeypatch):
+    monkeypatch.setattr(rtl, "find_ambd_tool", lambda explicit=None: None)
+    assert rtl.ambd_tool_available() is False
+
+
+def test_flash_ambd_missing_tool_raises(tmp_path, monkeypatch):
+    monkeypatch.setattr(rtl, "find_ambd_tool", lambda explicit=None: None)
+    with pytest.raises(rtl.RtlToolNotFound):
+        rtl.flash_ambd("COM8", _make_bundle(tmp_path))
+
+
+def test_flash_ambd_incomplete_bundle_raises(tmp_path, monkeypatch):
+    monkeypatch.setattr(rtl, "find_ambd_tool",
+                        lambda explicit=None: "/fake/upload_image_tool_linux")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    with pytest.raises(FileNotFoundError):
+        rtl.flash_ambd("COM8", str(empty))
+
+
+def test_flash_ambd_success_argv_and_detection(tmp_path, monkeypatch):
+    tool = "/fake/upload_image_tool_linux"
+    monkeypatch.setattr(rtl, "find_ambd_tool", lambda explicit=None: tool)
+    fp = _install_fake_popen(monkeypatch, out_lines=[
+        "set baudrate to 115200.", "enter download flash mode.",
+        "app has been sent successfully.",
+        "verifying km0 km4 and app blocks....ok.", "done.",
+    ], returncode=0)
+    bundle = _make_bundle(tmp_path)
+    out = _Collector()
+    rc = rtl.flash_ambd("COM8", bundle, on_line=out)
+    assert rc == 0
+    argv = fp.last_argv
+    assert argv[0] == tool and argv[1] == bundle and argv[2] == "COM8"
+    assert "--auto=1" in argv
+    assert any("verified" in l.lower() for l in out.lines)
+
+
+def test_flash_ambd_failure_detected_from_output(tmp_path, monkeypatch):
+    # The ImageTool exits 0 even on failure — success/failure is judged from output.
+    monkeypatch.setattr(rtl, "find_ambd_tool",
+                        lambda explicit=None: "/fake/upload_image_tool_linux")
+    _install_fake_popen(monkeypatch,
+                        out_lines=["enter download flash mode.", "** sync timeout.", "failed."],
+                        returncode=0)
+    rc = rtl.flash_ambd("COM8", _make_bundle(tmp_path), on_line=_Collector())
+    assert rc != 0
+
+
+def test_flash_ambd_auto_false_argv(tmp_path, monkeypatch):
+    monkeypatch.setattr(rtl, "find_ambd_tool",
+                        lambda explicit=None: "/fake/upload_image_tool_linux")
+    fp = _install_fake_popen(monkeypatch, out_lines=["done."], returncode=0)
+    rtl.flash_ambd("COM8", _make_bundle(tmp_path), auto=False, on_line=_Collector())
+    assert "--auto=0" in fp.last_argv

@@ -521,3 +521,154 @@ def flash(port: str, image: str, on_line: Optional[Line] = None,
         on_line("[rtl8720] flash FAILED. The pre-write backup (if taken) can restore the "
                 "board: re-run with that .bin as the image once the connection is fixed.")
     return rc
+
+
+# --------------------------------------------------------------------------- #
+# AmebaD ImageTool path (Realtek's upload_image_tool — the HARDWARE-PROVEN path)
+# --------------------------------------------------------------------------- #
+#
+# This is the path validated end-to-end on a real BW16: Realtek's official
+# ``upload_image_tool`` (from the ambiot/ambd_arduino package) flashed the Vampire
+# Deauther and checksum-verified it, AUTO-entering download mode via DTR/RTS — no
+# button press. Unlike rtltool's single merged .bin, the ImageTool flashes a THREE
+# FILE AmebaD bundle at fixed offsets:
+#     km0_boot_all.bin    @ 0x08000000
+#     km4_boot_all.bin    @ 0x08004000
+#     km0_km4_image2.bin  @ 0x08006000   (the app)
+# plus the SRAM loader imgtool_flashloader_amebad.bin. The tool chdir's into the
+# bundle directory and expects those exact filenames there. CLI (positional):
+#     upload_image_tool_<os> <bundle_dir> <PORT> --auto=<1|0> --verbose=<n>
+# It is write+verify only (no read/dump) and exits 0 regardless, printing "done." on
+# success or "failed" — so success is detected from the OUTPUT, not the exit code.
+#
+# LICENSING: the Windows ImageTool is a Cygwin build (needs cygwin1.dll beside it) and
+# is GPL — we do NOT bundle it in this MIT repo. It is discovered via the
+# CYBERC_AMEBAD_TOOL env var, a (gitignored) tools/realtek/ dir, or PATH, and the user
+# obtains it from the ambd_arduino package for their own use.
+
+#: The three AmebaD images the ImageTool flashes (at fixed offsets baked into the tool).
+AMBD_BUNDLE_FILES = ("km0_boot_all.bin", "km4_boot_all.bin", "km0_km4_image2.bin")
+
+#: Candidate basenames for the AmebaD ImageTool, per platform.
+_AMBD_TOOL_NAMES = (
+    "upload_image_tool_windows.exe",
+    "upload_image_tool_linux",
+    "upload_image_tool_macos",
+)
+
+
+def _realtek_tool_dirs() -> List[str]:
+    """Bundled-tool dirs plus a ``realtek`` subdir convention for the ImageTool."""
+    dirs: List[str] = []
+    for d in _bundled_tools_dirs():
+        dirs.append(d)
+        dirs.append(os.path.join(d, "realtek"))
+    return dirs
+
+
+def find_ambd_tool(explicit: Optional[str] = None) -> Optional[str]:
+    """Locate Realtek's ``upload_image_tool`` (AmebaD). Returns an abspath or None.
+
+    Search order: explicit path -> ``CYBERC_AMEBAD_TOOL`` env -> bundled ``tools/`` and
+    ``tools/realtek/`` dirs -> ``PATH``.
+    """
+    if explicit:
+        return os.path.abspath(explicit) if os.path.isfile(explicit) else None
+    env = os.environ.get("CYBERC_AMEBAD_TOOL")
+    if env and os.path.isfile(env):
+        return os.path.abspath(env)
+    for d in _realtek_tool_dirs():
+        for name in _AMBD_TOOL_NAMES:
+            cand = os.path.join(d, name)
+            if os.path.isfile(cand):
+                return os.path.abspath(cand)
+    for name in _AMBD_TOOL_NAMES:
+        found = shutil.which(name)
+        if found:
+            return os.path.abspath(found)
+    return None
+
+
+def ambd_tool_available(explicit: Optional[str] = None) -> bool:
+    """True if :func:`find_ambd_tool` can locate the AmebaD ImageTool."""
+    return find_ambd_tool(explicit) is not None
+
+
+def ambd_install_guidance() -> str:
+    """How to obtain the AmebaD ImageTool (for logs / dialogs)."""
+    return (
+        "Realtek AmebaD ImageTool not found. The BW16 / RTL8720DN is flashed by Realtek's "
+        "upload_image_tool (from the ambiot/ambd_arduino package, under "
+        "Arduino_package/ameba_d_tools_<os>/). On Windows it is a Cygwin build and needs "
+        "cygwin1.dll in the SAME directory. We do not bundle it (GPL). Obtain it, then set "
+        "the CYBERC_AMEBAD_TOOL env var to its full path, or drop it (with cygwin1.dll) in "
+        "this app's tools/realtek/ directory."
+    )
+
+
+def flash_ambd(port: str, bundle_dir: str, tool: Optional[str] = None,
+               auto: bool = True, verbose: int = 1,
+               on_line: Optional[Line] = None, timeout: int = 300) -> int:
+    """Flash a BW16 via Realtek's AmebaD ImageTool from a 3-file *bundle_dir*. Returns 0/!=0.
+
+    *bundle_dir* must contain the three :data:`AMBD_BUNDLE_FILES` plus the SRAM loader
+    ``imgtool_flashloader_amebad.bin`` (the tool chdir's there and reads them by name). With
+    *auto* True the tool toggles DTR/RTS to enter download mode automatically (proven to work
+    on the BW16); with *auto* False it gives a 5s countdown for a manual BOOT+RESET. Success is
+    detected from the tool's output ("done." with no "failed"), since the ImageTool exits 0
+    regardless. Raises :class:`RtlToolNotFound` if the tool is missing and
+    :class:`FileNotFoundError` if the bundle/loader is incomplete (so we never start a
+    destructive op on a bad bundle).
+    """
+    on_line = on_line or (lambda _s: None)
+    resolved = find_ambd_tool(tool)
+    if not resolved:
+        raise RtlToolNotFound(ambd_install_guidance())
+
+    missing = [f for f in AMBD_BUNDLE_FILES
+               if not os.path.isfile(os.path.join(bundle_dir, f))]
+    if missing:
+        raise FileNotFoundError(
+            f"AmebaD firmware bundle incomplete in {bundle_dir}: missing {missing}")
+    # The loader must sit in the bundle dir (the tool chdir's there). Copy it next to the
+    # bundle from beside the tool if it's only there.
+    loader = os.path.join(bundle_dir, FLASH_LOADER_NAME)
+    if not os.path.isfile(loader):
+        beside = os.path.join(os.path.dirname(resolved), FLASH_LOADER_NAME)
+        if os.path.isfile(beside):
+            shutil.copy2(beside, loader)
+        else:
+            raise FileNotFoundError(
+                f"{FLASH_LOADER_NAME} not found in {bundle_dir} or beside the tool")
+
+    # On Windows the Cygwin build needs cygwin1.dll beside it — warn early if absent.
+    if resolved.lower().endswith(".exe"):
+        if not os.path.isfile(os.path.join(os.path.dirname(resolved), "cygwin1.dll")):
+            on_line("[rtl8720/ambd] WARNING: cygwin1.dll not found next to the tool; the "
+                    "Cygwin ImageTool build will fail to start without it.")
+
+    on_line(f"[rtl8720/ambd] tool: {resolved}")
+    on_line(f"[rtl8720/ambd] bundle: {bundle_dir}")
+    if auto:
+        on_line("[rtl8720/ambd] auto-download via DTR/RTS — no button press needed on boards "
+                "that wire it (the BW16 does). If it times out on sync, retry with auto=False "
+                "and hold BOOT + tap RESET during the 5s countdown.")
+    else:
+        on_line("[rtl8720/ambd] manual mode: hold BOOT, tap RESET during the 5s countdown.")
+
+    argv = [resolved, bundle_dir, port, f"--auto={1 if auto else 0}", f"--verbose={verbose}"]
+    tee = _Tee(on_line)
+    rc = _run_stream(argv, tee, timeout)
+
+    low = tee.text.lower()
+    # The ImageTool exits 0 regardless; judge by output. "done." == success (it prints it
+    # only after a successful checksum verify); "failed" / a sync error == failure.
+    if "failed" in low or _looks_like_no_sync(low):
+        if _looks_like_no_sync(low):
+            on_line("[rtl8720/ambd] no ROM-loader sync — the board did not enter download "
+                    "mode. Retry with auto=False + BOOT/RESET, or check the cable.")
+        return rc or 1
+    if rc == 0 and "done." in low:
+        on_line("[rtl8720/ambd] flash complete (checksum verified).")
+        return 0
+    return rc or 1

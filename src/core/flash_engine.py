@@ -181,6 +181,8 @@ class FlashEngine:
                 ok = self._flash_adb(port, profile, progress)
             elif backend in ("sd", "sd-image"):
                 ok = self._flash_sd(port, profile, progress)
+            elif backend == "rtl8720":
+                ok = self._flash_rtl8720(port, profile, progress)
             else:
                 if progress:
                     progress(0, f"Unknown backend: {profile.backend}")
@@ -358,6 +360,51 @@ class FlashEngine:
         except Exception as exc:
             on_line(f"[adb] install failed: {exc}")
             return False
+
+    # ── RTL8720DN / BW16 (AmebaD ImageTool, not esptool) ─────────────
+
+    def _flash_rtl8720(
+        self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
+    ) -> bool:
+        import os
+        from src.core.backends import rtl8720_backend as rtl
+
+        on_line = _percent_adapter(progress)
+        if not rtl.ambd_tool_available():
+            on_line("[rtl8720] " + rtl.ambd_install_guidance())
+            return False
+
+        # Resolve the firmware bundle: a local dir the user pointed at, else download the
+        # Vampire Deauther AmebaD bundle (km0/km4/app + SRAM loader) to a dedicated workdir.
+        bundle_dir = profile.local_path if profile.local_path else None
+        if bundle_dir and os.path.isdir(bundle_dir):
+            on_line(f"[rtl8720] using local bundle dir: {bundle_dir}")
+        else:
+            core = flash_core.get_profile("rtl8720")
+            try:
+                on_line("[rtl8720] resolving Vampire Deauther bundle...")
+                _tag, assets = core.latest_release()
+            except Exception as exc:
+                on_line(f"[rtl8720] could not resolve firmware bundle: {exc}")
+                return False
+            bundle_dir = os.path.join(flash_core.cache_dir(), "rtl8720_bundle")
+            os.makedirs(bundle_dir, exist_ok=True)
+            try:
+                for a in assets:
+                    flash_core.download_to(a["url"], bundle_dir, a["name"], on_line)
+            except Exception as exc:
+                on_line(f"[rtl8720] firmware download failed: {exc}")
+                return False
+
+        try:
+            # auto=True: the BW16 auto-enters download mode via DTR/RTS (validated on HW).
+            rc = rtl.flash_ambd(port, bundle_dir, auto=True, on_line=on_line)
+        except Exception as exc:
+            on_line(f"[rtl8720] flash failed: {exc}")
+            rc = 1
+        if progress:
+            progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
+        return rc == 0
 
     # ── SD image (Raspberry Pi firmwares) ────────────────────────────
 
