@@ -238,7 +238,13 @@ class FlashEngine:
 
         cache = flash_core.cache_dir()
         try:
-            app_path = flash_core.download_to(variant["url"], cache, variant["name"], on_line)
+            # Firmwares that ship a per-board ZIP bundle (e.g. GhostESP) carry a
+            # "zip_member" — download the zip and extract the flashable merged image.
+            if variant.get("zip_member"):
+                app_path = flash_core.download_and_extract(
+                    variant["url"], cache, variant["name"], variant["zip_member"], on_line)
+            else:
+                app_path = flash_core.download_to(variant["url"], cache, variant["name"], on_line)
         except Exception as exc:
             on_line(f"[error] download failed: {exc}")
             return False
