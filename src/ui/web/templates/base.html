@@ -6,8 +6,8 @@
     <title>{% block title %}Cyber Controller{% endblock %}</title>
     <meta name="csrf-token" content="{{ csrf_token }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
-    <script>window.CSRF_TOKEN = {{ csrf_token|tojson }};</script>
+    <script nonce="{{ csp_nonce }}" src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <script nonce="{{ csp_nonce }}">window.CSRF_TOKEN = {{ csrf_token|tojson }};</script>
 </head>
 <body>
     <nav class="navbar">
@@ -15,7 +15,7 @@
             <span class="brand-icon">&#x25C8;</span>
             <span class="brand-text">Cyber Controller</span>
         </div>
-        <button class="nav-toggle" onclick="document.querySelector('.nav-links').classList.toggle('open')" aria-label="Toggle navigation">
+        <button class="nav-toggle" id="nav-toggle" aria-label="Toggle navigation">
             &#9776;
         </button>
         <div class="nav-links">
@@ -34,7 +34,12 @@
         <span>Cyber Controller &mdash; LxveAce 2026</span>
     </footer>
 
-    <script>
+    <script nonce="{{ csp_nonce }}">
+        // Nav toggle (moved off an inline onclick= so the strict nonce CSP can drop 'unsafe-inline').
+        document.getElementById('nav-toggle').addEventListener('click', function () {
+            document.querySelector('.nav-links').classList.toggle('open');
+        });
+
         // Authenticate the socket handshake with the per-session CSRF/connection token.
         const socket = io({ auth: { csrf: window.CSRF_TOKEN } });
 
