@@ -31,12 +31,19 @@ class CommandInfo:
         category: Grouping category.
         description: What the command does.
         args: Optional argument description.
+        danger: Risk class for the safety/disclaimer system. "" = safe;
+            "lab-only" = RF transmit / jamming / deauth / brute force that
+            must only be run in an authorized, controlled environment;
+            "illegal-tx" = transmission that is illegal in most jurisdictions
+            (e.g. broadband jamming). The UI gates non-empty values behind a
+            confirmation unless the user has suppressed warnings.
     """
 
     name: str
     category: str = ""
     description: str = ""
     args: str = ""
+    danger: str = ""
 
 
 class BaseProtocol(ABC):

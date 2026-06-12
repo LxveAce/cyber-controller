@@ -21,7 +21,9 @@ log = logging.getLogger(__name__)
 
 # ── Defaults ─────────────────────────────────────────────────────────
 
-DEFAULTS: dict[str, dict[str, Any]] = {
+# Note: most sections are dicts, but a couple of top-level scalars (e.g.
+# "_disclaimer_ack") also live here — hence the ``Any`` value type.
+DEFAULTS: dict[str, Any] = {
     "serial": {
         "default_baud": 115200,
         "timeout": 5,
@@ -39,6 +41,16 @@ DEFAULTS: dict[str, dict[str, Any]] = {
     "vault": {
         "dir": str(Path.home() / ".cyber-controller" / "firmware"),
     },
+    # Safety / disclaimer system (see src/core/safety.py). These LABEL and warn;
+    # they never remove or block a capability — "Yes, proceed" is always available,
+    # and suppress_all_warnings turns the friction off entirely.
+    "safety": {
+        "confirm_dangerous": True,       # show a confirm before a dangerous send
+        "suppress_all_warnings": False,  # master off-switch for per-command warnings
+    },
+    # One-time legal/authorized-use disclaimer acknowledgement (top-level scalar,
+    # round-trips through _deep_merge). Shown once regardless of suppress_all_warnings.
+    "_disclaimer_ack": False,
 }
 
 # Directory + file location.  Resolved at import time from the user's home.
