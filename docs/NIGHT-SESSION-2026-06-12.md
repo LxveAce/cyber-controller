@@ -85,6 +85,41 @@ COM8 BW16 `AT+SCAN` (39-line dual-band scan) + COM9 GhostESP `scanap` (94 APs), 
 Confirmed my two zip fixes covered the real bugs; the "0-variant" firmwares (flock-you/oui-spy/
 sky-spy/airtag/cyt-ng/minigotchi) genuinely have NO GitHub releases (source-only, 404) — correct.
 
+### 10. Security audit — ALL 10 findings closed (PRs #5–#8)
+Worked the full `security-audit.md` checklist to done. **PR #5** M-1 (idempotent+rate-limited
+`subscribe_serial` + `remove_line_callback` — kills the callback-leak/emit DoS), M-4 (`admin_ip`
+ipaddress validation), L-3 (honest password-zeroization). **PR #6** M-2 (vault GitHub-API GETs
+routed through the SSRF allowlist via `_safe_api_get_json`), M-3 (session+CSRF rotation on login),
+H-2 (refuse the Werkzeug dev server on a LAN bind unless `CC_WEB_ALLOW_DEV_SERVER=1`), L-1 (new
+`src/security/win_acl.py` — explicit owner+SYSTEM NTFS ACLs on the config dir / secret key / vault /
+settings; live-verified the ACL drops to SYSTEM+owner). **PR #7** L-2 (durable, owner-only,
+hash-chained audit trail — append-only JSONL, verified on load; web warns on `audit=None`). **PR #8**
+L-4 (strict CSP nonce for `script-src`, dropped `'unsafe-inline'`; every inline script nonce-tagged
+and all inline `on*=` handlers moved to `addEventListener`). +15 tests across the four PRs.
+
+### 11. UI performance optimization — invisible wins only (PR #9)
+Applied the no-visual-change items from `ui-optimization.md`: #1 HealthTab reads the cached
+`latest_system_health` instead of a 100 ms GUI-thread `psutil.cpu_percent(interval=0.1)` every 5 s;
+#2 `BaseProtocol.cached_commands()` memoizes the static per-class command list (was rebuilt on every
+Send + the 236-item startup palette); #6 `maximumBlockCount` bounds the device/persistent/cross-comm
+logs. Skipped the appearance-affecting items (touch sizing, min window size, lazy tabs) — those need
+an owner decision. +4 regression tests; offscreen GUI smoke builds all 9 tabs.
+
+### 12. Fact-check corrections (PR #10)
+Re-verified every firmware version/repo against the GitHub API *today* before editing. Bruce was
+renamed `pr3y/Bruce` → **`BruceDevices/firmware`** (still 301-redirects, so flashing wasn't broken;
+pointed `flash_core` + `bruce.json` + README at the live repo, asset naming verified identical, tag
+1.15/59 assets parse). Firmware count corrected 18+/19+ → exact **19**. The scratch note's Meshtastic
+"2.7.25.x" did NOT match the API (latest stable v2.7.15) → discarded for the verified number.
+GhostESP 1.9.10 / DIV 1.6.0 / rayhunter 0.11.2 / pwnagotchi 2.9.5.4 / Marauder 1.12.1 confirmed
+current and left as-is.
+
+### 13. RELEASE — v1.1.0 shipped (PR #11 + tag + GitHub release)
+All 10 PRs were unreleased (v1.0.0 was cut at 20:24 before tonight's work). Cut **v1.1.0**: bumped
+`pyproject` 1.0.0→1.1.0 and `src/__init__` 0.2.0→1.1.0 (were inconsistent), added `CHANGELOG.md`,
+tagged `v1.1.0` on `e8151cb`, and published the GitHub release (now Latest). Backward-compatible
+feature + hardening release.
+
 ---
 
 ## Running task list / vision (squash these)
@@ -93,21 +128,22 @@ sky-spy/airtag/cyt-ng/minigotchi) genuinely have NO GitHub releases (source-only
 - [x] Meshtastic flashed + configured (region US, "Cyberdeck/DECK") + working on Heltec V3 (COM12)
 - [x] Security H-1: SHA-256-pin the BW16 firmware (PR #3)
 - [x] **Unified Action Broadcast** — shipped (PR #4) + live-validated on BW16+GhostESP
-- [ ] **Apply remaining security findings** (M-1 subscribe dedup, M-2 vault SSRF allowlist, L-1 NTFS ACLs)
-- [ ] **Apply fact-check corrections** (`_smbuild/night_deliverables/fact-check.md`) to repos + push
-- [ ] **Apply UI optimization plan** (`_smbuild/night_deliverables/ui-optimization.md`) — keep look+function
+- [x] **All remaining security findings** — H-2, M-1–M-4, L-1–L-4 (PRs #5–#8); audit fully closed
+- [x] **UI optimization plan** — invisible perf wins applied (PR #9); look+function unchanged
+- [x] **Fact-check corrections** — Bruce repo + count, API-reverified (PR #10)
+- [x] **Released v1.1.0** (PR #11 + tag + GitHub release) — "release it, don't wait for me" ✓
 - [ ] Sweep remaining flashables on connected boards (Marauder/Bruce/HaleHound re-confirm on current fleet)
 - [ ] Raspberry Pi: bring up as cyberdeck core (CyberC on it; drive nodes), talk to ESP-on-Pi-USB, end on Kali
 - [ ] Vision-forward doc (squash-all roadmap)
 - [ ] **Update websites (cybercontroller.org/esp32marauder.com) — AT THE END**
-- [ ] Release the UI if it reaches a clean point (4 PRs in — strong candidate for a tagged release)
 
 ## State for continuity
-- 4 PRs merged tonight (cyber-controller master `ea243f3`). All as LxveAce. Suite green; GUI smoke passes.
-- Fleet: COM3 ESP-AT(stuck) · COM8 BW16-Vampire · COM9 GhostESP · COM10 ESP32-DIV v1.1.0 · COM11 classic-ESP32(SD-fw) · COM12 Meshtastic Heltec-V3. **Pi still NOT present** (scanned repeatedly).
-- Deliverable docs to mine: `_smbuild/night_deliverables/{security-audit,fact-check,ui-optimization}.md` (+ .SUMMARY).
+- **11 PRs merged tonight** (cyber-controller master `e8151cb`). All as LxveAce. Suite green; GUI smoke passes.
+- **v1.1.0 RELEASED** and live as the latest GitHub release.
+- Fleet: COM3 ESP-AT(stuck) · COM8 BW16-Vampire · COM9 GhostESP · COM10 classic-ESP32(CH340K) · COM11 classic-ESP32(SD-fw) · COM12 Meshtastic Heltec-V3. **Pi still NOT present** (scanned repeatedly, incl. ARP).
+- Deliverable docs at `/c/Users/extra/projects/_smbuild/night_deliverables/` (security-audit/fact-check/ui-optimization/cyberdeck-brainstorm/build-guide/unified-action-design, each +.SUMMARY).
 - meshtastic CLI + PyQt5 + psutil installed. BW16 AmebaD tool at `_smbuild/bw16/` (CYBERC_AMEBAD_TOOL).
 
 ## Open questions (logged, not blocking — simulate/verify)
-- Pi connection method (LAN IP / USB-ether gadget / SD here)? Scanning each cycle.
-- Tag a v1.x release after the broadcast + zip fixes? (leaning yes — clean, tested, big new feature.)
+- Pi connection method (LAN IP / USB-ether gadget / SD here)? Scanning each cycle — still absent.
+- Owner-decision UI items deferred from `ui-optimization.md`: touch sizing, min-window-size for 800×480, lazy tab construction.
