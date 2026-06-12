@@ -309,3 +309,19 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("BLE Skimmer Scan", "bleskimmer", "Scan for BLE credit card skimmers", ActionCategory.SCAN),
     ],
 }
+
+
+# --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
+# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
+from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
+
+BROADCAST_CAPABILITIES = {
+    BroadcastVerb.FIND_APS:           ((), "scanap"),
+    BroadcastVerb.SCAN_STATIONS:      ((), "scansta"),
+    BroadcastVerb.BLE_SCAN:           ((), "blescan"),
+    BroadcastVerb.CAPTURE_HANDSHAKES: ((), "sniffpwn"),
+    BroadcastVerb.DEAUTH_ALL:         (("select -a all",), "attack -t deauth"),
+    BroadcastVerb.BEACON_SPAM:        ((), "attack -t beacon -r"),
+    BroadcastVerb.BLE_SPAM:           ((), "blespam -t all"),
+    BroadcastVerb.STOP_ALL:           ((), "stopscan"),
+}
