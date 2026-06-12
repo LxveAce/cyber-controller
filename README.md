@@ -37,8 +37,10 @@ It is built for **cyberdecks, field deployments, and security research** — run
 ## Three Pillars
 
 ### ⚡ Flash
-- **18+ firmware profiles** across **4 backends**: `esptool` (ESP32), `qFlipper` (Flipper Zero),
-  `ADB` (Android/Orbic), `SD image` (Raspberry Pi).
+- **19+ firmware profiles** across **5 backends**: `esptool` (ESP32), `qFlipper` (Flipper Zero),
+  `ADB` (Android/Orbic), `SD image` (Raspberry Pi), and **`rtl8720` (Realtek AmebaD)** for the
+  dual-band 2.4/5 GHz **BW16 / RTL8720DN** — hardware-validated end-to-end (downloads the firmware
+  bundle, drives the AmebaD ImageTool, checksum-verifies).
 - **Hardware-validated flash core** ported from the field-proven `headless-marauder-gui` lineage:
   chip auto-detection, the critical `--flash_size detect` anti-brick patch, correct per-chip
   bootloader offsets (incl. the **ESP32-C5 `0x2000`** gotcha), and child-process kill-on-error so a
@@ -47,8 +49,12 @@ It is built for **cyberdecks, field deployments, and security research** — run
   **backup & restore**.
 
 ### 🎮 Control
-- **Protocol-aware serial monitor** with per-firmware command palettes for **Marauder, GhostESP,
-  Bruce, Flipper, HaleHound, Meshtastic** — 70+ Marauder commands built in.
+- **Protocol-aware serial monitor** with a **per-device firmware selector** + per-firmware command
+  palettes for **Marauder, GhostESP, Bruce, Flipper, HaleHound, Meshtastic, ESP32-DIV, and BW16
+  (RTL8720DN `AT+` CLI)** — 70+ Marauder commands built in.
+- **Safety / disclaimer layer** — dangerous transmit commands (deauth / jam / beacon spam) are
+  **labeled and confirmed, never blocked**; a one-time legal disclaimer on first launch plus a
+  Settings "suppress all warnings" master toggle. (Full capability is always retained.)
 - **Macro recorder & playback** with timing capture and variable substitution.
 - **Tamper-evident audit trail** (SHA-256 hash chain) over flashes and serial commands.
 
@@ -65,13 +71,14 @@ It is built for **cyberdecks, field deployments, and security research** — run
 | **Bruce** | [pr3y/Bruce](https://github.com/pr3y/Bruce) | ESP32 / S3 / C5 | esptool (merged) |
 | **GhostESP** | [GhostESP-Revival/GhostESP](https://github.com/GhostESP-Revival/GhostESP) | ESP32 / S2 / S3 / C-series | esptool |
 | **HaleHound** | [JesseCHale/HaleHound-CYD](https://github.com/JesseCHale/HaleHound-CYD) | ESP32 (CYD) | esptool |
-| **ESP32-DIV** | [cifertech/ESP32-DIV](https://github.com/cifertech/ESP32-DIV) | ESP32-S3 | esptool |
+| **ESP32-DIV** | [cifertech/ESP32-DIV](https://github.com/cifertech/ESP32-DIV) | ESP32-S3 (v2) / ESP32 (v1.1.0 legacy) | esptool |
 | **MinigotchiV3** | [dj1ch/minigotchi-ESP32](https://github.com/dj1ch/minigotchi-ESP32) | ESP32 (dual-core) | esptool |
 | **Meshtastic** | [meshtastic/firmware](https://github.com/meshtastic/firmware) | ESP32-S3 / Heltec | esptool |
 | **Flock-You** | [colonelpanichacks/flock-you](https://github.com/colonelpanichacks/flock-you) | ESP32-S3 | esptool |
 | **OUI-Spy** | [colonelpanichacks/oui-spy](https://github.com/colonelpanichacks/oui-spy) | ESP32-S3 | esptool |
 | **Sky-Spy** (drone RemoteID) | [colonelpanichacks/Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy) | ESP32-S3 / C6 | esptool |
 | **AirTag Scanner** | [MatthewKuKanich/ESP32-AirTag-Scanner](https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner) | ESP32 / S3 | esptool |
+| **BW16 Vampire Deauther** | [vampel](https://github.com/vampel/vampel.github.io) · [RTL8720dn-Deauther](https://github.com/tesa-klebeband/RTL8720dn-Deauther) | **RTL8720DN** (AmebaD, **dual-band 2.4/5 GHz** + BLE) | **rtl8720** |
 | **Flipper Momentum** | [Next-Flip/Momentum-Firmware](https://github.com/Next-Flip/Momentum-Firmware) | STM32WB55 | qFlipper |
 | **Flipper Unleashed** | [DarkFlippers/unleashed-firmware](https://github.com/DarkFlippers/unleashed-firmware) | STM32WB55 | qFlipper |
 | **RayHunter** (IMSI-catcher detect) | [EFForg/rayhunter](https://github.com/EFForg/rayhunter) | Orbic RC400L | ADB |
@@ -189,8 +196,11 @@ python build.py        # PyInstaller single-file executable in dist/
 - [x] Real ADB / SD-image backends, backup + restore, batch flash
 
 ### Phase 2 — Intelligence
-- [x] Protocol parsers (Marauder, GhostESP, Bruce, Flipper, HaleHound, Meshtastic) + registry
-- [x] Shared target pool + cross-comm UI
+- [x] Protocol parsers (Marauder, GhostESP, Bruce, Flipper, HaleHound, Meshtastic, **ESP32-DIV, BW16**) + registry
+- [x] Shared target pool (APs + **BLE / SubGHz / NFC / rogue-AP**) + cross-comm UI
+- [x] **Per-device firmware selector** (any firmware feeds the AutoRouter, not just Marauder)
+- [x] **BW16 / RTL8720DN AmebaD flash backend** — HW-validated end-to-end
+- [x] **Safety / disclaimer layer** (labels & confirms dangerous TX, never blocks; suppressible)
 - [x] Encrypted session storage (AES-256-GCM)
 - [ ] Target dossier panel · network topology graph · mission planner · duress mode
 
