@@ -20,7 +20,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-_SUBMODULE = Path(__file__).resolve().parents[2] / "suicide-marauder"
+_SUBMODULE = Path(__file__).resolve().parents[2] / "deadmans-switch"
 _HOST = _SUBMODULE / "host"
 _PARTS = _SUBMODULE / "firmware" / "partitions"
 
@@ -68,11 +68,11 @@ def partitions_csv(cfg: SuicideConfig) -> Path:
 
 
 def _load_provision():
-    """Import the Suicide-Marauder host provisioner from the submodule."""
+    """Import the Dead Man's Switch host provisioner from the submodule."""
     if not (_HOST / "provision.py").exists():
         raise FileNotFoundError(
-            f"Suicide-Marauder provisioner not found at {_HOST}. Initialise the submodule: "
-            f"git submodule update --init suicide-marauder"
+            f"Dead Man's Switch provisioner not found at {_HOST}. Initialise the submodule: "
+            f"git submodule update --init deadmans-switch"
         )
     if str(_HOST) not in sys.path:
         sys.path.insert(0, str(_HOST))

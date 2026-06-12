@@ -6,16 +6,17 @@ import logging
 from typing import TYPE_CHECKING
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
     QComboBox,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTextEdit,
     QVBoxLayout,
@@ -77,6 +78,7 @@ class DeviceTab(QWidget):
             self._ingestor = TargetIngestor(self._pool)
         self._active_conn: SerialConnection | None = None
         self._active_port: str = ""
+        self._dms_auth = None  # Optional DeadManAuth instance, set by main window
         self._line_signal = _LineSignal()
         self._line_signal.line_received.connect(self._on_line_received)
 
@@ -92,20 +94,27 @@ class DeviceTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
         splitter = QSplitter(Qt.Horizontal)
 
-        # ── Left: device list ────────────────────────────────────────
+        # ── Left: device list (in scroll area) ──────────────────────
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setMinimumWidth(160)
+
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
 
         lbl = QLabel("Devices")
-        lbl.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        lbl.setObjectName("card_title")
         left_layout.addWidget(lbl)
 
         self._device_list = QListWidget()
+        self._device_list.setMinimumHeight(80)
         self._device_list.currentItemChanged.connect(self._on_device_selected)
-        left_layout.addWidget(self._device_list)
+        left_layout.addWidget(self._device_list, stretch=1)
 
         # Per-device firmware selector — drives the cross-comm ingest parser and
         # (via the palette) which command set is offered. Lets a HaleHound / DIV /
@@ -133,7 +142,8 @@ class DeviceTab(QWidget):
         btn_refresh.clicked.connect(self._scan_and_add)
         left_layout.addWidget(btn_refresh)
 
-        splitter.addWidget(left)
+        left_scroll.setWidget(left)
+        splitter.addWidget(left_scroll)
 
         # ── Right: serial terminal ───────────────────────────────────
         right = QWidget()
@@ -141,28 +151,28 @@ class DeviceTab(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
 
         self._term_label = QLabel("Serial Terminal")
-        self._term_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        self._term_label.setObjectName("card_title")
+        self._term_label.setWordWrap(True)
         right_layout.addWidget(self._term_label)
 
         self._terminal = QTextEdit()
         self._terminal.setReadOnly(True)
-        self._terminal.setFont(QFont("Consolas", 9))
-        self._terminal.setStyleSheet("background-color: #111; color: #39ff14;")
-        right_layout.addWidget(self._terminal)
+        self._terminal.setObjectName("terminal")
+        self._terminal.setMinimumHeight(100)
+        right_layout.addWidget(self._terminal, stretch=1)
 
         # Command input row
         cmd_row = QHBoxLayout()
 
         self._cmd_palette = QComboBox()
         self._cmd_palette.setEditable(False)
-        self._cmd_palette.setMinimumWidth(200)
+        self._cmd_palette.setMinimumWidth(140)
         self._populate_palette()
         self._cmd_palette.currentIndexChanged.connect(self._on_palette_select)
         cmd_row.addWidget(self._cmd_palette, stretch=1)
 
         self._cmd_input = QLineEdit()
         self._cmd_input.setPlaceholderText("Type command or select from palette...")
-        self._cmd_input.setFont(QFont("Consolas", 10))
         self._cmd_input.returnPressed.connect(self._on_send)
         cmd_row.addWidget(self._cmd_input, stretch=3)
 
@@ -189,7 +199,9 @@ class DeviceTab(QWidget):
             item = QListWidgetItem(dev.display_name)
             item.setData(Qt.UserRole, dev.port)
             if dev.connected:
-                item.setForeground(Qt.green)
+                item.setForeground(QColor("#39ff14"))
+            else:
+                item.setForeground(QColor("#8b949e"))
             self._device_list.addItem(item)
             if dev.port == selected_port:
                 self._device_list.setCurrentItem(item)
@@ -298,6 +310,11 @@ class DeviceTab(QWidget):
             self._terminal.append(f"[Send error: {exc}]")
 
     def _on_line_received(self, line: str) -> None:
+        # Run through Dead Man's Switch auth detection if available
+        if self._dms_auth and self._active_conn:
+            self._dms_auth.check_line(
+                line, lambda pw: self._active_conn.write(pw)
+            )
         self._terminal.append(line)
 
     # ── Command palette ──────────────────────────────────────────────

@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from src.models.action import ActionCategory, TargetAction
+from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for Marauder serial output ---
@@ -283,3 +285,27 @@ class MarauderProtocol(BaseProtocol):
             "sniffpmkid",
         )
         return any(m in line for m in markers)
+
+
+# --- Target actions: what this protocol can do to each target type ---
+
+TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
+    TargetType.AP: [
+        TargetAction("Deauth AP", "attack -t deauth", "Disconnect all clients from this AP", ActionCategory.ATTACK, requires_selection=True, pre_commands=["select -a {index}"], chain_events=["deauth_detected"]),
+        TargetAction("Beacon Clone", "attack -t beacon -s {ssid}", "Broadcast cloned beacons of this AP", ActionCategory.ATTACK),
+        TargetAction("Sniff PMKID", "sniffpmkid -c {channel}", "Capture PMKID handshakes on this channel", ActionCategory.CAPTURE),
+        TargetAction("Monitor Channel", "packetmonitor -c {channel}", "Monitor all traffic on this AP's channel", ActionCategory.MONITOR),
+        TargetAction("Probe Flood", "attack -t probe -s {ssid}", "Flood probe requests for this SSID", ActionCategory.ATTACK),
+        TargetAction("Rickroll Beacon", "attack -t rickroll", "Broadcast rickroll beacon spam", ActionCategory.ATTACK),
+        TargetAction("Karma Clone", "karma -s {ssid}", "Start evil-twin karma attack for this SSID", ActionCategory.ATTACK),
+        TargetAction("Wardrive Log", "wardrive", "Start wardrive logging (requires GPS)", ActionCategory.SCAN),
+    ],
+    TargetType.CLIENT: [
+        TargetAction("Deauth Client", "attack -t deauth", "Disconnect this client from its AP", ActionCategory.ATTACK, requires_selection=True, pre_commands=["select -a {index}"]),
+        TargetAction("Track Client", "sniffbeacon", "Sniff beacons to track this client's probes", ActionCategory.MONITOR),
+    ],
+    TargetType.BLE: [
+        TargetAction("BLE Track", "bletrack", "Track this BLE device", ActionCategory.MONITOR),
+        TargetAction("BLE Skimmer Scan", "bleskimmer", "Scan for BLE credit card skimmers", ActionCategory.SCAN),
+    ],
+}

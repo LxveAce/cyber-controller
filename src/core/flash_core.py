@@ -534,7 +534,7 @@ class Esp32DivProfile(FirmwareProfile):
     id = "esp32-div"
     label = "ESP32-DIV (cifertech)"
     repo = "cifertech/ESP32-DIV"
-    supports_suicide = False
+    supports_suicide = True
     image_model = IMAGE_MULTI
 
     def latest_release(self) -> Tuple[str, List[Dict]]:

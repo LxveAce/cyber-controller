@@ -1,7 +1,18 @@
 /* Cyber Controller TUI — Textual CSS */
 
+$accent: #39ff14;
+$bg-deep: #0d1117;
+$bg-surface: #161b22;
+$bg-card: #1c2128;
+$bg-input: #2d333b;
+$border: #30363d;
+$text-primary: #e6edf3;
+$text-muted: #8b949e;
+$warning: #f0883e;
+$error: #f85149;
+
 Screen {
-    background: $surface;
+    background: $bg-deep;
 }
 
 /* ── Flash tab ──────────────────────────────────────────────────── */
@@ -44,6 +55,17 @@ Screen {
     margin-top: 1;
 }
 
+#deadman-toggle {
+    margin: 1 0 0 1;
+    color: $warning;
+}
+
+#deadman-desc {
+    margin: 0 0 0 4;
+    color: $text-muted;
+    text-style: italic;
+}
+
 #flash-progress {
     margin: 1 0;
     height: 1;
@@ -52,7 +74,7 @@ Screen {
 #flash-log {
     height: 1fr;
     border: tall $accent;
-    background: $surface-darken-2;
+    background: $bg-deep;
 }
 
 /* ── Terminal tab ───────────────────────────────────────────────── */
@@ -80,7 +102,7 @@ Screen {
 #serial-log {
     height: 1fr;
     border: tall $accent;
-    background: $surface-darken-2;
+    background: $bg-deep;
 }
 
 #terminal-input-row {
@@ -122,30 +144,103 @@ Screen {
 /* ── DataTable styling ──────────────────────────────────────────── */
 
 DataTable {
-    background: $surface-darken-1;
+    background: $bg-surface;
 }
 
 DataTable > .datatable--header {
     color: $accent;
     text-style: bold;
+    background: $bg-deep;
 }
 
 DataTable > .datatable--cursor {
     background: $accent 20%;
 }
 
+DataTable > .datatable--even-row {
+    background: $bg-card;
+}
+
+DataTable > .datatable--odd-row {
+    background: $bg-surface;
+}
+
+/* ── Tab styling ───────────────────────────────────────────────── */
+
+TabbedContent > ContentSwitcher {
+    background: $bg-deep;
+}
+
+Tabs {
+    dock: top;
+}
+
 /* ── General widget overrides ───────────────────────────────────── */
 
 Button {
     min-width: 12;
+    background: $bg-card;
+    color: $text-primary;
+    border: tall $border;
+}
+
+Button:hover {
+    background: $bg-input;
+    color: $accent;
+    border: tall $accent 40%;
+}
+
+Button:focus {
+    border: tall $accent;
+}
+
+Button.-primary {
+    background: $bg-card;
+    color: $accent;
+    border: tall $accent 40%;
+}
+
+Button.-primary:hover {
+    background: $bg-input;
+    border: tall $accent;
+}
+
+Button.-success {
+    background: $accent 15%;
+    color: $accent;
+    border: tall $accent;
+    text-style: bold;
+}
+
+Button.-success:hover {
+    background: $accent 25%;
+}
+
+Button.-error {
+    background: $error 15%;
+    color: $error;
+    border: tall $error 60%;
+}
+
+Button.-error:hover {
+    background: $error 25%;
+    border: tall $error;
 }
 
 Select {
     min-width: 20;
+    background: $bg-input;
+    border: tall $border;
+}
+
+Select:focus {
+    border: tall $accent;
 }
 
 Input {
-    border: tall $accent 40%;
+    background: $bg-input;
+    color: $text-primary;
+    border: tall $border;
 }
 
 Input:focus {
@@ -153,7 +248,49 @@ Input:focus {
 }
 
 Log {
+    background: $bg-deep;
     scrollbar-color: $accent 40%;
     scrollbar-color-hover: $accent;
     scrollbar-color-active: $accent;
+}
+
+ProgressBar > .bar--bar {
+    color: $accent;
+}
+
+ProgressBar > .bar--complete {
+    color: $accent;
+}
+
+Header {
+    background: $bg-surface;
+    color: $accent;
+}
+
+Footer {
+    background: $bg-surface;
+    color: $text-muted;
+}
+
+FooterKey > .footer-key--key {
+    background: $accent 20%;
+    color: $accent;
+}
+
+FooterKey > .footer-key--description {
+    color: $text-muted;
+}
+
+/* ── Health footer labels ──────────────────────────────────────── */
+
+.health-ok {
+    color: $accent;
+}
+
+.health-warn {
+    color: $warning;
+}
+
+.health-crit {
+    color: $error;
 }

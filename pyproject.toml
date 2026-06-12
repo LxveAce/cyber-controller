@@ -1,6 +1,6 @@
 [project]
 name = "cyber-controller"
-version = "0.3.0"
+version = "1.0.0"
 description = "Flagship cyberdeck-oriented all-in-one security hardware controller"
 readme = "README.md"
 license = {text = "MIT"}
@@ -19,7 +19,7 @@ keywords = [
     "cross-platform", "python",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: X11 Applications :: Qt",
     "Intended Audience :: Information Technology",
     "License :: OSI Approved :: MIT License",
