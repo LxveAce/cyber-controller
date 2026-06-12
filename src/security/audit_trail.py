@@ -62,10 +62,70 @@ class AuditTrail:
     Every entry includes the SHA-256 of the previous entry, forming an
     integrity chain.  Any tampering breaks the chain and is detectable
     via :meth:`verify_integrity`.
+
+    Durability (audit L-2): pass ``persist_path`` to make the trail survive process exit. The
+    existing chain is loaded + verified on construction, and every :meth:`record` append is
+    flushed to an owner-only JSONL file as it happens — so the auth-fail / flash / serial-command
+    records this tool produces aren't lost on a crash or the documented Windows single-instance
+    exit. Persistence failures are logged, never raised (auditing must never break the app).
     """
 
-    def __init__(self) -> None:
+    def __init__(self, persist_path: str | Path | None = None) -> None:
         self._entries: list[AuditEntry] = []
+        self._persist_path: Path | None = Path(persist_path) if persist_path else None
+        if self._persist_path is not None:
+            self._init_persistence()
+
+    # ── Durable persistence (append-only JSONL) ──────────────────────
+
+    def _init_persistence(self) -> None:
+        """Load + verify any existing chain, then ensure the file is owner-only."""
+        path = self._persist_path
+        assert path is not None
+        try:
+            from src.security.win_acl import restrict_to_current_user, secure_dir
+
+            secure_dir(path.parent)
+            if path.exists():
+                self._load_jsonl(path)
+                ok, bad = self.verify_integrity()
+                if not ok:
+                    log.warning(
+                        "Audit chain failed verification at index %d on load from %s — "
+                        "the on-disk trail may have been tampered with or truncated.",
+                        bad, path,
+                    )
+                else:
+                    log.info("Audit trail loaded + verified: %s (%d entries)", path, len(self._entries))
+            else:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.touch()
+            restrict_to_current_user(path)
+        except Exception:
+            # Never let a persistence problem prevent the app from running.
+            log.exception("Audit persistence init failed for %s; continuing in-memory only", path)
+            self._persist_path = None
+
+    def _load_jsonl(self, path: Path) -> None:
+        """Load entries from an append-only JSONL file (one entry per line)."""
+        entries: list[AuditEntry] = []
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            entries.append(AuditEntry(**json.loads(line)))
+        self._entries = entries
+
+    def _append_jsonl(self, entry: AuditEntry) -> None:
+        if self._persist_path is None:
+            return
+        try:
+            line = json.dumps(asdict(entry), separators=(",", ":"))
+            with self._persist_path.open("a", encoding="utf-8") as fh:
+                fh.write(line + "\n")
+                fh.flush()
+        except Exception:
+            log.exception("Failed to append audit entry to %s", self._persist_path)
 
     # ── Public API ───────────────────────────────────────────────────
 
@@ -92,6 +152,7 @@ class AuditTrail:
             prev_hash=prev_hash,
         )
         self._entries.append(entry)
+        self._append_jsonl(entry)  # L-2: durably flush as the event happens
         log.debug("Audit: %s — %s", action, entry.entry_hash[:16])
         return entry
 

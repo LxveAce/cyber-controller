@@ -109,7 +109,9 @@ def _bootstrap():
     vault = FirmwareVault()
     health = HealthMonitor()
     macro = MacroRecorder()
-    audit = AuditTrail()
+    # L-2: durable, owner-only hash-chained audit trail (loads + verifies any prior chain).
+    from pathlib import Path
+    audit = AuditTrail(persist_path=Path.home() / ".cyber-controller" / "audit-trail.jsonl")
     audit.record("app_start", {})
 
     dm.start_hotplug()
