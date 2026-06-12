@@ -482,6 +482,15 @@ def install_rayhunter(on_line: Line, serial: Optional[str] = None,
 
     Returns 0 on success, non-zero on failure.
     """
+    # M-4: admin_ip flows into a "--admin-ip" argv element and a "http://{admin_ip}:8080" URL.
+    # Validate it as a literal IP so a future caller can't smuggle a host / SSRF target through it.
+    import ipaddress
+    try:
+        ipaddress.ip_address(admin_ip)
+    except ValueError:
+        on_line(f"[error] invalid admin_ip {admin_ip!r} (must be a literal IPv4/IPv6 address)")
+        return 1
+
     profile = ADB_PROFILES["rayhunter"]
     on_line(f"[rayhunter] fetching latest release from {profile['repo']}...")
 

@@ -77,6 +77,19 @@ class SerialConnection:
         """Register a callback fired for every received line."""
         self._line_callbacks.append(cb)
 
+    def remove_line_callback(self, cb: Callable[[str], None]) -> None:
+        """Remove a previously-registered line callback (idempotent — no error if absent).
+
+        Lets subscribers detach so callbacks don't accumulate unbounded (e.g. a web client that
+        re-subscribes or disconnects); the matching ``TargetIngestor.detach`` already probes for
+        this method. Without it, repeated ``on_line`` registration leaks callbacks and amplifies
+        every emitted serial line.
+        """
+        try:
+            self._line_callbacks.remove(cb)
+        except ValueError:
+            pass
+
     def on_state_change(self, cb: Callable[[ConnectionState], None]) -> None:
         """Register a callback fired on state transitions."""
         self._state_callbacks.append(cb)
