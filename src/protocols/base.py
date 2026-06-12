@@ -77,6 +77,26 @@ class BaseProtocol(ABC):
         """Return the full list of supported commands."""
         ...
 
+    # Class-level memo of the (static) command list. Subclasses build a fresh list of
+    # CommandInfo dataclasses on every get_commands() call; that's hot on each Send (the UI
+    # looks up CommandInfo per keystroke-completed command) and on the startup palette build
+    # (236 items across all protocols). The list is constant per protocol class, so cache it
+    # once. (UI-opt #2.)
+    _commands_cache: dict[type, list[CommandInfo]] = {}
+
+    def cached_commands(self) -> list[CommandInfo]:
+        """Memoized get_commands() keyed by concrete protocol class.
+
+        Returns a shared list — callers must treat it as READ-ONLY (the UI's lookups and
+        palette build only iterate). Equivalent in content to get_commands().
+        """
+        cls = type(self)
+        cached = BaseProtocol._commands_cache.get(cls)
+        if cached is None:
+            cached = self.get_commands()
+            BaseProtocol._commands_cache[cls] = cached
+        return cached
+
     @abstractmethod
     def format_command(self, cmd: str, args: dict[str, str] | None = None) -> str:
         """Format a command string ready to send over serial.
