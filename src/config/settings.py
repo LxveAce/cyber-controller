@@ -16,6 +16,8 @@ import stat
 from pathlib import Path
 from typing import Any
 
+from src.security.win_acl import restrict_to_current_user, secure_dir
+
 log = logging.getLogger(__name__)
 
 
@@ -118,7 +120,8 @@ def save_settings(settings: dict[str, Any]) -> None:
     needed.  Written atomically via a temp file + replace.
     """
     merged = _deep_merge(DEFAULTS, settings)
-    SETTINGS_DIR.mkdir(parents=True, exist_ok=True)
+    # L-1: owner-only NTFS ACL on Windows (the chmod below is a no-op there).
+    secure_dir(SETTINGS_DIR)
 
     tmp_path = SETTINGS_PATH.with_suffix(".json.tmp")
     with open(tmp_path, "w", encoding="utf-8") as fh:
@@ -134,3 +137,4 @@ def save_settings(settings: dict[str, Any]) -> None:
         os.chmod(SETTINGS_PATH, stat.S_IRUSR | stat.S_IWUSR)
     except OSError as exc:
         log.debug("chmod 0600 on settings failed: %s", exc)
+    restrict_to_current_user(SETTINGS_PATH)  # L-1: explicit owner-only ACL on Windows
