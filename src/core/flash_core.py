@@ -355,11 +355,16 @@ def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str,
     if (os.path.realpath(zip_path) != os.path.join(real_dir, safe_zip)
             and not os.path.realpath(zip_path).startswith(real_dir + os.sep)):
         raise ValueError(f"refusing zip dest that escapes the cache dir: {zip_path!r}")
-    on_line(f"[download] {safe_zip}")
-    data = _http_get(url)
-    with open(zip_path, "wb") as f:
-        f.write(data)
-    on_line(f"[download] {len(data)} bytes -> {zip_path}")
+    # Cache reuse: a chip-wide bundle (e.g. Meshtastic's 128 MB firmware-esp32s3-*.zip)
+    # holds many boards' images — don't re-download it for each board/member.
+    if os.path.isfile(zip_path) and os.path.getsize(zip_path) > 0:
+        on_line(f"[cache] reusing {safe_zip} ({os.path.getsize(zip_path)} bytes)")
+    else:
+        on_line(f"[download] {safe_zip}")
+        data = _http_get(url)
+        with open(zip_path, "wb") as f:
+            f.write(data)
+        on_line(f"[download] {len(data)} bytes -> {zip_path}")
 
     want = os.path.basename(member)
     out_path = os.path.join(cache_dir, _safe_cache_name(f"{os.path.splitext(safe_zip)[0]}_{want}"))
@@ -1035,6 +1040,33 @@ def _meshtastic_chip(board: str) -> str:
     return "esp32"
 
 
+# Meshtastic now ships per-CHIP zip bundles (firmware-<chip>-<ver>.zip), each containing every
+# board's factory image (firmware-<board>-<ver>.bin — a merged image flashed at 0x0) plus bleota
+# and per-board littlefs. We surface a curated board list per chip and extract the chosen board's
+# factory bin from the chip zip. Minimal install = factory bin at 0x0 (Meshtastic formats its
+# littlefs on first boot; bleota/littlefs are optional OTA/FS extras). The big chip zip is cached
+# and reused across boards (see download_and_extract).
+_MESHTASTIC_CHIP_ZIP = re.compile(r"^firmware-(esp32|esp32s2|esp32s3|esp32c3|esp32c6)-(.+)\.zip$")
+
+# Common Meshtastic boards per ESP32 chip (pioEnv names). The esp32s3 list is verified against a
+# real 2.7.15 bundle; covers the owned fleet (Heltec V3) + popular boards. Not exhaustive.
+_MESHTASTIC_BOARDS: Dict[str, List[str]] = {
+    "esp32s3": [
+        "heltec-v3", "heltec-wireless-tracker", "heltec-wsl-v3", "tbeam-s3-core",
+        "t-deck", "t-watch-s3", "t-eth-elite", "seeed-xiao-s3", "station-g2",
+        "tlora-t3s3-v1", "m5stack-cores3", "picomputer-s3", "unphone",
+    ],
+    "esp32": [
+        "tbeam", "tbeam0_7", "tlora-v2-1-1_6", "tlora-v2-1-1_8", "heltec-v2_1",
+        "heltec-v2_0", "heltec-v1", "rak11200", "station-g1", "nano-g1",
+        "m5stack-coreink", "t-lora-v1",
+    ],
+    "esp32c3": ["esp32-c3-devkitm-1", "heltec-ht-ct62"],
+    "esp32c6": ["heltec-mesh-node-t114"],
+    "esp32s2": [],
+}
+
+
 class MeshtasticProfile(FirmwareProfile):
     id = "meshtastic"
     label = "Meshtastic (meshtastic)"
@@ -1044,48 +1076,33 @@ class MeshtasticProfile(FirmwareProfile):
 
     def latest_release(self) -> Tuple[str, List[Dict]]:
         tag, raw = _github_latest(_MESHTASTIC_API)
-        assets = []
+        chip_zip: Dict[str, Tuple[str, str]] = {}  # chip -> (url, version token)
         for a in raw:
-            name = a.get("name", "")
-            if not name.endswith(".bin") and not name.endswith(".uf2"):
-                continue
-            is_factory = ".factory." in name or "-factory" in name
-            is_uf2 = name.endswith(".uf2")
-            board = name
-            for prefix in ("firmware-", "meshtastic-"):
-                if board.startswith(prefix):
-                    board = board[len(prefix):]
-            board = re.sub(r"-[\d.]+\.(factory\.)?bin$", "", board)
-            board = re.sub(r"-[\d.]+\.uf2$", "", board)
-            chip = _meshtastic_chip(board)
-            label = f"Meshtastic {board}"
-            if is_factory:
-                label += " (factory)"
-            elif is_uf2:
-                label += " (UF2)"
-            assets.append({
-                "name": name,
-                "url": a.get("browser_download_url"),
-                "chip": chip,
-                "label": label,
-                "offset": "0x0" if is_factory else "0x10000",
-                "merged": is_factory,
-                "factory": is_factory,
-            })
+            m = _MESHTASTIC_CHIP_ZIP.match(a.get("name", ""))
+            if m:
+                chip_zip[m.group(1)] = (a.get("browser_download_url"), m.group(2))
+        assets: List[Dict] = []
+        for chip, (url, ver) in chip_zip.items():
+            for board in _MESHTASTIC_BOARDS.get(chip, []):
+                assets.append({
+                    "name": f"meshtastic-{board}-{ver}",
+                    "url": url,
+                    "chip": chip,
+                    "label": f"Meshtastic {board}",
+                    "offset": "0x0",
+                    "merged": True,
+                    "zip_name": f"firmware-{chip}-{ver}.zip",   # shared chip-zip cache filename
+                    "zip_member": f"firmware-{board}-{ver}.bin",  # the board's factory image
+                })
         return tag, assets
 
     def variants_for_chip(self, assets: List[Dict], chip: str) -> List[Dict]:
-        same = [a for a in assets if a.get("chip") == chip]
-        factory_first = sorted(same, key=lambda a: (not a.get("factory", False), a["name"]))
-        return factory_first
+        return [a for a in assets if a.get("chip") == chip]
 
     def default_variant(self, assets: List[Dict], chip: str) -> Optional[Dict]:
         cands = self.variants_for_chip(assets, chip)
         for a in cands:
-            if a.get("factory") and "heltec-v3" in a["name"].lower():
-                return a
-        for a in cands:
-            if a.get("factory"):
+            if "heltec-v3" in a["name"]:
                 return a
         return cands[0] if cands else None
 
