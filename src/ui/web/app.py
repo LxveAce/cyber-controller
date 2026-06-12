@@ -134,9 +134,13 @@ def create_app(
                 return Response("Too many attempts. Try again later.\n", 429)
             auth = request.authorization
             if auth and check_auth(auth.username, auth.password):
+                # M-3: rotate the session + CSRF token at the auth boundary so any token an
+                # attacker could have observed or seeded *pre-auth* is invalidated (session
+                # fixation defense-in-depth — parity with the rest of the auth code).
+                session.clear()
                 session["authenticated"] = True
                 session["user"] = auth.username
-                _ensure_csrf()
+                session["csrf"] = new_csrf_token()
                 _audit("web_auth_ok", user=auth.username)
                 return f(*args, **kwargs)
             _audit("web_auth_fail", user=(auth.username if auth else None))
@@ -482,12 +486,31 @@ def launch_web(
         log.warning("Binding to %s WITHOUT TLS — credentials/serial output are in cleartext.", host)
 
     scheme = "https" if ssl_args else "http"
-    log.info("Starting web UI on %s://%s:%d (origins=%s)", scheme, host, port, origins)
-    # The Werkzeug dev server requires allow_unsafe_werkzeug to run under SocketIO;
-    # we mitigate by defaulting to localhost and gating LAN exposure above. For real
-    # LAN/production exposure, run behind a hardened reverse proxy doing TLS + auth.
-    socketio.run(
-        app, host=host, port=port, debug=False,
-        allow_unsafe_werkzeug=True, **ssl_args,
+    # H-2: Flask-SocketIO picks its async server from installed packages. With eventlet/gevent
+    # present it serves on that production-grade worker; with neither it falls back to the
+    # Werkzeug DEV server (async_mode == "threading"), which needs allow_unsafe_werkzeug and is
+    # explicitly not built for hostile exposure. We must never *silently* serve LAN traffic on
+    # the dev server: for a non-local bind, require a real async worker OR an extra explicit
+    # opt-in (CC_WEB_ALLOW_DEV_SERVER=1) acknowledging the risk. Localhost keeps the dev server.
+    using_dev_server = getattr(socketio, "async_mode", "threading") == "threading"
+    if not is_local and using_dev_server and os.environ.get("CC_WEB_ALLOW_DEV_SERVER") != "1":
+        log.error(
+            "Refusing to serve the web remote to %s on the Werkzeug DEV server. It is not "
+            "hardened for hostile exposure (single-process, weak request parsing). Install a "
+            "production worker (`pip install eventlet` or `gevent`) so SocketIO uses it, put a "
+            "hardened reverse proxy in front, or set CC_WEB_ALLOW_DEV_SERVER=1 to accept the "
+            "risk on a trusted/isolated LAN.",
+            host,
+        )
+        return 3
+    run_kwargs: dict[str, Any] = dict(ssl_args)
+    if using_dev_server:
+        # Only the dev-server path takes (and needs) this flag; production workers reject it.
+        run_kwargs["allow_unsafe_werkzeug"] = True
+    server_kind = "Werkzeug dev server" if using_dev_server else getattr(socketio, "async_mode", "?")
+    log.info(
+        "Starting web UI on %s://%s:%d (origins=%s, server=%s)",
+        scheme, host, port, origins, server_kind,
     )
+    socketio.run(app, host=host, port=port, debug=False, **run_kwargs)
     return 0

@@ -65,6 +65,34 @@ def _safe_streamed_download(url: str, dest_path: Path, progress_callback, filena
     raise ValueError("too many redirects")
 
 
+def _safe_api_get_json(url: str) -> Any:
+    """GET a GitHub *API* URL and return parsed JSON, with the SAME SSRF policy as the
+    binary path (M-2).
+
+    The release-asset download (``_safe_streamed_download``) already validates every redirect
+    hop against the host allowlist; the metadata/API GETs must too, or the SSRF story is
+    inconsistent — a 302 on the API host (or a future profile whose ``firmware_urls`` parses to
+    an attacker-controlled owner/repo) could bounce the *metadata* request off-allowlist. We
+    therefore validate the initial URL and follow redirects manually, re-validating each
+    ``Location`` against ``_require_allowed_url`` before following it.
+    """
+    _require_allowed_url(url)
+    current = url
+    for _ in range(_MAX_REDIRECTS):
+        resp = requests.get(current, timeout=_TIMEOUT, allow_redirects=False)
+        try:
+            if resp.status_code in (301, 302, 303, 307, 308):
+                loc = resp.headers.get("Location", "")
+                _require_allowed_url(loc)  # raises ValueError if off-allowlist
+                current = loc
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        finally:
+            resp.close()
+    raise ValueError("too many redirects")
+
+
 def _sha256_file(path: Path) -> str:
     """Compute SHA-256 hex digest of a file."""
     h = hashlib.sha256()
@@ -189,9 +217,7 @@ class FirmwareVault:
             owner, repo = info
             try:
                 api_url = f"{_GITHUB_API}/repos/{owner}/{repo}/releases/latest"
-                resp = requests.get(api_url, timeout=_TIMEOUT)
-                resp.raise_for_status()
-                release = resp.json()
+                release = _safe_api_get_json(api_url)  # SSRF-allowlisted (M-2)
                 resolved_version = release.get("tag_name", version)
                 assets = release.get("assets", [])
             except (requests.RequestException, ValueError) as exc:
@@ -359,9 +385,7 @@ class FirmwareVault:
             owner, repo = info
             try:
                 api_url = f"{_GITHUB_API}/repos/{owner}/{repo}/releases/latest"
-                resp = requests.get(api_url, timeout=_TIMEOUT)
-                resp.raise_for_status()
-                release = resp.json()
+                release = _safe_api_get_json(api_url)  # SSRF-allowlisted (M-2)
                 latest_tag = release.get("tag_name", "")
             except (requests.RequestException, ValueError):
                 continue
