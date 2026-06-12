@@ -486,6 +486,8 @@ class CyberControllerWindow(QMainWindow):
         self._pterm_output = QTextEdit()
         self._pterm_output.setReadOnly(True)
         self._pterm_output.setObjectName("terminal")
+        # Bound memory: O(1) auto-trim of oldest lines past the cap (UI-opt #6).
+        self._pterm_output.document().setMaximumBlockCount(5000)
         self._pterm_output.setStyleSheet(
             "QTextEdit#terminal { background-color: #0d1117; color: #39ff14; "
             "font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 9pt; "
