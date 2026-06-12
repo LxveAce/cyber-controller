@@ -100,6 +100,15 @@ def create_app(
     login_limiter = RateLimiter(max_events=8, window_seconds=60.0)
     cmd_limiter = RateLimiter(max_events=60, window_seconds=10.0)
 
+    # L-2: the web remote drives attack hardware; auth/flash/serial events must be auditable.
+    # The normal launch path threads a durable AuditTrail through, but an embedder using the
+    # create_app default would silently get no audit — warn so that's never a silent gap.
+    if audit is None:
+        log.warning(
+            "Web remote created without an audit sink — auth/flash/serial events will NOT be "
+            "recorded. Pass audit=AuditTrail(persist_path=...) for a durable forensic trail."
+        )
+
     # ── Helpers ─────────────────────────────────────────────────────
 
     def _client_ip() -> str:
@@ -486,20 +495,22 @@ def launch_web(
         log.warning("Binding to %s WITHOUT TLS — credentials/serial output are in cleartext.", host)
 
     scheme = "https" if ssl_args else "http"
-    # H-2: Flask-SocketIO picks its async server from installed packages. With eventlet/gevent
-    # present it serves on that production-grade worker; with neither it falls back to the
-    # Werkzeug DEV server (async_mode == "threading"), which needs allow_unsafe_werkzeug and is
-    # explicitly not built for hostile exposure. We must never *silently* serve LAN traffic on
-    # the dev server: for a non-local bind, require a real async worker OR an extra explicit
-    # opt-in (CC_WEB_ALLOW_DEV_SERVER=1) acknowledging the risk. Localhost keeps the dev server.
+    # H-2: this app runs SocketIO in threading mode (async_mode="threading" at construction) for
+    # stability with the serial/threading-heavy core — so it serves on the Werkzeug DEV server,
+    # which needs allow_unsafe_werkzeug and is explicitly not hardened for hostile exposure
+    # (single-process, weak request parsing). We must never *silently* serve LAN traffic on it:
+    # for a non-local bind, require either a fronting reverse proxy (the recommended path) or an
+    # extra explicit opt-in (CC_WEB_ALLOW_DEV_SERVER=1) acknowledging the risk. Localhost is
+    # unchanged. (If a future build switches to a real eventlet/gevent worker, async_mode won't be
+    # "threading" and this gate steps aside automatically.)
     using_dev_server = getattr(socketio, "async_mode", "threading") == "threading"
     if not is_local and using_dev_server and os.environ.get("CC_WEB_ALLOW_DEV_SERVER") != "1":
         log.error(
             "Refusing to serve the web remote to %s on the Werkzeug DEV server. It is not "
-            "hardened for hostile exposure (single-process, weak request parsing). Install a "
-            "production worker (`pip install eventlet` or `gevent`) so SocketIO uses it, put a "
-            "hardened reverse proxy in front, or set CC_WEB_ALLOW_DEV_SERVER=1 to accept the "
-            "risk on a trusted/isolated LAN.",
+            "hardened for hostile exposure (single-process, weak request parsing), and the web UI "
+            "drives attack hardware. Put a hardened TLS-terminating reverse proxy in front (and "
+            "keep the bind on localhost), or set CC_WEB_ALLOW_DEV_SERVER=1 to accept the risk on a "
+            "trusted/isolated LAN.",
             host,
         )
         return 3
