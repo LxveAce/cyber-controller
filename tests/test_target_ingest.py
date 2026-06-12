@@ -71,3 +71,45 @@ def test_non_matching_line_is_ignored():
     conn.feed("Scan complete")        # not an AP/client line
     conn.feed("> ready")
     assert routed == []
+
+
+# ── Multi-firmware: HaleHound's richer events reach the pool (BLE/SubGHz/NFC/rogue) ──
+
+def _ingest(protocol_name: str, lines: list[str]) -> TargetPool:
+    bus = EventBus()
+    pool = TargetPool(bus)
+    conn = _FakeConn("COM_HH")
+    TargetIngestor(pool).attach(conn, get_protocol(protocol_name))
+    for ln in lines:
+        conn.feed(ln)
+    return pool
+
+
+def test_halehound_ble_into_pool():
+    pool = _ingest("halehound",
+                   ["[BLE] Name: Watch | ADDR: AA:BB:CC:DD:EE:FF | RSSI: -60 | Type: Random"])
+    bles = [t for t in pool.all() if t.target_type == TargetType.BLE]
+    assert len(bles) == 1
+    assert bles[0].mac == "AA:BB:CC:DD:EE:FF" and bles[0].ssid == "Watch"
+
+
+def test_halehound_subghz_into_pool():
+    pool = _ingest("halehound",
+                   ["[SUBGHZ] Freq: 433.92MHz | Mod: ASK | Data: AA BB CC | RSSI: -30"])
+    sg = [t for t in pool.all() if t.target_type == TargetType.SUBGHZ]
+    assert len(sg) == 1 and "433.92" in sg[0].mac
+
+
+def test_halehound_nfc_into_pool():
+    pool = _ingest("halehound",
+                   ["[NFC] UID: 04:AB:CD:EF:12:34:56 | ATQA: 0044 | SAK: 00 | Type: NTAG215"])
+    nfc = [t for t in pool.all() if t.target_type == TargetType.NFC]
+    assert len(nfc) == 1 and nfc[0].mac == "04:AB:CD:EF:12:34:56"
+
+
+def test_halehound_rogue_ap_flagged_in_pool():
+    pool = _ingest("halehound",
+                   ["[GUARDIAN] ROGUE AP: EvilTwin | BSSID: 11:22:33:44:55:66 | CH: 6 | RSSI: -30"])
+    aps = [t for t in pool.all() if t.target_type == TargetType.AP]
+    assert len(aps) == 1
+    assert aps[0].mac == "11:22:33:44:55:66" and aps[0].extra.get("rogue") is True
