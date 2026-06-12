@@ -400,9 +400,13 @@ class FlashEngine:
             os.makedirs(bundle_dir, exist_ok=True)
             try:
                 for a in assets:
-                    flash_core.download_to(a["url"], bundle_dir, a["name"], on_line)
+                    p = flash_core.download_to(a["url"], bundle_dir, a["name"], on_line)
+                    # Pinned-firmware integrity gate: reject a tampered/changed bundle BEFORE
+                    # it reaches the AmebaD ImageTool (which would flash it regardless).
+                    if a.get("sha256"):
+                        flash_core.verify_sha256(p, a["sha256"], on_line)
             except Exception as exc:
-                on_line(f"[rtl8720] firmware download failed: {exc}")
+                on_line(f"[rtl8720] firmware download/verify failed: {exc}")
                 return False
 
         try:

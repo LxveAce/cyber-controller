@@ -381,6 +381,25 @@ def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str,
     return out_path
 
 
+def verify_sha256(path: str, expected: str, on_line: Line) -> None:
+    """Verify the SHA-256 of `path` equals `expected` (hex). Raises ValueError on mismatch.
+
+    Used to gate PINNED firmware (e.g. the BW16/RTL8720 bundle, whose third-party source has no
+    upstream signature) so a tampered/changed image is rejected BEFORE it reaches the flasher.
+    """
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1 << 20), b""):
+            h.update(chunk)
+    got = h.hexdigest()
+    if got.lower() != (expected or "").lower():
+        raise ValueError(
+            f"SHA-256 mismatch for {os.path.basename(path)}: expected {expected}, got {got} "
+            "(pinned firmware integrity check failed — refusing to flash)")
+    on_line(f"[verify] {os.path.basename(path)} sha256 OK")
+
+
 def cache_dir() -> str:
     d = os.path.join(tempfile.gettempdir(), "marauder_fw")
     os.makedirs(d, exist_ok=True)
@@ -957,6 +976,19 @@ _RTL8720_BUNDLE_FILES = (
     "imgtool_flashloader_amebad.bin",
 )
 
+#: SHA-256 of the EXACT bundle validated end-to-end on real BW16 hardware (2026-06). The firmware
+#: comes from a third-party repo (vampel/vampel.github.io@main) with no upstream signature, and the
+#: AmebaD ImageTool would happily checksum-verify + flash whatever bytes it is given — so we pin the
+#: hashes here and reject (before flashing) any bundle that differs (repo compromise / MITM / an
+#: upstream change we have not re-validated). If the upstream bundle is intentionally updated,
+#: re-validate on hardware and update these hashes.
+_RTL8720_BUNDLE_SHA256 = {
+    "km0_boot_all.bin": "453c880307fc389009aa8a39c63da3d715b207ad797206c896cc691426daaa64",
+    "km4_boot_all.bin": "05fbf808d43113eaf7c11b75091c986b817135f0c52eb9fa94bb9fe9f34b062c",
+    "km0_km4_image2.bin": "6f6b12511d3f16e2dff3b136dcc6d6f5a6d48051d848ea5d3bbffe97c19e2e13",
+    "imgtool_flashloader_amebad.bin": "9307121385cb390dfd2da64da2c6c515f17b5a9556b3d04021487c9b9f220b55",
+}
+
 
 class RtlAmeba8720Profile(FirmwareProfile):
     """BW16 / RTL8720DN (Realtek AmebaD), dual-band 2.4/5 GHz WiFi + BLE.
@@ -980,6 +1012,7 @@ class RtlAmeba8720Profile(FirmwareProfile):
             "chip": "rtl8720",
             "label": "BW16 Vampire Deauther bundle (dual-band 2.4/5 GHz)",
             "bundle": True,
+            "sha256": _RTL8720_BUNDLE_SHA256[n],
         } for n in _RTL8720_BUNDLE_FILES]
         return ("vampire", assets)
 
