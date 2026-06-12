@@ -257,17 +257,17 @@ class HotPlugMonitor(threading.Thread):
         super().__init__(name="hotplug-monitor", daemon=True)
         self._manager = manager
         self._interval = interval
-        self._stop = threading.Event()
+        self._stop_event = threading.Event()
         self._known_ports: set[str] = set()
 
     def stop(self) -> None:
-        self._stop.set()
+        self._stop_event.set()
         self.join(timeout=self._interval + 1)
 
     def run(self) -> None:
         # Seed with currently visible ports
         self._known_ports = {d.port for d in self._manager.scan_ports()}
-        while not self._stop.is_set():
+        while not self._stop_event.is_set():
             try:
                 current = self._manager.scan_ports()
                 current_ports = {d.port for d in current}
@@ -291,4 +291,4 @@ class HotPlugMonitor(threading.Thread):
             except Exception:
                 log.exception("HotPlug monitor error")
 
-            self._stop.wait(self._interval)
+            self._stop_event.wait(self._interval)

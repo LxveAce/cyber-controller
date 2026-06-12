@@ -9,6 +9,7 @@ Public API:
     PROTOCOL_DISPLAY_NAMES -- dict[name -> display string]
     get_protocol(name)             -> BaseProtocol instance
     get_protocol_by_display(disp)  -> BaseProtocol instance
+    get_protocol_module(name)      -> module object (for TARGET_ACTIONS access)
     list_protocols()               -> list[str] of internal names
 
 A 'generic' / 'raw' passthrough is always available as a fallback for unknown
@@ -17,6 +18,9 @@ non-empty line as an 'info' event.
 """
 
 from __future__ import annotations
+
+import importlib
+import types
 
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 from src.protocols.marauder import MarauderProtocol
@@ -137,6 +141,43 @@ def list_protocols() -> list[str]:
     return list(PROTOCOLS.keys())
 
 
+# --- Protocol module lookup (for TARGET_ACTIONS access) ---
+
+# Maps internal name -> dotted module path so get_protocol_module() can return
+# the module object itself (not just a parser instance).
+_NAME_TO_MODULE: dict[str, str] = {
+    "marauder": "src.protocols.marauder",
+    "ghost-esp": "src.protocols.ghost_esp",
+    "bruce": "src.protocols.bruce",
+    "flipper": "src.protocols.flipper",
+    "halehound": "src.protocols.halehound",
+    "meshtastic": "src.protocols.meshtastic",
+    "esp32-div": "src.protocols.esp32_div",
+    "generic": "src.protocols",  # GenericProtocol lives in __init__
+    "raw": "src.protocols",
+}
+
+
+def get_protocol_module(name: str) -> types.ModuleType | None:
+    """Return the protocol *module* for the given internal name.
+
+    Unlike :func:`get_protocol` (which returns a parser *instance*), this
+    returns the module object so callers can access module-level attributes
+    such as ``TARGET_ACTIONS``.
+
+    Returns ``None`` for unknown names (no fallback to generic).
+    """
+    if not name:
+        return None
+    key = name.strip().lower()
+    mod_path = _NAME_TO_MODULE.get(key)
+    if mod_path is None:
+        mod_path = _NAME_TO_MODULE.get(key.replace("_", "-"))
+    if mod_path is None:
+        return None
+    return importlib.import_module(mod_path)
+
+
 __all__ = [
     "BaseProtocol",
     "CommandInfo",
@@ -154,5 +195,6 @@ __all__ = [
     "PROTOCOL_DISPLAY_NAMES",
     "get_protocol",
     "get_protocol_by_display",
+    "get_protocol_module",
     "list_protocols",
 ]

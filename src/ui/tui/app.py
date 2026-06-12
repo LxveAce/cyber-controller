@@ -10,11 +10,19 @@ import threading
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+try:
+    import psutil
+    _HAS_PSUTIL = True
+except ImportError:
+    _HAS_PSUTIL = False
+
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.reactive import reactive
 from textual.widgets import (
     Button,
+    Checkbox,
     DataTable,
     Footer,
     Header,
@@ -23,6 +31,7 @@ from textual.widgets import (
     Log,
     ProgressBar,
     Select,
+    Static,
     TabbedContent,
     TabPane,
 )
@@ -39,6 +48,32 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _PROFILES_DIR = Path(__file__).resolve().parents[3] / "src" / "config" / "profiles"
+
+
+def _health_class(pct: float) -> str:
+    """Return a CSS class name based on a system metric percentage."""
+    if pct < 60:
+        return "health-ok"
+    if pct < 85:
+        return "health-warn"
+    return "health-crit"
+
+
+class HealthFooter(Static):
+    """Displays CPU and RAM usage in the footer area."""
+
+    cpu_pct: reactive[float] = reactive(0.0)
+    ram_pct: reactive[float] = reactive(0.0)
+
+    def render(self) -> str:
+        if not _HAS_PSUTIL:
+            return "  [psutil not installed]"
+        return f"  CPU: {self.cpu_pct:.0f}%  |  RAM: {self.ram_pct:.0f}%"
+
+    def watch_cpu_pct(self) -> None:
+        self.set_class(_health_class(self.cpu_pct) == "health-ok", "health-ok")
+        self.set_class(_health_class(self.cpu_pct) == "health-warn", "health-warn")
+        self.set_class(_health_class(self.cpu_pct) == "health-crit", "health-crit")
 
 
 class CyberControllerTUI(App):
@@ -109,6 +144,7 @@ class CyberControllerTUI(App):
                 yield from self._compose_terminal_tab()
             with TabPane("Targets", id="targets-tab"):
                 yield from self._compose_targets_tab()
+        yield HealthFooter(id="health-footer")
         yield Footer()
 
     def _compose_flash_tab(self) -> ComposeResult:
@@ -131,6 +167,8 @@ class CyberControllerTUI(App):
                 with Vertical(id="flash-btn-group", classes="selector-group"):
                     yield Button("Flash", id="btn-flash", variant="success")
                     yield Button("Refresh Ports", id="btn-refresh-ports")
+            yield Checkbox("Enable Dead Man's Switch", id="deadman-toggle")
+            yield Label("Anti-forensic wipe — prompts for setup before flashing", classes="selector-label", id="deadman-desc")
             yield ProgressBar(id="flash-progress", total=100, show_eta=False)
             yield Label("Flash Log", classes="section-label")
             yield Log(id="flash-log", auto_scroll=True)
@@ -165,11 +203,28 @@ class CyberControllerTUI(App):
         # Set up target table columns
         table = self.query_one("#target-table", DataTable)
         table.add_columns("MAC", "SSID", "RSSI", "Channel", "Source", "Type")
+        table.zebra_stripes = True
         self._refresh_targets()
 
         # Wire event bus
         self._bus.subscribe("target.added", self._on_target_event)
         self._bus.subscribe("target.updated", self._on_target_event)
+
+        # Start health metric polling
+        self.set_interval(5.0, self._update_health)
+
+    # ── Health metrics ──────────────────────────────────────────────
+
+    def _update_health(self) -> None:
+        """Poll CPU and RAM usage, update the health footer widget."""
+        if not _HAS_PSUTIL:
+            return
+        try:
+            footer = self.query_one("#health-footer", HealthFooter)
+            footer.cpu_pct = psutil.cpu_percent(interval=None)
+            footer.ram_pct = psutil.virtual_memory().percent
+        except Exception:
+            pass
 
     # ── Actions ─────────────────────────────────────────────────────
 
@@ -246,6 +301,14 @@ class CyberControllerTUI(App):
             return
 
         profile = self._fe.load_profile(profile_path)
+
+        deadman_cb = self.query_one("#deadman-toggle", Checkbox)
+        if deadman_cb.value:
+            flash_log.write_line("[Dead Man's Switch] Setup required before flash.")
+            flash_log.write_line("Run with --deadman-setup flag or use the full GUI for interactive setup.")
+            flash_log.write_line("Aborting flash — complete DMS provisioning first.")
+            return
+
         flash_log.write_line(f"Flashing {profile.name} to {port}...")
         btn.disabled = True
         progress.update(progress=0)

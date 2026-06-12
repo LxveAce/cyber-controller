@@ -9,15 +9,17 @@ from typing import TYPE_CHECKING
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -30,6 +32,20 @@ from src.core.flash_engine import FlashEngine, FirmwareProfile
 log = logging.getLogger(__name__)
 
 _PROFILES_DIR = Path(__file__).resolve().parents[3] / "src" / "config" / "profiles"
+
+
+def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+    """Create a card-styled QFrame with optional title label."""
+    card = QFrame()
+    card.setObjectName("card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(8)
+    if title:
+        lbl = QLabel(title)
+        lbl.setObjectName("card_title")
+        layout.addWidget(lbl)
+    return card, layout
 
 
 class _FlashWorker(QThread):
@@ -101,36 +117,45 @@ class FlashTab(QWidget):
     # ── Layout ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        container = QWidget()
+        root = QVBoxLayout(container)
 
         # ── Top row: port + profile selectors ────────────────────────
         top = QHBoxLayout()
+        top.setSpacing(8)
 
-        # Port selector
-        port_group = QGroupBox("Port")
-        port_layout = QVBoxLayout(port_group)
+        # Port selector card
+        port_card, port_layout = _make_card("Port")
         self._port_combo = QComboBox()
-        self._port_combo.setMinimumWidth(160)
+        self._port_combo.setMinimumWidth(140)
         port_layout.addWidget(self._port_combo)
         btn_refresh = QPushButton("Refresh")
         btn_refresh.clicked.connect(self._refresh_ports)
         port_layout.addWidget(btn_refresh)
-        top.addWidget(port_group)
+        top.addWidget(port_card, stretch=1)
 
-        # Profile selector
-        prof_group = QGroupBox("Firmware Profile")
-        prof_layout = QVBoxLayout(prof_group)
+        # Profile selector card
+        prof_card, prof_layout = _make_card("Firmware Profile")
         self._profile_combo = QComboBox()
-        self._profile_combo.setMinimumWidth(220)
+        self._profile_combo.setMinimumWidth(160)
         prof_layout.addWidget(self._profile_combo)
         btn_browse = QPushButton("Browse...")
         btn_browse.clicked.connect(self._browse_profile)
         prof_layout.addWidget(btn_browse)
-        # Board / variant picker — chip auto-detect can't tell a CYD from a generic ESP32
-        # (both are 'esp32'); the wrong variant flashes the wrong display driver -> white screen.
-        prof_layout.addWidget(QLabel("Board / variant:"))
+        # Board / variant picker
+        variant_label = QLabel("Board / variant:")
+        variant_label.setObjectName("muted")
+        variant_label.setWordWrap(True)
+        prof_layout.addWidget(variant_label)
         self._variant_combo = QComboBox()
-        self._variant_combo.setMinimumWidth(220)
+        self._variant_combo.setMinimumWidth(160)
         self._variant_combo.setToolTip(
             "Pick your exact board. 'Auto' uses the firmware's per-chip default, which may be wrong "
             "for display boards (CYD/M5/etc.) — if your screen stays blank after flashing, choose the "
@@ -138,16 +163,13 @@ class FlashTab(QWidget):
         )
         self._variant_combo.addItem("Auto (default for chip)", "")
         prof_layout.addWidget(self._variant_combo)
-        top.addWidget(prof_group)
+        top.addWidget(prof_card, stretch=2)
 
         # Flash + Backup buttons
         btn_col = QVBoxLayout()
         self._btn_flash = QPushButton("Flash")
+        self._btn_flash.setObjectName("flash_btn")
         self._btn_flash.setMinimumHeight(40)
-        self._btn_flash.setStyleSheet(
-            "QPushButton { background-color: #39ff14; color: #000; font-weight: bold; }"
-            "QPushButton:disabled { background-color: #555; color: #888; }"
-        )
         self._btn_flash.clicked.connect(self._on_flash)
         btn_col.addWidget(self._btn_flash)
 
@@ -156,39 +178,69 @@ class FlashTab(QWidget):
         btn_col.addWidget(self._btn_backup)
 
         self._btn_erase = QPushButton("Erase Flash")
-        self._btn_erase.setStyleSheet(
-            "QPushButton { color: #ff4444; }"
-        )
+        self._btn_erase.setObjectName("erase_btn")
         self._btn_erase.clicked.connect(self._on_erase)
         btn_col.addWidget(self._btn_erase)
 
         top.addLayout(btn_col)
         root.addLayout(top)
 
+        # ── Dead Man's Switch card ───────────────────────────────────
+        self._suicide_card = QFrame()
+        self._suicide_card.setObjectName("card")
+        self._suicide_card.setStyleSheet(
+            """
+            QFrame#suicide_card_active {
+                background-color: #161b22;
+                border: 2px solid #f0883e;
+                border-radius: 8px;
+                padding: 8px 16px;
+            }
+            """
+        )
+        suicide_layout = QVBoxLayout(self._suicide_card)
+        suicide_layout.setContentsMargins(12, 8, 12, 8)
+        suicide_layout.setSpacing(4)
+
+        self._suicide_checkbox = QCheckBox("Enable Dead Man's Switch")
+        self._suicide_checkbox.setFont(QFont("Segoe UI", 10, QFont.Bold))
+        self._suicide_checkbox.toggled.connect(self._on_suicide_toggled)
+        suicide_layout.addWidget(self._suicide_checkbox)
+
+        suicide_desc = QLabel(
+            "Integrates Dead Man's Switch anti-forensic wipe into the flash. Opens setup before flashing."
+        )
+        suicide_desc.setObjectName("muted")
+        suicide_desc.setWordWrap(True)
+        suicide_desc.setStyleSheet("color: #8b949e; font-size: 9pt; background: transparent;")
+        suicide_layout.addWidget(suicide_desc)
+
+        root.addWidget(self._suicide_card)
+
         # ── Progress bar ─────────────────────────────────────────────
         self._progress = QProgressBar()
         self._progress.setRange(0, 100)
         self._progress.setValue(0)
         self._progress.setTextVisible(True)
+        self._progress.setMinimumHeight(20)
         root.addWidget(self._progress)
 
         # ── Bottom: log output + batch queue ─────────────────────────
         bottom = QHBoxLayout()
 
-        # Log output
-        log_group = QGroupBox("Flash Log")
-        log_layout = QVBoxLayout(log_group)
+        # Log output card
+        log_card, log_layout = _make_card("Flash Log")
         self._log_output = QTextEdit()
         self._log_output.setReadOnly(True)
-        self._log_output.setFont(QFont("Consolas", 9))
-        self._log_output.setStyleSheet("background-color: #111; color: #39ff14;")
+        self._log_output.setObjectName("terminal")
+        self._log_output.setMinimumHeight(100)
         log_layout.addWidget(self._log_output)
-        bottom.addWidget(log_group, stretch=3)
+        bottom.addWidget(log_card, stretch=3)
 
-        # Batch queue
-        queue_group = QGroupBox("Batch Queue")
-        queue_layout = QVBoxLayout(queue_group)
+        # Batch queue card
+        queue_card, queue_layout = _make_card("Batch Queue")
         self._queue_list = QListWidget()
+        self._queue_list.setMinimumHeight(60)
         queue_layout.addWidget(self._queue_list)
         btn_add = QPushButton("Add to Queue")
         btn_add.clicked.connect(self._add_to_queue)
@@ -196,28 +248,32 @@ class FlashTab(QWidget):
         btn_clear = QPushButton("Clear Queue")
         btn_clear.clicked.connect(self._queue_list.clear)
         queue_layout.addWidget(btn_clear)
-        bottom.addWidget(queue_group, stretch=1)
+        bottom.addWidget(queue_card, stretch=1)
 
-        root.addLayout(bottom)
+        root.addLayout(bottom, stretch=1)
 
         # ── Firmware Vault section ───────────────────────────────────
-        vault_group = QGroupBox("Firmware Vault (Offline Cache)")
-        vault_layout = QHBoxLayout(vault_group)
+        vault_card, vault_layout = _make_card("Firmware Vault (Offline Cache)")
+        vault_row = QHBoxLayout()
 
         self._vault_status = QLabel("No cached firmware")
-        self._vault_status.setStyleSheet("color: #888;")
-        vault_layout.addWidget(self._vault_status, stretch=2)
+        self._vault_status.setObjectName("muted")
+        self._vault_status.setWordWrap(True)
+        vault_row.addWidget(self._vault_status, stretch=2)
 
         btn_download = QPushButton("Download to Vault")
         btn_download.clicked.connect(self._on_vault_download)
-        vault_layout.addWidget(btn_download)
+        vault_row.addWidget(btn_download)
 
         btn_clear_vault = QPushButton("Clear Cache")
-        btn_clear_vault.setStyleSheet("QPushButton { color: #ff8c00; }")
         btn_clear_vault.clicked.connect(self._on_vault_clear)
-        vault_layout.addWidget(btn_clear_vault)
+        vault_row.addWidget(btn_clear_vault)
 
-        root.addWidget(vault_group)
+        vault_layout.addLayout(vault_row)
+        root.addWidget(vault_card)
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
         self._refresh_vault_status()
 
     # ── Refreshers ───────────────────────────────────────────────────
@@ -285,6 +341,37 @@ class FlashTab(QWidget):
             self._profile_combo.addItem(name)
             self._profile_combo.setCurrentText(name)
 
+    # ── Dead Man's Switch toggle ───────────────────────────────────
+
+    def _on_suicide_toggled(self, checked: bool) -> None:
+        """Update the card border to orange when the checkbox is active."""
+        if checked:
+            self._suicide_card.setObjectName("suicide_card_active")
+            self._suicide_card.setStyleSheet(
+                """
+                QFrame#suicide_card_active {
+                    background-color: #161b22;
+                    border: 2px solid #f0883e;
+                    border-radius: 8px;
+                    padding: 8px 16px;
+                }
+                QCheckBox { background: transparent; }
+                QLabel { background: transparent; }
+                """
+            )
+        else:
+            self._suicide_card.setObjectName("card")
+            self._suicide_card.setStyleSheet("")
+
+    @property
+    def suicide_enabled(self) -> bool:
+        """Whether the Dead Man's Switch checkbox is checked."""
+        return self._suicide_checkbox.isChecked()
+
+    @suicide_enabled.setter
+    def suicide_enabled(self, value: bool) -> None:
+        self._suicide_checkbox.setChecked(value)
+
     # ── Actions ──────────────────────────────────────────────────────
 
     def _on_flash(self) -> None:
@@ -297,6 +384,36 @@ class FlashTab(QWidget):
         if not profile_path:
             self._log("No firmware profile selected.")
             return
+
+        # If Dead Man's Switch is enabled, open setup dialog before flashing
+        if self._suicide_checkbox.isChecked():
+            try:
+                from src.ui.qt.suicide_dialog import SuicideSetupDialog
+            except Exception as exc:
+                self._log(f"Could not load Dead Man's Switch setup dialog: {exc}")
+                return
+
+            dlg = SuicideSetupDialog(self)
+            # Pre-populate with current port and profile info
+            profile = self._fe.load_profile(profile_path)
+            variant = self._variant_combo.currentData() or ""
+            # Set chip from profile if available
+            if hasattr(profile, "chip") and profile.chip:
+                idx = dlg.chip.findText(profile.chip.lower())
+                if idx >= 0:
+                    dlg.chip.setCurrentIndex(idx)
+            # Set variant from profile if available
+            if hasattr(profile, "variant_type") and profile.variant_type:
+                idx = dlg.variant.findText(profile.variant_type)
+                if idx >= 0:
+                    dlg.variant.setCurrentIndex(idx)
+            self._log(f"Dead Man's Switch enabled — opening setup for {profile_name} on {port}...")
+
+            result = dlg.exec_()
+            if result != SuicideSetupDialog.Accepted:
+                self._log("Dead Man's Switch setup cancelled — flash aborted.")
+                return
+            self._log("Dead Man's Switch setup complete — proceeding to flash.")
 
         profile = self._fe.load_profile(profile_path)
         variant = self._variant_combo.currentData() or ""
@@ -378,10 +495,10 @@ class FlashTab(QWidget):
                 f"Cached: {total} version(s) across {len(cached)} profile(s) "
                 f"({size_mb:.1f} MB) — {profiles}"
             )
-            self._vault_status.setStyleSheet("color: #39ff14;")
+            self._vault_status.setObjectName("vault_active")
         else:
             self._vault_status.setText("No cached firmware")
-            self._vault_status.setStyleSheet("color: #888;")
+            self._vault_status.setObjectName("muted")
 
     def _on_vault_download(self) -> None:
         """Download the currently selected profile's firmware to the vault."""

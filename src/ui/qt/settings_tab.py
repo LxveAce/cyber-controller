@@ -14,11 +14,13 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
     QFormLayout,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -27,6 +29,20 @@ from PyQt5.QtWidgets import (
 from src.config.settings import DEFAULTS, load_settings, save_settings
 
 log = logging.getLogger(__name__)
+
+
+def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+    """Create a card-styled QFrame with optional title label."""
+    card = QFrame()
+    card.setObjectName("card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(8)
+    if title:
+        lbl = QLabel(title)
+        lbl.setObjectName("card_title")
+        layout.addWidget(lbl)
+    return card, layout
 
 
 class SettingsTab(QWidget):
@@ -47,28 +63,43 @@ class SettingsTab(QWidget):
     # ── Layout ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(0, 0, 0, 0)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+
+        container = QWidget()
+        root = QVBoxLayout(container)
 
         # ── Serial ───────────────────────────────────────────────────
-        serial_group = QGroupBox("Serial Defaults")
-        serial_form = QFormLayout(serial_group)
+        serial_card, serial_outer = _make_card("Serial Defaults")
+        serial_form = QFormLayout()
+        serial_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._baud_combo = QComboBox()
         self._baud_combo.setEditable(True)
+        self._baud_combo.setMinimumWidth(120)
         self._baud_combo.addItems(["9600", "57600", "115200", "230400", "460800", "921600"])
         self._timeout_spin = QSpinBox()
         self._timeout_spin.setRange(1, 120)
         self._timeout_spin.setSuffix(" s")
+        self._timeout_spin.setMinimumWidth(80)
         serial_form.addRow("Default Baud Rate:", self._baud_combo)
         serial_form.addRow("Connection Timeout:", self._timeout_spin)
-        root.addWidget(serial_group)
+        serial_outer.addLayout(serial_form)
+        root.addWidget(serial_card)
 
         # ── Flash ────────────────────────────────────────────────────
-        flash_group = QGroupBox("Flash Defaults")
-        flash_form = QFormLayout(flash_group)
+        flash_card, flash_outer = _make_card("Flash Defaults")
+        flash_form = QFormLayout()
+        flash_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._flash_baud_combo = QComboBox()
         self._flash_baud_combo.setEditable(True)
+        self._flash_baud_combo.setMinimumWidth(120)
         self._flash_baud_combo.addItems(["115200", "230400", "460800", "921600"])
         self._flash_mode_combo = QComboBox()
+        self._flash_mode_combo.setMinimumWidth(100)
         self._flash_mode_combo.addItems(["qio", "qout", "dio", "dout"])
         self._verify_check = QCheckBox("Verify after flash")
         self._backup_check = QCheckBox("Auto-backup before flash")
@@ -76,22 +107,26 @@ class SettingsTab(QWidget):
         flash_form.addRow("Flash Mode:", self._flash_mode_combo)
         flash_form.addRow(self._verify_check)
         flash_form.addRow(self._backup_check)
-        root.addWidget(flash_group)
+        flash_outer.addLayout(flash_form)
+        root.addWidget(flash_card)
 
         # ── Cross-Comm ───────────────────────────────────────────────
-        comm_group = QGroupBox("Cross-Communication")
-        comm_form = QFormLayout(comm_group)
+        comm_card, comm_outer = _make_card("Cross-Communication")
+        comm_form = QFormLayout()
+        comm_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._auto_share_check = QCheckBox("Auto-share discoveries to the shared target pool")
         self._dedup_check = QCheckBox("De-duplicate targets by MAC")
         comm_form.addRow(self._auto_share_check)
         comm_form.addRow(self._dedup_check)
-        root.addWidget(comm_group)
+        comm_outer.addLayout(comm_form)
+        root.addWidget(comm_card)
 
         # ── Safety & Disclaimers ─────────────────────────────────────
         # These LABEL and warn; they never remove or block a capability. The
         # confirm dialog always offers "Yes, proceed"; suppress turns it off.
-        safety_group = QGroupBox("Safety & Disclaimers")
-        safety_form = QFormLayout(safety_group)
+        safety_card, safety_outer = _make_card("Safety & Disclaimers")
+        safety_form = QFormLayout()
+        safety_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._confirm_dangerous_check = QCheckBox(
             "Confirm before sending dangerous commands (deauth / jam / beacon spam / ...)"
         )
@@ -100,33 +135,38 @@ class SettingsTab(QWidget):
         )
         safety_form.addRow(self._confirm_dangerous_check)
         safety_form.addRow(self._suppress_warnings_check)
-        root.addWidget(safety_group)
+        safety_outer.addLayout(safety_form)
+        root.addWidget(safety_card)
 
         # ── Firmware Vault ───────────────────────────────────────────
-        vault_group = QGroupBox("Firmware Vault")
-        vault_form = QFormLayout(vault_group)
+        vault_card, vault_outer = _make_card("Firmware Vault")
+        vault_form = QFormLayout()
+        vault_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         dir_row = QHBoxLayout()
         self._vault_dir_edit = QLineEdit()
         self._vault_dir_edit.setPlaceholderText("~/.cyber-controller/firmware")
+        self._vault_dir_edit.setMinimumWidth(150)
         self._vault_browse_btn = QPushButton("Browse...")
-        dir_row.addWidget(self._vault_dir_edit)
+        dir_row.addWidget(self._vault_dir_edit, stretch=1)
         dir_row.addWidget(self._vault_browse_btn)
         vault_form.addRow("Vault Directory:", dir_row)
-        root.addWidget(vault_group)
+        vault_outer.addLayout(vault_form)
+        root.addWidget(vault_card)
 
         # ── Save / Reset ─────────────────────────────────────────────
         btn_row = QHBoxLayout()
         btn_row.addStretch()
         self._reset_btn = QPushButton("Reset to Defaults")
         self._save_btn = QPushButton("Save Settings")
-        self._save_btn.setStyleSheet(
-            "QPushButton { background-color: #39ff14; color: #000; font-weight: bold; }"
-        )
+        self._save_btn.setObjectName("flash_btn")
         btn_row.addWidget(self._reset_btn)
         btn_row.addWidget(self._save_btn)
         root.addLayout(btn_row)
 
         root.addStretch()
+
+        scroll.setWidget(container)
+        outer.addWidget(scroll)
 
     def _connect_signals(self) -> None:
         self._save_btn.clicked.connect(self._on_save)

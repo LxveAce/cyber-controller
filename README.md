@@ -1,6 +1,8 @@
 <div align="center">
 
-# ⬢ Cyber Controller
+<img src="assets/cc-logo.png" alt="Cyber Controller Logo" width="400">
+
+# Cyber Controller
 
 ### The all-in-one security hardware controller for cyberdecks & field deployments.
 
@@ -15,7 +17,7 @@
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)](#contributing)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
 
-[**Website**](https://lxveace.com) · [**ESP32 Marauder Tools Hub**](https://esp32marauder.com) · [**Build Guide**](https://esp32marauder.com/builds.html) · [**Downloads**](https://esp32marauder.com/downloads.html)
+[**Website**](https://cybercontroller.org) · [**ESP32 Marauder Tools Hub**](https://esp32marauder.com) · [**Build Guide**](https://esp32marauder.com/builds.html) · [**Downloads**](https://cybercontroller.org/#downloads)
 
 </div>
 
@@ -27,7 +29,7 @@ Cyber Controller is the flagship convergence of the **Lxve ESP32 security toolch
 [Headless Marauder GUI](https://github.com/LxveAce/headless-marauder-gui),
 [Universal Flasher](https://github.com/LxveAce/universal-flasher), and
 [Universal Flasher & UI](https://github.com/LxveAce/universal-flasher-ui) into a single unified tool,
-with [Suicide Marauder](https://github.com/LxveAce/Suicide-Marauder) anti-forensic provisioning built in.
+with [Dead Man's Switch](https://github.com/LxveAce/Suicide-Marauder) anti-forensic provisioning built in.
 It is built for **cyberdecks, field deployments, and security research** — runs on ARM + x64, on a
 7" touchscreen or headless over SSH or a phone.
 
@@ -211,6 +213,56 @@ python build.py        # PyInstaller single-file executable in dist/
 ### Phase 4 — Extended
 - [ ] Signal heatmap · RF waterfall · PCAP pipeline · recon bridge · mesh relay · plugin system
 
+### Firmware Expansion Roadmap
+
+30 new firmware profiles across 3 new backends, rolling out in tiered releases:
+
+#### Tier 1 — v1.1.0 (Existing Backends)
+| Firmware | Backend | Target Hardware |
+|----------|---------|-----------------|
+| **NEMO** | esptool | ESP32-S3 (Cardputer, StickC) |
+| **Deauther** (Spacehuhn) | esptool | ESP8266 / ESP32 |
+| **EvilPortal** | esptool | ESP32 |
+| **RogueMaster** | qFlipper | Flipper Zero |
+| **P4wnP1 A.L.O.A.** | SD image | Pi Zero / Zero 2 W |
+| **Wardriver.uk** | esptool | ESP32 + GPS |
+
+#### Tier 2 — v1.2.0 (Expanded Profiles)
+| Firmware | Backend | Target Hardware |
+|----------|---------|-----------------|
+| **Parrot Security OS** | SD image | Raspberry Pi |
+| **NetHunter** (Pi + Phone) | SD image / ADB | Raspberry Pi / Android |
+| **PacketMonitor** | esptool | ESP32 |
+| **Hash Monster** | esptool | ESP32 |
+| **OpenWrt** | SD image | Raspberry Pi |
+| **Reticulum / RNode** | esptool | ESP32 + LoRa |
+| **ESP32-NAT-Router** | esptool | ESP32 |
+| **LoRa APRS iGate** | esptool | ESP32 + LoRa |
+| **Kismet** (sensor image) | SD image | Raspberry Pi |
+
+#### Tier 3 — v1.3.0 (New Backends: `dfu-util`, `UF2`)
+| Firmware / Device | Backend | What |
+|-------------------|---------|------|
+| **HackRF One** | dfu-util | 1MHz–6GHz SDR transceiver |
+| **Proxmark3** | dfu-util | RFID/NFC research platform |
+| **YARD Stick One** | dfu-util | Sub-GHz ISM transceiver |
+| **Ubertooth One** | dfu-util | Bluetooth baseband sniffer |
+| **GreatFET One** | dfu-util | USB hacking / hardware analysis |
+| **Pi Pico / RP2040** | UF2 | BadUSB / HID injection |
+| **Chameleon Ultra** | UF2 | NFC card emulation + cloning |
+| **Circuit Playground** | UF2 | Sensor / HID pentest nodes |
+
+#### Tier 4 — v1.4.0 (Specialty Hardware)
+| Device | Backend | What |
+|--------|---------|------|
+| **Bus Pirate** | Serial | Universal protocol analyzer |
+| **WiFi Coconut** | Serial | 14-channel WiFi monitor |
+| **Crazyradio PA** | dfu-util | MouseJack / wireless keyboard attacks |
+| **O.MG Cable** | Serial | USB implant cable firmware |
+| **CANtact** | Serial | Vehicle CAN bus analysis |
+
+> Full expansion plan with backend details at [cybercontroller.org](https://cybercontroller.org/#firmware).
+
 ## Suicide Marauder Integration
 
 [Suicide Marauder](https://github.com/LxveAce/Suicide-Marauder) ships as a git submodule for
@@ -233,6 +285,8 @@ flash-only critical section; recoverable only by the owner over UART on T1).
 | [headless-marauder-gui](https://github.com/LxveAce/headless-marauder-gui) | Standalone Marauder controller + flasher (4 UIs) |
 | [universal-flasher](https://github.com/LxveAce/universal-flasher) | Multi-firmware flasher + device manager |
 | [Suicide-Marauder](https://github.com/LxveAce/Suicide-Marauder) | Anti-forensic firmware provisioner |
+| [cybercontroller.org](https://cybercontroller.org) | Flagship website — interactive demo, firmware library, downloads |
+| [esp32marauder.com](https://esp32marauder.com) | ESP32 security tools hub |
 
 ## Contributing
 

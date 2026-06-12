@@ -11,7 +11,7 @@ from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
-    QGroupBox,
+    QFrame,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -33,6 +34,20 @@ from src.core.macro_recorder import Macro, MacroRecorder, MacroStep
 from src.core.device_manager import DeviceManager
 
 log = logging.getLogger(__name__)
+
+
+def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
+    """Create a card-styled QFrame with optional title label."""
+    card = QFrame()
+    card.setObjectName("card")
+    layout = QVBoxLayout(card)
+    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setSpacing(8)
+    if title:
+        lbl = QLabel(title)
+        lbl.setObjectName("card_title")
+        layout.addWidget(lbl)
+    return card, layout
 
 
 class _PlaybackSignal(QObject):
@@ -65,20 +80,27 @@ class MacroTab(QWidget):
 
     def _build_ui(self) -> None:
         root = QHBoxLayout(self)
+        root.setContentsMargins(0, 0, 0, 0)
         splitter = QSplitter(Qt.Horizontal)
 
-        # ── Left panel: saved macros ─────────────────────────────────
+        # ── Left panel: saved macros (in scroll area) ────────────────
+        left_scroll = QScrollArea()
+        left_scroll.setWidgetResizable(True)
+        left_scroll.setFrameShape(QFrame.NoFrame)
+        left_scroll.setMinimumWidth(160)
+
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
 
         lbl = QLabel("Saved Macros")
-        lbl.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        lbl.setObjectName("card_title")
         left_layout.addWidget(lbl)
 
         self._macro_list = QListWidget()
+        self._macro_list.setMinimumHeight(80)
         self._macro_list.currentItemChanged.connect(self._on_macro_selected)
-        left_layout.addWidget(self._macro_list)
+        left_layout.addWidget(self._macro_list, stretch=1)
 
         btn_row = QHBoxLayout()
         btn_load = QPushButton("Load File...")
@@ -86,7 +108,6 @@ class MacroTab(QWidget):
         btn_row.addWidget(btn_load)
 
         btn_delete = QPushButton("Delete")
-        btn_delete.setStyleSheet("QPushButton { color: #ff4444; }")
         btn_delete.clicked.connect(self._on_delete_macro)
         btn_row.addWidget(btn_delete)
         left_layout.addLayout(btn_row)
@@ -95,43 +116,60 @@ class MacroTab(QWidget):
         btn_refresh.clicked.connect(self._refresh_macro_list)
         left_layout.addWidget(btn_refresh)
 
-        splitter.addWidget(left)
+        left_scroll.setWidget(left)
+        splitter.addWidget(left_scroll)
 
-        # ── Right panel: editor/player ───────────────────────────────
+        # ── Right panel: editor/player (in scroll area) ─────────────
+        right_scroll = QScrollArea()
+        right_scroll.setWidgetResizable(True)
+        right_scroll.setFrameShape(QFrame.NoFrame)
+
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
-        # Variable substitution fields
-        var_group = QGroupBox("Variable Substitution")
-        var_layout = QHBoxLayout(var_group)
+        # Variable substitution fields card
+        var_card, var_layout_inner = _make_card("Variable Substitution")
+        var_row = QHBoxLayout()
 
-        var_layout.addWidget(QLabel("TARGET_MAC:"))
+        mac_label = QLabel("TARGET_MAC:")
+        mac_label.setWordWrap(True)
+        var_row.addWidget(mac_label)
         self._var_mac = QLineEdit()
         self._var_mac.setPlaceholderText("AA:BB:CC:DD:EE:FF")
-        var_layout.addWidget(self._var_mac)
+        self._var_mac.setMinimumWidth(100)
+        var_row.addWidget(self._var_mac)
 
-        var_layout.addWidget(QLabel("TARGET_SSID:"))
+        ssid_label = QLabel("TARGET_SSID:")
+        ssid_label.setWordWrap(True)
+        var_row.addWidget(ssid_label)
         self._var_ssid = QLineEdit()
         self._var_ssid.setPlaceholderText("MyNetwork")
-        var_layout.addWidget(self._var_ssid)
+        self._var_ssid.setMinimumWidth(80)
+        var_row.addWidget(self._var_ssid)
 
-        var_layout.addWidget(QLabel("CHANNEL:"))
+        ch_label = QLabel("CHANNEL:")
+        ch_label.setWordWrap(True)
+        var_row.addWidget(ch_label)
         self._var_channel = QLineEdit()
         self._var_channel.setPlaceholderText("6")
         self._var_channel.setMaximumWidth(50)
-        var_layout.addWidget(self._var_channel)
+        self._var_channel.setMinimumWidth(40)
+        var_row.addWidget(self._var_channel)
 
-        right_layout.addWidget(var_group)
+        var_layout_inner.addLayout(var_row)
+        right_layout.addWidget(var_card)
 
         # Macro info
         info_row = QHBoxLayout()
         self._macro_name_label = QLabel("No macro loaded")
-        self._macro_name_label.setFont(QFont("Segoe UI", 11, QFont.Bold))
+        self._macro_name_label.setObjectName("card_title")
+        self._macro_name_label.setWordWrap(True)
         info_row.addWidget(self._macro_name_label)
         info_row.addStretch()
         self._macro_info_label = QLabel("")
-        self._macro_info_label.setStyleSheet("color: #888;")
+        self._macro_info_label.setObjectName("muted")
+        self._macro_info_label.setWordWrap(True)
         info_row.addWidget(self._macro_info_label)
         right_layout.addLayout(info_row)
 
@@ -147,7 +185,8 @@ class MacroTab(QWidget):
         self._steps_table.setEditTriggers(QTableWidget.NoEditTriggers)
         self._steps_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._steps_table.verticalHeader().setVisible(False)
-        right_layout.addWidget(self._steps_table)
+        self._steps_table.setMinimumHeight(80)
+        right_layout.addWidget(self._steps_table, stretch=1)
 
         # Progress bar
         self._progress = QProgressBar()
@@ -155,6 +194,7 @@ class MacroTab(QWidget):
         self._progress.setValue(0)
         self._progress.setTextVisible(True)
         self._progress.setFormat("Ready")
+        self._progress.setMinimumHeight(20)
         right_layout.addWidget(self._progress)
 
         # Control buttons
@@ -163,7 +203,7 @@ class MacroTab(QWidget):
         # Port selector for recording/playback
         ctrl_row.addWidget(QLabel("Port:"))
         self._port_combo = QComboBox()
-        self._port_combo.setMinimumWidth(120)
+        self._port_combo.setMinimumWidth(100)
         ctrl_row.addWidget(self._port_combo)
 
         btn_refresh_ports = QPushButton("Refresh")
@@ -180,9 +220,7 @@ class MacroTab(QWidget):
         ctrl_row.addWidget(self._speed_combo)
 
         self._btn_record = QPushButton("Record")
-        self._btn_record.setStyleSheet(
-            "QPushButton { background-color: #ff4444; color: #fff; font-weight: bold; }"
-        )
+        self._btn_record.setObjectName("erase_btn")  # Red styling
         self._btn_record.clicked.connect(self._on_record)
         ctrl_row.addWidget(self._btn_record)
 
@@ -192,10 +230,7 @@ class MacroTab(QWidget):
         ctrl_row.addWidget(self._btn_stop)
 
         self._btn_play = QPushButton("Play")
-        self._btn_play.setStyleSheet(
-            "QPushButton { background-color: #39ff14; color: #000; font-weight: bold; }"
-            "QPushButton:disabled { background-color: #555; color: #888; }"
-        )
+        self._btn_play.setObjectName("flash_btn")  # Green styling
         self._btn_play.setEnabled(False)
         self._btn_play.clicked.connect(self._on_play)
         ctrl_row.addWidget(self._btn_play)
@@ -207,7 +242,8 @@ class MacroTab(QWidget):
 
         right_layout.addLayout(ctrl_row)
 
-        splitter.addWidget(right)
+        right_scroll.setWidget(right)
+        splitter.addWidget(right_scroll)
 
         # Splitter proportions
         splitter.setStretchFactor(0, 1)

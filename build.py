@@ -18,7 +18,8 @@ from pathlib import Path
 _ROOT = Path(__file__).resolve().parent
 _ENTRY = _ROOT / "src" / "app.py"
 _ICON = _ROOT / "assets" / "icon.ico"
-_NAME = "cyber-controller"
+_LOGO = _ROOT / "assets" / "cc-logo.png"
+_NAME = "CyberController"
 
 
 def _detect_platform() -> str:
@@ -63,12 +64,45 @@ def _build() -> int:
     if missions_dir.is_dir():
         cmd.extend(["--add-data", f"{missions_dir}{sep}config/missions"])
 
-    # Hidden imports that PyInstaller may miss
+    # Include assets (logo, icons)
+    assets_dir = _ROOT / "assets"
+    if assets_dir.is_dir():
+        cmd.extend(["--add-data", f"{assets_dir}{sep}assets"])
+
+    # QSS theme stylesheets
+    theme_dir = _ROOT / "src" / "ui" / "qt" / "theme"
+    for qss in theme_dir.glob("*.qss"):
+        cmd.extend(["--add-data", f"{qss}{sep}src/ui/qt/theme"])
+
+    # Hidden imports — all UI variants + serial + launcher
     cmd.extend([
+        # Serial / device comms
         "--hidden-import", "serial",
         "--hidden-import", "serial.tools.list_ports",
+        # PyQt5 (full GUI + launcher dialog)
         "--hidden-import", "PyQt5",
         "--hidden-import", "PyQt5.sip",
+        "--hidden-import", "PyQt5.QtCore",
+        "--hidden-import", "PyQt5.QtGui",
+        "--hidden-import", "PyQt5.QtWidgets",
+        # Tkinter (lightweight GUI)
+        "--hidden-import", "tkinter",
+        "--hidden-import", "tkinter.ttk",
+        "--hidden-import", "tkinter.messagebox",
+        "--hidden-import", "tkinter.filedialog",
+        # Textual (TUI)
+        "--hidden-import", "textual",
+        "--hidden-import", "textual.app",
+        # Launcher
+        "--hidden-import", "src.ui.launcher",
+    ])
+
+    # Collect submodules for all UI variants
+    cmd.extend([
+        "--collect-submodules", "src.ui.qt",
+        "--collect-submodules", "src.ui.tk",
+        "--collect-submodules", "src.ui.tui",
+        "--collect-submodules", "src.ui.web",
     ])
 
     cmd.append(str(_ENTRY))
