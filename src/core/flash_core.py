@@ -337,6 +337,45 @@ def download_to(url: str, cache_dir: str, name: str, on_line: Line) -> str:
     return dest
 
 
+def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str, on_line: Line) -> str:
+    """Download a `.zip` release asset into `cache_dir` and extract `member`
+    (e.g. "merged.bin"), returning the path to the extracted file.
+
+    For firmwares that ship per-board ZIP bundles instead of a bare .bin (e.g.
+    GhostESP). Path-traversal sink defense: both the saved zip name and the output
+    name go through `_safe_cache_name`, and the wanted member is matched inside the
+    zip by BASENAME (so a maliciously-nested zip entry can neither be selected by a
+    traversal path nor written outside `cache_dir`).
+    """
+    import zipfile
+
+    safe_zip = _safe_cache_name(asset_name)
+    zip_path = os.path.join(cache_dir, safe_zip)
+    real_dir = os.path.realpath(cache_dir)
+    if (os.path.realpath(zip_path) != os.path.join(real_dir, safe_zip)
+            and not os.path.realpath(zip_path).startswith(real_dir + os.sep)):
+        raise ValueError(f"refusing zip dest that escapes the cache dir: {zip_path!r}")
+    on_line(f"[download] {safe_zip}")
+    data = _http_get(url)
+    with open(zip_path, "wb") as f:
+        f.write(data)
+    on_line(f"[download] {len(data)} bytes -> {zip_path}")
+
+    want = os.path.basename(member)
+    out_path = os.path.join(cache_dir, _safe_cache_name(f"{os.path.splitext(safe_zip)[0]}_{want}"))
+    with zipfile.ZipFile(zip_path) as z:
+        target = next((n for n in z.namelist() if os.path.basename(n) == want), None)
+        if target is None:
+            raise ValueError(
+                f"zip {asset_name!r} has no member named {want!r} "
+                f"(has: {', '.join(z.namelist()[:8])})"
+            )
+        with z.open(target) as src, open(out_path, "wb") as dst:
+            dst.write(src.read())
+    on_line(f"[extract] {want} ({os.path.getsize(out_path)} bytes) -> {out_path}")
+    return out_path
+
+
 def cache_dir() -> str:
     d = os.path.join(tempfile.gettempdir(), "marauder_fw")
     os.makedirs(d, exist_ok=True)
@@ -800,24 +839,39 @@ class GhostEspProfile(FirmwareProfile):
         assets = []
         for a in raw:
             name = a.get("name", "")
-            if not name.endswith(".bin"):
+            low = name.lower()
+            # GhostESP ships per-board .zip bundles, each containing a flashable
+            # merged.bin (bootloader+partitions+app at 0x0) alongside the split
+            # bin/elf. Accept those; also accept a bare .bin if a release ever has one.
+            is_zip = low.endswith(".zip")
+            is_bin = low.endswith(".bin")
+            if not (is_zip or is_bin):
                 continue
-            if "bootloader" in name.lower() or "partitions" in name.lower() or "boot_app0" in name.lower():
+            if is_bin and ("bootloader" in low or "partitions" in low or "boot_app0" in low):
                 continue
             chip = _ghostesp_chip(name)
-            board = name.replace(".bin", "").replace("GhostESP_", "").replace("GhostESP-", "")
-            assets.append({
+            base = name.rsplit(".", 1)[0].replace("GhostESP_", "").replace("GhostESP-", "")
+            entry: Dict = {
                 "name": name,
                 "url": a.get("browser_download_url"),
                 "chip": chip,
-                "label": f"GhostESP {board}",
+                "label": f"GhostESP {base}",
                 "offset": "0x0",
                 "merged": True,
-            })
+            }
+            if is_zip:
+                # The engine downloads the zip and flashes the contained merged image.
+                entry["zip_member"] = "merged.bin"
+            assets.append(entry)
         return tag, assets
 
     def default_variant(self, assets: List[Dict], chip: str) -> Optional[Dict]:
         cands = self.variants_for_chip(assets, chip)
+        # Prefer a chip-generic build, then a devkit, then whatever is first. (A
+        # board-specific build like LilyGo-TDisplayS3-Touch can be picked explicitly.)
+        for a in cands:
+            if "generic" in a["name"].lower():
+                return a
         for a in cands:
             if "devkitc" in a["name"].lower():
                 return a
