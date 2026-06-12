@@ -59,23 +59,55 @@ LILYGO T-Display-S3, 2x ESP32-C5, 2x CYD 2.8", AITRIP 4" ST7796, 3x BW16-Kit, Pi
 
 ---
 
-## Running task list / vision (squash these)
-- [x] GhostESP zip support (PR #1)
-- [x] Firmware×device specialties dossier
-- [x] Meshtastic flashed + working on Heltec V3
-- [ ] **CyberC Meshtastic profile fix** — chip-zip + board-within-zip selection + multi-file install
-      (generalize the zip machinery; 128 MB download caveat)
-- [ ] **Unified action broadcast** ("one button → every connected radio runs it in its native command")
-- [ ] Cyberdeck re-brainstorm with the full real inventory (3x BW16, S2U, T-Display-S3, C5, etc.)
-- [ ] In-depth step-by-step hardware build guide (in parts → assembly)
-- [ ] Security pass (top-notch) + UI optimization pass (run on all hardware, keep look+function)
-- [ ] Fact-check everything in the repos against current upstream
-- [ ] Vision-forward doc
-- [ ] Raspberry Pi: bring up as the cyberdeck core (CyberC on it; drive nodes), end on Kali
-- [ ] Talk to the ESP-with-display from the Pi's USB
-- [ ] Test remaining firmwares on COM10/COM11; re-flash boards as needed
-- [ ] Release the UI if it reaches a clean point
+### 5. Meshtastic chip-zip support in CyberC — SHIPPED (PR #2, master `b90de7b`)
+Meshtastic moved to per-CHIP zips (firmware-esp32s3-*.zip, 128 MB, every board inside). Rewrote
+MeshtasticProfile to a curated board list per chip (13 s3 / 12 esp32, heltec-v3 verified) that
+extracts the board's factory bin (flash @0x0); `download_and_extract` now caches/reuses the big
+archive. Validated: heltec-v3 extracts the byte-identical 2081488 B bin already booting on COM12.
 
-## Open questions (logged, not blocking — will simulate/verify)
-- Which exact board are COM10 / COM11 (both classic esp32)? Will fingerprint by flashing/serial.
-- How will the Pi connect (LAN IP / USB-ether gadget / SD card here)? Scanning each cycle.
+### 6. Cyberdeck v2 + step-by-step build guide — PUSHED (Projects `ddb25ac`)
+6-agent design/audit workflow → `CYBERDECK-V2-ARCHITECTURE.md` (board→role: S2U→BadUSB/
+SuperWiFiDuck, T-Display-S3→Flock/OUI-Spy, BW16→5GHz deauth, C5→5GHz backbone) +
+`BUILD-GUIDE-STEP-BY-STEP.md` (phased workbench build).
+
+### 7. Security H-1 — SHIPPED (PR #3, master `547036e`)
+Audit found the BW16/RTL8720 path flashed a third-party bundle with NO integrity check (the one
+path lacking it). Pinned the SHA-256 of the HW-validated bundle + `verify_sha256()` rejects any
+mismatch before flashing. Validated end-to-end on the real BW16 (4 files verify OK then flash).
+
+### 8. Unified Action Broadcast — SHIPPED + LIVE-VALIDATED (PR #4, master `ea243f3`)
+One verb → every connected radio fires it at once in its NATIVE command (new `src/core/broadcast.py`
+engine + `BROADCAST_CAPABILITIES` on all 8 protocols + `broadcast_tab.py` UI wired into main_window;
+fixed `_NAME_TO_MODULE` missing bw16; +9 tests, GUI smoke). **LIVE on hardware:** "Find APs" →
+COM8 BW16 `AT+SCAN` (39-line dual-band scan) + COM9 GhostESP `scanap` (94 APs), simultaneously.
+
+### 9. Profile asset-matching audit — done
+Confirmed my two zip fixes covered the real bugs; the "0-variant" firmwares (flock-you/oui-spy/
+sky-spy/airtag/cyt-ng/minigotchi) genuinely have NO GitHub releases (source-only, 404) — correct.
+
+---
+
+## Running task list / vision (squash these)
+- [x] GhostESP zip support (PR #1) · Meshtastic chip-zip support (PR #2)
+- [x] Firmware×device specialties dossier · Cyberdeck v2 + build guide (Projects)
+- [x] Meshtastic flashed + configured (region US, "Cyberdeck/DECK") + working on Heltec V3 (COM12)
+- [x] Security H-1: SHA-256-pin the BW16 firmware (PR #3)
+- [x] **Unified Action Broadcast** — shipped (PR #4) + live-validated on BW16+GhostESP
+- [ ] **Apply remaining security findings** (M-1 subscribe dedup, M-2 vault SSRF allowlist, L-1 NTFS ACLs)
+- [ ] **Apply fact-check corrections** (`_smbuild/night_deliverables/fact-check.md`) to repos + push
+- [ ] **Apply UI optimization plan** (`_smbuild/night_deliverables/ui-optimization.md`) — keep look+function
+- [ ] Sweep remaining flashables on connected boards (Marauder/Bruce/HaleHound re-confirm on current fleet)
+- [ ] Raspberry Pi: bring up as cyberdeck core (CyberC on it; drive nodes), talk to ESP-on-Pi-USB, end on Kali
+- [ ] Vision-forward doc (squash-all roadmap)
+- [ ] **Update websites (cybercontroller.org/esp32marauder.com) — AT THE END**
+- [ ] Release the UI if it reaches a clean point (4 PRs in — strong candidate for a tagged release)
+
+## State for continuity
+- 4 PRs merged tonight (cyber-controller master `ea243f3`). All as LxveAce. Suite green; GUI smoke passes.
+- Fleet: COM3 ESP-AT(stuck) · COM8 BW16-Vampire · COM9 GhostESP · COM10 ESP32-DIV v1.1.0 · COM11 classic-ESP32(SD-fw) · COM12 Meshtastic Heltec-V3. **Pi still NOT present** (scanned repeatedly).
+- Deliverable docs to mine: `_smbuild/night_deliverables/{security-audit,fact-check,ui-optimization}.md` (+ .SUMMARY).
+- meshtastic CLI + PyQt5 + psutil installed. BW16 AmebaD tool at `_smbuild/bw16/` (CYBERC_AMEBAD_TOOL).
+
+## Open questions (logged, not blocking — simulate/verify)
+- Pi connection method (LAN IP / USB-ether gadget / SD here)? Scanning each cycle.
+- Tag a v1.x release after the broadcast + zip fixes? (leaning yes — clean, tested, big new feature.)
