@@ -236,3 +236,15 @@ class BW16Protocol(BaseProtocol):
             "AmebaD",
         )
         return any(m in line for m in markers)
+
+
+# --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
+# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
+from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
+
+BROADCAST_CAPABILITIES = {
+    BroadcastVerb.FIND_APS:    ((), "AT+SCAN"),
+    BroadcastVerb.DEAUTH_ALL:  ((), "AT+DEAUTHIDX=ALL"),
+    BroadcastVerb.BEACON_SPAM: ((), "AT+BEACONRANDOM=20"),
+    BroadcastVerb.STOP_ALL:    ((), "AT+STOP"),
+}

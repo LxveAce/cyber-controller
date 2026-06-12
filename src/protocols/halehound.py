@@ -298,3 +298,17 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("Signal Analysis", "analyze {channel}", "Analyze RF signals on this channel", ActionCategory.MONITOR),
     ],
 }
+
+
+# --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
+# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
+from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
+
+BROADCAST_CAPABILITIES = {
+    BroadcastVerb.FIND_APS:     ((), "wifi_scan"),
+    BroadcastVerb.BLE_SCAN:     ((), "ble_scan"),
+    BroadcastVerb.SUBGHZ_SCAN:  ((), "subghz_scan"),
+    BroadcastVerb.DEAUTH_ALL:   ((), "wifi_deauth"),
+    BroadcastVerb.BLE_SPAM:     ((), "ble_cinder"),
+    BroadcastVerb.STOP_ALL:     ((), "stop"),
+}
