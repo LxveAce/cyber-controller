@@ -22,6 +22,8 @@ import struct
 from pathlib import Path
 from typing import Any
 
+from src.security.win_acl import restrict_to_current_user, secure_dir
+
 log = logging.getLogger(__name__)
 
 # AES-256-GCM is mandatory. Import at module load; SecureStorage fails closed if absent.
@@ -162,7 +164,9 @@ class SecureStorage:
     def save(self, data: dict[str, Any], path: str | Path) -> None:
         """Encrypt and write *data* to *path* with owner-only (0600) permissions."""
         path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
+        # L-1: owner-only NTFS ACL on Windows (the 0600 below is a no-op there) so the
+        # encrypted vault isn't left readable by other local accounts.
+        secure_dir(path.parent)
         blob = self.encrypt(data)
         # Create with 0600 from the start (no world-readable window) where the OS supports it.
         fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -174,6 +178,7 @@ class SecureStorage:
                 os.chmod(path, 0o600)
             except OSError:
                 pass  # best-effort on platforms without POSIX perms (Windows)
+        restrict_to_current_user(path)  # L-1: explicit owner-only ACL on Windows
         log.info("Secure storage saved: %s", path)
 
     def load(self, path: str | Path) -> dict[str, Any]:
