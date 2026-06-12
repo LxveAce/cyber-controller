@@ -87,6 +87,21 @@ class SettingsTab(QWidget):
         comm_form.addRow(self._dedup_check)
         root.addWidget(comm_group)
 
+        # ── Safety & Disclaimers ─────────────────────────────────────
+        # These LABEL and warn; they never remove or block a capability. The
+        # confirm dialog always offers "Yes, proceed"; suppress turns it off.
+        safety_group = QGroupBox("Safety & Disclaimers")
+        safety_form = QFormLayout(safety_group)
+        self._confirm_dangerous_check = QCheckBox(
+            "Confirm before sending dangerous commands (deauth / jam / beacon spam / ...)"
+        )
+        self._suppress_warnings_check = QCheckBox(
+            "Suppress all safety warnings (controlled-lab use — you remain responsible)"
+        )
+        safety_form.addRow(self._confirm_dangerous_check)
+        safety_form.addRow(self._suppress_warnings_check)
+        root.addWidget(safety_group)
+
         # ── Firmware Vault ───────────────────────────────────────────
         vault_group = QGroupBox("Firmware Vault")
         vault_form = QFormLayout(vault_group)
@@ -117,6 +132,7 @@ class SettingsTab(QWidget):
         self._save_btn.clicked.connect(self._on_save)
         self._reset_btn.clicked.connect(self._on_reset)
         self._vault_browse_btn.clicked.connect(self._on_browse_vault)
+        self._suppress_warnings_check.toggled.connect(self._on_suppress_toggled)
 
     # ── Load / gather ────────────────────────────────────────────────
 
@@ -138,6 +154,13 @@ class SettingsTab(QWidget):
         comm = settings.get("cross_comm", {})
         self._auto_share_check.setChecked(bool(comm.get("auto_share", True)))
         self._dedup_check.setChecked(bool(comm.get("dedup_by_mac", True)))
+
+        sec = settings.get("safety", {})
+        self._confirm_dangerous_check.setChecked(bool(sec.get("confirm_dangerous", True)))
+        # Set the suppress box WITHOUT triggering its acknowledgement dialog.
+        self._suppress_warnings_check.blockSignals(True)
+        self._suppress_warnings_check.setChecked(bool(sec.get("suppress_all_warnings", False)))
+        self._suppress_warnings_check.blockSignals(False)
 
         vault = settings.get("vault", {})
         self._vault_dir_edit.setText(str(vault.get("dir", "")))
@@ -162,6 +185,14 @@ class SettingsTab(QWidget):
             "vault": {
                 "dir": self._vault_dir_edit.text().strip(),
             },
+            "safety": {
+                "confirm_dangerous": self._confirm_dangerous_check.isChecked(),
+                "suppress_all_warnings": self._suppress_warnings_check.isChecked(),
+            },
+            # Preserve the one-time disclaimer ack: _gather rebuilds the whole dict,
+            # so without carrying it forward a Save would reset it to False and
+            # re-show the first-run disclaimer on next launch.
+            "_disclaimer_ack": self._settings.get("_disclaimer_ack", False),
         }
 
     # ── Actions ──────────────────────────────────────────────────────
@@ -183,8 +214,34 @@ class SettingsTab(QWidget):
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
-            self._settings = {k: dict(v) for k, v in DEFAULTS.items()}
+            # DEFAULTS now contains a top-level scalar (_disclaimer_ack), so guard
+            # the dict() copy against non-dict values.
+            self._settings = {
+                k: (dict(v) if isinstance(v, dict) else v) for k, v in DEFAULTS.items()
+            }
             self._load_into_ui(self._settings)
+
+    def _on_suppress_toggled(self, checked: bool) -> None:
+        """One-time acknowledgement when ENABLING 'suppress all warnings'.
+
+        Enabling it removes every per-command safety confirmation, so we make the
+        user acknowledge once; cancelling re-unchecks the box.
+        """
+        if not checked:
+            return
+        reply = QMessageBox.warning(
+            self,
+            "Suppress all safety warnings",
+            "This disables every per-command safety confirmation. Dangerous commands "
+            "(deauth, jamming, beacon spam) will be sent with no prompt.\n\n"
+            "You remain solely responsible for lawful, authorized use. Continue?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            self._suppress_warnings_check.blockSignals(True)
+            self._suppress_warnings_check.setChecked(False)
+            self._suppress_warnings_check.blockSignals(False)
 
     def _on_browse_vault(self) -> None:
         start = self._vault_dir_edit.text().strip() or ""
