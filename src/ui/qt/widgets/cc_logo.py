@@ -50,6 +50,11 @@ class CCLogo(QWidget):
         self._draw_c(painter, cx - 11, cy, radius=14, pen_width=3, color=accent)
         self._draw_c(painter, cx + 11, cy, radius=14, pen_width=3, color=accent, flip=True)
 
+        # --- Gear teeth ---
+        tooth_color = QColor(57, 255, 20, 160)
+        self._draw_teeth(painter, cx - 11, cy, radius=14, tooth_len=3, color=tooth_color)
+        self._draw_teeth(painter, cx + 11, cy, radius=14, tooth_len=3, color=tooth_color, flip=True)
+
         # --- Endpoint nodes ---
         node_color = QColor(_ACCENT)
         self._draw_nodes(painter, cx - 11, cy, radius=14, color=node_color)
@@ -92,6 +97,31 @@ class CCLogo(QWidget):
             span_angle = 240 * 16
 
         painter.drawArc(rect, start_angle, span_angle)
+
+    # ── Helper: gear teeth ───────────────────────────────────────
+
+    @staticmethod
+    def _draw_teeth(
+        painter: QPainter,
+        cx: float,
+        cy: float,
+        radius: float,
+        tooth_len: float,
+        color: QColor,
+        flip: bool = False,
+    ) -> None:
+        import math
+
+        pen = QPen(color, 1.2, Qt.SolidLine, Qt.FlatCap)
+        painter.setPen(pen)
+        angles = [300, 330, 0, 30, 60, 90, 120, 150, 180] if flip else [60, 90, 120, 150, 180, 210, 240, 270, 300]
+        for a in angles:
+            rad = math.radians(a)
+            x1 = cx + radius * math.cos(rad)
+            y1 = cy - radius * math.sin(rad)
+            x2 = cx + (radius + tooth_len) * math.cos(rad)
+            y2 = cy - (radius + tooth_len) * math.sin(rad)
+            painter.drawLine(QPointF(x1, y1), QPointF(x2, y2))
 
     # ── Helper: endpoint nodes ─────────────────────────────────────
 

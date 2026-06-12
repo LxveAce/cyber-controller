@@ -23,6 +23,17 @@ def draw_c_arc(d, ccx, ccy, radius, stroke_w, color, flip=False):
         d.arc(bbox, start=60, end=300, fill=color, width=stroke_w)
 
 
+def draw_teeth(d, ccx, ccy, radius, tooth_len, color, flip=False):
+    angles = [300, 330, 0, 30, 60, 90, 120, 150, 180] if flip else [60, 90, 120, 150, 180, 210, 240, 270, 300]
+    for a in angles:
+        rad = math.radians(a)
+        x1 = ccx + radius * math.cos(rad)
+        y1 = ccy - radius * math.sin(rad)
+        x2 = ccx + (radius + tooth_len) * math.cos(rad)
+        y2 = ccy - (radius + tooth_len) * math.sin(rad)
+        d.line([(x1, y1), (x2, y2)], fill=color, width=2)
+
+
 def draw_nodes(d, ccx, ccy, radius, color, flip=False):
     ends = [300, 180] if flip else [60, 300]
     for a in ends:
@@ -44,6 +55,10 @@ draw_c_arc(draw, cx + offset, cy, r + 2, pw + 3, accent_mid, flip=True)
 # Main arcs
 draw_c_arc(draw, cx - offset, cy, r, pw, accent)
 draw_c_arc(draw, cx + offset, cy, r, pw, accent, flip=True)
+
+# Gear teeth
+draw_teeth(draw, cx - offset, cy, r, 8, accent_mid)
+draw_teeth(draw, cx + offset, cy, r, 8, accent_mid, flip=True)
 
 # Nodes
 draw_nodes(draw, cx - offset, cy, r, accent)

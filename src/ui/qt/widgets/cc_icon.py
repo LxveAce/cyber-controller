@@ -32,6 +32,21 @@ def _draw_c(p: QPainter, cx: float, cy: float, r: float, pw: float,
         p.drawArc(rect, 60 * 16, 240 * 16)
 
 
+def _draw_teeth(p: QPainter, cx: float, cy: float, r: float,
+                tooth_len: float, pw: float, color: QColor,
+                flip: bool = False) -> None:
+    pen = QPen(color, pw, Qt.SolidLine, Qt.FlatCap)
+    p.setPen(pen)
+    angles = [300, 330, 0, 30, 60, 90, 120, 150, 180] if flip else [60, 90, 120, 150, 180, 210, 240, 270, 300]
+    for a in angles:
+        rad = math.radians(a)
+        x1 = cx + r * math.cos(rad)
+        y1 = cy - r * math.sin(rad)
+        x2 = cx + (r + tooth_len) * math.cos(rad)
+        y2 = cy - (r + tooth_len) * math.sin(rad)
+        p.drawLine(QPointF(x1, y1), QPointF(x2, y2))
+
+
 def _draw_nodes(p: QPainter, cx: float, cy: float, r: float,
                 node_r: float, color: QColor, flip: bool = False) -> None:
     p.setPen(Qt.NoPen)
@@ -78,6 +93,14 @@ def _render_cc(size: int) -> QPixmap:
     # Foreground arcs
     _draw_c(p, lx, cy, r, pw, _ACCENT)
     _draw_c(p, rx, cy, r, pw, _ACCENT, flip=True)
+
+    # Gear teeth
+    if size >= 32:
+        tooth_len = max(2, size * 0.03)
+        tooth_pw = max(1, size * 0.015)
+        tooth_color = QColor(57, 255, 20, 160)
+        _draw_teeth(p, lx, cy, r, tooth_len, tooth_pw, tooth_color)
+        _draw_teeth(p, rx, cy, r, tooth_len, tooth_pw, tooth_color, flip=True)
 
     # Endpoint nodes
     if size >= 32:
