@@ -76,8 +76,8 @@
   ],
   "default_baud": 115200,
   "firmware_urls": {
-    "repo": "https://github.com/pr3y/Bruce",
-    "latest": "https://github.com/pr3y/Bruce/releases/latest"
+    "repo": "https://github.com/BruceDevices/firmware",
+    "latest": "https://github.com/BruceDevices/firmware/releases/latest"
   },
-  "note": "pr3y/Bruce. Per-board Bruce-<env>.bin merged image flashed at 0x0; flash_core derives chip family from the env name."
+  "note": "BruceDevices/firmware (formerly pr3y/Bruce). Per-board Bruce-<env>.bin merged image flashed at 0x0; flash_core derives chip family from the env name."
 }
