@@ -13,7 +13,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20ARM-blue?style=for-the-badge)](#ui-modes)
 [![ESP32](https://img.shields.io/badge/ESP32-Marauder%20%7C%20Bruce%20%7C%20Ghost__ESP-E7352C?style=for-the-badge&logo=espressif&logoColor=white)](#supported-firmwares)
 [![Flipper Zero](https://img.shields.io/badge/Flipper%20Zero-Unleashed%20%7C%20Momentum-FF8200?style=for-the-badge)](#supported-firmwares)
-[![Firmwares](https://img.shields.io/badge/firmwares-18%2B-success?style=for-the-badge)](#supported-firmwares)
+[![Firmwares](https://img.shields.io/badge/firmwares-19-success?style=for-the-badge)](#supported-firmwares)
 [![PRs](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)](#contributing)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
 
@@ -39,7 +39,7 @@ It is built for **cyberdecks, field deployments, and security research** — run
 ## Three Pillars
 
 ### ⚡ Flash
-- **19+ firmware profiles** across **5 backends**: `esptool` (ESP32), `qFlipper` (Flipper Zero),
+- **19 firmware profiles** across **5 backends**: `esptool` (ESP32), `qFlipper` (Flipper Zero),
   `ADB` (Android/Orbic), `SD image` (Raspberry Pi), and **`rtl8720` (Realtek AmebaD)** for the
   dual-band 2.4/5 GHz **BW16 / RTL8720DN** — hardware-validated end-to-end (downloads the firmware
   bundle, drives the AmebaD ImageTool, checksum-verifies).
@@ -70,7 +70,7 @@ It is built for **cyberdecks, field deployments, and security research** — run
 | Firmware | Upstream | Chips | Backend |
 |----------|----------|-------|---------|
 | **ESP32 Marauder** | [justcallmekoko/ESP32Marauder](https://github.com/justcallmekoko/ESP32Marauder) | ESP32 / S2 / S3 / C5 | esptool |
-| **Bruce** | [pr3y/Bruce](https://github.com/pr3y/Bruce) | ESP32 / S3 / C5 | esptool (merged) |
+| **Bruce** | [BruceDevices/firmware](https://github.com/BruceDevices/firmware) | ESP32 / S3 / C5 | esptool (merged) |
 | **GhostESP** | [GhostESP-Revival/GhostESP](https://github.com/GhostESP-Revival/GhostESP) | ESP32 / S2 / S3 / C-series | esptool |
 | **HaleHound** | [JesseCHale/HaleHound-CYD](https://github.com/JesseCHale/HaleHound-CYD) | ESP32 (CYD) | esptool |
 | **ESP32-DIV** | [cifertech/ESP32-DIV](https://github.com/cifertech/ESP32-DIV) | ESP32-S3 (v2) / ESP32 (v1.1.0 legacy) | esptool |
