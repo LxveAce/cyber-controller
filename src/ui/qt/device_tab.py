@@ -159,6 +159,10 @@ class DeviceTab(QWidget):
         self._terminal.setReadOnly(True)
         self._terminal.setObjectName("terminal")
         self._terminal.setMinimumHeight(100)
+        # Bound memory over a long session: O(1) auto-trim of the oldest lines once the cap is
+        # hit, instead of unbounded growth on every serial line (UI-opt #6; cap is large enough
+        # to be invisible in normal use, matters on a 4-8GB Pi over hours).
+        self._terminal.document().setMaximumBlockCount(5000)
         right_layout.addWidget(self._terminal, stretch=1)
 
         # Command input row
@@ -276,7 +280,7 @@ class DeviceTab(QWidget):
 
     def _command_info(self, cmd: str):
         """Return the CommandInfo for *cmd* from the selected protocol, if any."""
-        for ci in self._selected_protocol().get_commands():
+        for ci in self._selected_protocol().cached_commands():  # memoized (UI-opt #2)
             if ci.name == cmd:
                 return ci
         return None
@@ -322,7 +326,7 @@ class DeviceTab(QWidget):
     def _populate_palette(self) -> None:
         self._cmd_palette.addItem("-- Command Palette --")
         for proto in _ALL_PROTOCOLS:
-            for ci in proto.get_commands():
+            for ci in proto.cached_commands():  # memoized (UI-opt #2)
                 label = f"[{proto.protocol_name}] {ci.category}: {ci.name}"
                 self._cmd_palette.addItem(label, ci.name)
 

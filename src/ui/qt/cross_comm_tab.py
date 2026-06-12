@@ -244,6 +244,9 @@ class CrossCommTab(QWidget):
         self._event_log.setObjectName("terminal")
         self._event_log.setPlaceholderText("Bus events appear here in real time...")
         self._event_log.setMinimumHeight(80)
+        # O(1) auto-trim to the same cap the manual cursor-trim used to enforce per append
+        # (UI-opt #6) — bounded memory without re-walking the document on every event.
+        self._event_log.document().setMaximumBlockCount(_MAX_EVENT_LINES)
         stream_layout.addWidget(self._event_log)
         clear_log_btn = QPushButton("Clear Log")
         clear_log_btn.clicked.connect(self._event_log.clear)
@@ -333,17 +336,9 @@ class CrossCommTab(QWidget):
 
     def _append_event(self, topic: str, payload: dict[str, Any]) -> None:
         summary = self._summarize_payload(topic, payload)
+        # History is bounded by the document's maximumBlockCount (set at construction), which
+        # auto-trims the oldest lines in O(1) — no manual cursor walk needed (UI-opt #6).
         self._event_log.append(f"<span style='color:#8b949e'>[{topic}]</span> {summary}")
-        # Trim history to keep the widget responsive.
-        doc = self._event_log.document()
-        if doc.blockCount() > _MAX_EVENT_LINES:
-            cursor = self._event_log.textCursor()
-            cursor.movePosition(cursor.Start)
-            cursor.movePosition(
-                cursor.Down, cursor.KeepAnchor, doc.blockCount() - _MAX_EVENT_LINES
-            )
-            cursor.removeSelectedText()
-            cursor.deleteChar()
         bar = self._event_log.verticalScrollBar()
         bar.setValue(bar.maximum())
 
