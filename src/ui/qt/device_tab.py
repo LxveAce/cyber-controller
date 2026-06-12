@@ -25,14 +25,35 @@ from PyQt5.QtWidgets import (
 from src.core.device_manager import DeviceManager
 from src.core.serial_handler import ConnectionState, SerialConnection
 from src.models.device import Device
-from src.protocols.marauder import MarauderProtocol
-from src.protocols.ghost_esp import GhostESPProtocol
+from src.protocols import (
+    PROTOCOL_DISPLAY_NAMES,
+    get_protocol,
+    get_protocol_by_display,
+)
 from src.protocols.base import CommandInfo
+from src.core import safety
+from src.config.settings import load_settings
 
 log = logging.getLogger(__name__)
 
-# Aggregate all known commands for the command palette
-_ALL_PROTOCOLS = [MarauderProtocol(), GhostESPProtocol()]
+# Firmware options for the per-device protocol selector: "Auto-detect" plus every
+# registered protocol's display name (de-duplicated, generic/raw last).
+_AUTO_DETECT = "Auto-detect"
+
+
+def _firmware_choices() -> list[str]:
+    seen: list[str] = []
+    for name, disp in PROTOCOL_DISPLAY_NAMES.items():
+        if disp not in seen and name not in ("generic", "raw"):
+            seen.append(disp)
+    seen.append("Generic / Raw")
+    return [_AUTO_DETECT] + seen
+
+
+# Every protocol instance, for the aggregated command palette (built once).
+_ALL_PROTOCOLS = [
+    get_protocol_by_display(d) for d in PROTOCOL_DISPLAY_NAMES.values()
+]
 
 
 class _LineSignal(QObject):
@@ -85,6 +106,16 @@ class DeviceTab(QWidget):
         self._device_list = QListWidget()
         self._device_list.currentItemChanged.connect(self._on_device_selected)
         left_layout.addWidget(self._device_list)
+
+        # Per-device firmware selector — drives the cross-comm ingest parser and
+        # (via the palette) which command set is offered. Lets a HaleHound / DIV /
+        # BW16 board feed the AutoRouter instead of everything defaulting to Marauder.
+        fw_row = QHBoxLayout()
+        fw_row.addWidget(QLabel("Firmware:"))
+        self._firmware_combo = QComboBox()
+        self._firmware_combo.addItems(_firmware_choices())
+        fw_row.addWidget(self._firmware_combo, stretch=1)
+        left_layout.addLayout(fw_row)
 
         btn_row = QHBoxLayout()
         self._btn_connect = QPushButton("Connect")
@@ -198,7 +229,7 @@ class DeviceTab(QWidget):
             # the Marauder parser; a per-device firmware selector can refine this later.
             if self._ingestor is not None:
                 try:
-                    self._ingestor.attach(conn, MarauderProtocol())
+                    self._ingestor.attach(conn, self._selected_protocol())
                 except Exception as exc:
                     self._terminal.append(f"[cross-comm ingest attach failed: {exc}]")
             self._terminal.clear()
@@ -224,10 +255,41 @@ class DeviceTab(QWidget):
 
     # ── Serial I/O ───────────────────────────────────────────────────
 
+    def _selected_protocol(self):
+        """Protocol for the currently selected firmware (Auto-detect -> Marauder default)."""
+        choice = self._firmware_combo.currentText()
+        if choice == _AUTO_DETECT:
+            return get_protocol("marauder")
+        return get_protocol_by_display(choice)
+
+    def _command_info(self, cmd: str):
+        """Return the CommandInfo for *cmd* from the selected protocol, if any."""
+        for ci in self._selected_protocol().get_commands():
+            if ci.name == cmd:
+                return ci
+        return None
+
     def _on_send(self) -> None:
         cmd = self._cmd_input.text().strip()
         if not cmd or not self._active_conn:
             return
+        # Safety gate: LABEL + warn on dangerous commands; never block. "Yes" always
+        # proceeds, and Settings -> "Suppress all safety warnings" turns this off.
+        # Reloaded each send so a settings change takes effect immediately.
+        settings = load_settings()
+        danger = safety.classify(cmd, self._command_info(cmd))
+        if safety.should_confirm(danger, settings):
+            from PyQt5.QtWidgets import QMessageBox
+            reply = QMessageBox.warning(
+                self,
+                "Confirm dangerous command",
+                safety.lab_only_warning_text(cmd, danger),
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                self._terminal.append(f"[cancelled: {cmd}]")
+                return
         try:
             self._active_conn.write(cmd)
             self._terminal.append(f"> {cmd}")

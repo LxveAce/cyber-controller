@@ -348,4 +348,23 @@ def launch_qt(
         firmware_vault, health_monitor, macro_recorder,
     )
     win.show()
+
+    # One-time legal / authorized-use disclaimer. Shown exactly once (independent
+    # of the per-command "suppress all warnings" toggle, so it is always seen at
+    # least once). This LABELS — acknowledging proceeds; it never disables features.
+    from src.config.settings import load_settings, save_settings
+    from src.core import safety
+    _settings = load_settings()
+    if safety.needs_first_run_disclaimer(_settings):
+        from PyQt5.QtWidgets import QMessageBox
+        box = QMessageBox(win)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("Authorized Use Only")
+        box.setText(safety.legal_disclaimer_text())
+        box.setStandardButtons(QMessageBox.Ok)
+        box.button(QMessageBox.Ok).setText("I Understand")
+        box.exec_()
+        _settings["_disclaimer_ack"] = True
+        save_settings(_settings)
+
     return app.exec_()
