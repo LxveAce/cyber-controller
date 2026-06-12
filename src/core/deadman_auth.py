@@ -93,5 +93,8 @@ class DeadManAuth:
             log.info("Auth cancelled by user")
             return
         send_fn(password)
-        # Zero the password
-        password = '\x00' * len(password)
+        # A Python str is immutable and cannot be wiped in place; rebinding it to a new string
+        # does NOT scrub the original bytes from memory (the old claim here was a no-op). Drop the
+        # reference promptly so GC can reclaim it. True in-memory zeroization would require carrying
+        # the password as a bytearray end-to-end (as suicide_setup.build does for provisioning).
+        del password
