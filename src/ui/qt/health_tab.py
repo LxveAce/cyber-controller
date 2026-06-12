@@ -167,7 +167,12 @@ class HealthTab(QWidget):
     def _refresh(self) -> None:
         """Poll health monitor and update all widgets."""
         try:
-            system = self._monitor.get_system_health()
+            # Use the cached snapshot the HealthMonitor background thread already maintains
+            # (same dict, same shape) instead of get_system_health(), which calls
+            # psutil.cpu_percent(interval=0.1) — a 100ms BLOCKING sleep on the GUI thread every
+            # refresh. The status bar already reads this cached property. (UI-opt #1, no visual
+            # change; values are at most one poll interval stale, with .get() defaults pre-fill.)
+            system = self._monitor.latest_system_health
             self._update_system(system)
         except Exception:
             log.exception("HealthTab: system health error")
