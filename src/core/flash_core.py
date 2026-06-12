@@ -35,7 +35,7 @@ FirmwareProfile objects so the same esptool plumbing can flash other ESP32 firmw
 
   * 'marauder'  — ESP32Marauder (the original behavior, byte-for-byte; supports_suicide=True).
   * 'esp32-div' — cifertech/ESP32-DIV (ESP32-S3, multi-file image; app@0x10000 + boot chain).
-  * 'bruce'     — pr3y/Bruce (per-board MERGED single .bin, flashed at 0x0; auto board->chip map).
+  * 'bruce'     — BruceDevices/firmware (per-board MERGED single .bin, flashed at 0x0; auto board->chip map).
   * 'custom'    — flash ANY local .bin(s) you provide, with chip-appropriate default offsets.
 
 The original MODULE-LEVEL functions (latest_release, variants_for_chip, default_variant,
@@ -666,7 +666,7 @@ def _fetch_div_file(rel_path: str, dest: str, on_line: Line) -> str:
 
 
 # --------------------------------------------------------------------------- #
-# Bruce profile  (pr3y/Bruce — per-board MERGED single .bin)
+# Bruce profile  (BruceDevices/firmware — per-board MERGED single .bin)
 # --------------------------------------------------------------------------- #
 #
 # Bruce auto-maps cleanly: each release ships one MERGED .bin per board, strictly named
@@ -680,7 +680,11 @@ def _fetch_div_file(rel_path: str, dest: str, on_line: Line) -> str:
 #
 # This is plain firmware flashing — no jamming functionality is added or enabled.
 
-_BRUCE_API = "https://api.github.com/repos/pr3y/Bruce/releases/latest"
+# Canonical repo is now BruceDevices/firmware (the old pr3y/Bruce was renamed; GitHub still
+# 301-redirects it, but point at the live name directly — verified the Bruce-<env>.bin /
+# Bruce-LAUNCHER_<env>.bin asset naming is identical, tag now "1.15"). Stays on api.github.com,
+# so the SSRF allowlist + redirect handler are unaffected.
+_BRUCE_API = "https://api.github.com/repos/BruceDevices/firmware/releases/latest"
 _BRUCE_RE = re.compile(r"^Bruce-(LAUNCHER_)?(.+)\.bin$", re.IGNORECASE)
 
 # env-name fragments -> esptool chip family (derived from the CI build matrix). Order matters:
@@ -711,8 +715,8 @@ def _bruce_family(env: str) -> str:
 
 class BruceProfile(FirmwareProfile):
     id = "bruce"
-    label = "Bruce (pr3y)"
-    repo = "pr3y/Bruce"
+    label = "Bruce"
+    repo = "BruceDevices/firmware"
     supports_suicide = False
     image_model = IMAGE_MERGED
 
