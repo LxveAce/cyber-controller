@@ -27,7 +27,7 @@
         </select>
     </div>
 
-    <button id="btn-flash" class="btn btn-accent btn-block" onclick="startFlash()">Flash</button>
+    <button id="btn-flash" class="btn btn-accent btn-block">Flash</button>
 
     <div class="progress-container">
         <div class="progress-bar" id="flash-progress" style="width: 0%"></div>
@@ -42,7 +42,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
     function startFlash() {
         const port = document.getElementById('port-select').value;
         const profile = document.getElementById('profile-select').value;
@@ -115,5 +115,8 @@
             statusEl.textContent = data.message || ('Flashing... ' + data.percent + '%');
         }
     }
+
+    // Moved off an inline onclick= for the strict nonce CSP.
+    document.getElementById('btn-flash').addEventListener('click', startFlash);
 </script>
 {% endblock %}

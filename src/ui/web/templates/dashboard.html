@@ -48,7 +48,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
     function refreshHealth() {
         fetch('/api/health')
             .then(r => r.json())

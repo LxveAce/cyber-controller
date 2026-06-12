@@ -13,16 +13,15 @@
     <div id="terminal-output" class="terminal-output"></div>
     <div class="terminal-input-row">
         <input type="text" id="cmd-input" class="form-control terminal-input"
-               placeholder="Type command..." autocomplete="off"
-               onkeydown="if(event.key==='Enter') sendCommand()">
-        <button class="btn btn-accent" onclick="sendCommand()">Send</button>
+               placeholder="Type command..." autocomplete="off">
+        <button id="btn-send" class="btn btn-accent">Send</button>
     </div>
 </div>
 {% endblock %}
 
 {% block scripts %}
-<script>
-    const currentPort = "{{ port }}";
+<script nonce="{{ csp_nonce }}">
+    const currentPort = {{ port|tojson }};
 
     // Subscribe to serial output for this port
     socket.emit('subscribe_serial', {port: currentPort});
@@ -50,6 +49,12 @@
         input.value = '';
         input.focus();
     }
+
+    // Handlers moved off inline onkeydown=/onclick= for the strict nonce CSP.
+    document.getElementById('btn-send').addEventListener('click', sendCommand);
+    document.getElementById('cmd-input').addEventListener('keydown', function (event) {
+        if (event.key === 'Enter') sendCommand();
+    });
 
     // Focus command input on load
     document.getElementById('cmd-input').focus();
