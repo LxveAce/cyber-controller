@@ -13,6 +13,7 @@ from src.core.serial_handler import SerialConnection
 from src.core.backends import adb_backend
 from src.core import firmware_vault
 from src.security import win_acl
+from src.security.audit_trail import AuditTrail
 
 
 # ── M-1: serial callback removal ─────────────────────────────────────
@@ -83,3 +84,38 @@ def test_restrict_to_current_user_strips_inherited_aces():
         assert "BUILTIN\\Users" not in acl
         assert "Authenticated Users" not in acl
         assert "SYSTEM" in acl
+
+
+# ── L-2: durable, tamper-evident audit trail ─────────────────────────
+
+def test_audit_trail_persists_and_reloads_verified():
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "audit-trail.jsonl"
+        a = AuditTrail(persist_path=path)
+        a.record("app_start", {})
+        a.record("web_auth_ok", {"user": "lxve"})
+        a.record("flash", {"port": "COM9", "profile": "ghostesp"})
+        assert path.exists()
+        # A fresh instance loads the prior chain and it verifies intact.
+        b = AuditTrail(persist_path=path)
+        assert b.length == 3
+        ok, bad = b.verify_integrity()
+        assert ok and bad == -1
+        assert [e.action for e in b.entries] == ["app_start", "web_auth_ok", "flash"]
+
+
+def test_audit_trail_detects_on_disk_tampering():
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "audit-trail.jsonl"
+        a = AuditTrail(persist_path=path)
+        a.record("web_auth_fail", {"user": "mallory"})
+        a.record("flash", {"port": "COM9"})
+        # Tamper: flip a detail in the first persisted line without fixing the hash chain.
+        lines = path.read_text(encoding="utf-8").splitlines()
+        lines[0] = lines[0].replace("mallory", "nobody")
+        path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        # Reload: the chain must no longer verify (construction warns, never raises).
+        b = AuditTrail(persist_path=path)
+        ok, bad = b.verify_integrity()
+        assert not ok
+        assert bad == 0
