@@ -20,6 +20,8 @@ import threading
 import time
 from pathlib import Path
 
+from src.security.win_acl import restrict_to_current_user, secure_dir
+
 _CONFIG_DIR = Path.home() / ".cyber-controller"
 _SECRET_KEY_FILE = _CONFIG_DIR / "web_secret.key"
 
@@ -33,7 +35,9 @@ def load_or_create_secret_key() -> bytes:
     """Return a stable 32-byte Flask secret key, persisted 0600 so signed sessions
     survive process restarts (the old code regenerated it every start, silently
     invalidating every session)."""
-    _CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    # L-1: owner-only NTFS ACL on Windows (the 0600 below is a no-op there). A local user who
+    # can read this key can forge authenticated session cookies for the web remote.
+    secure_dir(_CONFIG_DIR)
     if _SECRET_KEY_FILE.exists():
         try:
             data = _SECRET_KEY_FILE.read_bytes()
@@ -51,6 +55,7 @@ def load_or_create_secret_key() -> bytes:
             os.chmod(_SECRET_KEY_FILE, 0o600)
         except OSError:
             pass
+    restrict_to_current_user(_SECRET_KEY_FILE)  # L-1: explicit owner-only ACL on Windows
     return key
 
 
