@@ -50,7 +50,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
     function onDeviceConnected(data) {
         location.reload();
     }

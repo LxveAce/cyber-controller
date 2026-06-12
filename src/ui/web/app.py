@@ -23,10 +23,11 @@ from __future__ import annotations
 import functools
 import logging
 import os
+import secrets
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, abort, jsonify, render_template, request, session
+from flask import Flask, Response, abort, g, jsonify, render_template, request, session
 from flask_socketio import SocketIO, emit
 
 from src.core.cross_comm import EventBus, TargetPool
@@ -128,6 +129,15 @@ def create_app(
             session["csrf"] = token
         return token
 
+    def _csp_nonce() -> str:
+        # One per-request nonce, shared by the template render (context processor) and the CSP
+        # header (after_request) via the request-scoped ``g`` (L-4).
+        nonce = getattr(g, "_csp_nonce", None)
+        if nonce is None:
+            nonce = secrets.token_urlsafe(16)
+            g._csp_nonce = nonce
+        return nonce
+
     def check_auth(username: str | None, password: str | None) -> bool:
         return creds.verify(username, password)
 
@@ -181,7 +191,7 @@ def create_app(
 
     @app.context_processor
     def _inject_csrf() -> dict[str, str]:
-        return {"csrf_token": session.get("csrf", "")}
+        return {"csrf_token": session.get("csrf", ""), "csp_nonce": _csp_nonce()}
 
     @app.after_request
     def _security_headers(resp: Response) -> Response:
@@ -189,12 +199,16 @@ def create_app(
         resp.headers["X-Frame-Options"] = "DENY"
         resp.headers["Referrer-Policy"] = "no-referrer"
         resp.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
-        # CSP: self + the socket.io CDN. 'unsafe-inline' is required because the
-        # templates use inline <script>/<style>; XSS sinks are independently fixed
-        # by escaping all over-the-air values client-side. Tighten with nonces later.
+        # CSP (L-4): script-src uses a per-request nonce instead of 'unsafe-inline', so the inline
+        # <script> blocks (each tagged nonce="{{ csp_nonce }}") run while ANY injected/inline
+        # script without the nonce is blocked — a real backstop behind the textContent rendering,
+        # and the reason all former inline on*= handlers were moved into nonce'd scripts. A
+        # browser that honors the nonce ignores 'unsafe-inline' entirely. style-src keeps
+        # 'unsafe-inline' (no script execution there; styles are static/Jinja-escaped).
+        nonce = _csp_nonce()
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+            f"script-src 'self' 'nonce-{nonce}' https://cdnjs.cloudflare.com; "
             "style-src 'self' 'unsafe-inline'; "
             "connect-src 'self' ws: wss:; "
             "img-src 'self' data:; "
