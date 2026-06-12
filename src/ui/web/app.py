@@ -367,9 +367,17 @@ def create_app(
         log.info("WebSocket client authenticated (%s)", session.get("user"))
         return True
 
+    # One fan-out callback per port (audit M-1): without this, every subscribe_serial registered a
+    # NEW on_line callback that was never removed, so K subscribes => K emits per serial line
+    # (callback leak + self-amplifying DoS). We keep exactly one callback per port.
+    _serial_subs: dict = {}
+
     @socketio.on("subscribe_serial")
     def on_subscribe_serial(data: dict) -> None:
         if not _socket_authed():
+            return
+        if not cmd_limiter.allow(_client_ip()):  # subscribe is now rate-limited too
+            emit("serial_output", {"port": "", "line": "[Rate limited]"})
             return
         port = str((data or {}).get("port", ""))
         if not _known_port(port):
@@ -377,7 +385,12 @@ def create_app(
             return
         conn = device_manager.get_connection(port)
         if conn and conn.is_connected:
-            conn.on_line(lambda line: socketio.emit("serial_output", {"port": port, "line": line}))
+            prev = _serial_subs.get(port)
+            if prev is not None:
+                conn.remove_line_callback(prev)  # drop any prior/stale callback first
+            cb = (lambda line, p=port: socketio.emit("serial_output", {"port": p, "line": line}))
+            conn.on_line(cb)
+            _serial_subs[port] = cb
             emit("serial_output", {"port": port, "line": f"[Subscribed to {port}]"})
         else:
             emit("serial_output", {"port": port, "line": f"[Not connected to {port}]"})
