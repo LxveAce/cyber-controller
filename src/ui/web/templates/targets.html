@@ -8,7 +8,7 @@
 
 <div class="toolbar">
     <span id="target-summary" class="toolbar-info">{{ targets|length }} targets</span>
-    <button class="btn btn-sm" onclick="refreshTargets()">Refresh</button>
+    <button id="btn-refresh-targets" class="btn btn-sm">Refresh</button>
 </div>
 
 <div class="table-container">
@@ -44,7 +44,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
+<script nonce="{{ csp_nonce }}">
     function refreshTargets() {
         fetch('/api/targets')
             .then(r => r.json())
@@ -91,6 +91,9 @@
     function onTargetDiscovered(data) {
         refreshTargets();
     }
+
+    // Moved off an inline onclick= for the strict nonce CSP.
+    document.getElementById('btn-refresh-targets').addEventListener('click', refreshTargets);
 
     // Auto-refresh every 10 seconds
     setInterval(refreshTargets, 10000);
