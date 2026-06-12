@@ -43,6 +43,7 @@ CORE_ID_MAP: dict[str, str] = {
     "sky_spy": "sky-spy",
     "airtag_scanner": "airtag-scanner",
     "cyt_ng": "cyt-ng",
+    "rtl8720": "rtl8720",
     "minigotchi": "minigotchi-v3",
     "flipper_momentum": "momentum",
     "flipper_unleashed": "unleashed",

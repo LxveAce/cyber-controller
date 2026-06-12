@@ -25,7 +25,10 @@ except Exception:
 # ── USB VID/PID → device type ──────────────────────────────────────────── #
 
 USB_DEVICE_MAP: Dict[Tuple[int, Optional[int]], str] = {
-    (0x1A86, 0x7523): "CH340/CH341 USB-Serial (ESP32 classic / Gold / WROOM)",
+    # NOTE: the BW16 / RTL8720DN also ships a CH340, so this VID/PID is AMBIGUOUS —
+    # it cannot tell a classic ESP32 from a BW16. Disambiguate by probing the serial
+    # banner (see FIRMWARE_SIGNATURES["bw16"]) or let the user pick the firmware.
+    (0x1A86, 0x7523): "CH340/CH341 USB-Serial (ESP32 classic / Gold / WROOM / BW16 RTL8720DN)",
     (0x1A86, 0x55D4): "CH9102 USB-Serial (ESP32-S3 devkit)",
     (0x10C4, 0xEA60): "CP2102 USB-Serial (Heltec LoRa V3 / some ESP32)",
     (0x0403, 0x6001): "FTDI FT232R USB-Serial",
@@ -50,6 +53,10 @@ FIRMWARE_SIGNATURES: Dict[str, str] = {
     "esp32-div":  r"ESP32.?DIV\s+[Vv]?([\d.]+)",
     "flipper":    r"Flipper\s+Zero\s+[Vv]?([\d.]+)",
     "evil-portal": r"Evil.?Portal\s+[Vv]?([\d.]+)",
+    # BW16 / RTL8720DN (AmebaD): the Realtek SDK boot banner is the reliable tell — a
+    # CH340 VID/PID alone can't distinguish a BW16 from a classic ESP32 (they share it),
+    # so probe the serial banner for these RTL markers. Version is usually absent.
+    "bw16":       r"(?:RTL8720|BW16|AmebaD|rltk_wlan|RTL_HalBleMacInit|hci_read_rom_check)\w*\s*v?([\d.]*)",
 }
 
 # compiled once
@@ -65,6 +72,8 @@ _CHIP_PATTERNS: Dict[str, re.Pattern] = {
     "esp32c5": re.compile(r"ESP32-C5", re.IGNORECASE),
     "esp32c3": re.compile(r"ESP32-C3", re.IGNORECASE),
     "esp32h2": re.compile(r"ESP32-H2", re.IGNORECASE),
+    # RTL8720DN / BW16 (Realtek AmebaD) — before the broad esp32 match.
+    "rtl8720": re.compile(r"RTL8720|AmebaD|BW16|rltk_wlan|RTL_HalBleMacInit", re.IGNORECASE),
     "esp32":   re.compile(r"\bESP32\b"),
     "stm32":   re.compile(r"\bSTM32\b", re.IGNORECASE),
 }
