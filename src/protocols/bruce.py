@@ -201,3 +201,18 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("NFC Emulate", "nfc emulate", "Emulate this NFC tag", ActionCategory.ATTACK),
     ],
 }
+
+
+# --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
+# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
+from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
+
+BROADCAST_CAPABILITIES = {
+    BroadcastVerb.FIND_APS:    ((), "wifi scan"),
+    BroadcastVerb.BLE_SCAN:    ((), "ble scan"),
+    BroadcastVerb.SUBGHZ_SCAN: ((), "subghz scan"),
+    BroadcastVerb.DEAUTH_ALL:  ((), "wifi deauth"),
+    BroadcastVerb.BEACON_SPAM: ((), "wifi beacon"),
+    BroadcastVerb.BLE_SPAM:    ((), "ble spam"),
+    BroadcastVerb.STOP_ALL:    ((), "stop"),
+}

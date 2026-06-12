@@ -141,3 +141,12 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("Mesh Relay", "relay {mac}", "Relay target info across mesh network", ActionCategory.UTILITY),
     ],
 }
+
+
+# --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
+# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
+from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
+
+BROADCAST_CAPABILITIES = {
+    BroadcastVerb.MESH_RELAY: ((), "nodes"),
+}

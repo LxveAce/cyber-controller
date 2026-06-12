@@ -252,3 +252,19 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("BLE Track", "bletrack", "Track this BLE device", ActionCategory.MONITOR),
     ],
 }
+
+
+# --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
+# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
+from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
+
+BROADCAST_CAPABILITIES = {
+    BroadcastVerb.FIND_APS:           ((), "scanap"),
+    BroadcastVerb.SCAN_STATIONS:      ((), "scansta"),
+    BroadcastVerb.BLE_SCAN:           ((), "blescan"),
+    BroadcastVerb.CAPTURE_HANDSHAKES: ((), "capture start"),
+    BroadcastVerb.DEAUTH_ALL:         ((), "deauth"),
+    BroadcastVerb.BEACON_SPAM:        ((), "beacon"),
+    BroadcastVerb.BLE_SPAM:           ((), "blespam all"),
+    BroadcastVerb.STOP_ALL:           ((), "stopscan"),
+}

@@ -112,6 +112,11 @@ class CyberControllerWindow(QMainWindow):
         # -> a command on device B. DeviceTab attaches it per-connection.
         self._ingestor = TargetIngestor(self._pool)
 
+        # Unified Action Broadcast — one verb fans out to every connected device in its native
+        # command; results converge via the same ingestor/pool. See src/core/broadcast.py.
+        from src.core.broadcast import BroadcastEngine
+        self._broadcast = BroadcastEngine(self._dm, self._bus)
+
         # Action resolver — maps targets to firmware-specific actions per connected device.
         # Created by a parallel agent; gracefully absent if not yet available.
         self._action_resolver = None
@@ -376,6 +381,11 @@ class CyberControllerWindow(QMainWindow):
             action_resolver=self._action_resolver,
         )
         self._tabs.addTab(self._targets_tab, "Targets")
+
+        # Unified Action Broadcast — big-button action row over every connected radio.
+        from src.ui.qt.broadcast_tab import BroadcastBar
+        self._broadcast_bar = BroadcastBar(self._broadcast, self._dm, self._bus)
+        self._tabs.addTab(self._broadcast_bar, "Broadcast")
 
         # Cross-comm routing (event stream + auto-routing rules)
         self._cross_comm_tab = CrossCommTab(self._bus, self._pool, self._router, self._dm)

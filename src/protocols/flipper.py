@@ -241,3 +241,14 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("BT Spam", "bt spam", "Bluetooth spam via Flipper", ActionCategory.ATTACK),
     ],
 }
+
+
+# --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
+# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
+from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
+
+BROADCAST_CAPABILITIES = {
+    BroadcastVerb.BLE_SCAN:    ((), "bt info"),
+    BroadcastVerb.SUBGHZ_SCAN: ((), "subghz rx"),
+    BroadcastVerb.BLE_SPAM:    ((), "bt spam"),
+}

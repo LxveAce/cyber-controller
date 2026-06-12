@@ -418,3 +418,19 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         ),
     ],
 }
+
+
+# --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
+# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
+from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
+
+BROADCAST_CAPABILITIES = {
+    BroadcastVerb.FIND_APS:           ((), "scanwifi"),
+    BroadcastVerb.SCAN_STATIONS:      ((), "scansta"),
+    BroadcastVerb.BLE_SCAN:           ((), "scanble"),
+    BroadcastVerb.CAPTURE_HANDSHAKES: ((), "handshake"),
+    BroadcastVerb.DEAUTH_ALL:         ((), "deauth all"),
+    BroadcastVerb.BEACON_SPAM:        ((), "beacon"),
+    BroadcastVerb.BLE_SPAM:           ((), "blespam"),
+    BroadcastVerb.STOP_ALL:           ((), "stop"),
+}
