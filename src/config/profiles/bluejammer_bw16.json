@@ -1,0 +1,26 @@
+{
+  "name": "BlueJammer-V2 — BW16 controller [LAB-ONLY / illegal to operate]",
+  "id": "bluejammer_bw16",
+  "description": "EmenstaNougat/BlueJammer-V2 BW16/RTL8720DN web controller + UART master (hosts the 5 GHz control AP + web UI; bridges the ESP32 engine's telemetry). *** LAB-ONLY / ILLEGAL TO OPERATE (FCC 47 U.S.C. 333). *** Same AmebaD 3-file layout as the rtl8720 profile; flashed by the rtl8720 backend. CC has no operate/transmit control over serial.",
+  "backend": "rtl8720",
+  "protocol": "bluejammer",
+  "danger": "illegal-tx",
+  "boards": [
+    { "name": "Ai-Thinker BW16 (RTL8720DN)", "chip": "rtl8720", "flash_size": "2MB", "board_id": "bw16-rtl8720dn" }
+  ],
+  "default_baud": 115200,
+  "control": {
+    "type": "web",
+    "url": "http://192.168.1.1",
+    "ap_ssid": "BlueJ-V2_by_@emensta",
+    "ap_pass": "NoConn1337",
+    "modes": ["Bluetooth", "BLE", "WiFi", "RC/Drone", "Idle"],
+    "note": "CONTROL SURFACE (documented, not driven): the device is operated from this self-hosted web UI after joining its AP, plus the physical button. There is NO serial command channel, so CC cannot (and per the illegal-to-operate framing does not) key the transmitter. A future in-app control panel would POST to the web UI's mode endpoints — those must be captured on real hardware first, and gated behind the illegal-tx confirmation."
+  },
+  "firmware_urls": {
+    "repo": "https://github.com/EmenstaNougat/BlueJammer-V2",
+    "latest": "https://github.com/EmenstaNougat/BlueJammer-V2/releases/latest",
+    "note": "km0_boot_all / km4_boot_all / km0_km4_image2 from the v0.2 Release (pinned) + the SRAM loader reused from the rtl8720 bundle. Fetched + SHA-256-verified by flash_core.BlueJammerBw16Profile via the rtl8720 backend."
+  },
+  "note": "Needs Realtek's upload_image_tool on the host (set CYBERC_AMEBAD_TOOL or drop it in tools/realtek/ with cygwin1.dll on Windows) — same as the rtl8720 profile. Closed-source firmware; bins pinned, never vendored."
+}
