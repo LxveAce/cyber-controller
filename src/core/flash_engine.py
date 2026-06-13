@@ -248,8 +248,12 @@ class FlashEngine:
                     variant["zip_member"], on_line)
             else:
                 app_path = flash_core.download_to(variant["url"], cache, variant["name"], on_line)
+            # Pinned-firmware integrity gate (closed-source profiles like BlueJammer-V2 carry a
+            # "sha256"): reject a tampered/changed app image BEFORE esptool writes it.
+            if variant.get("sha256"):
+                flash_core.verify_sha256(app_path, variant["sha256"], on_line)
         except Exception as exc:
-            on_line(f"[error] download failed: {exc}")
+            on_line(f"[error] download/verify failed: {exc}")
             return False
 
         support = None
@@ -389,14 +393,18 @@ class FlashEngine:
         if bundle_dir and os.path.isdir(bundle_dir):
             on_line(f"[rtl8720] using local bundle dir: {bundle_dir}")
         else:
-            core = flash_core.get_profile("rtl8720")
+            # Resolve the bundle from the SELECTED profile (not hardcoded) so any rtl8720-backend
+            # firmware works — the Vampire Deauther OR BlueJammer-V2's BW16 controller, each with
+            # its own pinned km0/km4/image2 bundle. Falls back to the Vampire profile.
+            core_id = profile.core_id if profile.core_id in flash_core.PROFILES else "rtl8720"
+            core = flash_core.get_profile(core_id)
             try:
-                on_line("[rtl8720] resolving Vampire Deauther bundle...")
+                on_line(f"[rtl8720] resolving {core_id} AmebaD bundle...")
                 _tag, assets = core.latest_release()
             except Exception as exc:
                 on_line(f"[rtl8720] could not resolve firmware bundle: {exc}")
                 return False
-            bundle_dir = os.path.join(flash_core.cache_dir(), "rtl8720_bundle")
+            bundle_dir = os.path.join(flash_core.cache_dir(), f"{core_id}_bundle")
             os.makedirs(bundle_dir, exist_ok=True)
             try:
                 for a in assets:
