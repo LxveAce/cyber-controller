@@ -31,6 +31,7 @@ from src.protocols.halehound import HaleHoundProtocol
 from src.protocols.meshtastic import MeshtasticProtocol
 from src.protocols.esp32_div import Esp32DivProtocol
 from src.protocols.bw16 import BW16Protocol
+from src.protocols.bluejammer import BlueJammerProtocol
 
 
 class GenericProtocol(BaseProtocol):
@@ -77,6 +78,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "meshtastic": MeshtasticProtocol,
     "esp32-div": Esp32DivProtocol,
     "bw16": BW16Protocol,
+    "bluejammer": BlueJammerProtocol,
     # Fallbacks (both names map to the same passthrough class).
     "generic": GenericProtocol,
     "raw": GenericProtocol,
@@ -93,6 +95,7 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "meshtastic": "Meshtastic",
     "esp32-div": "ESP32-DIV",
     "bw16": "BW16 (RTL8720DN)",
+    "bluejammer": "BlueJammer-V2 (lab-only)",
     "generic": "Generic / Raw",
     "raw": "Generic / Raw",
 }
@@ -154,6 +157,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "meshtastic": "src.protocols.meshtastic",
     "esp32-div": "src.protocols.esp32_div",
     "bw16": "src.protocols.bw16",
+    "bluejammer": "src.protocols.bluejammer",
     "generic": "src.protocols",  # GenericProtocol lives in __init__
     "raw": "src.protocols",
 }
@@ -191,6 +195,7 @@ __all__ = [
     "MeshtasticProtocol",
     "Esp32DivProtocol",
     "BW16Protocol",
+    "BlueJammerProtocol",
     "GenericProtocol",
     "PROTOCOLS",
     "PROTOCOL_DISPLAY_NAMES",
