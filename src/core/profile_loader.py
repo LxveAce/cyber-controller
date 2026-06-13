@@ -44,6 +44,8 @@ CORE_ID_MAP: dict[str, str] = {
     "airtag_scanner": "airtag-scanner",
     "cyt_ng": "cyt-ng",
     "rtl8720": "rtl8720",
+    "bluejammer_esp32": "bluejammer-esp32",
+    "bluejammer_bw16": "bluejammer-bw16",
     "minigotchi": "minigotchi-v3",
     "flipper_momentum": "momentum",
     "flipper_unleashed": "unleashed",
