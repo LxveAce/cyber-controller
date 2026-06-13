@@ -444,6 +444,12 @@ class FirmwareProfile:
     repo: Optional[str] = None
     supports_suicide: bool = False
     image_model: str = IMAGE_MULTI
+    #: Risk class for the firmware itself (not a per-command label). "" = normal;
+    #: "lab-only" = RF transmit that must stay in an authorized lab; "illegal-tx" = a
+    #: transmitter that is illegal to OPERATE (e.g. a jammer, FCC 47 U.S.C. 333). The flash
+    #: UI surfaces this; CC still flashes it (label-never-block doctrine) but makes the
+    #: legality unmissable. Most profiles leave it "".
+    danger: str = ""
 
     # ---- release / variant discovery ----
     def latest_release(self) -> Tuple[str, List[Dict]]:
@@ -1034,6 +1040,151 @@ class RtlAmeba8720Profile(FirmwareProfile):
 
 
 # --------------------------------------------------------------------------- #
+# BlueJammer-V2  (EmenstaNougat/BlueJammer-V2) — a TWO-BOARD RF-research rig
+# --------------------------------------------------------------------------- #
+#
+# *** LAB-ONLY / ILLEGAL TO OPERATE ***  BlueJammer-V2 is a 2.4 GHz jammer (Bluetooth / BLE /
+# WiFi / RC). Cyber Controller's role is limited to FLASHING the precompiled image and reading
+# the device's own telemetry for study — it adds NO jamming capability and exposes NO
+# operate/transmit control (the only TX triggers are the device's physical button + its
+# self-hosted web UI, neither of which CC drives). OPERATING any mode transmits interference and
+# is illegal under FCC / 47 U.S.C. §333 (and equivalent law elsewhere). Retained + flashable and
+# labelled danger="illegal-tx" per the project's "label, never block" doctrine.
+#
+# Two boards (mirrors the esp32_div + rtl8720 patterns already in this module):
+#   (1) ESP32-WROOM-32U "jamming engine" — esptool multi-image. Release ships the app + bootloader
+#       + partitions, and NO boot_app0 (confirmed from the repo's RUN_THIS.bat):
+#         bootloader@0x1000, partitions@0x8000, app@0x10000.
+#   (2) BW16 / RTL8720DN "web controller / UART master" — the SAME AmebaD 3-file layout the
+#       rtl8720 backend already flashes (km0_boot_all / km4_boot_all / km0_km4_image2), plus the
+#       SRAM loader REUSED from the rtl8720 bundle (BlueJammer's release doesn't ship it).
+#
+# Firmware is CLOSED-SOURCE / precompiled (no redistribution granted) — so we fetch the pinned
+# bins from the GitHub Release at flash time and NEVER vendor them into this repo.
+
+_BLUEJAMMER_TAG = "v0.2"
+_BLUEJAMMER_REL = f"https://github.com/EmenstaNougat/BlueJammer-V2/releases/download/{_BLUEJAMMER_TAG}"
+_BJ_ESP_APP = "BlueJammer-V2.ino.bin"
+_BJ_ESP_BOOTLOADER = "BlueJammer-V2.ino.bootloader.bin"
+_BJ_ESP_PARTITIONS = "BlueJammer-V2.ino.partitions.bin"
+
+#: SHA-256 of the v0.2 release bins (downloaded + recorded 2026-06). Closed-source firmware has no
+#: upstream signature, so pinning is the only integrity guard — reject any byte that differs
+#: (repo compromise / MITM / an upstream change we have not re-validated). NOTE: km0_boot_all /
+#: km4_boot_all are byte-identical to the rtl8720 (Vampire) bundle's — standard AmebaD boot images;
+#: only km0_km4_image2 (the app) differs.
+_BLUEJAMMER_SHA256 = {
+    _BJ_ESP_APP:        "6c77188ceb44a8a66126b87d51947403492d064f26e5596e21196626fd600a5b",
+    _BJ_ESP_BOOTLOADER: "644de0067047e22380034b8989c39e5d2882f7538c698788866ca5130427322e",
+    _BJ_ESP_PARTITIONS: "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1",
+    "km0_boot_all.bin":   "453c880307fc389009aa8a39c63da3d715b207ad797206c896cc691426daaa64",
+    "km4_boot_all.bin":   "05fbf808d43113eaf7c11b75091c986b817135f0c52eb9fa94bb9fe9f34b062c",
+    "km0_km4_image2.bin": "615c382d48b89e1faceeba0ac586538894a21d4eeb4dc0c64027fcb271a84ef9",
+}
+
+
+class BlueJammerEsp32Profile(FirmwareProfile):
+    """BlueJammer-V2 ESP32 jamming engine. *** LAB-ONLY / ILLEGAL TO OPERATE (FCC §333). ***
+
+    esptool multi-image: app@0x10000 + bootloader@0x1000 + partitions@0x8000, and deliberately
+    NO boot_app0 @0xE000 (the upstream flasher omits it). Each bin is SHA-256-pinned. CC flashes
+    and reads telemetry only; it never operates the transmitter.
+    """
+
+    id = "bluejammer-esp32"
+    label = "BlueJammer-V2 — ESP32 engine [LAB-ONLY / illegal to operate]"
+    repo = "EmenstaNougat/BlueJammer-V2"
+    supports_suicide = False
+    image_model = IMAGE_MULTI
+    danger = "illegal-tx"
+
+    def latest_release(self) -> Tuple[str, List[Dict]]:
+        # Closed-source/precompiled: fetch the pinned release bins directly by name.
+        return (_BLUEJAMMER_TAG, [{
+            "name": _BJ_ESP_APP,
+            "url": f"{_BLUEJAMMER_REL}/{_BJ_ESP_APP}",
+            "chip": "esp32",
+            "label": "BlueJammer-V2 ESP32 app image [LAB-ONLY / illegal to operate]",
+            "offset": "0x10000",
+            "merged": False,
+            "sha256": _BLUEJAMMER_SHA256[_BJ_ESP_APP],
+        }])
+
+    def variants_for_chip(self, assets: List[Dict], chip: str) -> List[Dict]:
+        # Classic-ESP32-only firmware; surface it regardless of the detected chip.
+        return list(assets)
+
+    def default_variant(self, assets: List[Dict], chip: str) -> Optional[Dict]:
+        return assets[0] if assets else None
+
+    def support_files(self, chip: str, cache: str, on_line: Line) -> Optional[Dict[str, str]]:
+        boot = self._fetch_pinned(_BJ_ESP_BOOTLOADER, cache, on_line)
+        part = self._fetch_pinned(_BJ_ESP_PARTITIONS, cache, on_line)
+        # bootloader@0x1000, partitions@0x8000 — and intentionally NO boot_app0 @0xE000.
+        return {"0x1000": boot, "0x8000": part}
+
+    def app_offset(self, chip: str) -> str:
+        return "0x10000"
+
+    @staticmethod
+    def _fetch_pinned(name: str, cache: str, on_line: Line) -> str:
+        p = download_to(f"{_BLUEJAMMER_REL}/{name}", cache, name, on_line)
+        verify_sha256(p, _BLUEJAMMER_SHA256[name], on_line)  # pinned integrity gate
+        return p
+
+
+class BlueJammerBw16Profile(FirmwareProfile):
+    """BlueJammer-V2 BW16/RTL8720DN web controller + UART master.
+    *** LAB-ONLY / ILLEGAL TO OPERATE (FCC §333). ***
+
+    Same AmebaD 3-file layout as the rtl8720 (Vampire) profile — flashed by the ``rtl8720``
+    backend. km0/km4/image2 come from the BlueJammer v0.2 release; the SRAM loader is reused from
+    the rtl8720 bundle (BlueJammer doesn't ship it). Every file SHA-256-pinned. CC has no
+    operate/transmit control over this board — control is its self-hosted web UI.
+    """
+
+    id = "bluejammer-bw16"
+    label = "BlueJammer-V2 — BW16 controller [LAB-ONLY / illegal to operate]"
+    repo = "EmenstaNougat/BlueJammer-V2"
+    supports_suicide = False
+    image_model = IMAGE_MERGED  # nominal; the rtl8720 backend handles the real 3-file layout
+    danger = "illegal-tx"
+
+    def latest_release(self) -> Tuple[str, List[Dict]]:
+        assets = [{
+            "name": n,
+            "url": f"{_BLUEJAMMER_REL}/{n}",
+            "chip": "rtl8720",
+            "label": "BlueJammer-V2 BW16 bundle [LAB-ONLY / illegal to operate]",
+            "bundle": True,
+            "sha256": _BLUEJAMMER_SHA256[n],
+        } for n in ("km0_boot_all.bin", "km4_boot_all.bin", "km0_km4_image2.bin")]
+        # SRAM flash-loader: BlueJammer doesn't ship it — reuse the pinned rtl8720 one.
+        loader = "imgtool_flashloader_amebad.bin"
+        assets.append({
+            "name": loader,
+            "url": f"{_RTL8720_BUNDLE_BASE}/{loader}",
+            "chip": "rtl8720",
+            "label": "AmebaD SRAM loader (shared with rtl8720)",
+            "bundle": True,
+            "sha256": _RTL8720_BUNDLE_SHA256[loader],
+        })
+        return (_BLUEJAMMER_TAG, assets)
+
+    def variants_for_chip(self, assets: List[Dict], chip: str) -> List[Dict]:
+        return [a for a in assets if a.get("chip") == "rtl8720"]
+
+    def default_variant(self, assets: List[Dict], chip: str) -> Optional[Dict]:
+        return assets[0] if assets else None
+
+    def support_files(self, chip: str, cache: str, on_line: Line) -> Optional[Dict[str, str]]:
+        return None
+
+    def app_offset(self, chip: str) -> str:
+        return "0x0"
+
+
+# --------------------------------------------------------------------------- #
 # Meshtastic profile  (meshtastic/firmware — many boards, merged factory bins)
 # --------------------------------------------------------------------------- #
 #
@@ -1586,6 +1737,8 @@ PROFILES: Dict[str, FirmwareProfile] = {
         GhostEspProfile(),
         HaleHoundProfile(),
         RtlAmeba8720Profile(),
+        BlueJammerEsp32Profile(),
+        BlueJammerBw16Profile(),
         MeshtasticProfile(),
         FlockYouProfile(),
         OuiSpyProfile(),
