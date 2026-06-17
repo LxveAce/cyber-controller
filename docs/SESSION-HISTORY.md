@@ -8,7 +8,7 @@ detail). Author/commit rule across ALL repos: **LxveAce only, no Claude co-autho
 ---
 
 ## 0. WHO / WHERE / RULES
-- Owner **LxveAce** (`extrafadexd@gmail.com`) — Electrical Field Engineer (data centers), security-hardware
+- Owner **LxveAce** (`lxveace@proton.me`) — Electrical Field Engineer (data centers), security-hardware
   builder, Honda/Acura K-series. Repos under `C:\Users\extra\projects\`. Windows 11, PowerShell + git-bash.
 - Python 3.12 at `C:\Users\extra\AppData\Local\Programs\Python\Python312\python.exe` (has pyserial,
   cryptography, esptool 5.3.0, esp-idf-nvs-partition-gen, platformio, pytest). The sandbox python lacks
