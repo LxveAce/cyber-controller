@@ -6,7 +6,7 @@ readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.12"
 authors = [
-    {name = "LxveAce", email = "extrafadexd@gmail.com"},
+    {name = "LxveAce", email = "lxveace@proton.me"},
 ]
 keywords = [
     "cyberdeck", "esp32", "esp32-s3", "esp32-s2", "esp32-c3", "esp32-c5", "esp32-c6", "esp8266",
