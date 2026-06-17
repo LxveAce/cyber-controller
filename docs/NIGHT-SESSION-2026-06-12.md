@@ -6,7 +6,7 @@ loop and keep finding work, test all firmwares on connected hardware, deep-resea
 solution and push to main via PRs (self-merged), release the UI if it reaches a clean point,
 keep detailed logs, experiment freely on all attached hardware. Goodnight given — fully autonomous.
 
-Commit rule everywhere: **LxveAce <extrafadexd@gmail.com>** only, never a Claude co-author.
+Commit rule everywhere: **LxveAce <lxveace@proton.me>** only, never a Claude co-author.
 
 ---
 
