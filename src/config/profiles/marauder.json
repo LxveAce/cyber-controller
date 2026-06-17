@@ -1,0 +1,128 @@
+{
+  "name": "ESP32 Marauder",
+  "id": "marauder",
+  "description": "WiFi/BLE offensive security firmware for ESP32",
+  "backend": "esptool",
+  "protocol": "marauder",
+  "boards": [
+    {
+      "name": "Lonely Binary ESP32 Gold",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "arming_pin": 27,
+      "partitions": {
+        "bootloader": {"offset": "0x1000"},
+        "partitions": {"offset": "0x8000"},
+        "firmware": {"offset": "0x10000"}
+      }
+    },
+    {
+      "name": "ESP32 CYD 2.8\" Touchscreen",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "arming_pin": 27,
+      "has_display": true,
+      "display_type": "ili9341"
+    },
+    {
+      "name": "ESP32 CYD 2.4\" Guition",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true,
+      "display_type": "ili9341"
+    },
+    {
+      "name": "ESP32 CYD 3.5\" Touchscreen",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true,
+      "display_type": "ili9341"
+    },
+    {
+      "name": "Waveshare ESP32-C5",
+      "chip": "esp32c5",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "arming_pin": null,
+      "arming_grove": "G2",
+      "dual_band": true
+    },
+    {
+      "name": "M5StickC Plus2",
+      "chip": "esp32",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_display": true
+    },
+    {
+      "name": "M5Cardputer",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_keyboard": true,
+      "has_display": true
+    },
+    {
+      "name": "M5Cardputer ADV",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_keyboard": true,
+      "has_display": true
+    },
+    {
+      "name": "Marauder Mini",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "Marauder Mini v3 (C5 Edition)",
+      "chip": "esp32c5",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "dual_band": true
+    },
+    {
+      "name": "Flipper Zero WiFi Dev Board",
+      "chip": "esp32s2",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "Flipper MultiBoard S3",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "Marauder v8",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/justcallmekoko/ESP32Marauder",
+    "latest": "https://github.com/justcallmekoko/ESP32Marauder/releases/latest"
+  },
+  "note": "justcallmekoko/ESP32Marauder. Release ships app .bin only; bootloader/partitions/boot_app0 pulled from the repo FlashFiles/ tree per chip family."
+}

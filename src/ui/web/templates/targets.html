@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% set active = "targets" %}
+
+{% block title %}Targets - Cyber Controller{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Target Pool</h1>
+
+<div class="toolbar">
+    <span id="target-summary" class="toolbar-info">{{ targets|length }} targets</span>
+    <button id="btn-refresh-targets" class="btn btn-sm">Refresh</button>
+</div>
+
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>MAC</th>
+                <th>SSID</th>
+                <th>RSSI</th>
+                <th>Ch</th>
+                <th>Source</th>
+                <th>Type</th>
+            </tr>
+        </thead>
+        <tbody id="target-tbody">
+            {% for t in targets %}
+            <tr>
+                <td class="mono">{{ t.mac }}</td>
+                <td>{{ t.ssid or '--' }}</td>
+                <td class="mono">{{ t.rssi }}</td>
+                <td class="mono">{{ t.channel }}</td>
+                <td class="mono">{{ t.device_source }}</td>
+                <td>{{ t.target_type.value }}</td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="6" class="empty-state">No targets discovered yet.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script nonce="{{ csp_nonce }}">
+    function refreshTargets() {
+        fetch('/api/targets')
+            .then(r => r.json())
+            .then(targets => {
+                const tbody = document.getElementById('target-tbody');
+                const summary = document.getElementById('target-summary');
+                summary.textContent = targets.length + ' targets';
+
+                // Build rows with DOM APIs + textContent. SSID / MAC / source come from
+                // over-the-air scan data (attacker-controlled), so they must NEVER be
+                // interpolated into innerHTML — that was a stored-XSS sink.
+                tbody.replaceChildren();
+                if (targets.length === 0) {
+                    const tr = document.createElement('tr');
+                    const td = document.createElement('td');
+                    td.colSpan = 6;
+                    td.className = 'empty-state';
+                    td.textContent = 'No targets discovered yet.';
+                    tr.appendChild(td);
+                    tbody.appendChild(tr);
+                    return;
+                }
+
+                const addCell = (tr, value, cls) => {
+                    const td = document.createElement('td');
+                    if (cls) td.className = cls;
+                    td.textContent = (value === undefined || value === null) ? '' : String(value);
+                    return tr.appendChild(td);
+                };
+                targets.forEach(t => {
+                    const tr = document.createElement('tr');
+                    addCell(tr, t.mac || '', 'mono');
+                    addCell(tr, t.ssid || '--', null);
+                    addCell(tr, (t.rssi ?? 0), 'mono');
+                    addCell(tr, (t.channel ?? 0), 'mono');
+                    addCell(tr, t.device_source || '', 'mono');
+                    addCell(tr, t.target_type || '', null);
+                    tbody.appendChild(tr);
+                });
+            })
+            .catch(() => {});
+    }
+
+    function onTargetDiscovered(data) {
+        refreshTargets();
+    }
+
+    // Moved off an inline onclick= for the strict nonce CSP.
+    document.getElementById('btn-refresh-targets').addEventListener('click', refreshTargets);
+
+    // Auto-refresh every 10 seconds
+    setInterval(refreshTargets, 10000);
+</script>
+{% endblock %}

@@ -1,0 +1,20 @@
+{
+  "name": "Kali Linux ARM",
+  "id": "kali-arm",
+  "description": "Kali Linux ARM SD image — the full Kali pentest distro pre-built for Raspberry Pi and other ARM single-board computers.",
+  "backend": "sd",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "Raspberry Pi",
+      "chip": null,
+      "device": "Raspberry Pi (ARM64)"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://kali.download/arm-images/",
+    "latest": "https://kali.download/arm-images/"
+  },
+  "note": "id matches sd_backend.PI_IMAGE_PROFILES key 'kali-arm'. No GitHub release — images come straight from kali.download (allowlisted in sd_backend). SD imaging requires an explicit removable target + confirmed=True."
+}

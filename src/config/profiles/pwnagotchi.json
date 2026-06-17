@@ -1,0 +1,25 @@
+{
+  "name": "Pwnagotchi",
+  "id": "pwnagotchi",
+  "description": "Raspberry Pi WiFi AI that passively roams and collects WPA/WPA2 handshakes (PMKID + full) using reinforcement learning. Flashed as an SD-card .img.",
+  "backend": "sd",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "Raspberry Pi Zero 2 W",
+      "chip": null,
+      "device": "Raspberry Pi Zero 2 W"
+    },
+    {
+      "name": "Raspberry Pi 3/4/5",
+      "chip": null,
+      "device": "Raspberry Pi 3 / 4 / 5"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/jayofelony/pwnagotchi",
+    "latest": "https://github.com/jayofelony/pwnagotchi/releases/latest"
+  },
+  "note": "id matches sd_backend.PI_IMAGE_PROFILES key 'pwnagotchi'. SD imaging requires an explicit removable target + confirmed=True (and Administrator/root)."
+}

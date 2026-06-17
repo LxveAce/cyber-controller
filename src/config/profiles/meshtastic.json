@@ -1,0 +1,21 @@
+{
+  "name": "Meshtastic",
+  "id": "meshtastic",
+  "description": "LoRa mesh networking firmware for ESP32",
+  "backend": "esptool",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "Heltec LoRa V3",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "lora_frequency": "915MHz"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "latest": "https://github.com/meshtastic/firmware/releases/latest"
+  }
+}

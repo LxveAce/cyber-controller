@@ -1,0 +1,3 @@
+[submodule "deadmans-switch"]
+	path = deadmans-switch
+	url = https://github.com/LxveAce/deadmans-switch.git
