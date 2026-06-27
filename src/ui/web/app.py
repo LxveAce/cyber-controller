@@ -25,6 +25,7 @@ import logging
 import os
 import secrets
 from pathlib import Path
+from src.core.resources import resource_path
 from typing import Any
 
 from flask import Flask, Response, abort, g, jsonify, render_template, request, session
@@ -43,7 +44,7 @@ from src.security.web_auth import (
 
 log = logging.getLogger(__name__)
 
-_PROFILES_DIR = Path(__file__).resolve().parents[3] / "src" / "config" / "profiles"
+_PROFILES_DIR = resource_path("src", "config", "profiles")
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 _STATIC_DIR = Path(__file__).parent / "static"
 

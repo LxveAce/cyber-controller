@@ -16,12 +16,13 @@ import requests
 
 # Reuse the flash core's vetted SSRF/path-traversal primitives (single source of truth).
 from src.core.flash_core import _require_allowed_url, _safe_cache_name
+from src.core.resources import resource_path
 
 log = logging.getLogger(__name__)
 
 _DEFAULT_VAULT_DIR = Path.home() / ".cyber-controller" / "firmware_vault"
 _INDEX_FILE = "vault_index.json"
-_PROFILES_DIR = Path(__file__).resolve().parents[1] / "config" / "profiles"
+_PROFILES_DIR = resource_path("src", "config", "profiles")
 _GITHUB_API = "https://api.github.com"
 _DOWNLOAD_CHUNK = 8192
 _TIMEOUT = 30
