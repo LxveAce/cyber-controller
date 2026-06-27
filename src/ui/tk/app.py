@@ -13,6 +13,7 @@ import threading
 import time
 import tkinter as tk
 from pathlib import Path
+from src.core.resources import resource_path
 from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING, Any
 
@@ -58,7 +59,7 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 _VERSION = "0.1.0"
-_PROFILES_DIR = Path(__file__).resolve().parents[3] / "src" / "config" / "profiles"
+_PROFILES_DIR = resource_path("src", "config", "profiles")
 
 # ── Dark theme colours ──────────────────────────────────────────────
 
