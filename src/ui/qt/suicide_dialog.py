@@ -214,7 +214,7 @@ class SuicideSetupDialog(QDialog):
         )
         if warnings:
             msg += (
-                f"\n\nNOTE: {len(warnings)} firmware image(s) not present — build the Suicide-Marauder "
+                f"\n\nNOTE: {len(warnings)} firmware image(s) not present — build the Dead Man's Switch firmware "
                 "firmware (set the build dir) to complete the flash bundle, then flash via flash_suicide."
             )
         if cfg.armed == 1:

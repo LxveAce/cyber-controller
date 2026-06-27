@@ -69,6 +69,16 @@ def _build() -> int:
     if assets_dir.is_dir():
         cmd.extend(["--add-data", f"{assets_dir}{sep}assets"])
 
+    # Dead Man's Switch submodule: the host provisioner + partition CSVs that --deadman-setup
+    # imports at runtime (resolved via resource_path). Bundled only when the submodule is checked
+    # out — CI uses `submodules: recursive`; locally run `git submodule update --init deadmans-switch`.
+    ds_host = _ROOT / "deadmans-switch" / "host"
+    if ds_host.is_dir():
+        cmd.extend(["--add-data", f"{ds_host}{sep}deadmans-switch/host"])
+    ds_parts = _ROOT / "deadmans-switch" / "firmware" / "partitions"
+    if ds_parts.is_dir():
+        cmd.extend(["--add-data", f"{ds_parts}{sep}deadmans-switch/firmware/partitions"])
+
     # QSS theme stylesheets
     theme_dir = _ROOT / "src" / "ui" / "qt" / "theme"
     for qss in theme_dir.glob("*.qss"):
