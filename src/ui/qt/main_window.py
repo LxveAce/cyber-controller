@@ -44,6 +44,7 @@ from src.core.health_monitor import HealthMonitor
 from src.core.macro_recorder import MacroRecorder
 from src.ui.qt.flash_tab import FlashTab
 from src.ui.qt.software_tab import SoftwareTab
+from src.ui.qt.wardrive_tab import WardriveTab
 from src.ui.qt.device_tab import DeviceTab
 from src.ui.qt.health_tab import HealthTab
 from src.ui.qt.macro_tab import MacroTab
@@ -386,6 +387,10 @@ class CyberControllerWindow(QMainWindow):
             action_resolver=self._action_resolver,
         )
         self._tabs.addTab(self._targets_tab, "Targets")
+
+        # Wardriving — GPS-tagged Wi-Fi capture -> WiGLE CSV (lawful, owner-authorized use)
+        self._wardrive_tab = WardriveTab()
+        self._tabs.addTab(self._wardrive_tab, "Wardrive")
 
         # Unified Action Broadcast — big-button action row over every connected radio.
         from src.ui.qt.broadcast_tab import BroadcastBar
