@@ -8,6 +8,7 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
+from src.core.resources import resource_path
 from typing import TYPE_CHECKING
 
 try:
@@ -47,7 +48,7 @@ if TYPE_CHECKING:
 
 log = logging.getLogger(__name__)
 
-_PROFILES_DIR = Path(__file__).resolve().parents[3] / "src" / "config" / "profiles"
+_PROFILES_DIR = resource_path("src", "config", "profiles")
 
 
 def _health_class(pct: float) -> str:
