@@ -257,6 +257,18 @@ def key_present(drives: Optional[list[Path]] = None) -> bool:
     return False
 
 
+def present_key_secret(drives: Optional[list[Path]] = None) -> Optional[bytes]:
+    """Return the secret of a PRESENT, matching physical key (for vault unlock), or None."""
+    ver = load_config().get("key")
+    if not ver:
+        return None
+    for drive in (drives if drives is not None else list_removable_drives()):
+        secret = _read_key_secret(Path(drive) / KEY_FILENAME)
+        if secret is not None and _check_verifier(secret, ver):
+            return secret
+    return None
+
+
 # ── policy evaluation ────────────────────────────────────────────────
 
 def check_access(password: Optional[str] = None, drives: Optional[list[Path]] = None) -> tuple[bool, str]:
