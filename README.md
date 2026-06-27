@@ -34,6 +34,11 @@
 - Reconciling profile/parser counts and finishing the `deadmans-switch` branding rename across docs and UI.
 
 **Roadmap:**
+- **Unified flashing in one app, two clearly separate tabs** — a **Firmware tab** for hardware (ESP32 Marauder / GhostESP / Bruce / etc. plus Raspberry Pi SD images) and a **new Software tab** for PC/USB operating systems.
+- **Software (OS) tab** — flash **Kali Linux, Tails OS, Arch** (and more) to USB, integrity-verified by SHA-256 / signature before writing.
+- **Auto-updating firmware/OS catalog** so versions are always current, **plus full offline use** — a cached catalog and already-downloaded images flash with no internet; the app also self-updates.
+- **In-app tooltips on every control** and a thorough **How-To / tutorial tab**.
+- **Wardriving** (Cyber Controller only — the all-in-one controller is also the main GUI for cyberdecks): GPS-tagged AP/station capture with WiGLE/Kismet-style logging and export, for **lawful, owner-authorized** use. (The companion **universal-flasher** stays strictly a flasher — firmware + software tabs only, no controller / logger / wardriving.)
 - Flash **Tails OS** (the amnesiac live OS) to USB, with upstream signature/checksum verification before writing — surfaced under the amnesiac / dead-man section.
 - **Physical key** access gate: provision a USB key, then require an admin password and/or the physical USB key be present before the app unlocks (policy configurable: password-only, key-only, or both), covering both the desktop and web entry points.
 - Frozen-asset hardening so a missing bundled resource degrades gracefully instead of failing.

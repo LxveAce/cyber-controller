@@ -147,3 +147,15 @@ similar field setups. Beyond the shared flashing:
   logger, wardriving, and cyberdeck-GUI usage. Wardriving + logger + controller are CYBER-CONTROLLER
   ONLY (not universal-flasher).
 
+
+> **Biscuit research (for the wardriving subsystem, 2026-06-27):** "Biscuit" = the Biscuit Shop /
+> CodeHedge dual-ESP32 WiFi/BLE wardriver (Biscuit Pro / Ultra; open DIY firmware for the LilyGO
+> T-Dongle ESP32-C5 and CYD; flasher + Biscuit Manager phone app). It is screenless — the phone app
+> (BLE GATT) supplies GPS + UI; the firmware captures APs/stations + PMKID/WPA handshakes to SD as PCAP
+> and WiGLE-ready CSV. cyber-controller's wardriving should follow the Marauder/Biscuit pattern: parse
+> GPS **NMEA** (write a row only on a valid fix), capture APs (beacons) + stations (probe requests) via
+> the ESP32 serial sniff, and log in **WiGLE CSV** (header `WigleWifi-1.6`; columns
+> MAC,SSID,AuthMode,FirstSeen,Channel,Frequency,RSSI,CurrentLatitude,CurrentLongitude,AltitudeMeters,
+> AccuracyMeters,RCOIs,MfgrId,Type) for WiGLE upload, plus PCAP for offline analysis. **Lawful,
+> owner-authorized use only** — passive beacon wardriving is generally legal in the US; handshake/PMKID
+> capture requires authorization. (Do not conflate with the unrelated `yattsu/biscuit` e-paper project.)
