@@ -67,6 +67,37 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
              "Collects a boot password (hashed host-side, never stored) + arm/wipe config and bakes "
              "the guardcfg bundle. Owner-only defensive use.",
     )
+    parser.add_argument(
+        "--create-physical-key",
+        action="store_true",
+        help="Provision a USB stick as a physical unlock key, then exit. Owner-only defensive use.",
+    )
+    parser.add_argument(
+        "--key-drive",
+        default=None,
+        help="USB target path for --create-physical-key (skip the interactive drive picker).",
+    )
+    parser.add_argument(
+        "--set-admin-password",
+        action="store_true",
+        help="Set the access-gate admin password (stored as a salted scrypt verifier), then exit.",
+    )
+    parser.add_argument(
+        "--gate-policy",
+        choices=("both", "either", "password", "key"),
+        default=None,
+        help="Set the access-gate policy (both = password AND key; either = OR), then exit.",
+    )
+    parser.add_argument(
+        "--gate-status",
+        action="store_true",
+        help="Print the access-gate configuration and exit.",
+    )
+    parser.add_argument(
+        "--clear-gate",
+        action="store_true",
+        help="Remove the access gate (admin password + physical key), then exit.",
+    )
     return parser.parse_args(argv)
 
 
@@ -191,6 +222,19 @@ def main(argv: list[str] | None = None) -> int:
         from src.core.suicide_setup import run_cli
         return run_cli()
 
+    # Access-gate management (standalone) — run the requested action and exit.
+    from src.security import access_gate as _ag
+    if args.gate_status:
+        return _ag.status_cli()
+    if args.create_physical_key:
+        return _ag.create_key_cli(args.key_drive)
+    if args.set_admin_password:
+        return _ag.set_password_cli()
+    if args.gate_policy:
+        return _ag.set_policy_cli(args.gate_policy)
+    if args.clear_gate:
+        return _ag.clear_cli()
+
     # If no --ui flag was given, show the launcher dialog to let the user pick.
     if args.ui is None:
         try:
@@ -201,6 +245,14 @@ def main(argv: list[str] | None = None) -> int:
             args.ui = "qt"
 
     log.info("Cyber Controller starting — ui=%s", args.ui)
+
+    # Access gate (physical key / admin password). Fail-closed: a denied/cancelled gate exits
+    # before any device bootstrap. A no-op when no gate is configured.
+    from src.security.access_gate import enforce as _enforce_gate
+    if not _enforce_gate(args.ui):
+        log.warning("Access denied — exiting.")
+        print("Access denied.", file=sys.stderr)
+        return 0
 
     dm, fe, bus, pool, vault, health, macro, audit = _bootstrap()
 
