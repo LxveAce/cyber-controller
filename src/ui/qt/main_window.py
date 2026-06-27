@@ -408,6 +408,11 @@ class CyberControllerWindow(QMainWindow):
         self._settings_tab = SettingsTab()
         self._tabs.addTab(self._settings_tab, "Settings")
 
+        # How-To — in-app usage guide (renders docs/HOWTO.md)
+        from src.ui.qt.howto_tab import HowToTab
+        self._howto_tab = HowToTab()
+        self._tabs.addTab(self._howto_tab, "How-To")
+
     # ── Persistent terminal (bottom dock) ──────────────────────────
 
     # ── Device colors for multi-device terminal ───────────────────
