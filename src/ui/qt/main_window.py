@@ -43,6 +43,7 @@ from src.core.firmware_vault import FirmwareVault
 from src.core.health_monitor import HealthMonitor
 from src.core.macro_recorder import MacroRecorder
 from src.ui.qt.flash_tab import FlashTab
+from src.ui.qt.software_tab import SoftwareTab
 from src.ui.qt.device_tab import DeviceTab
 from src.ui.qt.health_tab import HealthTab
 from src.ui.qt.macro_tab import MacroTab
@@ -364,6 +365,10 @@ class CyberControllerWindow(QMainWindow):
         self._device_tab = DeviceTab(self._dm, self._pool, self._ingestor)
         self._device_tab._dms_auth = self._dms_auth
         self._tabs.addTab(self._device_tab, "Devices")
+
+        # Software-OS tab — flash bootable PC/USB operating systems (Kali / Tails / Arch / ...)
+        self._software_tab = SoftwareTab()
+        self._tabs.addTab(self._software_tab, "Software OS")
 
         # Health tab (new)
         self._health_tab = HealthTab(self._health)
