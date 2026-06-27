@@ -1,4 +1,4 @@
-"""Suicide Marauder — password & duress setup (host-side provisioning wrapper).
+"""Dead Man's Switch — password & duress setup (host-side provisioning wrapper).
 
 Owner-only DEFENSIVE anti-forensic layer for hardware you own. A disarmed or unprovisioned board can
 NEVER wipe (fail-safe). This module drives the Suicide-Marauder host provisioner
@@ -20,7 +20,9 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-_SUBMODULE = Path(__file__).resolve().parents[2] / "deadmans-switch"
+from src.core.resources import resource_path
+
+_SUBMODULE = resource_path("deadmans-switch")
 _HOST = _SUBMODULE / "host"
 _PARTS = _SUBMODULE / "firmware" / "partitions"
 
@@ -107,7 +109,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     (via getpass — never on argv), builds the bundle, prints next steps."""
     import getpass
 
-    print("=== Suicide Marauder — password & duress setup (host-side) ===")
+    print("=== Dead Man's Switch — password & duress setup (host-side) ===")
     print("Owner-only DEFENSIVE use on hardware you own. A disarmed/unprovisioned board NEVER wipes.\n")
     cfg = SuicideConfig()
 
@@ -150,7 +152,7 @@ def run_cli(argv: list[str] | None = None) -> int:
     print(f"  armed={cfg.armed} (0=disarmed safe) arm_pin={cfg.arm_pin} arm_level={cfg.arm_level} "
           f"max_att={cfg.max_att} brick={cfg.brick}")
     if warnings:
-        print(f"  NOTE: {len(warnings)} firmware image(s) not present — build the Suicide-Marauder")
+        print(f"  NOTE: {len(warnings)} firmware image(s) not present — build the Dead Man's Switch firmware")
         print("        firmware (build_dir) to complete the bundle, then flash via flash_suicide.")
     if cfg.armed == 1:
         print("  *** armed=1: this board WILL self-destruct on the configured trigger conditions. ***")
