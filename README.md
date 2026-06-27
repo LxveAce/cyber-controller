@@ -23,13 +23,31 @@
 
 ---
 
+<!-- STATUS-ROADMAP:START -->
+## Status & Roadmap
+
+**Status:** v1.1.0 is code-stable (228 tests pass, 0 open issues); a Windows installer reliability fix is in progress before the next tagged release.
+
+**In progress / known issues:**
+- Windows installer reliability fix in progress — hardening bundled-asset loading so the packaged GUI starts cleanly on a clean Windows host (verified against a real Windows install before release).
+- Aligning the release build pipeline with the local build so all UI modes ship correctly.
+- Reconciling profile/parser counts and finishing the `deadmans-switch` branding rename across docs and UI.
+
+**Roadmap:**
+- Flash **Tails OS** (the amnesiac live OS) to USB, with upstream signature/checksum verification before writing — surfaced under the amnesiac / dead-man section.
+- **Physical key** access gate: provision a USB key, then require an admin password and/or the physical USB key be present before the app unlocks (policy configurable: password-only, key-only, or both), covering both the desktop and web entry points.
+- Frozen-asset hardening so a missing bundled resource degrades gracefully instead of failing.
+- Windows code-signing + installer to reduce SmartScreen/Defender friction.
+- Fresh tagged release picking up the commits ahead of v1.1.0.
+<!-- STATUS-ROADMAP:END -->
+
 ## What is this?
 
 Cyber Controller is the flagship convergence of the **Lxve ESP32 security toolchain** — it merges
 [Headless Marauder GUI](https://github.com/LxveAce/headless-marauder-gui),
 [Universal Flasher](https://github.com/LxveAce/universal-flasher), and
 [Universal Flasher & UI](https://github.com/LxveAce/universal-flasher-ui) into a single unified tool,
-with [Dead Man's Switch](https://github.com/LxveAce/Suicide-Marauder) anti-forensic provisioning built in.
+with [Dead Man's Switch](https://github.com/LxveAce/deadmans-switch) anti-forensic provisioning built in.
 It is built for **cyberdecks, field deployments, and security research** — runs on ARM + x64, on a
 7" touchscreen, headless over SSH, or from a phone.
 
@@ -250,13 +268,13 @@ at [cybercontroller.org](https://cybercontroller.org/#firmware). Targets are add
 is wired up and (where possible) validated on real hardware — the count above reflects what ships today,
 not the plan.
 
-## Suicide Marauder Integration
+## Dead Man's Switch Integration
 
-[Suicide Marauder](https://github.com/LxveAce/Suicide-Marauder) ships as a git submodule for
-owner-only anti-forensic provisioning: a PBKDF2-HMAC-SHA256 boot-password gate, 2-fail automatic wipe,
-GPIO dead-man switch, and eFuse + Flash Encryption (T2). Set the password & duress config straight from
-the controller — **`cyber-controller --deadman-setup`** (interactive) or **Tools ▸ Suicide Marauder
-Setup** in the Qt UI — which hashes the password **host-side** (PBKDF2, zeroized, never stored, never on
+[Dead Man's Switch](https://github.com/LxveAce/deadmans-switch) (`deadmans-switch`) ships as a git
+submodule for owner-only anti-forensic provisioning: a PBKDF2-HMAC-SHA256 boot-password gate, 2-fail
+automatic wipe, GPIO dead-man switch, and eFuse + Flash Encryption (T2). Set the password & duress
+config straight from the controller — **`cyber-controller --deadman-setup`** (interactive) or **Tools ▸
+Dead Man's Switch Setup** in the Qt UI — which hashes the password **host-side** (PBKDF2, zeroized, never stored, never on
 argv) and bakes the `guardcfg` bundle. Bundles flash through the controller with **TOCTOU-safe per-file
 SHA-256 verification** — no unverified anti-forensic build is ever written, and a suicide-schema bundle
 refuses to flash without a SHA-256 for every file.
@@ -266,7 +284,7 @@ table, the full running app, NVS/SPIFFS/logs, and the SD card — with a forensi
 leaving an all-`0xFF` chip with no trace (the running app self-erases via a ROM-SPI bypass inside the IDF
 flash-only critical section; recoverable only by the owner over UART on T1).
 
-> Cyber Controller itself only **flashes** a bundle the Suicide-Marauder provisioner already built — it
+> Cyber Controller itself only **flashes** a bundle the deadmans-switch provisioner already built — it
 > never burns eFuses or performs T2 / secure-boot provisioning.
 
 ## Ecosystem
@@ -275,7 +293,7 @@ flash-only critical section; recoverable only by the owner over UART on T1).
 |---------|------|
 | [headless-marauder-gui](https://github.com/LxveAce/headless-marauder-gui) | Standalone Marauder controller + flasher (4 UIs) |
 | [universal-flasher](https://github.com/LxveAce/universal-flasher) | Multi-firmware flasher + device manager |
-| [Suicide-Marauder](https://github.com/LxveAce/Suicide-Marauder) | Anti-forensic firmware provisioner |
+| [deadmans-switch](https://github.com/LxveAce/deadmans-switch) | Anti-forensic firmware provisioner |
 | [cybercontroller.org](https://cybercontroller.org) | Flagship website — interactive demo, firmware library, downloads |
 | [esp32marauder.com](https://esp32marauder.com) | ESP32 security tools hub |
 
