@@ -100,3 +100,50 @@ Fresh tagged release after P0, picking up the 8 commits master is ahead of v1.1.
 - Physical key: bind to USB hardware id (resists copy) vs portable keyfile? Does the AND/OR policy cover the web remote or desktop only?
 - Is the empty `deadmans-switch` dir a packaging gap or just uninitialized locally?
 - Do the site's v1.5.5/v1.6.0 strings refer to the app or to demo device firmware (mostly the latter)?
+
+
+## Owner feature directives — unified flashing + auto-update + offline + UX (2026-06-27)
+
+Committed roadmap for the flasher line. **cyber-controller and universal-flasher implement the
+FLASHING parts CONSISTENTLY (shared engine + catalog); their ROLES differ (see below).** These are
+to be kept in sync across both repos.
+
+### 1. Flash more, all in one — firmware vs software, in separate tabs
+- Make flashing all-in-one, split into clearly separated tabs so the two audiences never collide:
+  - **Firmware tab (hardware projects):** the existing ESP32 firmwares (Marauder, GhostESP, Bruce,
+    HaleHound, Meshtastic, ...) + Pi/SBC SD-image firmwares. Add as many more as feasible.
+  - **NEW Software tab (PC / USB operating systems):** bootable OS images written to a USB stick —
+    **Kali Linux, Tails OS, Arch Linux**, and as many others as feasible (Ubuntu/Debian/Parrot, and a
+    Ventoy-style multiboot stretch goal). Reuses the hardened **removable-only raw-image writer +
+    mandatory integrity verification** (sha256 / signature) already used for Tails.
+
+### 2. Auto-updating catalog + app, with FULL offline utility
+- **Catalog auto-update:** keep the flashable firmware/OS definitions as current as possible
+  automatically — resolve each upstream's latest version (GitHub Releases API for ESP32 firmwares;
+  official version/checksum/signature feeds for Kali / Tails / Arch / etc.) and refresh the bundled
+  profiles. Do it two ways: (a) a **scheduled CI job** (GitHub Action) that updates the profile JSON +
+  pinned checksums in the repo so the shipped catalog never goes stale, and (b) an **in-app
+  "check for catalog updates"** that pulls the latest profile manifest.
+- **App auto-update:** keep the existing self-update path; every project in this line ships auto-update.
+- **Offline utility (mandatory, non-negotiable):** everything must work with NO internet — a cached
+  catalog + already-downloaded images flash fully offline. Auto-update is an enhancement, never a
+  requirement to use the tool in the field.
+
+### 3. UX — discoverability everywhere
+- **Hover tooltips on EVERY control** explaining what it does (extend the existing tooltip/glossary
+  pattern to 100% coverage).
+- **A thorough "How To" / tutorial tab** that walks through every feature, tab, and button with
+  step-by-step usage — first-run friendly, offline, and kept in sync as features land.
+
+### Role: cyber-controller = the all-in-one (controller + flasher + logger + pentest + cyberdeck GUI)
+The convergence flagship: device **controller**, the unified **flasher** above, session/event
+**logger**, and a **pentesting** toolkit — intended to run as the **main GUI for cyberdecks** and
+similar field setups. Beyond the shared flashing:
+- **Wardriving subsystem:** add wardriving support modeled on the **Biscuit** wardriving project (and
+  as much capability as feasible) — GPS-tagged AP/station capture, live logging, and export
+  (WiGLE CSV / Kismet-style), surfaced as a first-class panel/tab. Wire into the existing
+  Marauder/serial sniff capture + the cyberdeck GPS. (Lawful, owner-authorized use; responsible framing.)
+- Everything auto-updates + works fully offline. The How-To tab covers the controller, flasher,
+  logger, wardriving, and cyberdeck-GUI usage. Wardriving + logger + controller are CYBER-CONTROLLER
+  ONLY (not universal-flasher).
+
