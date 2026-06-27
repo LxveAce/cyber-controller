@@ -75,6 +75,11 @@ def _build() -> int:
     if assets_dir.is_dir():
         cmd.extend(["--add-data", f"{assets_dir}{sep}assets"])
 
+    # In-app How-To guide (rendered by the How-To tab via resource_path).
+    howto = _ROOT / "docs" / "HOWTO.md"
+    if howto.is_file():
+        cmd.extend(["--add-data", f"{howto}{sep}docs"])
+
     # Dead Man's Switch submodule: the host provisioner + partition CSVs that --deadman-setup
     # imports at runtime (resolved via resource_path). Bundled only when the submodule is checked
     # out — CI uses `submodules: recursive`; locally run `git submodule update --init deadmans-switch`.
