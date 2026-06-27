@@ -26,31 +26,30 @@
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
-**Status:** v1.1.0 is code-stable (228 tests pass, 0 open issues); a Windows installer reliability fix is in progress before the next tagged release.
+**Status:** v1.2.1 is the latest release — the unified Software-OS flashing tab, wardriving, in-app
+Access-Gate setup, and the How-To tab all **ship now**, and the prior Windows one-click `.exe` startup
+crash is **fixed and verified**.
 
-**In progress / known issues:**
-- Windows installer reliability fix in progress — hardening bundled-asset loading so the packaged GUI starts cleanly on a clean Windows host (verified against a real Windows install before release).
-- Aligning the release build pipeline with the local build so all UI modes ship correctly.
-- Reconciling profile/parser counts and finishing the `deadmans-switch` branding rename across docs and UI.
+**Shipped in v1.2.1:**
+- **Unified flashing in one app, two clearly separate tabs** — a **Firmware tab** for hardware (ESP32 Marauder / GhostESP / Bruce / etc. plus Raspberry Pi SD images) and a **Software (OS) tab** for PC/USB operating systems.
+- **Software (OS) tab** — flash verified **Kali Linux, Tails OS, Arch** to USB, with the latest version auto-resolved (and an offline bundled fallback), **SHA-256 + OpenPGP verified** before writing.
+- **Auto-updating firmware/OS catalog** so versions are always current, **plus full offline use** — a cached catalog and already-downloaded images flash with no internet; a weekly CI job keeps the bundled OS catalog current; the app also self-updates.
+- **In-app tooltips on every control** and a thorough **How-To / tutorial tab**.
+- **Wardriving** (Cyber Controller only — the all-in-one controller is also the main GUI for cyberdecks): GPS-tagged Wi-Fi capture exported to **WiGLE CSV**, for **lawful, owner-authorized** use. (The companion **universal-flasher** stays strictly a flasher — firmware + software tabs only, no controller / logger / wardriving.)
+- **In-app Access-Gate setup** — provision the admin password / physical USB key / policy straight from **Settings ▸ Access Gate** in the GUI (no longer CLI-only), backed by salted-scrypt verifiers + an encrypted vault. Requires an admin password and/or the physical USB key be present before the app unlocks (policy configurable: password-only, key-only, or both), covering both the desktop and web entry points.
+- **Windows one-click `.exe` startup crash fixed and verified** — bundled-asset loading hardened so the packaged GUI starts cleanly on a clean Windows host; a missing bundled resource now degrades gracefully instead of failing.
 
 **Roadmap:**
-- **Unified flashing in one app, two clearly separate tabs** — a **Firmware tab** for hardware (ESP32 Marauder / GhostESP / Bruce / etc. plus Raspberry Pi SD images) and a **new Software tab** for PC/USB operating systems.
-- **Software (OS) tab** — flash **Kali Linux, Tails OS, Arch** (and more) to USB, integrity-verified by SHA-256 / signature before writing.
-- **Auto-updating firmware/OS catalog** so versions are always current, **plus full offline use** — a cached catalog and already-downloaded images flash with no internet; the app also self-updates.
-- **In-app tooltips on every control** and a thorough **How-To / tutorial tab**.
-- **Wardriving** (Cyber Controller only — the all-in-one controller is also the main GUI for cyberdecks): GPS-tagged AP/station capture with WiGLE/Kismet-style logging and export, for **lawful, owner-authorized** use. (The companion **universal-flasher** stays strictly a flasher — firmware + software tabs only, no controller / logger / wardriving.)
-- Flash **Tails OS** (the amnesiac live OS) to USB, with upstream signature/checksum verification before writing — surfaced under the amnesiac / dead-man section.
-- **Physical key** access gate: provision a USB key, then require an admin password and/or the physical USB key be present before the app unlocks (policy configurable: password-only, key-only, or both), covering both the desktop and web entry points.
-- Frozen-asset hardening so a missing bundled resource degrades gracefully instead of failing.
 - Windows code-signing + installer to reduce SmartScreen/Defender friction.
-- Fresh tagged release picking up the commits ahead of v1.1.0.
 <!-- STATUS-ROADMAP:END -->
 
 
 ## Owner access gate & Tails flashing
 
 **Physical-key access gate** — optionally require an admin password and/or a provisioned USB key to
-open the app (fail-closed; OFF by default). Owner-only defensive use on hardware you own.
+open the app (fail-closed; OFF by default). Owner-only defensive use on hardware you own. As of
+**v1.2.1** the whole gate can be set up from the GUI in **Settings ▸ Access Gate** (set the admin
+password / physical USB key / policy) — the CLI flags below remain available too:
 - `cyber-controller --set-admin-password` — set the admin password.
 - `cyber-controller --create-physical-key [--key-drive <USB>]` — provision a USB stick as an unlock key.
 - `cyber-controller --gate-policy {both|either|password|key}` — set the policy (default `both` = AND).
