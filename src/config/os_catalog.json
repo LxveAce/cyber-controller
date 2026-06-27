@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "updated": "2026-06-27",
+  "note": "Bundled offline fallback catalog of flashable PC/USB operating systems. Each entry resolves its LATEST version live from upstream at flash time (see src/core/os_catalog.py); the 'pinned' block is the offline fallback used when there is no network. Verification is mandatory online: image_sig = detached OpenPGP sig over the image (Tails, Arch); checksums_sig = OpenPGP sig over a SHA256SUMS file that lists the image hash (Kali).",
+  "images": [
+    {
+      "id": "tails",
+      "name": "Tails",
+      "category": "Privacy / Amnesiac",
+      "description": "Amnesiac live OS that forces all traffic through Tor and leaves no trace on the machine. Boots from USB.",
+      "homepage": "https://tails.net",
+      "image_type": "img",
+      "resolver": "tails",
+      "verify_model": "image_sig",
+      "gpg_fingerprint": "A490D0F4D311A4153E2BB7CADBB802B258ACD84F",
+      "pinned": {
+        "version": "7.9",
+        "image_url": "https://download.tails.net/tails/stable/tails-amd64-7.9/tails-amd64-7.9.img",
+        "sig_url": "https://tails.net/torrents/files/tails-amd64-7.9.img.sig",
+        "sha256": null
+      }
+    },
+    {
+      "id": "kali",
+      "name": "Kali Linux (Live)",
+      "category": "Pentest / Security",
+      "description": "Debian-based penetration-testing distribution. Live amd64 image; boots from USB without installing.",
+      "homepage": "https://www.kali.org",
+      "image_type": "iso",
+      "resolver": "kali",
+      "kali_variant": "live-amd64",
+      "verify_model": "checksums_sig",
+      "gpg_fingerprint": "827C8569F2518CC677FECA1AED65462EC8D5E4C5",
+      "pinned": {
+        "version": "2026.2",
+        "image_url": "https://cdimage.kali.org/current/kali-linux-2026.2-live-amd64.iso",
+        "checksums_url": "https://cdimage.kali.org/current/SHA256SUMS",
+        "checksums_sig_url": "https://cdimage.kali.org/current/SHA256SUMS.gpg",
+        "sha256": null
+      }
+    },
+    {
+      "id": "arch",
+      "name": "Arch Linux",
+      "category": "General / Advanced",
+      "description": "Minimal rolling-release Linux. Installer ISO (x86_64); boots from USB to the Arch installer environment.",
+      "homepage": "https://archlinux.org",
+      "image_type": "iso",
+      "resolver": "arch",
+      "verify_model": "image_sig",
+      "gpg_fingerprint": null,
+      "arch_feed_url": "https://archlinux.org/releng/releases/json/",
+      "arch_mirror_base": "https://geo.mirror.pkgbuild.com",
+      "pinned": {
+        "version": "2026.06.01",
+        "image_url": "https://geo.mirror.pkgbuild.com/iso/2026.06.01/archlinux-2026.06.01-x86_64.iso",
+        "sig_url": "https://geo.mirror.pkgbuild.com/iso/2026.06.01/archlinux-2026.06.01-x86_64.iso.sig",
+        "sha256": "ec7a9c89aed7a59a76266ccf723c5e88480e47d7088c4482436f882fa37c3989"
+      }
+    }
+  ]
+}
