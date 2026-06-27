@@ -41,6 +41,29 @@
 - Fresh tagged release picking up the commits ahead of v1.1.0.
 <!-- STATUS-ROADMAP:END -->
 
+
+## Owner access gate & Tails flashing
+
+**Physical-key access gate** — optionally require an admin password and/or a provisioned USB key to
+open the app (fail-closed; OFF by default). Owner-only defensive use on hardware you own.
+- `cyber-controller --set-admin-password` — set the admin password.
+- `cyber-controller --create-physical-key [--key-drive <USB>]` — provision a USB stick as an unlock key.
+- `cyber-controller --gate-policy {both|either|password|key}` — set the policy (default `both` = AND).
+- `cyber-controller --gate-status` · `--clear-gate`.
+
+The app then prompts before launching (a Qt dialog in the GUI; console otherwise). The password and
+the key secret are stored only as salted **scrypt verifiers** — never in plaintext. This deters
+casual access; it is not proof against an adversary who can image the disk/USB.
+
+**Flash Tails OS (amnesiac live USB)** — write the official Tails USB image to a removable USB:
+- `cyber-controller --flash-tails --tails-image <tails-amd64-*.img> [--tails-sha256 <hex>] [--tails-sig <file>] [--target <device>]`
+
+`.img` only (an `.iso` is the wrong file). The image's **SHA-256 is checked** against the official
+checksum; if `gpg` is present, the **detached signature is verified** against the Tails signing key.
+It writes only to a **removable, confirmed** device (the whole USB is erased) and verifies the write
+by reading it back.
+
+
 ## What is this?
 
 Cyber Controller is the flagship convergence of the **Lxve ESP32 security toolchain** — it merges
