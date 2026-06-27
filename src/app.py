@@ -98,6 +98,16 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Remove the access gate (admin password + physical key), then exit.",
     )
+    parser.add_argument(
+        "--flash-tails",
+        action="store_true",
+        help="Flash the Tails OS (amnesiac live OS) image to a removable USB, then exit. Destructive.",
+    )
+    parser.add_argument("--tails-image", default=None, help="Path to a local Tails .img to flash (recommended: download + verify from tails.net first).")
+    parser.add_argument("--tails-sha256", default=None, help="Expected SHA-256 of the Tails image (from the official checksum).")
+    parser.add_argument("--tails-sig", default=None, help="Path to the detached OpenPGP .sig to verify against the Tails signing key (needs gpg).")
+    parser.add_argument("--target", default=None, help="Target removable device for --flash-tails (e.g. \\\\.\\PhysicalDrive2 or /dev/sdX); skips the picker.")
+    parser.add_argument("--yes", action="store_true", help="Skip the destructive-write confirmation prompt (use with care).")
     return parser.parse_args(argv)
 
 
@@ -234,6 +244,12 @@ def main(argv: list[str] | None = None) -> int:
         return _ag.set_policy_cli(args.gate_policy)
     if args.clear_gate:
         return _ag.clear_cli()
+
+    # Flash Tails OS to a USB (standalone, destructive) — run and exit.
+    if args.flash_tails:
+        from src.core.tails import run_flash_cli as _flash_tails
+        return _flash_tails(target=args.target, image=args.tails_image,
+                            sha256=args.tails_sha256, sig=args.tails_sig, assume_yes=args.yes)
 
     # If no --ui flag was given, show the launcher dialog to let the user pick.
     if args.ui is None:
