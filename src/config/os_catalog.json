@@ -17,7 +17,7 @@
         "version": "7.9",
         "image_url": "https://download.tails.net/tails/stable/tails-amd64-7.9/tails-amd64-7.9.img",
         "sig_url": "https://tails.net/torrents/files/tails-amd64-7.9.img.sig",
-        "sha256": null
+        "sha256": "21772ec2247212f759769f96b0ee63e9d2bd005dabb22b21af573d8b70e1a7aa"
       }
     },
     {
@@ -36,7 +36,7 @@
         "image_url": "https://cdimage.kali.org/current/kali-linux-2026.2-live-amd64.iso",
         "checksums_url": "https://cdimage.kali.org/current/SHA256SUMS",
         "checksums_sig_url": "https://cdimage.kali.org/current/SHA256SUMS.gpg",
-        "sha256": null
+        "sha256": "49e90e694d1b3dedd47f94afbe99dfdd5afb41c8462b638bbd332929769c773a"
       }
     },
     {
