@@ -3,6 +3,15 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] — 2026-06-27
+
+### Added
+- **In-app access-gate setup.** The admin password / physical USB key / unlock policy can now be
+  configured from the GUI — **Settings → "Access Gate (Security)" → "Set up access gate…"** — not just
+  the CLI. Backed by the same salted-scrypt verifiers + gate-keyed encrypted vault; changes apply on
+  the next launch. Verified end-to-end (set/clear password, policy change, vault provisioned and
+  ciphertext-at-rest, wrong password rejected).
+
 ## [1.2.0] — 2026-06-27
 
 Major feature + reliability release.

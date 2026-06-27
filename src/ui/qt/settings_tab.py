@@ -59,6 +59,7 @@ class SettingsTab(QWidget):
         self._build_ui()
         self._connect_signals()
         self._load_into_ui(self._settings)
+        self._refresh_gate_status()
 
     # ── Layout ───────────────────────────────────────────────────────
 
@@ -138,6 +139,26 @@ class SettingsTab(QWidget):
         safety_outer.addLayout(safety_form)
         root.addWidget(safety_card)
 
+        # ── Access Gate (Security) ───────────────────────────────────
+        gate_card, gate_outer = _make_card("Access Gate (Security)")
+        gate_desc = QLabel(
+            "Lock the app behind an admin password and/or a physical USB key. Secrets are stored as "
+            "salted hashes (no plaintext); protected data stays encrypted until unlocked. Applies on "
+            "the next launch."
+        )
+        gate_desc.setObjectName("muted")
+        gate_desc.setWordWrap(True)
+        gate_outer.addWidget(gate_desc)
+        self._gate_status_lbl = QLabel("")
+        self._gate_status_lbl.setObjectName("muted")
+        self._gate_status_lbl.setWordWrap(True)
+        gate_outer.addWidget(self._gate_status_lbl)
+        self._gate_setup_btn = QPushButton("Set up access gate (password / key)…")
+        self._gate_setup_btn.setToolTip("Set or change the admin password, create a physical USB key, "
+                                        "or choose the unlock policy — from inside the app.")
+        gate_outer.addWidget(self._gate_setup_btn)
+        root.addWidget(gate_card)
+
         # ── Firmware Vault ───────────────────────────────────────────
         vault_card, vault_outer = _make_card("Firmware Vault")
         vault_form = QFormLayout()
@@ -173,6 +194,7 @@ class SettingsTab(QWidget):
         self._reset_btn.clicked.connect(self._on_reset)
         self._vault_browse_btn.clicked.connect(self._on_browse_vault)
         self._suppress_warnings_check.toggled.connect(self._on_suppress_toggled)
+        self._gate_setup_btn.clicked.connect(self._on_gate_setup)
 
     # ── Load / gather ────────────────────────────────────────────────
 
@@ -283,6 +305,28 @@ class SettingsTab(QWidget):
             self._suppress_warnings_check.setChecked(False)
             self._suppress_warnings_check.blockSignals(False)
 
+    def _on_gate_setup(self) -> None:
+        """Open the access-gate setup dialog (set admin password / physical key / policy)."""
+        try:
+            from src.ui.qt.gate_setup_dialog import GateSetupDialog
+            GateSetupDialog(self).exec_()
+        except Exception as exc:  # noqa: BLE001 — never crash Settings on the optional dialog
+            log.exception("Access-gate setup dialog failed")
+            QMessageBox.critical(self, "Access Gate", f"Could not open access-gate setup:\n{exc}")
+        self._refresh_gate_status()
+
+    def _refresh_gate_status(self) -> None:
+        try:
+            from src.security import physical_key as pk
+            cfg = pk.load_config()
+            self._gate_status_lbl.setText(
+                f"Status: configured={pk.is_configured()}  ·  policy={cfg.get('policy')}  ·  "
+                f"password={'set' if cfg.get('password') else 'not set'}  ·  "
+                f"key={'set' if cfg.get('key') else 'not set'}"
+            )
+        except Exception:  # noqa: BLE001
+            self._gate_status_lbl.setText("Status: unavailable")
+
     def _on_browse_vault(self) -> None:
         start = self._vault_dir_edit.text().strip() or ""
         path = QFileDialog.getExistingDirectory(self, "Select Firmware Vault Directory", start)
@@ -296,6 +340,7 @@ class SettingsTab(QWidget):
         super().showEvent(event)
         self._settings = load_settings()
         self._load_into_ui(self._settings)
+        self._refresh_gate_status()
 
     # ── Accessors / helpers ──────────────────────────────────────────
 
