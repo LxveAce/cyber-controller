@@ -106,8 +106,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--tails-image", default=None, help="Path to a local Tails .img to flash (recommended: download + verify from tails.net first).")
     parser.add_argument("--tails-sha256", default=None, help="Expected SHA-256 of the Tails image (from the official checksum).")
     parser.add_argument("--tails-sig", default=None, help="Path to the detached OpenPGP .sig to verify against the Tails signing key (needs gpg).")
-    parser.add_argument("--target", default=None, help="Target removable device for --flash-tails (e.g. \\\\.\\PhysicalDrive2 or /dev/sdX); skips the picker.")
+    parser.add_argument("--target", default=None, help="Target removable device for --flash-tails / --flash-os (e.g. \\\\.\\PhysicalDrive2 or /dev/sdX); skips the picker.")
     parser.add_argument("--yes", action="store_true", help="Skip the destructive-write confirmation prompt (use with care).")
+    # Software-OS catalog (Kali / Tails / Arch / ... to USB)
+    parser.add_argument("--list-os", action="store_true", help="List the flashable PC/USB operating systems in the catalog, then exit.")
+    parser.add_argument("--flash-os", default=None, metavar="ID", help="Flash a catalog OS (e.g. kali, tails, arch) to a removable USB, then exit. Destructive.")
+    parser.add_argument("--os-image", default=None, help="Path to a local OS image (.iso/.img) for --flash-os (skips download).")
+    parser.add_argument("--os-sig", default=None, help="Path to a detached OpenPGP .sig for --flash-os (image_sig OSes).")
+    parser.add_argument("--offline", action="store_true", help="For --flash-os: use the bundled (pinned) version instead of resolving the latest online.")
     return parser.parse_args(argv)
 
 
@@ -250,6 +256,15 @@ def main(argv: list[str] | None = None) -> int:
         from src.core.tails import run_flash_cli as _flash_tails
         return _flash_tails(target=args.target, image=args.tails_image,
                             sha256=args.tails_sha256, sig=args.tails_sig, assume_yes=args.yes)
+
+    # Software-OS catalog (Kali / Tails / Arch / ...) — list or flash, then exit.
+    if args.list_os:
+        from src.core.os_catalog import list_catalog_cli
+        return list_catalog_cli()
+    if args.flash_os:
+        from src.core.os_catalog import run_os_flash_cli
+        return run_os_flash_cli(args.flash_os, target=args.target, image=args.os_image,
+                                sig=args.os_sig, assume_yes=args.yes, offline=args.offline)
 
     # If no --ui flag was given, show the launcher dialog to let the user pick.
     if args.ui is None:

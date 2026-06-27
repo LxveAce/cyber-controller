@@ -60,6 +60,12 @@ def _build() -> int:
     if profiles_dir.is_dir():
         cmd.extend(["--add-data", f"{profiles_dir}{sep}src/config/profiles"])
 
+    # Software-OS flashing catalog (Kali / Tails / Arch / ...): bundle so the Software tab + --flash-os
+    # work fully offline (resource_path resolves src/config/os_catalog.json in the frozen build).
+    os_catalog = _ROOT / "src" / "config" / "os_catalog.json"
+    if os_catalog.is_file():
+        cmd.extend(["--add-data", f"{os_catalog}{sep}src/config"])
+
     missions_dir = _ROOT / "src" / "config" / "missions"
     if missions_dir.is_dir():
         cmd.extend(["--add-data", f"{missions_dir}{sep}config/missions"])
