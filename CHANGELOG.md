@@ -3,6 +3,32 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] — 2026-06-27
+
+Major feature + reliability release.
+
+### Fixed
+- **Windows one-click `.exe` launched to a silent crash.** CI never bundled the Qt QSS theme and
+  `apply_theme()` read it with no fallback under `--windowed`, so the frozen GUI died at startup. Builds
+  now go through `build.py` (single source of truth) which bundles the theme + every resource, and theme
+  loading degrades gracefully. Verified: the built `.exe` launches the full GUI past startup.
+
+### Added
+- **Software-OS flashing** — a *Software OS* tab + `--list-os` / `--flash-os` CLI to write verified
+  bootable operating systems (**Kali, Tails, Arch**) to USB, separate from firmware. Latest version
+  auto-resolved online; the bundled catalog works fully offline; integrity-verified (SHA-256 + OpenPGP).
+- **Wardriving** (lawful, owner-authorized) — a *Wardrive* tab + core that logs GPS-tagged Wi-Fi as
+  **WiGLE CSV** (`WigleWifi-1.6`) from a GPS NMEA port + the ESP32 Marauder scan output.
+- **Physical-key access gate + encrypted vault** — gate the app behind an admin password and/or a
+  physical USB key; vault data stays encrypted at rest until unlocked (fail-closed; no boot-sequence
+  bypass).
+- **Tails flashing** (`--flash-tails`) and **Dead Man's Switch** setup, working in the frozen build.
+- **How-To tab** — an in-app guide covering every tab/feature; tooltips across the new UI.
+- A weekly CI job that refreshes the bundled OS catalog versions/checksums.
+
+### Internal
+- New test suites for the OS catalog (14), wardriving (8), and the new Qt tabs; full suite green.
+
 ## [1.1.0] — 2026-06-12
 
 A large feature + hardening release. Every change below was validated against the test suite
