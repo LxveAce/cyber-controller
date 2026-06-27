@@ -27,6 +27,7 @@ class _GateDialog(QDialog):
         super().__init__()
         self._cfg = pk.load_config()
         self._tries = 0
+        self._accepted_pw = None
         self.setWindowTitle("Cyber Controller — Locked")
         self.setModal(True)
         self.setMinimumWidth(380)
@@ -94,6 +95,7 @@ class _GateDialog(QDialog):
         pw = self._pw_edit.text() if self._pw_edit is not None else None
         granted, reason = pk.check_access(password=pw or None)
         if granted:
+            self._accepted_pw = pw or None
             self.accept()
             return
         self._tries += 1
@@ -110,7 +112,7 @@ class _GateDialog(QDialog):
 
 
 def unlock_gui() -> bool:
-    """Show the unlock dialog. Returns True if the policy was satisfied."""
+    """Show the unlock dialog. Returns (granted, password_or_None)."""
     app = QApplication.instance()
     owns_app = app is None
     if owns_app:
@@ -123,4 +125,4 @@ def unlock_gui() -> bool:
     dlg = _GateDialog()
     dlg.setWindowModality(Qt.ApplicationModal)
     result = dlg.exec_()
-    return result == QDialog.Accepted
+    return (result == QDialog.Accepted, getattr(dlg, "_accepted_pw", None))
