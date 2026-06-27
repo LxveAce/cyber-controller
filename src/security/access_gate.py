@@ -1,12 +1,14 @@
-"""Access-gate runtime + setup UX (console + Qt) on top of :mod:`src.security.physical_key`.
+"""Access-gate runtime + setup UX (console + Qt) on top of :mod:`src.security.physical_key` and the
+gate-keyed encrypted :mod:`src.security.vault`.
 
-Two responsibilities:
-  * :func:`enforce` — called once at startup before any UI launches. Fail-closed: if a gate is
-    configured it must be satisfied or the process exits. GUI launches use a Qt dialog (a console
-    ``getpass`` is invisible under a ``--windowed`` PyInstaller build); console/headless launches
-    use ``getpass``.
-  * the ``*_cli`` helpers back the ``--create-physical-key`` / ``--set-admin-password`` /
-    ``--gate-policy`` / ``--gate-status`` / ``--clear-gate`` management flags.
+Responsibilities:
+  * :func:`enforce` — called once at startup before any UI/device bootstrap. FAIL-CLOSED:
+      - if a gate is configured it must be satisfied or the process exits;
+      - if an encrypted vault exists but NO gate is configured, refuse to start (tamper / the gate
+        config was removed) — so the launch sequence cannot be bypassed to reach protected data;
+      - on success, the vault is opened with the factor(s) actually supplied and exposed via
+        :func:`get_current_vault` for the session (data stays encrypted at rest until then).
+  * the ``*_cli`` helpers back the management flags and provision the vault keyslots.
 """
 
 from __future__ import annotations
@@ -14,35 +16,80 @@ from __future__ import annotations
 import getpass
 import logging
 import sys
+from typing import Optional, Tuple
 
 from src.security import physical_key as pk
+from src.security import vault
 
 log = logging.getLogger(__name__)
 
 _MAX_TRIES = 5
+_CURRENT_VAULT: Optional["vault.Vault"] = None
+
+
+def get_current_vault() -> Optional["vault.Vault"]:
+    """The vault opened at unlock for this session, or None (locked / not provisioned)."""
+    return _CURRENT_VAULT
 
 
 # ── enforcement (startup) ────────────────────────────────────────────
 
 def enforce(ui: str | None) -> bool:
     """Return True if access is granted (or no gate is configured); False if denied/cancelled."""
+    global _CURRENT_VAULT
     if not pk.is_configured():
+        if vault.exists():
+            # An encrypted vault is present but the gate is gone -> fail closed. This stops a
+            # "delete the gate config to skip the opening sequence" bypass: the app will not start,
+            # and the vault data stays encrypted regardless.
+            log.error("Encrypted vault present but no access gate is configured — refusing to start "
+                      "(fail-closed; gate config missing or tampered).")
+            print("Locked: the access-gate configuration is missing but an encrypted vault exists. "
+                  "Restore the gate config or remove the vault to proceed.", file=sys.stderr)
+            return False
         return True
+
     log.info("Access gate active (policy=%s) — authentication required.", pk.get_policy())
     gui = ui in ("qt", "tk", None)
+    ok, pw = (False, None)
     if gui:
         try:
             from src.ui.qt.access_gate_dialog import unlock_gui
-            return unlock_gui()
-        except Exception:  # pragma: no cover - depends on Qt availability
+            ok, pw = unlock_gui()
+        except Exception:  # pragma: no cover - Qt availability
             log.warning("Qt gate dialog unavailable — falling back to console prompt.", exc_info=True)
-    return _unlock_console()
+            ok, pw = _unlock_console()
+    else:
+        ok, pw = _unlock_console()
+    if not ok:
+        return False
+
+    # Open the gate-keyed vault with the factor(s) actually provided. Until this point the data is
+    # ciphertext on disk and the key material does not exist in memory.
+    if vault.is_provisioned():
+        avail = {}
+        if pw:
+            avail["password"] = pw.encode("utf-8")
+        try:
+            secret = pk.present_key_secret() if pk.has_physical_key() else None
+        except Exception:  # pragma: no cover
+            secret = None
+        if secret is not None:
+            avail["key"] = secret
+        try:
+            _CURRENT_VAULT = vault.open_vault(avail)
+        except Exception:  # pragma: no cover
+            _CURRENT_VAULT = None
+        if _CURRENT_VAULT is None:
+            log.warning("Gate satisfied but the encrypted vault could not be opened with the "
+                        "supplied factor(s); protected data stays locked this session.")
+    return True
 
 
-def _unlock_console() -> bool:
+def _unlock_console() -> Tuple[bool, Optional[str]]:
     cfg = pk.load_config()
     need_pw = cfg.get("password") is not None and pk.get_policy() in ("both", "either", "password")
-    if pk.get_policy() in ("key",) and not need_pw:
+    if pk.get_policy() == "key" and not need_pw:
         print("Insert the physical key USB, then press Enter (Ctrl+C to cancel)...", file=sys.stderr)
     for attempt in range(1, _MAX_TRIES + 1):
         pw = None
@@ -50,14 +97,14 @@ def _unlock_console() -> bool:
             if need_pw:
                 pw = getpass.getpass("Admin password: ") or None
             elif pk.get_policy() == "key":
-                input()  # wait for the user to insert the key
+                input()
         except (EOFError, KeyboardInterrupt):
-            return False
+            return False, None
         granted, reason = pk.check_access(password=pw)
         if granted:
-            return True
+            return True, pw
         print(f"Access denied: {reason}  (attempt {attempt}/{_MAX_TRIES})", file=sys.stderr)
-    return False
+    return False, None
 
 
 # ── setup / management (CLI) ─────────────────────────────────────────
@@ -72,6 +119,7 @@ def status_cli() -> int:
     print(f"  physical   : {'set (' + kid + ')' if kid else 'not set'}")
     if cfg.get("key"):
         print(f"  key present now: {pk.key_present()}")
+    print(f"  encrypted vault: {'provisioned (' + ', '.join(vault.factors()) + ')' if vault.is_provisioned() else 'none'}")
     return 0
 
 
@@ -83,7 +131,19 @@ def set_password_cli() -> int:
         print("Passwords empty or do not match — aborted.", file=sys.stderr)
         return 2
     pk.set_admin_password(pw)
-    print("Admin password set (stored as a salted scrypt verifier; never in plaintext).")
+    # Provision the vault keyslot for the password (creating the vault on first factor).
+    unlock = {}
+    if pk.has_physical_key():
+        ks = pk.present_key_secret()
+        if ks:
+            unlock["key"] = ks
+    try:
+        vault.set_factor("password", pw.encode("utf-8"), unlock_with=unlock or None)
+        print("Admin password set; encrypted vault keyslot provisioned (salted scrypt; no plaintext).")
+    except vault.NeedExistingFactor:
+        print("Admin password set, but the encrypted vault keyslot was NOT added because the existing "
+              "physical key is not present. Insert the key and re-run --set-admin-password to add it.",
+              file=sys.stderr)
     _print_policy_hint()
     return 0
 
@@ -97,8 +157,9 @@ def set_policy_cli(policy: str) -> int:
 def clear_cli() -> int:
     pk.clear_admin_password()
     pk.remove_physical_key()
-    print("Access gate cleared — the app will start without authentication.")
-    print("(The key file on the USB is left in place; delete it manually if desired.)")
+    print("Access gate cleared — the app will start without prompting.")
+    print("NOTE: the encrypted vault file is left in place (its data stays encrypted). Delete "
+          f"{vault._data_path()} / {vault._hdr_path()} manually to destroy it.")
     return 0
 
 
@@ -129,8 +190,23 @@ def create_key_cli(key_drive: str | None = None) -> int:
         print(f"Failed to write the key to {target}: {exc}", file=sys.stderr)
         return 1
     print(f"\nPhysical key {kid} written to {target} (as {pk.KEY_FILENAME}).")
+    # Provision the vault keyslot for the key (creating the vault on first factor).
+    from pathlib import Path
+    secret = pk._read_key_secret(Path(target) / pk.KEY_FILENAME)
+    unlock = {}
+    if pk.has_admin_password():
+        existing = getpass.getpass("  Existing admin password (to add this key to the vault): ") or None
+        if existing:
+            unlock["password"] = existing.encode("utf-8")
+    try:
+        if secret is not None:
+            vault.set_factor("key", secret, unlock_with=unlock or None)
+            print("Encrypted vault keyslot provisioned for the physical key.")
+    except vault.NeedExistingFactor:
+        print("The vault keyslot for this key was NOT added (existing admin password required). "
+              "Re-run --create-physical-key and enter the admin password to add it.", file=sys.stderr)
     print("Keep this USB safe. Anyone with this file (or a copy) holds the key — this deters casual")
-    print("access, it is not proof against an adversary who can copy the USB.")
+    print("access; it is not proof against an adversary who can copy the USB.")
     _print_policy_hint()
     return 0
 
