@@ -58,7 +58,7 @@ def _build() -> int:
     sep = ";" if platform.system() == "Windows" else ":"
     profiles_dir = _ROOT / "src" / "config" / "profiles"
     if profiles_dir.is_dir():
-        cmd.extend(["--add-data", f"{profiles_dir}{sep}config/profiles"])
+        cmd.extend(["--add-data", f"{profiles_dir}{sep}src/config/profiles"])
 
     missions_dir = _ROOT / "src" / "config" / "missions"
     if missions_dir.is_dir():

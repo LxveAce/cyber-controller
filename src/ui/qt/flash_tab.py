@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from src.core.resources import resource_path
 from typing import TYPE_CHECKING
 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
@@ -31,7 +32,7 @@ from src.core.flash_engine import FlashEngine, FirmwareProfile
 
 log = logging.getLogger(__name__)
 
-_PROFILES_DIR = Path(__file__).resolve().parents[3] / "src" / "config" / "profiles"
+_PROFILES_DIR = resource_path("src", "config", "profiles")
 
 
 def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
