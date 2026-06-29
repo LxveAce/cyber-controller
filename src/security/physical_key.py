@@ -111,6 +111,118 @@ def save_config(cfg: dict) -> None:
 
 # ── status ───────────────────────────────────────────────────────────
 
+def _now() -> float:
+    import time
+    return time.time()
+
+
+# Brute-force lockout + duress wipe. A persistent failure counter (in the gate config, surviving a
+# restart) defeats a "relaunch and keep guessing" brute force; after _LOCKOUT_AFTER consecutive
+# failures an exponential, capped cooldown applies. If the owner OPTS IN (wipe_on_failures > 0),
+# reaching that threshold triggers an anti-forensic wipe of the app's own secrets. Recorded centrally
+# in check_access() so every unlock path (console / Qt / web) is covered.
+_LOCKOUT_AFTER = 5
+_LOCKOUT_BASE_SECS = 30
+_LOCKOUT_MAX_SECS = 3600
+
+
+def _lockout_remaining(cfg: dict) -> int:
+    """Seconds left in the current cooldown (0 = not locked). Exponential after _LOCKOUT_AFTER."""
+    fails = int(cfg.get("failed_attempts", 0) or 0)
+    if fails < _LOCKOUT_AFTER:
+        return 0
+    last = float(cfg.get("last_failure_ts", 0) or 0)
+    cooldown = min(_LOCKOUT_BASE_SECS * (2 ** (fails - _LOCKOUT_AFTER)), _LOCKOUT_MAX_SECS)
+    return max(0, int(last + cooldown - _now()))
+
+
+def lockout_status() -> dict:
+    cfg = load_config()
+    rem = _lockout_remaining(cfg)
+    return {"failed_attempts": int(cfg.get("failed_attempts", 0) or 0),
+            "locked": rem > 0, "remaining_secs": rem}
+
+
+def record_successful_unlock() -> None:
+    """Reset the persistent failure counter after a successful unlock."""
+    cfg = load_config()
+    if cfg.get("failed_attempts") or cfg.get("last_failure_ts"):
+        cfg["failed_attempts"] = 0
+        cfg["last_failure_ts"] = 0
+        save_config(cfg)
+
+
+def record_failed_attempt() -> dict:
+    """Increment the persistent counter, persist it, and fire the opt-in duress wipe if the
+    configured threshold is reached. Returns the new lockout status (+ 'wipe_triggered')."""
+    cfg = load_config()
+    cfg["failed_attempts"] = int(cfg.get("failed_attempts", 0) or 0) + 1
+    cfg["last_failure_ts"] = _now()
+    save_config(cfg)
+    wiped = False
+    wipe_at = int(cfg.get("wipe_on_failures", 0) or 0)
+    if wipe_at > 0 and cfg["failed_attempts"] >= wipe_at:
+        wiped = trigger_duress_wipe()
+    st = lockout_status()
+    st["wipe_triggered"] = wiped
+    return st
+
+
+def set_wipe_on_failures(threshold: int) -> None:
+    """OPT-IN duress self-wipe: after *threshold* consecutive failed unlocks, the app's secrets are
+    wiped. 0 disables (default). Owner-set knowingly; keep it well above _LOCKOUT_AFTER."""
+    cfg = load_config()
+    cfg["wipe_on_failures"] = max(0, int(threshold))
+    save_config(cfg)
+
+
+def _secure_delete(path: Path) -> None:
+    """Best-effort secure delete: overwrite content then unlink. (Honest caveat: on SSDs with
+    wear-levelling/TRIM, overwrite is not a forensic guarantee — it destroys the live copy.)"""
+    try:
+        if path.exists() and path.is_file():
+            n = max(path.stat().st_size, 1)
+            with open(path, "r+b", buffering=0) as fh:
+                for _ in range(2):
+                    fh.seek(0)
+                    fh.write(os.urandom(n))
+                    fh.flush()
+                    os.fsync(fh.fileno())
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except Exception:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def trigger_duress_wipe() -> bool:
+    """Anti-forensic wipe of the app's OWN secrets (gate config + encrypted vault) on a duress
+    failed-attempt threshold. Best-effort secure overwrite+delete; NEVER touches anything outside the
+    app's own data. Returns True if anything was wiped. Defeats casual/seizure access to the secrets,
+    NOT a forensic adversary on modern SSDs."""
+    log.warning("Duress wipe triggered (failed-attempt threshold reached) — destroying app secrets.")
+    wiped = False
+    try:
+        from src.security import vault
+        for p in (vault._data_path(), vault._hdr_path()):
+            if Path(p).exists():
+                _secure_delete(Path(p))
+                wiped = True
+    except Exception:
+        log.exception("duress wipe: vault destruction failed")
+    try:
+        cp = _config_path()
+        if cp.exists():
+            _secure_delete(cp)
+            wiped = True
+    except Exception:
+        log.exception("duress wipe: gate-config destruction failed")
+    return wiped
+
+
 def is_configured() -> bool:
     cfg = load_config()
     return bool(cfg.get("password") or cfg.get("key"))
@@ -271,15 +383,7 @@ def present_key_secret(drives: Optional[list[Path]] = None) -> Optional[bytes]:
 
 # ── policy evaluation ────────────────────────────────────────────────
 
-def check_access(password: Optional[str] = None, drives: Optional[list[Path]] = None) -> tuple[bool, str]:
-    """Evaluate the configured policy. Returns ``(granted, reason)``.
-
-    An unconfigured gate grants access (no-op). ``password`` is the candidate admin password
-    (or None if not supplied this round); ``drives`` lets callers/tests inject the drive list.
-    """
-    cfg = load_config()
-    if not (cfg.get("password") or cfg.get("key")):
-        return True, "no gate configured"
+def _evaluate_policy(cfg: dict, password: Optional[str], drives: Optional[list[Path]]) -> tuple[bool, str]:
     policy = cfg.get("policy", DEFAULT_POLICY)
     pw_ok = bool(cfg.get("password")) and password is not None and verify_admin_password(password)
     key_ok = bool(cfg.get("key")) and key_present(drives)
@@ -303,3 +407,30 @@ def check_access(password: Optional[str] = None, drives: Optional[list[Path]] = 
     if need_key and not key_ok:
         missing.append("physical key")
     return False, " + ".join(missing) + " required"
+
+
+def check_access(password: Optional[str] = None, drives: Optional[list[Path]] = None) -> tuple[bool, str]:
+    """Evaluate the configured policy with persistent brute-force lockout + opt-in duress wipe.
+    Returns ``(granted, reason)``.
+
+    An unconfigured gate grants access (no-op). Every call is a real unlock attempt (console / Qt /
+    web all route here), so the persistent failure counter + cooldown + wipe live here — covering all
+    paths and surviving restarts.
+    """
+    cfg = load_config()
+    if not (cfg.get("password") or cfg.get("key")):
+        return True, "no gate configured"
+    rem = _lockout_remaining(cfg)
+    if rem > 0:
+        return False, f"locked: too many failed attempts — try again in {rem}s"
+    granted, reason = _evaluate_policy(cfg, password, drives)
+    if granted:
+        record_successful_unlock()
+        return True, reason
+    st = record_failed_attempt()
+    if st.get("wipe_triggered"):
+        return False, "access denied — failed-attempt threshold reached; secure wipe triggered"
+    extra = f" (failed: {st['failed_attempts']})"
+    if st["locked"]:
+        extra += f"; locked for {st['remaining_secs']}s"
+    return False, reason + extra
