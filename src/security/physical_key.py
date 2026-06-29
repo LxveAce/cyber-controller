@@ -220,6 +220,17 @@ def trigger_duress_wipe() -> bool:
             wiped = True
     except Exception:
         log.exception("duress wipe: gate-config destruction failed")
+    try:
+        import shutil
+        secure_dir = _CONFIG_DIR / "secure"   # the secure_store container
+        if secure_dir.exists():
+            for p in secure_dir.rglob("*"):
+                if p.is_file():
+                    _secure_delete(p)
+            shutil.rmtree(secure_dir, ignore_errors=True)
+            wiped = True
+    except Exception:
+        log.exception("duress wipe: secure-container destruction failed")
     return wiped
 
 
