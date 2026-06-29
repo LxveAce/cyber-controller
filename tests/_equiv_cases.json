@@ -1,0 +1,452 @@
+{
+  "airtag-scanner": {
+    "assets": [
+      {
+        "browser_download_url": "https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner/releases/download/v1.2.0/ESP32-AirTag-Scanner.bin",
+        "name": "ESP32-AirTag-Scanner.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner/releases/download/v1.2.0/ESP32-S3-AirTag-Scanner.bin",
+        "name": "ESP32-S3-AirTag-Scanner.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner/releases/download/v1.2.0/CYD-AirTag-Scanner.bin",
+        "name": "CYD-AirTag-Scanner.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner/archive/refs/tags/v1.2.0.zip",
+        "name": "Source-code.zip"
+      },
+      {
+        "browser_download_url": "https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner/releases/download/v1.2.0/README.txt",
+        "name": "README.txt"
+      }
+    ],
+    "json_file": "airtag_scanner.json",
+    "oracle_class": "AirTagScannerProfile",
+    "tag": "v1.2.0"
+  },
+  "bluejammer-bw16": {
+    "assets": [],
+    "json_file": "bluejammer_bw16.json",
+    "oracle_class": "BlueJammerBw16Profile",
+    "tag": "v0.2"
+  },
+  "bluejammer-esp32": {
+    "assets": [],
+    "json_file": "bluejammer_esp32.json",
+    "oracle_class": "BlueJammerEsp32Profile",
+    "tag": "v0.2"
+  },
+  "bruce": {
+    "assets": [
+      {
+        "browser_download_url": "https://example/Bruce-esp32.bin",
+        "name": "Bruce-esp32.bin"
+      },
+      {
+        "browser_download_url": "https://example/Bruce-LAUNCHER_esp32.bin",
+        "name": "Bruce-LAUNCHER_esp32.bin"
+      },
+      {
+        "browser_download_url": "https://example/s3.bin",
+        "name": "Bruce-esp32-s3-devkitc.bin"
+      },
+      {
+        "browser_download_url": "https://example/card.bin",
+        "name": "Bruce-m5stack-cardputer.bin"
+      },
+      {
+        "browser_download_url": "https://example/c5.bin",
+        "name": "Bruce-esp32-c5.bin"
+      },
+      {
+        "browser_download_url": "https://example/c6.bin",
+        "name": "Bruce-esp32-c6.bin"
+      },
+      {
+        "browser_download_url": "https://example/README.md",
+        "name": "README.md"
+      }
+    ],
+    "json_file": "bruce.json",
+    "oracle_class": "BruceProfile",
+    "tag": "1.15"
+  },
+  "custom": {
+    "assets": [],
+    "json_file": "custom.json",
+    "oracle_class": "CustomLocalProfile",
+    "tag": "local"
+  },
+  "cyt-ng": {
+    "assets": [
+      {
+        "browser_download_url": "https://example/ChasingYourTailNG.bin",
+        "name": "ChasingYourTailNG.bin"
+      },
+      {
+        "browser_download_url": "https://example/CYT-NG-firmware-v1.2.0.bin",
+        "name": "CYT-NG-firmware-v1.2.0.bin"
+      },
+      {
+        "browser_download_url": "https://example/Chasing-Your-Tail-NG-source.zip",
+        "name": "Chasing-Your-Tail-NG-source.zip"
+      },
+      {
+        "browser_download_url": "https://example/README.md",
+        "name": "README.md"
+      }
+    ],
+    "json_file": "cyt_ng.json",
+    "oracle_class": "CytNgProfile",
+    "tag": "v2.0"
+  },
+  "esp32-div": {
+    "assets": [
+      {
+        "browser_download_url": "https://github.com/cifertech/ESP32-DIV/releases/download/v1.6.0/ESP32-DIV.ino.bin",
+        "name": "ESP32-DIV.ino.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/cifertech/ESP32-DIV/releases/download/v1.6.0/ESP32-DIV-s3.bin",
+        "name": "ESP32-DIV-s3.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/cifertech/ESP32-DIV/releases/download/v1.6.0/ESP32-DIV.ino",
+        "name": "ESP32-DIV.ino"
+      }
+    ],
+    "json_file": "esp32_div.json",
+    "oracle_class": "Esp32DivProfile",
+    "tag": "v1.6.0"
+  },
+  "flock-you": {
+    "assets": [
+      {
+        "browser_download_url": "https://github.com/colonelpanichacks/flock-you/releases/download/v1.4/flock-you-esp32.bin",
+        "name": "flock-you-esp32.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/colonelpanichacks/flock-you/releases/download/v1.4/flock-you-esp32-s3.bin",
+        "name": "flock-you-esp32-s3.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/colonelpanichacks/flock-you/releases/download/v1.4/flock-you-source.zip",
+        "name": "flock-you-source.zip"
+      },
+      {
+        "browser_download_url": "https://github.com/colonelpanichacks/flock-you/releases/download/v1.4/README.md",
+        "name": "README.md"
+      }
+    ],
+    "json_file": "flock_you.json",
+    "oracle_class": "FlockYouProfile",
+    "tag": "v1.4"
+  },
+  "ghostesp": {
+    "assets": [
+      {
+        "browser_download_url": "https://example/esp32-generic.zip",
+        "name": "esp32-generic.zip"
+      },
+      {
+        "browser_download_url": "https://example/esp32s3-generic.zip",
+        "name": "esp32s3-generic.zip"
+      },
+      {
+        "browser_download_url": "https://example/ESP32-S3-DevKitC-1.zip",
+        "name": "ESP32-S3-DevKitC-1.zip"
+      },
+      {
+        "browser_download_url": "https://example/Cardputer.zip",
+        "name": "Cardputer.zip"
+      },
+      {
+        "browser_download_url": "https://example/CYD-2432S028.zip",
+        "name": "CYD-2432S028.zip"
+      },
+      {
+        "browser_download_url": "https://example/ESP32-C5-DevKitC-1.zip",
+        "name": "ESP32-C5-DevKitC-1.zip"
+      },
+      {
+        "browser_download_url": "https://example/esp32c6-generic.zip",
+        "name": "esp32c6-generic.zip"
+      },
+      {
+        "browser_download_url": "https://example/esp32-legacy.bin",
+        "name": "esp32-legacy.bin"
+      },
+      {
+        "browser_download_url": "https://example/bootloader.bin",
+        "name": "bootloader.bin"
+      },
+      {
+        "browser_download_url": "https://example/release-notes.txt",
+        "name": "release-notes.txt"
+      }
+    ],
+    "json_file": "ghost_esp.json",
+    "oracle_class": "GhostEspProfile",
+    "tag": "v1.9.10"
+  },
+  "halehound": {
+    "assets": [
+      {
+        "browser_download_url": "https://example/full.bin",
+        "name": "HaleHound-CYD-FULL.bin"
+      },
+      {
+        "browser_download_url": "https://example/ota.bin",
+        "name": "HaleHound-CYD-OTA.bin"
+      },
+      {
+        "browser_download_url": "https://example/base.bin",
+        "name": "HaleHound-CYD.bin"
+      },
+      {
+        "browser_download_url": "https://example/README.md",
+        "name": "README.md"
+      }
+    ],
+    "json_file": "halehound.json",
+    "oracle_class": "HaleHoundProfile",
+    "tag": "v1.0"
+  },
+  "marauder": {
+    "assets": [
+      {
+        "browser_download_url": "https://example/esp32_marauder_v8_old_hardware.bin",
+        "name": "esp32_marauder_v8_old_hardware.bin"
+      },
+      {
+        "browser_download_url": "https://example/esp32_marauder_lddb.bin",
+        "name": "esp32_marauder_lddb.bin"
+      },
+      {
+        "browser_download_url": "https://example/esp32_marauder_v6.bin",
+        "name": "esp32_marauder_v6.bin"
+      },
+      {
+        "browser_download_url": "https://example/esp32_marauder_multiboardS3.bin",
+        "name": "esp32_marauder_multiboardS3.bin"
+      },
+      {
+        "browser_download_url": "https://example/esp32_marauder_m5cardputer.bin",
+        "name": "esp32_marauder_m5cardputer.bin"
+      },
+      {
+        "browser_download_url": "https://example/esp32_marauder_flipper.bin",
+        "name": "esp32_marauder_flipper.bin"
+      },
+      {
+        "browser_download_url": "https://example/esp32_marauder_rev_feather.bin",
+        "name": "esp32_marauder_rev_feather.bin"
+      },
+      {
+        "browser_download_url": "https://example/esp32_marauder_mini_v3.bin",
+        "name": "esp32_marauder_mini_v3.bin"
+      },
+      {
+        "browser_download_url": "https://example/esp32_marauder_esp32c5devkitc1.bin",
+        "name": "esp32_marauder_esp32c5devkitc1.bin"
+      },
+      {
+        "browser_download_url": "https://example/README.md",
+        "name": "README.md"
+      }
+    ],
+    "json_file": "marauder.json",
+    "oracle_class": "MarauderProfile",
+    "tag": "v1.5.0"
+  },
+  "meshtastic": {
+    "assets": [
+      {
+        "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.15/firmware-esp32-2.7.15.abc1234.zip",
+        "name": "firmware-esp32-2.7.15.abc1234.zip"
+      },
+      {
+        "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.15/firmware-esp32s2-2.7.15.abc1234.zip",
+        "name": "firmware-esp32s2-2.7.15.abc1234.zip"
+      },
+      {
+        "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.15/firmware-esp32s3-2.7.15.abc1234.zip",
+        "name": "firmware-esp32s3-2.7.15.abc1234.zip"
+      },
+      {
+        "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.15/firmware-esp32c3-2.7.15.abc1234.zip",
+        "name": "firmware-esp32c3-2.7.15.abc1234.zip"
+      },
+      {
+        "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.15/firmware-esp32c6-2.7.15.abc1234.zip",
+        "name": "firmware-esp32c6-2.7.15.abc1234.zip"
+      },
+      {
+        "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.15/firmware-esp32c5-2.7.15.abc1234.zip",
+        "name": "firmware-esp32c5-2.7.15.abc1234.zip"
+      },
+      {
+        "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.15/littlefs-esp32-2.7.15.abc1234.bin",
+        "name": "littlefs-esp32-2.7.15.abc1234.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/meshtastic/firmware/releases/download/v2.7.15/device-install.sh",
+        "name": "device-install.sh"
+      }
+    ],
+    "json_file": "meshtastic.json",
+    "oracle_class": "MeshtasticProfile",
+    "tag": "v2.7.15"
+  },
+  "minigotchi-v3": {
+    "assets": [
+      {
+        "browser_download_url": "https://example/minigotchi-v3-cardputer.bin",
+        "name": "minigotchi-v3-cardputer.bin"
+      },
+      {
+        "browser_download_url": "https://example/minigotchi-generic-s3.bin",
+        "name": "minigotchi-generic-s3.bin"
+      },
+      {
+        "browser_download_url": "https://example/minigotchi-v3-cyd.bin",
+        "name": "minigotchi-v3-cyd.bin"
+      },
+      {
+        "browser_download_url": "https://example/minigotchi-wroom32.bin",
+        "name": "minigotchi-wroom32.bin"
+      },
+      {
+        "browser_download_url": "https://example/minigotchi-v3-esp32.bin",
+        "name": "minigotchi-v3-esp32.bin"
+      },
+      {
+        "browser_download_url": "https://example/minigotchi-v3.bin",
+        "name": "minigotchi-v3.bin"
+      },
+      {
+        "browser_download_url": "https://example/README.md",
+        "name": "README.md"
+      },
+      {
+        "browser_download_url": "https://example/minigotchi-source.tar.gz",
+        "name": "minigotchi-source.tar.gz"
+      }
+    ],
+    "json_file": "minigotchi.json",
+    "oracle_class": "MinigotchiV3Profile",
+    "tag": "v3.1.0"
+  },
+  "momentum": {
+    "assets": [
+      {
+        "browser_download_url": "https://example.com/a.tgz",
+        "name": "flipper-z-f7-update-mntm-009.tgz"
+      },
+      {
+        "browser_download_url": "https://example.com/b.tar.gz",
+        "name": "flipper-z-f7-update-mntm-009.tar.gz"
+      },
+      {
+        "browser_download_url": "https://example.com/c.zip",
+        "name": "flipper-z-f7-update-mntm-009.zip"
+      },
+      {
+        "browser_download_url": "https://example.com/readme",
+        "name": "README.md"
+      },
+      {
+        "browser_download_url": "https://example.com/d.dfu",
+        "name": "flipper-z-f7-full-mntm-009.dfu"
+      }
+    ],
+    "json_file": "flipper_momentum.json",
+    "oracle_class": "MomentumProfile",
+    "tag": "mntm-009"
+  },
+  "oui-spy": {
+    "assets": [
+      {
+        "browser_download_url": "https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/download/v1.4.0/oui-spy-unified-blue.bin",
+        "name": "oui-spy-unified-blue.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/download/v1.4.0/oui-spy-tdisplay-s3.bin",
+        "name": "oui-spy-tdisplay-s3.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/download/v1.4.0/oui-spy-xiao-s3.bin",
+        "name": "oui-spy-xiao-s3.bin"
+      },
+      {
+        "browser_download_url": "https://github.com/x/source-code.zip",
+        "name": "source-code.zip"
+      },
+      {
+        "browser_download_url": "https://github.com/x/README.md",
+        "name": "README.md"
+      }
+    ],
+    "json_file": "oui_spy.json",
+    "oracle_class": "OuiSpyProfile",
+    "tag": "v1.4.0"
+  },
+  "rtl8720": {
+    "assets": [],
+    "json_file": "rtl8720.json",
+    "oracle_class": "RtlAmeba8720Profile",
+    "tag": "vampire"
+  },
+  "sky-spy": {
+    "assets": [
+      {
+        "browser_download_url": "https://example.com/Sky-Spy_esp32s3.bin",
+        "name": "Sky-Spy_esp32s3.bin"
+      },
+      {
+        "browser_download_url": "https://example.com/Sky-Spy_wroom32.bin",
+        "name": "Sky-Spy_wroom32.bin"
+      },
+      {
+        "browser_download_url": "https://example.com/README.md",
+        "name": "README.md"
+      },
+      {
+        "browser_download_url": "https://example.com/source.tar.gz",
+        "name": "source.tar.gz"
+      }
+    ],
+    "json_file": "sky_spy.json",
+    "oracle_class": "SkySpyProfile",
+    "tag": "v1.4"
+  },
+  "unleashed": {
+    "assets": [
+      {
+        "browser_download_url": "https://github.com/DarkFlippers/unleashed-firmware/releases/download/unlshd-079/flipper-z-f7-update-unlshd-079.tgz",
+        "name": "flipper-z-f7-update-unlshd-079.tgz"
+      },
+      {
+        "browser_download_url": "https://github.com/DarkFlippers/unleashed-firmware/releases/download/unlshd-079/flipper-z-f7-update-unlshd-079.tar.gz",
+        "name": "flipper-z-f7-update-unlshd-079.tar.gz"
+      },
+      {
+        "browser_download_url": "https://github.com/DarkFlippers/unleashed-firmware/releases/download/unlshd-079/flipper-z-f7-update-unlshd-079.zip",
+        "name": "flipper-z-f7-update-unlshd-079.zip"
+      },
+      {
+        "browser_download_url": "https://example.com/checksums.txt",
+        "name": "checksums.txt"
+      },
+      {
+        "browser_download_url": "https://example.com/full.dfu",
+        "name": "flipper-z-f7-full-unlshd-079.dfu"
+      }
+    ],
+    "json_file": "flipper_unleashed.json",
+    "oracle_class": "UnleashedProfile",
+    "tag": "unlshd-079"
+  }
+}

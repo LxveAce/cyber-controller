@@ -25,5 +25,37 @@
     "repo": "https://github.com/cifertech/ESP32-DIV",
     "latest": "https://github.com/cifertech/ESP32-DIV/releases/latest"
   },
-  "note": "cifertech/ESP32-DIV (matches flash_core _DIV_API). Release ships the app image only (flashed at 0x10000); boot chain pulled from the repo tree."
+  "note": "cifertech/ESP32-DIV (matches flash_core _DIV_API). Release ships the app image only (flashed at 0x10000); boot chain pulled from the repo tree.",
+  "repo": "cifertech/ESP32-DIV",
+  "core_id": "esp32-div",
+  "supports_suicide": true,
+  "image_model": "multi-file-offsets",
+  "resolver": "github_release",
+  "app_offset": "0x10000",
+  "flash_freq_by_chip": {"esp32": "40m", "esp32s3": "80m"},
+  "variants_for_chip": "by_chip_else_all",
+  "default_variant": {"strategy": "first"},
+  "support_files": {
+    "source": "repo_tree",
+    "raw_base": "https://raw.githubusercontent.com/cifertech/ESP32-DIV/{branch}",
+    "branches": ["main", "master"],
+    "support_dir_by_chip": null,
+    "bootloader_path": "tools/esp32s3/ESP32-DIV.ino.bootloader.bin",
+    "partitions_path": "tools/esp32s3/ESP32-DIV.ino.partitions.bin",
+    "boot_app0_path": "tools/esp32-div-flasher/bundled/boot_app0.bin",
+    "include_boot_app0": true,
+    "bootloader_offset_rule": "standard",
+    "partitions_offset": "0x8000",
+    "boot_app0_offset": "0xe000"
+  },
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/cifertech/ESP32-DIV/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {"strategy": "fixed", "chip": "esp32s3"},
+    "emit": {
+      "offset": "0x10000",
+      "merged": false,
+      "label_template": "ESP32-DIV app image ({name})"
+    }
+  }
 }

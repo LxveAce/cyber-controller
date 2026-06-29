@@ -1757,6 +1757,15 @@ def _chip_from_spec(spec: Dict, name: str, match: Optional["re.Match"]) -> str:
 
 
 def _emit_label(emit: Dict, name: str, match: Optional["re.Match"]) -> str:
+    # longest-substring lookup table (marauder _variant_label): pick the label of the LONGEST
+    # label_map key that is a substring of the asset name, else the raw name.
+    if emit.get("label_strategy") == "longest_substring":
+        best_frag = None
+        best_label = name
+        for frag, lbl in (emit.get("label_map") or {}).items():
+            if frag in name and (best_frag is None or len(frag) > len(best_frag)):
+                best_frag, best_label = frag, lbl
+        return best_label
     tmpl = emit.get("label_template")
     if not tmpl:
         return name
@@ -1765,6 +1774,11 @@ def _emit_label(emit: Dict, name: str, match: Optional["re.Match"]) -> str:
     if grp is not None and match is not None:
         env = match.group(grp) or ""
     label = tmpl.format(name=name, env=env)
+    # first matching suffix rule (halehound: FULL -> " (merged full)", OTA -> " (OTA update)").
+    for frag, suffix in emit.get("label_suffix_rules", []):
+        if frag.upper() in name.upper():
+            label += suffix
+            break
     lg = emit.get("launcher_from_group")
     if lg is not None and match is not None and match.group(lg):
         label += emit.get("launcher_label_suffix", "")
@@ -1808,7 +1822,8 @@ def _resolve_github(cfg: Dict) -> Tuple[str, List[Dict]]:
         }
         if emit.get("offset") is not None:
             asset["offset"] = emit["offset"]
-        asset["merged"] = bool(emit.get("merged"))
+        if "merged" in emit:   # only emit the key when the profile sets it (marauder omits it)
+            asset["merged"] = bool(emit["merged"])
         if emit.get("zip_member") and name.endswith(".zip"):   # per-asset only (must-fix #5)
             asset["zip_member"] = emit["zip_member"]
         if emit.get("launcher_from_group") is not None:
@@ -1865,7 +1880,8 @@ def _resolve_pinned(cfg: Dict) -> Tuple[str, List[Dict]]:
         }
         if a.get("offset") is not None:
             asset["offset"] = a["offset"]
-        asset["merged"] = bool(a.get("merged"))
+        if "merged" in a:   # bundle assets (rtl8720 / bluejammer-bw16) omit the merged key
+            asset["merged"] = bool(a["merged"])
         if a.get("bundle"):
             asset["bundle"] = True
         if a.get("sha256"):
@@ -1909,7 +1925,8 @@ class GenericProfile(FirmwareProfile):
 
     def __init__(self, cfg: Dict) -> None:
         self.cfg = cfg
-        self.id = cfg["id"]
+        # canonical flash-core id (e.g. esp32_div -> esp32-div); falls back to the JSON id.
+        self.id = cfg.get("core_id") or cfg["id"]
         self.label = cfg.get("label") or cfg.get("name") or cfg["id"]
         self.repo = cfg.get("repo")
         self.supports_suicide = bool(cfg.get("supports_suicide"))
@@ -1987,6 +2004,50 @@ class GenericProfile(FirmwareProfile):
             return out
         return None
 
+    def flash_assets(self, port: str, chip: str, app_path: str, on_line: Line,
+                     mode: str = "app", baud: int = 921600,
+                     support: Optional[Dict[str, str]] = None,
+                     app_offset: Optional[str] = None,
+                     flash_freq: Optional[str] = None) -> int:
+        # qFlipper-backed firmwares (momentum/unleashed) never use esptool.
+        if self.backend == "qflipper":
+            return self._flash_qflipper(app_path, on_line)
+        # per-chip flash_freq (esp32-div: S3 80m / classic 40m) — default it here if unset.
+        freq = flash_freq
+        if freq is None:
+            freq = (self.cfg.get("flash_freq_by_chip") or {}).get(chip)
+        return super().flash_assets(port, chip, app_path, on_line, mode=mode, baud=baud,
+                                    support=support, app_offset=app_offset, flash_freq=freq)
+
+    def _flash_qflipper(self, app_path: str, on_line: Line) -> int:
+        """Hand the downloaded Flipper package to a locally installed qFlipper (mirrors
+        MomentumProfile/UnleashedProfile exactly)."""
+        on_line("[info] Flipper Zero firmware requires qFlipper for flashing.")
+        on_line("[info] Attempting to launch qFlipper with the downloaded firmware package...")
+        qflipper = shutil.which("qFlipper") or shutil.which("qflipper")
+        if not qflipper:
+            for candidate in (
+                r"C:\Program Files\qFlipper\qFlipper.exe",
+                r"C:\Program Files (x86)\qFlipper\qFlipper.exe",
+                "/usr/bin/qFlipper",
+                "/usr/local/bin/qFlipper",
+                "/Applications/qFlipper.app/Contents/MacOS/qFlipper",
+            ):
+                if os.path.isfile(candidate):
+                    qflipper = candidate
+                    break
+        if not qflipper:
+            on_line("[error] qFlipper not found. Install from https://flipperzero.one/update")
+            on_line(f"[info] Firmware downloaded to: {app_path}")
+            on_line("[info] Open qFlipper manually and install from file.")
+            return 1
+        on_line(f"[info] Found qFlipper at: {qflipper}")
+        return _run_stream([qflipper, "--install", app_path], on_line)
+
+    def flash_local(self, *args, **kwargs):
+        """Local-file flash for the 'custom' profile — delegates to CustomLocalProfile."""
+        return CustomLocalProfile().flash_local(*args, **kwargs)
+
 
 def build_generic_profile(cfg: Dict) -> "GenericProfile":
     """Construct a GenericProfile from a parsed profile JSON dict."""
@@ -1997,30 +2058,36 @@ def build_generic_profile(cfg: Dict) -> "GenericProfile":
 # Profile registry
 # --------------------------------------------------------------------------- #
 
+# _MARAUDER is retained for the legacy module-level marauder/suicide API + suicide-bundle
+# reference below; the hardcoded classes also remain as the equivalence ORACLE
+# (tests/test_generic_equiv.py).
 _MARAUDER = MarauderProfile()
 
-PROFILES: Dict[str, FirmwareProfile] = {
-    p.id: p for p in (
-        _MARAUDER,
-        Esp32DivProfile(),
-        BruceProfile(),
-        GhostEspProfile(),
-        HaleHoundProfile(),
-        RtlAmeba8720Profile(),
-        BlueJammerEsp32Profile(),
-        BlueJammerBw16Profile(),
-        MeshtasticProfile(),
-        FlockYouProfile(),
-        OuiSpyProfile(),
-        SkySpyProfile(),
-        AirTagScannerProfile(),
-        CytNgProfile(),
-        MinigotchiV3Profile(),
-        MomentumProfile(),
-        UnleashedProfile(),
-        CustomLocalProfile(),
-    )
-}
+# Stage 1 SWAP: PROFILES are built from the hybrid JSON profiles (GenericProfile), not the
+# hardcoded classes. Every GenericProfile was proven argv/release/variant-identical to its
+# oracle class before this swap. Only the 18 flash-core-backed profiles are built here (NOT
+# the sd/adb-only kali_arm/pwnagotchi/raspyjack/rayhunter, which carry no engine block) and
+# they are keyed by canonical core id (cfg.core_id or cfg.id).
+_PROFILE_FILES = (
+    "marauder.json", "esp32_div.json", "bruce.json", "ghost_esp.json", "halehound.json",
+    "rtl8720.json", "bluejammer_esp32.json", "bluejammer_bw16.json", "meshtastic.json",
+    "flock_you.json", "oui_spy.json", "sky_spy.json", "airtag_scanner.json", "cyt_ng.json",
+    "minigotchi.json", "flipper_momentum.json", "flipper_unleashed.json", "custom.json",
+)
+
+
+def _load_profiles() -> Dict[str, FirmwareProfile]:
+    from src.core.resources import resource_path
+    pdir = resource_path("src", "config", "profiles")
+    out: Dict[str, FirmwareProfile] = {}
+    for fname in _PROFILE_FILES:
+        cfg = json.loads((pdir / fname).read_text(encoding="utf-8"))
+        gp = build_generic_profile(cfg)
+        out[gp.id] = gp
+    return out
+
+
+PROFILES: Dict[str, FirmwareProfile] = _load_profiles()
 
 
 def get_profile(profile_id: str) -> FirmwareProfile:

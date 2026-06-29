@@ -13,5 +13,26 @@
   ],
   "firmware_urls": {
     "latest": "https://github.com/Next-Flip/Momentum-Firmware/releases/latest"
+  },
+  "core_id": "momentum",
+  "label": "Flipper Momentum (Next-Flip)",
+  "repo": "Next-Flip/Momentum-Firmware",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/Next-Flip/Momentum-Firmware/releases/latest",
+    "asset_match": {"include_suffixes": [".tgz", ".tar.gz", ".zip"]},
+    "chip_map": {"strategy": "fixed", "chip": "flipper"},
+    "emit": {
+      "offset": "0x0",
+      "merged": true,
+      "flash_method": "qflipper",
+      "label_template": "Momentum {name}"
+    }
   }
 }

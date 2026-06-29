@@ -18,5 +18,24 @@
     "repo": "https://github.com/ArgeliusLabs/Chasing-Your-Tail-NG",
     "latest": "https://github.com/ArgeliusLabs/Chasing-Your-Tail-NG/releases/latest"
   },
-  "note": "Aligned with flash_core CytNgProfile (ArgeliusLabs/Chasing-Your-Tail-NG) — the repo the flasher actually downloads. 'CYT' = Chasing Your Tail. Verify ESP32 flashability before field use."
+  "note": "Aligned with flash_core CytNgProfile (ArgeliusLabs/Chasing-Your-Tail-NG) — the repo the flasher actually downloads. 'CYT' = Chasing Your Tail. Verify ESP32 flashability before field use.",
+  "core_id": "cyt-ng",
+  "repo": "ArgeliusLabs/Chasing-Your-Tail-NG",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/ArgeliusLabs/Chasing-Your-Tail-NG/releases/latest",
+    "asset_match": {"include_regex": "^(.+)\\.bin$"},
+    "chip_map": {"strategy": "fixed", "chip": "esp32"},
+    "emit": {
+      "offset": "0x0", "merged": true,
+      "label_template": "CYT-NG {env}", "label_group": 1
+    },
+    "on_error": "source_only_empty"
+  }
 }

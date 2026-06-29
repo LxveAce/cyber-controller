@@ -53,5 +53,20 @@
     "repo": "https://github.com/JesseCHale/HaleHound-CYD",
     "latest": "https://github.com/JesseCHale/HaleHound-CYD/releases/latest"
   },
-  "note": "Fixed from HaleHound/HaleHound to JesseCHale/HaleHound-CYD (the real upstream; matches flash_core _HALEHOUND_API)."
+  "note": "Fixed from HaleHound/HaleHound to JesseCHale/HaleHound-CYD (the real upstream; matches flash_core _HALEHOUND_API).",
+  "repo": "JesseCHale/HaleHound-CYD",
+  "core_id": "halehound",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["FULL"]},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/JesseCHale/HaleHound-CYD/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {"strategy": "fixed", "chip": "esp32"},
+    "emit": {"offset": "0x0", "merged": true, "label_template": "HaleHound CYD", "label_suffix_rules": [["FULL", " (merged full)"], ["OTA", " (OTA update)"]]}
+  }
 }

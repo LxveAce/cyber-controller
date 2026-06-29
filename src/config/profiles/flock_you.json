@@ -1,6 +1,8 @@
 {
   "name": "Flock-You",
+  "label": "Flock-You (colonelpanichacks)",
   "id": "flock_you",
+  "core_id": "flock-you",
   "description": "Passive Flock Safety ALPR (automated license-plate reader) camera detector — sniffs the WiFi/BLE beacons Flock cameras emit. Source-first build (PlatformIO); formal releases may 404, which the flash core tolerates.",
   "backend": "esptool",
   "protocol": null,
@@ -18,5 +20,26 @@
     "repo": "https://github.com/colonelpanichacks/flock-you",
     "latest": "https://github.com/colonelpanichacks/flock-you/releases/latest"
   },
-  "note": "colonelpanichacks/flock-you (NOT lozaning). Passive ALPR detector, not a drone/RemoteID tool."
+  "note": "colonelpanichacks/flock-you (NOT lozaning). Passive ALPR detector, not a drone/RemoteID tool.",
+  "repo": "colonelpanichacks/flock-you",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/colonelpanichacks/flock-you/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"], "include_regex": "^(.*)\\.bin$"},
+    "chip_map": {
+      "strategy": "fragments", "source": "name", "default": "esp32",
+      "rules": [["s3", "esp32s3"]]
+    },
+    "emit": {
+      "offset": "0x0", "merged": true,
+      "label_template": "Flock-You {env}", "label_group": 1
+    },
+    "on_error": "source_only_empty"
+  }
 }

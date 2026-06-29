@@ -13,5 +13,26 @@
   ],
   "firmware_urls": {
     "latest": "https://github.com/DarkFlippers/unleashed-firmware/releases/latest"
+  },
+  "note": "DarkFlippers/unleashed-firmware. Flipper Zero STM32WB55 firmware shipped as a packaged update (.tgz/.tar.gz/.zip); flashed via the external qFlipper tool, not esptool. Single merged package at 0x0; chip fixed to 'flipper'.",
+  "repo": "DarkFlippers/unleashed-firmware",
+  "core_id": "unleashed",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/DarkFlippers/unleashed-firmware/releases/latest",
+    "asset_match": {"include_suffixes": [".tgz", ".tar.gz", ".zip"]},
+    "chip_map": {"strategy": "fixed", "chip": "flipper"},
+    "emit": {
+      "offset": "0x0",
+      "merged": true,
+      "flash_method": "qflipper",
+      "label_template": "Unleashed {name}"
+    }
   }
 }

@@ -1,7 +1,9 @@
 {
   "name": "OUI-Spy",
+  "label": "OUI-Spy Unified Blue (colonelpanichacks)",
   "id": "oui_spy",
-  "description": "MAC OUI vendor-identification scanner — fingerprints nearby WiFi/BLE devices by manufacturer (OUI) prefix. Built via PlatformIO; no formal releases, flash from source/local .bin.",
+  "core_id": "oui-spy",
+  "description": "MAC OUI vendor-identification scanner — fingerprints nearby WiFi/BLE devices by manufacturer (OUI) prefix. Built via PlatformIO; releases ship merged .bin images for the ESP32-S3 (LILYGO T-Display S3 / XIAO ESP32-S3). Formal releases may 404, which the flash core tolerates (source-only fallback).",
   "backend": "esptool",
   "protocol": null,
   "boards": [
@@ -18,5 +20,23 @@
     "repo": "https://github.com/colonelpanichacks/oui-spy-unified-blue",
     "latest": "https://github.com/colonelpanichacks/oui-spy-unified-blue/releases/latest"
   },
-  "note": "Aligned with flash_core OuiSpyProfile (colonelpanichacks/oui-spy-unified-blue — the combined/flashable build). The meta repo colonelpanichacks/oui-spy has no formal releases."
+  "note": "Aligned with flash_core OuiSpyProfile (colonelpanichacks/oui-spy-unified-blue — the combined/flashable build). The meta repo colonelpanichacks/oui-spy has no formal releases. All release .bin assets map to esp32s3 (fixed); merged image flashed at 0x0.",
+  "repo": "colonelpanichacks/oui-spy-unified-blue",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/colonelpanichacks/oui-spy-unified-blue/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"], "include_regex": "^(.*)\\.bin$"},
+    "chip_map": {"strategy": "fixed", "chip": "esp32s3"},
+    "emit": {
+      "offset": "0x0", "merged": true,
+      "label_template": "OUI-Spy {env}", "label_group": 1
+    },
+    "on_error": "source_only_empty"
+  }
 }
