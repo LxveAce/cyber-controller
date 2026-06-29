@@ -68,7 +68,7 @@ except Exception:  # noqa: BLE001
 
 log = logging.getLogger(__name__)
 
-_VERSION = "1.0.0"
+_VERSION = "1.3.0"
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
 
