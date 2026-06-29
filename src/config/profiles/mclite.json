@@ -1,0 +1,30 @@
+{
+  "name": "MCLite (MeshCore)",
+  "id": "mclite",
+  "core_id": "mclite",
+  "description": "Lightweight off-grid mesh comms for LilyGo T-Deck Plus / T-Watch (SX1262 LoRa) — encrypted channels, direct messages, GPS share, SOS. Lawful mesh networking.",
+  "repo": "laserir/MCLite",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "app_offset": "0x0",
+  "support_files": null,
+  "default_baud": 115200,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/laserir/MCLite/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {"strategy": "fixed", "chip": "esp32s3"},
+    "emit": {"offset": "0x0", "merged": true}
+  },
+  "boards": [
+    {"name": "LilyGo T-Deck Plus", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "has_keyboard": true, "has_display": true, "external_modules": ["SX1262"]},
+    {"name": "LilyGo T-Watch Ultra", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "has_display": true, "external_modules": ["SX1262"]}
+  ],
+  "firmware_urls": {"repo": "https://github.com/laserir/MCLite", "latest": "https://github.com/laserir/MCLite/releases/latest"},
+  "note": "Single merged .bin per device flashed at 0x0 (web-flasher class). esp32s3 + SX1262 LoRa. Non-.bin release assets (config_tool.html) excluded by the .bin filter. Offset pending hardware verification (Stage-5 gate)."
+}

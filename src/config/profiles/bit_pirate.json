@@ -1,0 +1,36 @@
+{
+  "name": "ESP32 Bit Pirate",
+  "id": "bit_pirate",
+  "core_id": "bit_pirate",
+  "description": "Multi-protocol hardware-hacking tool (Bus-Pirate-inspired) — I2C/UART/SPI/1-Wire, BLE/WiFi/Sub-GHz, RFID; sniff/transmit/script via web CLI or serial. Authorized hardware research.",
+  "repo": "geo-tp/ESP32-Bit-Pirate",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "app_offset": "0x0",
+  "support_files": null,
+  "default_baud": 115200,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["s3devkit", "xiaos3"]},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/geo-tp/ESP32-Bit-Pirate/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {"strategy": "fixed", "chip": "esp32s3"},
+    "emit": {"offset": "0x0", "merged": true}
+  },
+  "boards": [
+    {"name": "Seeed XIAO ESP32-S3", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m"},
+    {"name": "M5 Cardputer", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m", "has_keyboard": true},
+    {"name": "M5StickC Plus2 (StickS3)", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m"},
+    {"name": "LilyGo T-Embed CC1101", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "external_modules": ["CC1101"]},
+    {"name": "LilyGo T-Display-S3", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "has_display": true},
+    {"name": "ESP32-S3 DevKit (8MB / 16MB-N16R8)", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m"},
+    {"name": "M5 AtomS3 Lite", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m"},
+    {"name": "M5 Stamp S3", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m"}
+  ],
+  "firmware_urls": {"repo": "https://github.com/geo-tp/ESP32-Bit-Pirate", "latest": "https://github.com/geo-tp/ESP32-Bit-Pirate/releases/latest"},
+  "note": "One merged .bin per board (bit_pirate_16_<board>.bin) flashed at 0x0 (web-flasher class). All targets esp32s3. Pick the board via the variant; offset pending hardware verification (Stage-5 gate)."
+}
