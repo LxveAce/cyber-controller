@@ -3,6 +3,15 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.3] — 2026-06-29
+
+### Added
+- **Animated startup for the PyQt5 desktop.** A frameless animated loading screen (logo + indeterminate
+  progress sweep + status text) now appears while the dashboard builds, then cross-fades to the main
+  window. Motion follows the project's motion-design tokens (fade-in OutQuart ~320ms, linear looping
+  progress, fade-out OutCubic ~260ms). Honors reduced-motion (`interface.reduced_motion` /
+  `CC_REDUCED_MOTION`). Reserved for the full GUI only — the lightweight Tk/TUI/web UIs are unanimated.
+
 ## [1.3.2] — 2026-06-29
 
 Launcher / interface-selection fixes.
