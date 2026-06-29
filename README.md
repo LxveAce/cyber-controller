@@ -26,9 +26,12 @@
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
-**Status:** v1.3.0 is the latest release — a **security-hardening + UX** release: a gate-keyed
-**secure container** for app saves, **brute-force lockout**, opt-in **duress self-wipe**, **boot/
-startup-bypass** hardening, a **dual-depth Simple/Pro** interface, and **4 new firmware profiles**.
+**Status:** **v1.3.1** is the latest release — an installer/startup fix: the Windows onefile now shows a
+**splash screen** within ~1–2 s of launch (the ~15 s self-extraction previously gave no feedback and was
+mistaken for a failed install), plus a MinigotchiV3 profile fix. Built on **v1.3.0**, a
+**security-hardening + UX** release: a gate-keyed **secure container** for app saves, **brute-force
+lockout**, opt-in **duress self-wipe**, **boot/startup-bypass** hardening, a **dual-depth Simple/Pro**
+interface, and **4 new firmware profiles**.
 
 **Shipped in v1.3.0:**
 - **Secure container (opt-in)** — app-internal saves (e.g. recorded command sessions) encrypted at rest
