@@ -6,23 +6,24 @@ decisions so a future generic / JSON-driven profile rewrite (Stage 1) can be
 proven *argv-identical* to today's hardware-validated behavior before anything
 is shipped.
 
-What it captures, per profile in ``flash_core.PROFILES``:
-    * ``image_model`` (merged-single-bin vs multi-file-offsets) and
-      ``supports_suicide``;
-    * per-chip ``app_offset`` (where the app/merged image is written);
-    * the exact esptool ``argv`` the shared ``flash_assets()`` builds in *app*
-      mode, for a fixed chip set.
+What it captures, per profile in ``flash_core.PROFILES`` × chip:
+    * ``image_model`` (merged-single-bin vs multi-file-offsets) + ``supports_suicide``;
+    * per-chip ``app_offset`` and the **app-mode** esptool argv;
+    * the **full-mode** support-file offsets (bootloader / partitions / boot_app0 —
+      incl. the hardware-critical ESP32-C5 0x2000 bootloader) and the full-mode argv.
 
 Deterministic by construction: NO network, NO esptool, NO device. We monkeypatch
-``flash_core._run_stream`` to capture the argv instead of spawning esptool, and
-normalize ``sys.executable`` (argv[0]) to ``"<py>"`` so the golden is portable
-across machines. (App mode never downloads — full-mode support-file offsets,
-which require the network, are a Stage-0 follow-up; the per-chip *bootloader*
-offset contract is already locked by ``test_flash_core.test_bootloader_offset``.)
+``flash_core._run_stream`` (captures argv instead of spawning esptool) and the
+download helpers ``download_to`` / ``download_and_extract`` / ``_github_latest``
+(so ``support_files`` returns its offset map without fetching anything — the
+offset KEYS are computed locally; only the file PATHS would be downloaded).
+``sys.executable`` (argv[0]) is normalized to ``"<py>"`` and downloaded paths to
+``"<file>"`` so the golden is portable across machines.
 
 NOTE: a few profiles flash via a non-esptool backend at runtime (rtl8720/adb/sd),
-but they still inherit the shared ``flash_assets``; capturing it here locks that
-shared plumbing too. The golden records whatever each profile produces.
+but they still inherit the shared ``flash_assets``; capturing it locks that shared
+plumbing too. Merged-image profiles legitimately have no support files (recorded
+as ``{"support": null}``).
 
 Regenerate INTENTIONALLY (only after a reviewed behavior change):
     UPDATE_FLASH_GOLDEN=1 py -m pytest tests/test_flash_argv_golden.py -q
@@ -46,16 +47,23 @@ _APP = "APP.bin"
 _BAUD = 921600
 
 
+def _noop(*_a, **_k) -> None:
+    return None
+
+
 def _normalize(argv: list[str]) -> list[str]:
-    argv = list(argv)
-    if argv and argv[0] == sys.executable:
-        argv[0] = "<py>"
-    return argv
+    out = []
+    for tok in argv:
+        if tok == sys.executable:
+            out.append("<py>")
+        else:
+            out.append(tok)
+    return out
 
 
-def _capture_app_argv(prof, chip: str) -> dict:
-    """Capture the esptool argv ``prof.flash_assets`` builds in app mode, with
-    ``_run_stream`` stubbed so nothing actually runs."""
+def _capture_argv(prof, chip: str, mode: str, support) -> dict:
+    """Capture the esptool argv ``prof.flash_assets`` builds, with ``_run_stream``
+    stubbed so nothing actually runs."""
     captured: dict = {}
     real = flash_core._run_stream
 
@@ -65,7 +73,7 @@ def _capture_app_argv(prof, chip: str) -> dict:
 
     flash_core._run_stream = _fake  # type: ignore[assignment]
     try:
-        prof.flash_assets(_PORT, chip, _APP, lambda *_a, **_k: None, mode="app", baud=_BAUD)
+        prof.flash_assets(_PORT, chip, _APP, _noop, mode=mode, baud=_BAUD, support=support)
     except Exception as exc:  # record, never crash the snapshot
         return {"error": f"{type(exc).__name__}: {exc}"}
     finally:
@@ -75,20 +83,43 @@ def _capture_app_argv(prof, chip: str) -> dict:
 
 def _build_snapshot() -> dict:
     snap: dict = {}
-    for pid in sorted(flash_core.PROFILES):
-        prof = flash_core.PROFILES[pid]
-        entry = {
-            "image_model": prof.image_model,
-            "supports_suicide": bool(prof.supports_suicide),
-            "chips": {},
-        }
-        for chip in CHIPS:
-            try:
-                app_off = prof.app_offset(chip)
-            except Exception as exc:  # noqa: BLE001
-                app_off = f"ERR:{type(exc).__name__}"
-            entry["chips"][chip] = {"app_offset": app_off, **_capture_app_argv(prof, chip)}
-        snap[pid] = entry
+    # Stub the network so support_files() returns its offset map offline; the offset
+    # KEYS are computed locally, only the PATHS would be fetched.
+    saved = {n: getattr(flash_core, n) for n in ("download_to", "download_and_extract", "_github_latest")}
+    flash_core.download_to = lambda url, cache_dir, name, on_line: "<file>"  # type: ignore[assignment]
+    flash_core.download_and_extract = lambda url, cache_dir, asset_name, member, on_line: "<file>"  # type: ignore[assignment]
+    flash_core._github_latest = lambda api_url: ("v0.0.0", [])  # type: ignore[assignment]
+    try:
+        for pid in sorted(flash_core.PROFILES):
+            prof = flash_core.PROFILES[pid]
+            entry = {
+                "image_model": prof.image_model,
+                "supports_suicide": bool(prof.supports_suicide),
+                "chips": {},
+            }
+            for chip in CHIPS:
+                try:
+                    app_off = prof.app_offset(chip)
+                except Exception as exc:  # noqa: BLE001
+                    app_off = f"ERR:{type(exc).__name__}"
+                cell = {"app_offset": app_off, "app": _capture_argv(prof, chip, "app", None)}
+
+                # full mode: support-file offsets (bootloader/partitions/boot_app0) + full argv
+                try:
+                    support = prof.support_files(chip, "CACHE", _noop)
+                except Exception as exc:  # noqa: BLE001
+                    cell["full"] = {"support_error": f"{type(exc).__name__}: {exc}"}
+                else:
+                    if support:
+                        cell["support_offsets"] = sorted(support.keys())
+                        cell["full"] = _capture_argv(prof, chip, "full", support)
+                    else:
+                        cell["full"] = {"support": None}  # merged single image — no support files
+                entry["chips"][chip] = cell
+            snap[pid] = entry
+    finally:
+        for name, val in saved.items():
+            setattr(flash_core, name, val)
     return snap
 
 
