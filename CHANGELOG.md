@@ -3,6 +3,41 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] — 2026-06-29
+
+Security-hardening + UX release.
+
+### Added
+- **Secure container (opt-in).** App-internal saves (e.g. recorded command sessions) are encrypted at
+  rest with AES-256-GCM in a gate-keyed container (`~/.cyber-controller/secure`) that is **sealed and
+  unreadable while the access gate is locked** — the key lives only inside the unlocked vault.
+  Ciphertext-only writes (no transient plaintext), GCM-authenticated (tamper fails closed), 0600 + ACL.
+  Toggle in **Settings → "Secure Container"**; integrated with the duress wipe.
+- **Brute-force lockout** on the access gate — persistent failed-attempt counter (survives restart) +
+  exponential-backoff cooldown; constant-time password compare.
+- **Duress self-wipe (opt-in, off by default).** After a configurable number of consecutive failed
+  unlocks, securely wipe the app's own footprint (vault/keys/config/container). Honest scope documented:
+  defeats casual/seizure access, not a forensic lab on wear-leveled SSDs.
+- **Dual-depth Simple/Pro interface.** A streamlined Simple view (fewer controls per tab) and the full
+  Pro view (default, zero penalty). Toggle via **View → Interface Mode**, the status-bar badge, or
+  **Ctrl+M**; persists. Streamlines Flash/Settings/Health/Software/Macro/Cross-Comm.
+- **4 new firmware profiles** (drop-in JSON): **T-REX** (LilyGo T-Deck), **MCLite** (MeshCore),
+  **ESP32 Bit Pirate**, **Hydra32 / ESP32-Deauther** (multi-file, SHA-256-pinned; offsets verified from
+  the upstream partitions.csv). Registry → 22 profiles (21 flashable firmware + custom loader).
+- **esptool range guard** — a clear "install esptool>=4.7,<6" message if an out-of-range esptool (v6+)
+  is installed, instead of a cryptic argparse failure mid-flash.
+
+### Changed / Hardened
+- **Boot/startup-bypass resistance.** Modifying an already-configured access gate (clear / change
+  password / change policy / add key) now requires **passing the gate first** — no pre-auth reset.
+- Locked-state data-leak audit + offline-posture audit completed (see `SECURITY.md`); no telemetry,
+  all network is user-initiated firmware/OS download.
+
+### Internal
+- New test suites: secure container + macro-container integration, access-gate mutation auth, esptool
+  version guard, dual-depth UI, Hydra32 profile. Full suite **452 passed / 2 skipped**; flash-argv
+  golden regenerated (purely additive).
+
 ## [1.2.1] — 2026-06-27
 
 ### Added

@@ -26,11 +26,29 @@
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
-**Status:** v1.2.1 is the latest release — the unified Software-OS flashing tab, wardriving, in-app
-Access-Gate setup, and the How-To tab all **ship now**, and the prior Windows one-click `.exe` startup
-crash is **fixed and verified**.
+**Status:** v1.3.0 is the latest release — a **security-hardening + UX** release: a gate-keyed
+**secure container** for app saves, **brute-force lockout**, opt-in **duress self-wipe**, **boot/
+startup-bypass** hardening, a **dual-depth Simple/Pro** interface, and **4 new firmware profiles**.
 
-**Shipped in v1.2.1:**
+**Shipped in v1.3.0:**
+- **Secure container (opt-in)** — app-internal saves (e.g. recorded command sessions) encrypted at rest
+  (AES-256-GCM) in a gate-keyed container that is **sealed/unreadable while the access gate is locked**;
+  ciphertext-only writes (no transient plaintext), tamper fails closed. Toggle in **Settings ▸ Secure Container**.
+- **Brute-force lockout** on the access gate — a persistent failed-attempt counter (survives restart)
+  with exponential-backoff cooldown, constant-time password compare.
+- **Duress self-wipe (opt-in, off by default)** — after N consecutive failed unlocks the app securely
+  wipes its own footprint (vault, keys, config, container). Honest scope: defeats casual/seizure access,
+  not a forensic lab on wear-leveled SSDs.
+- **Boot / startup-bypass hardening** — modifying an already-configured gate (clear / change password /
+  policy / add key) now requires passing the gate first; the gate is enforced before any UI bootstrap.
+- **Dual-depth Simple/Pro interface** — a streamlined Simple view (fewer controls) and the full Pro view
+  (default, zero penalty). Switch via **View ▸ Interface Mode**, the status-bar badge, or **Ctrl+M**.
+- **4 new firmware profiles** — **T-REX** (LilyGo T-Deck pentest terminal), **MCLite** (MeshCore off-grid
+  comms), **ESP32 Bit Pirate**, and **Hydra32 / ESP32-Deauther** (SHA-256-pinned) — all drop-in JSON.
+- **esptool range guard** — a clear message if an out-of-range esptool (v6+) is installed, instead of a
+  cryptic argparse failure mid-flash.
+
+**Previously shipped (v1.2.1):**
 - **Unified flashing in one app, two clearly separate tabs** — a **Firmware tab** for hardware (ESP32 Marauder / GhostESP / Bruce / etc. plus Raspberry Pi SD images) and a **Software (OS) tab** for PC/USB operating systems.
 - **Software (OS) tab** — flash verified **Kali Linux, Tails OS, Arch** to USB, with the latest version auto-resolved (and an offline bundled fallback), **SHA-256 + OpenPGP verified** before writing.
 - **Auto-updating firmware/OS catalog** so versions are always current, **plus full offline use** — a cached catalog and already-downloaded images flash with no internet; a weekly CI job keeps the bundled OS catalog current; the app also self-updates.
@@ -58,6 +76,14 @@ password / physical USB key / policy) — the CLI flags below remain available t
 The app then prompts before launching (a Qt dialog in the GUI; console otherwise). The password and
 the key secret are stored only as salted **scrypt verifiers** — never in plaintext. This deters
 casual access; it is not proof against an adversary who can image the disk/USB.
+
+**Hardening (v1.3.0):** the gate is enforced **before any UI/device bootstrap** and **fails closed**
+(an encrypted vault with the gate config removed refuses to start). Failed unlocks are rate-limited
+with a **persistent, exponential-backoff lockout**; modifying an already-configured gate requires
+**passing it first** (no pre-auth reset). An **opt-in duress self-wipe** can destroy the app's own
+footprint after N failed attempts (off by default), and an opt-in **secure container** keeps app saves
+encrypted at rest and sealed while locked. See [`SECURITY.md`](SECURITY.md) for the full posture and an
+honest statement of what these guarantees do and don't cover.
 
 **Flash Tails OS (amnesiac live USB)** — write the official Tails USB image to a removable USB:
 - `cyber-controller --flash-tails --tails-image <tails-amd64-*.img> [--tails-sha256 <hex>] [--tails-sig <file>] [--target <device>]`
@@ -140,6 +166,10 @@ flash time and auto-selects the correct per-board binary.
 | **Sky-Spy** (drone RemoteID) | [colonelpanichacks/Sky-Spy](https://github.com/colonelpanichacks/Sky-Spy) | ESP32-S3 / C6 | esptool |
 | **AirTag Scanner** | [MatthewKuKanich/ESP32-AirTag-Scanner](https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner) | ESP32 / S3 | esptool |
 | **Chasing Your Tail NG** (counter-surveillance) | [ArgeliusLabs/Chasing-Your-Tail-NG](https://github.com/ArgeliusLabs/Chasing-Your-Tail-NG) | ESP32 | esptool |
+| **T-REX** (LilyGo T-Deck pentest terminal) | [abdallahnatsheh/T-REX-FIRMWARE](https://github.com/abdallahnatsheh/T-REX-FIRMWARE) | ESP32-S3 (T-Deck / T-Deck Plus) | esptool (merged) |
+| **MCLite** (MeshCore off-grid comms) | [laserir/MCLite](https://github.com/laserir/MCLite) | ESP32-S3 (T-Deck Plus / T-Watch Ultra LoRa) | esptool (merged) |
+| **ESP32 Bit Pirate** | [geo-tp/ESP32-Bit-Pirate](https://github.com/geo-tp/ESP32-Bit-Pirate) | ESP32-S3 (Xiao / Cardputer / T-Embed) | esptool (merged) |
+| **Hydra32 / ESP32-Deauther** ⚠ *authorized testing only* | [SameerAlSahab/ESP32-Deauther](https://github.com/SameerAlSahab/ESP32-Deauther) | ESP32 (DevKit V1) | esptool (SHA-256-pinned) |
 | **BW16 / RTL8720 Vampire Deauther** | [RTL8720dn-Deauther](https://github.com/tesa-klebeband/RTL8720dn-Deauther) | **RTL8720DN** (AmebaD, dual-band 2.4/5 GHz + BLE) | **rtl8720** |
 | **BlueJammer-V2 — ESP32 engine** ⚠ *lab-only / illegal to operate* | [EmenstaNougat/BlueJammer-V2](https://github.com/EmenstaNougat/BlueJammer-V2) | ESP32-WROOM-32U | esptool |
 | **BlueJammer-V2 — BW16 controller** ⚠ *lab-only / illegal to operate* | [EmenstaNougat/BlueJammer-V2](https://github.com/EmenstaNougat/BlueJammer-V2) | RTL8720DN | rtl8720 |
@@ -201,6 +231,11 @@ hardcodes the chip — it runs `esptool chip_id` first.
 | Web Remote | Flask + SocketIO | Phone control of a headless Pi |
 
 When launched without `--ui`, a picker dialog lets you choose the interface.
+
+**Dual-depth (Simple / Pro):** within the Qt dashboard, an interface mode toggles between a streamlined
+**Simple** view (fewer controls per tab — great to start) and the full **Pro** view (default, every
+control). Switch via **View ▸ Interface Mode**, the status-bar badge, or **Ctrl+M**; the choice
+persists. Pro has zero feature penalty, and safety/authorization prompts show in **both** modes.
 
 ## Security
 
