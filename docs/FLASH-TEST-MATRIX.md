@@ -2,7 +2,7 @@
 
 Live-hardware validation of `cyber-controller`'s `flash_core` / `flash_engine` flash path,
 run against the physical board fleet with the user's real Python 3.12 + esptool v5.3.0
-(`C:\Users\extra\AppData\Local\Programs\Python\Python312\python.exe`).
+(`<HOME>\AppData\Local\Programs\Python\Python312\python.exe`).
 
 Harness: `projects/_smbuild/flash_test.py` — constructs a `FirmwareProfile(core_id, chip)`,
 calls `FlashEngine.flash(port, profile)` (release fetch -> variant resolve -> SSRF download ->
