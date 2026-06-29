@@ -845,13 +845,15 @@ class CyberControllerWindow(QMainWindow):
     def _build_command_palette(self) -> None:
         """Register all commands in the palette widget."""
         self._palette = CommandPalette(self)
-        self._palette.add_command("Flash Firmware", lambda: self._tabs.setCurrentIndex(0))
-        self._palette.add_command("Connect to Device", lambda: self._tabs.setCurrentIndex(1))
-        self._palette.add_command("View Health", lambda: self._tabs.setCurrentIndex(2))
+        # Navigate by WIDGET, not a hardcoded index — immune to tab reordering (the old fixed indices
+        # had drifted and pointed at the wrong tabs).
+        self._palette.add_command("Flash Firmware", lambda: self._tabs.setCurrentWidget(self._flash_tab))
+        self._palette.add_command("Connect to Device", lambda: self._tabs.setCurrentWidget(self._device_tab))
+        self._palette.add_command("View Health", lambda: self._tabs.setCurrentWidget(self._health_tab))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)
-        self._palette.add_command("View Targets", lambda: self._tabs.setCurrentIndex(4))
-        self._palette.add_command("Cross-Comm Dashboard", lambda: self._tabs.setCurrentIndex(5))
-        self._palette.add_command("Open Settings", lambda: self._tabs.setCurrentIndex(7))
+        self._palette.add_command("View Targets", lambda: self._tabs.setCurrentWidget(self._targets_tab))
+        self._palette.add_command("Cross-Comm Dashboard", lambda: self._tabs.setCurrentWidget(self._cross_comm_tab))
+        self._palette.add_command("Open Settings", lambda: self._tabs.setCurrentWidget(self._settings_tab))
         self._palette.add_command("Dead Man's Switch Setup", self._on_suicide_setup)
         self._palette.add_command("Scan Ports", self._on_sidebar_scan)
         self._palette.add_command("Clear Terminal", self._on_clear_terminal)
@@ -897,7 +899,7 @@ class CyberControllerWindow(QMainWindow):
 
     def _on_quick_start_macro(self) -> None:
         """Switch to the Macros tab and start recording."""
-        self._tabs.setCurrentIndex(3)  # Macros tab
+        self._tabs.setCurrentWidget(self._macro_tab)  # navigate by widget (was a wrong fixed index)
         if hasattr(self._macro_tab, '_on_record'):
             self._macro_tab._on_record()
 
