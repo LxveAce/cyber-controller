@@ -27,5 +27,29 @@
     "latest": "https://github.com/dj1ch/minigotchi-V3/releases/latest",
     "alt_esp32": "https://github.com/dj1ch/minigotchi-ESP32/releases/latest"
   },
-  "note": "ESP32 (dual-core) build, NOT the ESP8266 dj1ch/minigotchi. latest = dj1ch/minigotchi-V3 to match flash_core _MINIGOTCHI_API; dj1ch/minigotchi-ESP32 kept as alt_esp32 per researched correction."
+  "note": "ESP32 (dual-core) build, NOT the ESP8266 dj1ch/minigotchi. latest = dj1ch/minigotchi-V3 to match flash_core _MINIGOTCHI_API; dj1ch/minigotchi-ESP32 kept as alt_esp32 per researched correction.",
+  "core_id": "minigotchi-v3",
+  "label": "MinigotchiV3 (dj1ch)",
+  "repo": "dj1ch/minigotchi-V3",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip_else_all",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/dj1ch/minigotchi-V3/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {
+      "strategy": "fragments", "source": "name", "default": "esp32",
+      "rules": [
+        ["cardputer", "esp32s3"], ["m5cardputer", "esp32s3"], ["s3", "esp32s3"],
+        ["cyd", "esp32"], ["esp32", "esp32"], ["wroom", "esp32"]
+      ]
+    },
+    "emit": {
+      "offset": "0x0", "merged": true, "label_template": "MinigotchiV3 {name}"
+    }
+  }
 }

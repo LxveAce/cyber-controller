@@ -22,5 +22,58 @@
     "latest": "https://github.com/EmenstaNougat/BlueJammer-V2/releases/latest",
     "note": "km0_boot_all / km4_boot_all / km0_km4_image2 from the v0.2 Release (pinned) + the SRAM loader reused from the rtl8720 bundle. Fetched + SHA-256-verified by flash_core.BlueJammerBw16Profile via the rtl8720 backend."
   },
-  "note": "Needs Realtek's upload_image_tool on the host (set CYBERC_AMEBAD_TOOL or drop it in tools/realtek/ with cygwin1.dll on Windows) — same as the rtl8720 profile. Closed-source firmware; bins pinned, never vendored."
+  "note": "Needs Realtek's upload_image_tool on the host (set CYBERC_AMEBAD_TOOL or drop it in tools/realtek/ with cygwin1.dll on Windows) — same as the rtl8720 profile. Closed-source firmware; bins pinned, never vendored.",
+
+  "label": "BlueJammer-V2 — BW16 controller [LAB-ONLY / illegal to operate]",
+  "core_id": "bluejammer-bw16",
+  "repo": "EmenstaNougat/BlueJammer-V2",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "pinned_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "tag": "v0.2",
+    "url_sources": {
+      "release": "https://github.com/EmenstaNougat/BlueJammer-V2/releases/download/v0.2",
+      "raw": "https://raw.githubusercontent.com/vampel/vampel.github.io/main"
+    },
+    "verify_sha256": true,
+    "assets": [
+      {
+        "name": "km0_boot_all.bin",
+        "source": "release",
+        "chip": "rtl8720",
+        "bundle": true,
+        "sha256": "453c880307fc389009aa8a39c63da3d715b207ad797206c896cc691426daaa64",
+        "label": "BlueJammer-V2 BW16 bundle [LAB-ONLY / illegal to operate]"
+      },
+      {
+        "name": "km4_boot_all.bin",
+        "source": "release",
+        "chip": "rtl8720",
+        "bundle": true,
+        "sha256": "05fbf808d43113eaf7c11b75091c986b817135f0c52eb9fa94bb9fe9f34b062c",
+        "label": "BlueJammer-V2 BW16 bundle [LAB-ONLY / illegal to operate]"
+      },
+      {
+        "name": "km0_km4_image2.bin",
+        "source": "release",
+        "chip": "rtl8720",
+        "bundle": true,
+        "sha256": "615c382d48b89e1faceeba0ac586538894a21d4eeb4dc0c64027fcb271a84ef9",
+        "label": "BlueJammer-V2 BW16 bundle [LAB-ONLY / illegal to operate]"
+      },
+      {
+        "name": "imgtool_flashloader_amebad.bin",
+        "source": "raw",
+        "chip": "rtl8720",
+        "bundle": true,
+        "sha256": "9307121385cb390dfd2da64da2c6c515f17b5a9556b3d04021487c9b9f220b55",
+        "label": "AmebaD SRAM loader (shared with rtl8720)"
+      }
+    ]
+  }
 }

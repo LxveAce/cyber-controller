@@ -1,6 +1,8 @@
 {
   "name": "AirTag Scanner",
+  "label": "ESP32 AirTag Scanner (MatthewKuKanich)",
   "id": "airtag_scanner",
+  "core_id": "airtag-scanner",
   "description": "Apple AirTag / BLE tracker detector — scans for the FindMy BLE advertisements used by AirTags and compatible trackers to surface possible stalking devices.",
   "backend": "esptool",
   "protocol": null,
@@ -36,5 +38,26 @@
     "latest": "https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner/releases/latest",
     "cyd_fork": "https://github.com/hevnsnt/CYD_ESP32-AirTag-Scanner"
   },
-  "note": "MatthewKuKanich/ESP32-AirTag-Scanner. CYD touchscreen variant is the hevnsnt fork."
+  "note": "MatthewKuKanich/ESP32-AirTag-Scanner. CYD touchscreen variant is the hevnsnt fork. All release .bin assets map to esp32 unless the name contains 's3' (esp32s3); merged image flashed at 0x0. Formal releases may 404, which the flash core tolerates (source-only fallback).",
+  "repo": "MatthewKuKanich/ESP32-AirTag-Scanner",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/MatthewKuKanich/ESP32-AirTag-Scanner/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"], "include_regex": "^(.*)\\.bin$"},
+    "chip_map": {
+      "strategy": "fragments", "source": "name", "default": "esp32",
+      "rules": [["s3", "esp32s3"]]
+    },
+    "emit": {
+      "offset": "0x0", "merged": true,
+      "label_template": "AirTag Scanner {env}", "label_group": 1
+    },
+    "on_error": "source_only_empty"
+  }
 }

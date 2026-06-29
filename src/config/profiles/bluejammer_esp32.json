@@ -1,6 +1,8 @@
 {
   "name": "BlueJammer-V2 — ESP32 engine [LAB-ONLY / illegal to operate]",
   "id": "bluejammer_esp32",
+  "core_id": "bluejammer-esp32",
+  "label": "BlueJammer-V2 — ESP32 engine [LAB-ONLY / illegal to operate]",
   "description": "EmenstaNougat/BlueJammer-V2 ESP32-WROOM-32U jamming engine (drives up to 4x nRF24L01+, 128x64 OLED). *** LAB-ONLY / ILLEGAL TO OPERATE (FCC 47 U.S.C. 333). *** Cyber Controller FLASHES the precompiled image and reads telemetry for study only — it adds no jamming capability and exposes NO operate/transmit control (the device's only TX triggers are its physical button + the BW16-hosted web UI, neither driven by CC).",
   "backend": "esptool",
   "protocol": "bluejammer",
@@ -14,5 +16,39 @@
     "latest": "https://github.com/EmenstaNougat/BlueJammer-V2/releases/latest",
     "note": "Closed-source/precompiled — pinned v0.2 bins fetched from the GitHub Release at flash time, never vendored. Fetched + SHA-256-verified by flash_core.BlueJammerEsp32Profile."
   },
-  "note": "esptool offsets bootloader@0x1000 / partitions@0x8000 / app@0x10000, with NO boot_app0 @0xE000 (the upstream RUN_THIS.bat omits it). Wire up to 4x nRF24L01+ on the fixed pins with a 10uF cap per module VCC/GND (brownout fix). CC flashes + reads telemetry only — it never operates the transmitter."
+  "note": "esptool offsets bootloader@0x1000 / partitions@0x8000 / app@0x10000, with NO boot_app0 @0xE000 (the upstream RUN_THIS.bat omits it). Wire up to 4x nRF24L01+ on the fixed pins with a 10uF cap per module VCC/GND (brownout fix). CC flashes + reads telemetry only — it never operates the transmitter.",
+  "repo": "EmenstaNougat/BlueJammer-V2",
+  "supports_suicide": false,
+  "image_model": "multi-file-offsets",
+  "resolver": "pinned_release",
+  "app_offset": "0x10000",
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"},
+  "support_files": {
+    "source": "pinned",
+    "verify_sha256": true,
+    "include_boot_app0": false,
+    "pinned_files": {
+      "BlueJammer-V2.ino.bootloader.bin": {"source": "release", "offset": "0x1000", "sha256": "644de0067047e22380034b8989c39e5d2882f7538c698788866ca5130427322e"},
+      "BlueJammer-V2.ino.partitions.bin": {"source": "release", "offset": "0x8000", "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1"}
+    }
+  },
+  "resolver_params": {
+    "tag": "v0.2",
+    "verify_sha256": true,
+    "url_sources": {
+      "release": "https://github.com/EmenstaNougat/BlueJammer-V2/releases/download/v0.2"
+    },
+    "assets": [
+      {
+        "name": "BlueJammer-V2.ino.bin",
+        "source": "release",
+        "chip": "esp32",
+        "offset": "0x10000",
+        "merged": false,
+        "sha256": "6c77188ceb44a8a66126b87d51947403492d064f26e5596e21196626fd600a5b",
+        "label": "BlueJammer-V2 ESP32 app image [LAB-ONLY / illegal to operate]"
+      }
+    ]
+  }
 }

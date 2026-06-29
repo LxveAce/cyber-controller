@@ -48,5 +48,47 @@
     "repo": "https://github.com/GhostESP-Revival/GhostESP",
     "latest": "https://github.com/GhostESP-Revival/GhostESP/releases/latest"
   },
-  "note": "Aligned to GhostESP-Revival/GhostESP (canonical, matches flash_core _GHOSTESP_API). Older Spooks4576/Ghost_ESP is deprecated."
+  "note": "Aligned to GhostESP-Revival/GhostESP (canonical, matches flash_core _GHOSTESP_API). Older Spooks4576/Ghost_ESP is deprecated.",
+  "label": "GhostESP (GhostESP-Revival)",
+  "core_id": "ghostesp",
+  "repo": "GhostESP-Revival/GhostESP",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["generic", "devkitc"]},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/GhostESP-Revival/GhostESP/releases/latest",
+    "asset_match": {
+      "include_regex": "^(.+)\\.(zip|bin)$",
+      "regex_flags": ["IGNORECASE"],
+      "exclude_substrings": ["bootloader", "partitions", "boot_app0"]
+    },
+    "chip_map": {
+      "strategy": "fragments", "source": "name", "default": "esp32",
+      "rules": [
+        ["esp32-s3-devkitc-1", "esp32s3"],
+        ["esp32-s3-zero", "esp32s3"],
+        ["cardputer", "esp32s3"],
+        ["cyd-2432s028", "esp32"],
+        ["esp32-c5-devkitc-1", "esp32c5"],
+        ["esp32-c6-devkitc-1", "esp32c6"],
+        ["xiao_esp32_s3", "esp32s3"],
+        ["lilygo-t-display-s3", "esp32s3"],
+        ["waveshare-esp32-s3-touch-lcd-1.28", "esp32s3"],
+        ["s3", "esp32s3"],
+        ["c5", "esp32c5"],
+        ["c6", "esp32c6"]
+      ]
+    },
+    "emit": {
+      "offset": "0x0",
+      "merged": true,
+      "zip_member": "merged.bin",
+      "label_template": "GhostESP {env}",
+      "label_group": 1
+    }
+  }
 }

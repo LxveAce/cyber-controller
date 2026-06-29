@@ -12,5 +12,57 @@
     "repo": "https://github.com/vampel/vampel.github.io",
     "note": "AmebaD 3-file bundle (km0_boot_all / km4_boot_all / km0_km4_image2) + imgtool_flashloader_amebad.bin, fetched by flash_core.RtlAmeba8720Profile"
   },
-  "note": "Needs Realtek's upload_image_tool on the host (set CYBERC_AMEBAD_TOOL or drop it in tools/realtek/ with cygwin1.dll on Windows). Not bundled here (GPL). Monitor/CLI baud is 115200; the AmebaD loader negotiates 1.5 Mbaud for the flash itself."
+  "note": "Needs Realtek's upload_image_tool on the host (set CYBERC_AMEBAD_TOOL or drop it in tools/realtek/ with cygwin1.dll on Windows). Not bundled here (GPL). Monitor/CLI baud is 115200; the AmebaD loader negotiates 1.5 Mbaud for the flash itself.",
+
+  "label": "BW16 RTL8720DN — Vampire Deauther (AmebaD)",
+  "repo": "vampel/vampel.github.io",
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "pinned_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "tag": "vampire",
+    "url_sources": {
+      "raw": "https://raw.githubusercontent.com/vampel/vampel.github.io/main"
+    },
+    "verify_sha256": true,
+    "assets": [
+      {
+        "name": "km0_boot_all.bin",
+        "source": "raw",
+        "chip": "rtl8720",
+        "bundle": true,
+        "sha256": "453c880307fc389009aa8a39c63da3d715b207ad797206c896cc691426daaa64",
+        "label": "BW16 Vampire Deauther bundle (dual-band 2.4/5 GHz)"
+      },
+      {
+        "name": "km4_boot_all.bin",
+        "source": "raw",
+        "chip": "rtl8720",
+        "bundle": true,
+        "sha256": "05fbf808d43113eaf7c11b75091c986b817135f0c52eb9fa94bb9fe9f34b062c",
+        "label": "BW16 Vampire Deauther bundle (dual-band 2.4/5 GHz)"
+      },
+      {
+        "name": "km0_km4_image2.bin",
+        "source": "raw",
+        "chip": "rtl8720",
+        "bundle": true,
+        "sha256": "6f6b12511d3f16e2dff3b136dcc6d6f5a6d48051d848ea5d3bbffe97c19e2e13",
+        "label": "BW16 Vampire Deauther bundle (dual-band 2.4/5 GHz)"
+      },
+      {
+        "name": "imgtool_flashloader_amebad.bin",
+        "source": "raw",
+        "chip": "rtl8720",
+        "bundle": true,
+        "sha256": "9307121385cb390dfd2da64da2c6c515f17b5a9556b3d04021487c9b9f220b55",
+        "label": "BW16 Vampire Deauther bundle (dual-band 2.4/5 GHz)"
+      }
+    ]
+  }
 }
