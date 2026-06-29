@@ -79,5 +79,32 @@
     "repo": "https://github.com/BruceDevices/firmware",
     "latest": "https://github.com/BruceDevices/firmware/releases/latest"
   },
-  "note": "BruceDevices/firmware (formerly pr3y/Bruce). Per-board Bruce-<env>.bin merged image flashed at 0x0; flash_core derives chip family from the env name."
+  "note": "BruceDevices/firmware (formerly pr3y/Bruce). Per-board Bruce-<env>.bin merged image flashed at 0x0; flash_core derives chip family from the env name.",
+  "repo": "BruceDevices/firmware",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_non_launcher"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/BruceDevices/firmware/releases/latest",
+    "asset_match": {"include_regex": "^Bruce-(LAUNCHER_)?(.+)\\.bin$", "regex_flags": ["IGNORECASE"]},
+    "chip_map": {
+      "strategy": "fragments", "source": "regex_group:2", "default": "esp32",
+      "rules": [
+        ["esp32-s3", "esp32s3"], ["esp32s3", "esp32s3"], ["-s3", "esp32s3"], ["cardputer", "esp32s3"],
+        ["sticks3", "esp32s3"], ["cores3", "esp32s3"], ["dinmeter", "esp32s3"], ["smoochiee", "esp32s3"],
+        ["reaper", "esp32s3"], ["xk404", "esp32s3"], ["es3c28p", "esp32s3"], ["t-embed", "esp32s3"],
+        ["t-deck", "esp32s3"], ["t-watch-s3", "esp32s3"], ["t-hmi", "esp32s3"], ["t-lora-pager", "esp32s3"],
+        ["t-display-s3", "esp32s3"], ["esp32-c5", "esp32c5"], ["esp32c5", "esp32c5"], ["nm-cyd-c5", "esp32c5"],
+        ["-c5", "esp32c5"], ["esp32-c6", "esp32c6"], ["esp32c6", "esp32c6"], ["nesso-n1", "esp32c6"], ["-c6", "esp32c6"]
+      ]
+    },
+    "emit": {
+      "offset": "0x0", "merged": true, "launcher_from_group": 1,
+      "label_template": "Bruce {env}", "label_group": 2, "launcher_label_suffix": " [LAUNCHER loader]"
+    }
+  }
 }
