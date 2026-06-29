@@ -71,18 +71,6 @@ _VERSION = "1.0.0"
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
 
-def _placeholder_tab(label_text: str) -> QWidget:
-    """Create a simple placeholder tab with a centred label."""
-    w = QWidget()
-    layout = QVBoxLayout(w)
-    lbl = QLabel(label_text)
-    lbl.setAlignment(Qt.AlignCenter)
-    lbl.setFont(QFont("Segoe UI", 14))
-    lbl.setObjectName("muted")
-    layout.addWidget(lbl)
-    return w
-
-
 class CyberControllerWindow(QMainWindow):
     """Main application window with tabbed interface."""
 
@@ -406,8 +394,8 @@ class CyberControllerWindow(QMainWindow):
         self._cross_comm_tab = CrossCommTab(self._bus, self._pool, self._router, self._dm)
         self._tabs.addTab(self._cross_comm_tab, "Cross-Comm")
 
-        # Mission planner (model exists; UI pending)
-        self._tabs.addTab(_placeholder_tab("Mission Planner -- coming soon"), "Missions")
+        # (Mission Planner tab removed — was a non-functional "coming soon" placeholder; tracked as a
+        # real future feature in command-center/projects/cc-reformed-roadmap.md. Don't ship dead tabs.)
 
         # Settings (persisted)
         self._settings_tab = SettingsTab()
