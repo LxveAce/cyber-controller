@@ -240,6 +240,20 @@ def main(argv: list[str] | None = None) -> int:
 
     # Access-gate management (standalone) — run the requested action and exit.
     from src.security import access_gate as _ag
+    from src.security import physical_key as _pk
+    # Boot-attack resistance: mutating an ALREADY-configured gate (add a key, change the password,
+    # change policy, or clear it) must first PASS the existing gate. Otherwise `--clear-gate` /
+    # `--set-admin-password` would be a pre-auth startup bypass — an attacker could reset/disable the
+    # gate without knowing the current factor(s). First-time setup (no gate yet) needs no auth; the
+    # read-only `--gate-status` never does. (The vault itself stays fail-closed regardless, but this
+    # also protects the gate as an access control and prevents skipping the brute-force/duress logic.)
+    _gate_mutation = (
+        args.create_physical_key or args.set_admin_password or args.gate_policy or args.clear_gate
+    )
+    if _gate_mutation and _pk.is_configured():
+        if not _ag.enforce("console"):
+            print("Access denied — authenticate to modify the access gate.", file=sys.stderr)
+            return 0
     if args.gate_status:
         return _ag.status_cli()
     if args.create_physical_key:
