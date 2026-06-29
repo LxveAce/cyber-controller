@@ -199,10 +199,35 @@ def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None,
     log.info("Launching Flask web remote UI")
     try:
         from src.ui.web.app import launch_web
+        # The web UI has no window of its own — it serves a browser. In a packaged --windowed build
+        # there's no console to show the URL, so a user who picked "Web Remote" from the launcher would
+        # see nothing. Open the default browser at the server URL once it's had a moment to start.
+        _open_browser_when_ready(host, port)
         return launch_web(dm, fe, bus, pool, host=host, port=port, audit=audit)
     except ImportError:
         log.error("Flask is not installed.  pip install cyber-controller[web]")
         return 1
+
+
+def _open_browser_when_ready(host: str, port: int) -> None:
+    """Open the default browser at the web-UI URL after a short delay (server warm-up), in a daemon
+    thread so it never blocks the server. Localhost is used for display when bound to 0.0.0.0."""
+    import threading
+    import webbrowser
+
+    shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    url = f"http://{shown}:{port}"
+
+    def _go() -> None:
+        import time
+        time.sleep(1.5)
+        try:
+            webbrowser.open(url)
+        except Exception:
+            log.info("Web remote available at %s", url)
+
+    log.info("Web remote starting at %s", url)
+    threading.Thread(target=_go, name="open-web-browser", daemon=True).start()
 
 
 _LAUNCHERS = {
