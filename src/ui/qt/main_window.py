@@ -10,6 +10,7 @@ from PyQt5.QtCore import Qt, QByteArray, QSettings, QTimer, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QColor, QFont, QKeySequence, QPalette
 from PyQt5.QtWidgets import (
     QAction,
+    QActionGroup,
     QApplication,
     QCheckBox,
     QComboBox,
@@ -190,6 +191,24 @@ class CyberControllerWindow(QMainWindow):
         act_font_down.triggered.connect(lambda: self._change_font_size(-1))
         view_menu.addAction(act_font_down)
 
+        view_menu.addSeparator()
+
+        # Interface Mode (dual-depth progressive disclosure) — Simple / Pro radio.
+        mode_menu = view_menu.addMenu("&Interface Mode")
+        self._mode_group = QActionGroup(self)
+        self._mode_group.setExclusive(True)
+        self._act_mode_simple = QAction("&Simple (guided, fewer options)", self, checkable=True)
+        self._act_mode_pro = QAction("&Pro (full access)", self, checkable=True)
+        self._act_mode_simple.triggered.connect(lambda: self.set_ui_mode("simple"))
+        self._act_mode_pro.triggered.connect(lambda: self.set_ui_mode("pro"))
+        for a in (self._act_mode_simple, self._act_mode_pro):
+            self._mode_group.addAction(a)
+            mode_menu.addAction(a)
+
+        # Ctrl+M toggles Simple<->Pro, always available even if part of the UI is hidden.
+        shortcut_mode = QShortcut(QKeySequence("Ctrl+M"), self)
+        shortcut_mode.activated.connect(self._toggle_ui_mode)
+
         # Tools
         tools_menu = mb.addMenu("&Tools")
 
@@ -348,6 +367,9 @@ class CyberControllerWindow(QMainWindow):
         self._refresh_sidebar_devices()
         self._build_command_palette()
 
+        # Apply the persisted interface mode to every tab now that they exist (no persist write-back).
+        self._apply_ui_mode(self._load_ui_mode(), persist=False)
+
     # ── Tabs ─────────────────────────────────────────────────────────
 
     def _build_tabs(self) -> None:
@@ -405,6 +427,65 @@ class CyberControllerWindow(QMainWindow):
         from src.ui.qt.howto_tab import HowToTab
         self._howto_tab = HowToTab()
         self._tabs.addTab(self._howto_tab, "How-To")
+
+    # ── Interface mode (dual-depth Simple / Pro) ────────────────────
+
+    def _load_ui_mode(self) -> str:
+        try:
+            from src.config.settings import load_settings
+            mode = str(load_settings().get("interface", {}).get("mode", "pro")).lower()
+        except Exception:  # noqa: BLE001
+            mode = "pro"
+        return "simple" if mode == "simple" else "pro"
+
+    @property
+    def ui_mode(self) -> str:
+        return getattr(self, "_ui_mode", "pro")
+
+    def _toggle_ui_mode(self) -> None:
+        self.set_ui_mode("pro" if self.ui_mode == "simple" else "simple")
+
+    def set_ui_mode(self, mode: str, *, persist: bool = True) -> None:
+        """Public entry point: switch interface mode, fan out to tabs, update chrome, persist."""
+        self._apply_ui_mode("simple" if str(mode).lower() == "simple" else "pro", persist=persist)
+
+    def _apply_ui_mode(self, mode: str, *, persist: bool = True) -> None:
+        self._ui_mode = mode
+        # Fan out to every tab that opts into dual-depth (others are simply unaffected — safe partial
+        # rollout). Each tab hides/shows its advanced widget groups; Pro restores the full UI.
+        for tab in (
+            getattr(self, "_flash_tab", None), getattr(self, "_device_tab", None),
+            getattr(self, "_software_tab", None), getattr(self, "_health_tab", None),
+            getattr(self, "_macro_tab", None), getattr(self, "_cross_comm_tab", None),
+            getattr(self, "_settings_tab", None), getattr(self, "_wardrive_tab", None),
+            getattr(self, "_targets_tab", None),
+        ):
+            fn = getattr(tab, "set_ui_mode", None)
+            if callable(fn):
+                try:
+                    fn(mode)
+                except Exception:  # noqa: BLE001 — one tab must never break the toggle
+                    log.exception("set_ui_mode failed for %s", type(tab).__name__)
+        self._sync_mode_chrome()
+        if persist:
+            try:
+                from src.config.settings import load_settings, save_settings
+                s = load_settings()
+                s.setdefault("interface", {})["mode"] = mode
+                save_settings(s)
+            except Exception:  # noqa: BLE001
+                log.exception("Failed to persist interface mode")
+
+    def _sync_mode_chrome(self) -> None:
+        """Keep the View-menu radio + status badge in sync with the current mode."""
+        mode = self.ui_mode
+        if hasattr(self, "_act_mode_simple"):
+            self._act_mode_simple.setChecked(mode == "simple")
+            self._act_mode_pro.setChecked(mode == "pro")
+        if hasattr(self, "_mode_badge"):
+            label = "Simple" if mode == "simple" else "Pro"
+            color = "#f0883e" if mode == "simple" else "#39ff14"
+            self._mode_badge.setText(f'  Mode: <span style="color:{color};font-weight:bold;">{label} ▾</span>  ')
 
     # ── Persistent terminal (bottom dock) ──────────────────────────
 
@@ -823,6 +904,15 @@ class CyberControllerWindow(QMainWindow):
     def _build_status_bar(self) -> None:
         self._status_label = QLabel()
         self.statusBar().addPermanentWidget(self._status_label)
+
+        # Clickable Interface-Mode badge (one-click recovery to Pro / quick switch to Simple).
+        self._mode_badge = QLabel()
+        self._mode_badge.setObjectName("mode_badge")
+        self._mode_badge.setCursor(Qt.PointingHandCursor)
+        self._mode_badge.setToolTip("Click (or Ctrl+M) to switch between Simple and Pro interface modes")
+        self._mode_badge.mousePressEvent = lambda _ev: self._toggle_ui_mode()  # type: ignore[assignment]
+        self.statusBar().addPermanentWidget(self._mode_badge)
+
         self._refresh_status()
 
     def _refresh_status(self) -> None:
@@ -1296,6 +1386,29 @@ def launch_qt(
         box.button(QMessageBox.Ok).setText("I Understand")
         box.exec_()
         _settings["_disclaimer_ack"] = True
+        save_settings(_settings)
+
+    # One-time interface-mode choice (Simple vs Pro). Shown once; new users are nudged to Simple while
+    # keeping full Pro one click away. Pro stays the stored default so declining/closing changes nothing.
+    _settings = load_settings()
+    if not _settings.get("_interface_mode_ack", False):
+        from PyQt5.QtWidgets import QMessageBox
+        box = QMessageBox(win)
+        box.setIcon(QMessageBox.Question)
+        box.setWindowTitle("Choose your interface")
+        box.setText(
+            "<b>Simple</b> — a guided, streamlined view with fewer options (great to start).<br>"
+            "<b>Pro</b> — the full interface with every control.<br><br>"
+            "You can switch anytime: <b>View ▸ Interface Mode</b>, the status-bar badge, or <b>Ctrl+M</b>."
+        )
+        simple_btn = box.addButton("Use Simple", QMessageBox.AcceptRole)
+        box.addButton("Use Pro", QMessageBox.RejectRole)
+        box.setDefaultButton(simple_btn)
+        box.exec_()
+        if box.clickedButton() is simple_btn:
+            win.set_ui_mode("simple")  # persists interface.mode = simple
+        _settings = load_settings()
+        _settings["_interface_mode_ack"] = True
         save_settings(_settings)
 
     return app.exec_()

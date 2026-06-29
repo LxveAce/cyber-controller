@@ -112,7 +112,8 @@ class SettingsTab(QWidget):
         root.addWidget(flash_card)
 
         # ── Cross-Comm ───────────────────────────────────────────────
-        comm_card, comm_outer = _make_card("Cross-Communication")
+        self._comm_card, comm_outer = _make_card("Cross-Communication")
+        comm_card = self._comm_card
         comm_form = QFormLayout()
         comm_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._auto_share_check = QCheckBox("Auto-share discoveries to the shared target pool")
@@ -125,7 +126,8 @@ class SettingsTab(QWidget):
         # ── Safety & Disclaimers ─────────────────────────────────────
         # These LABEL and warn; they never remove or block a capability. The
         # confirm dialog always offers "Yes, proceed"; suppress turns it off.
-        safety_card, safety_outer = _make_card("Safety & Disclaimers")
+        self._safety_card, safety_outer = _make_card("Safety & Disclaimers")
+        safety_card = self._safety_card
         safety_form = QFormLayout()
         safety_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         self._confirm_dangerous_check = QCheckBox(
@@ -140,7 +142,8 @@ class SettingsTab(QWidget):
         root.addWidget(safety_card)
 
         # ── Access Gate (Security) ───────────────────────────────────
-        gate_card, gate_outer = _make_card("Access Gate (Security)")
+        self._gate_card, gate_outer = _make_card("Access Gate (Security)")
+        gate_card = self._gate_card
         gate_desc = QLabel(
             "Lock the app behind an admin password and/or a physical USB key. Secrets are stored as "
             "salted hashes (no plaintext); protected data stays encrypted until unlocked. Applies on "
@@ -162,7 +165,8 @@ class SettingsTab(QWidget):
         # ── Secure Container (Security) ──────────────────────────────
         # When ON, app-internal saves (logs/sessions/captures) are encrypted at rest in a gate-keyed
         # container and are unreadable while the access gate is locked. Off by default.
-        secure_card, secure_outer = _make_card("Secure Container (Security)")
+        self._secure_card, secure_outer = _make_card("Secure Container (Security)")
+        secure_card = self._secure_card
         secure_desc = QLabel(
             "Encrypt app-saved data (logs, sessions, captures) at rest in a gate-keyed container "
             "(~/.cyber-controller/secure). The container is sealed — unreadable — whenever the access "
@@ -178,7 +182,8 @@ class SettingsTab(QWidget):
         root.addWidget(secure_card)
 
         # ── Firmware Vault ───────────────────────────────────────────
-        vault_card, vault_outer = _make_card("Firmware Vault")
+        self._vault_card, vault_outer = _make_card("Firmware Vault")
+        vault_card = self._vault_card
         vault_form = QFormLayout()
         vault_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         dir_row = QHBoxLayout()
@@ -206,6 +211,21 @@ class SettingsTab(QWidget):
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
+
+    # ── Dual-depth (Simple / Pro) ────────────────────────────────────
+
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple shows only Serial + Flash defaults; Pro shows every section. Advanced sections
+        (Cross-Comm, Safety & Disclaimers, Access Gate, Secure Container, Firmware Vault) are hidden
+        in Simple — their saved values are untouched, just not editable in the streamlined view."""
+        pro = str(mode).lower() != "simple"
+        for card in (
+            getattr(self, "_comm_card", None), getattr(self, "_safety_card", None),
+            getattr(self, "_gate_card", None), getattr(self, "_secure_card", None),
+            getattr(self, "_vault_card", None),
+        ):
+            if card is not None:
+                card.setVisible(pro)
 
     def _connect_signals(self) -> None:
         self._save_btn.clicked.connect(self._on_save)

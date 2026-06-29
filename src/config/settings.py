@@ -57,6 +57,15 @@ DEFAULTS: dict[str, Any] = {
     "security": {
         "secure_container": False,
     },
+    # Dual-depth UI (progressive disclosure). "pro" = the full interface (today's behavior, the safe
+    # default so an upgrade never hides controls); "simple" = a streamlined view that hides advanced
+    # widget groups per tab (each tab's set_ui_mode()). Toggle: View ▸ Interface Mode, Ctrl+M, or the
+    # status-bar badge. A first-run prompt lets new users pick Simple. Pro has ZERO feature penalty.
+    "interface": {
+        "mode": "pro",
+    },
+    # One-time interface-mode choice prompt shown (so we ask Simple-vs-Pro exactly once).
+    "_interface_mode_ack": False,
     # One-time legal/authorized-use disclaimer acknowledgement (top-level scalar,
     # round-trips through _deep_merge). Shown once regardless of suppress_all_warnings.
     "_disclaimer_ack": False,

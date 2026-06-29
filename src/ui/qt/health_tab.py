@@ -142,7 +142,8 @@ class HealthTab(QWidget):
         root.addWidget(sys_card)
 
         # ── Device Health Section ────────────────────────────────────
-        dev_card, dev_layout = _make_card("Device Health")
+        self._dev_card, dev_layout = _make_card("Device Health")
+        dev_card = self._dev_card
 
         self._device_table = QTableWidget()
         self._device_table.setColumnCount(5)
@@ -161,6 +162,19 @@ class HealthTab(QWidget):
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
+
+    # ── Dual-depth (Simple / Pro) ────────────────────────────────────
+
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple = CPU + RAM gauges only; Pro adds Disk/Battery gauges and the per-device table."""
+        pro = str(mode).lower() != "simple"
+        for w in (
+            getattr(self, "_disk_gauge", None), getattr(self, "_batt_gauge", None),
+            getattr(self, "_disk_detail", None), getattr(self, "_batt_detail", None),
+            getattr(self, "_dev_card", None),
+        ):
+            if w is not None:
+                w.setVisible(pro)
 
     # ── Refresh ──────────────────────────────────────────────────────
 

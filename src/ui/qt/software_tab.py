@@ -175,10 +175,10 @@ class SoftwareTab(QWidget):
         btn_refresh = QPushButton("Refresh drives")
         btn_refresh.clicked.connect(self._refresh_drives)
         drive_layout.addWidget(btn_refresh)
-        btn_local = QPushButton("Use local image…")
-        btn_local.setToolTip("Flash an OS image (.iso/.img) you already downloaded instead of fetching it.")
-        btn_local.clicked.connect(self._browse_local)
-        drive_layout.addWidget(btn_local)
+        self._btn_local = QPushButton("Use local image…")
+        self._btn_local.setToolTip("Flash an OS image (.iso/.img) you already downloaded instead of fetching it.")
+        self._btn_local.clicked.connect(self._browse_local)
+        drive_layout.addWidget(self._btn_local)
         self._local_lbl = QLabel("")
         self._local_lbl.setObjectName("muted")
         self._local_lbl.setWordWrap(True)
@@ -248,6 +248,24 @@ class SoftwareTab(QWidget):
             self._log(f"Drive scan failed: {exc}")
         if self._drive_combo.count() == 0:
             self._drive_combo.addItem("No removable drives found", None)
+
+    # ── Dual-depth (Simple / Pro) ────────────────────────────────────
+
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple = always fetch the latest release online; hide the offline toggle + local-image
+        override. Pro restores both. Offline operation itself is never disabled — Simple just hides the
+        *toggle* and defaults to online (per the offline-first invariant)."""
+        pro = str(mode).lower() != "simple"
+        for w in (getattr(self, "_offline_cb", None), getattr(self, "_btn_local", None),
+                  getattr(self, "_local_lbl", None)):
+            if w is not None:
+                w.setVisible(pro)
+        if not pro:
+            if getattr(self, "_offline_cb", None) is not None:
+                self._offline_cb.setChecked(False)  # always online in Simple
+            self._local_image = None  # always fetch latest, no local override
+            if getattr(self, "_local_lbl", None) is not None:
+                self._local_lbl.setText("")
 
     def _browse_local(self) -> None:
         path, _ = QFileDialog.getOpenFileName(self, "Select an OS image", "",
