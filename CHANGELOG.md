@@ -3,6 +3,21 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] — 2026-06-29
+
+### Added
+- **Smart installation / version-aware startup.** Cyber Controller now reconciles the persistent config
+  in `~/.cyber-controller` against the running version on launch (`src/core/install.py`):
+  - **Upgrade** (config from an older version) → carried forward silently (settings already deep-merge
+    onto defaults; the AES-GCM vault carries its own format version) and the version marker is advanced.
+  - **Downgrade** (config from a *newer* version — the "paths collide / overwrite old install" case) →
+    the GUI prompts: **Keep & Continue**, or **Back up & Start Fresh** (the old config is *moved aside,
+    never deleted*, so it's restorable).
+  - **Fresh / same** → recorded, proceed. A `.installed_version` marker is written so future launches can
+    classify correctly. Safe + silent for headless/CLI use.
+- Single source of truth for the app version (`src/version.py`), used by the window title + the installer
+  logic. +9 tests.
+
 ## [1.3.3] — 2026-06-29
 
 ### Added

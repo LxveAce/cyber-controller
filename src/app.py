@@ -258,6 +258,15 @@ def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
     _setup_logging(args.log_level, args.log_file)
 
+    # Smart install: reconcile the persistent config (~/.cyber-controller) against this version —
+    # migrate-on-upgrade (silent), record the version, and flag a downgrade so the GUI can prompt to
+    # keep or back-up-and-start-fresh. Safe + silent for headless/CLI flows.
+    try:
+        from src.core import install
+        install.reconcile()
+    except Exception:
+        log.debug("install reconcile skipped", exc_info=True)
+
     # Dead Man's Switch password & duress setup is a standalone host-side flow — no UI bootstrap.
     if args.deadman_setup:
         from src.core.suicide_setup import run_cli
