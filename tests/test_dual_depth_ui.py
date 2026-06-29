@@ -59,6 +59,8 @@ def test_default_is_pro_full_ui(qapp, isolated_settings):
     assert _shown(win._settings_tab._gate_card)
     assert _shown(win._health_tab._disk_gauge)
     assert _shown(win._software_tab._offline_cb)
+    assert _shown(win._macro_tab._var_card)
+    assert _shown(win._cross_comm_tab._stream_card)
 
 
 def test_simple_streamlines_every_wired_tab(qapp, isolated_settings):
@@ -84,6 +86,16 @@ def test_simple_streamlines_every_wired_tab(qapp, isolated_settings):
     assert not _shown(win._software_tab._offline_cb)
     assert not _shown(win._software_tab._btn_local)
     assert win._software_tab._offline_cb.isChecked() is False  # always online in Simple
+    # Macro
+    assert not _shown(win._macro_tab._var_card)
+    assert not _shown(win._macro_tab._speed_combo)
+    assert not _shown(win._macro_tab._btn_record)
+    assert not _shown(win._macro_tab._btn_save)
+    assert win._macro_tab._speed_combo.currentText() == "1x"  # locked playback speed
+    # Cross-Comm
+    assert not _shown(win._cross_comm_tab._stream_card)
+    assert not _shown(win._cross_comm_tab._rules_card)
+    assert not _shown(win._cross_comm_tab._action_card)
 
 
 def test_badge_and_ctrl_m_toggle(qapp, isolated_settings):

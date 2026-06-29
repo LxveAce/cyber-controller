@@ -129,7 +129,8 @@ class MacroTab(QWidget):
         right_layout.setContentsMargins(0, 0, 0, 0)
 
         # Variable substitution fields card
-        var_card, var_layout_inner = _make_card("Variable Substitution")
+        self._var_card, var_layout_inner = _make_card("Variable Substitution")
+        var_card = self._var_card
         var_row = QHBoxLayout()
 
         mac_label = QLabel("TARGET_MAC:")
@@ -213,7 +214,8 @@ class MacroTab(QWidget):
         ctrl_row.addStretch()
 
         # Speed selector
-        ctrl_row.addWidget(QLabel("Speed:"))
+        self._speed_label = QLabel("Speed:")
+        ctrl_row.addWidget(self._speed_label)
         self._speed_combo = QComboBox()
         self._speed_combo.addItems(["0.25x", "0.5x", "1x", "2x", "4x", "10x"])
         self._speed_combo.setCurrentText("1x")
@@ -255,6 +257,22 @@ class MacroTab(QWidget):
         self._refresh_ports()
 
     # ── Macro list management ────────────────────────────────────────
+
+    # ── Dual-depth (Simple / Pro) ────────────────────────────────────
+
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple = play saved macros (list, read-only steps, Play/Stop, Load). Hide authoring controls:
+        Record, Save, the speed multiplier (locked to 1x), and variable-substitution fields."""
+        pro = str(mode).lower() != "simple"
+        for w in (
+            getattr(self, "_var_card", None), getattr(self, "_speed_label", None),
+            getattr(self, "_speed_combo", None), getattr(self, "_btn_record", None),
+            getattr(self, "_btn_save", None),
+        ):
+            if w is not None:
+                w.setVisible(pro)
+        if not pro and getattr(self, "_speed_combo", None) is not None:
+            self._speed_combo.setCurrentText("1x")  # locked playback speed in Simple
 
     def _refresh_macro_list(self) -> None:
         """Reload the saved macros list."""
