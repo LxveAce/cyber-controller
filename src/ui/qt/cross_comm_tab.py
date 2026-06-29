@@ -310,6 +310,7 @@ class CrossCommTab(QWidget):
         splitter.setStretchFactor(0, 3)
         splitter.setStretchFactor(1, 2)
         splitter.setStretchFactor(2, 1)
+        splitter.setSizes([360, 240, 120])  # LAUNCH split 3:2:1 (setStretchFactor only governs resize)
         root.addWidget(splitter, stretch=1)
 
         scroll.setWidget(scroll_container)
