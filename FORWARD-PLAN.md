@@ -2,6 +2,15 @@
 
 > Status: v1.1.0 code-stable (228 tests pass, 0 open issues) but the shipped Windows .exe almost certainly crashes silently on launch. | Health: YELLOW | Date: _____ (pick up here)
 
+> **⭐ MAJOR DIRECTION (2026-06-29): the flashing engine in `src/core/` is being extracted into the
+> universal-flasher repo as a shared, UI-free library and consumed here as a dependency (submodule), so
+> there is ONE flash engine instead of two diverging copies. Cyber Controller keeps its flash *panel* and
+> all non-flash features (controller, broadcast, wardrive, logger, dead-man, cyberdeck GUI). The crux for
+> easy growth: unify the firmware profile model to a single JSON source — retire the hardcoded
+> `flash_core` `FirmwareProfile` subclasses + `CORE_ID_MAP` so a new firmware/board = drop one profile
+> JSON. Staged + test-gated; do NOT ship the engine rewrite without a real-hardware ESP32 flash (it
+> touches hardware-validated paths). The "cross-repo de-dup" dig-deeper item is folded into this.**
+
 ## Where this stands
 Cyber Controller is the flagship Python 3.12+ all-in-one security-hardware controller for cyberdecks: it flashes/coordinates ESP32 firmwares (Marauder/Bruce/GhostESP + ~21 profiles), Flipper Zero, and Raspberry Pi gear from one dashboard. Four UIs (PyQt5 GUI, Tkinter, Textual TUI, Flask web remote) via `--ui` or a launcher dialog, plus a Dead Man's Switch anti-forensic provisioning flow (`--deadman-setup`) backed by the `deadmans-switch` git submodule.
 
