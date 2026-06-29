@@ -26,12 +26,30 @@
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
-**Status:** **v1.3.1** is the latest release — an installer/startup fix: the Windows onefile now shows a
-**splash screen** within ~1–2 s of launch (the ~15 s self-extraction previously gave no feedback and was
-mistaken for a failed install), plus a MinigotchiV3 profile fix. Built on **v1.3.0**, a
-**security-hardening + UX** release: a gate-keyed **secure container** for app saves, **brute-force
-lockout**, opt-in **duress self-wipe**, **boot/startup-bypass** hardening, a **dual-depth Simple/Pro**
-interface, and **4 new firmware profiles**.
+**Status:** **v1.4.0** is the latest release — **smart installation / version-aware startup**: on launch
+the app reconciles its config against the running version, carries an upgrade forward silently, and on a
+downgrade/overwrite prompts to **Keep & Continue** or **Back up & Start Fresh** (the old config is moved
+aside, never deleted). It builds on a run of installer/UX releases (v1.3.1–v1.3.3): an **animated startup**
+loading screen, a **four-interface launcher**, and a **splash screen** for the slow onefile self-extract —
+all on top of the **v1.3.0** security-hardening base (secure container, brute-force lockout, duress
+self-wipe, dual-depth Simple/Pro, +4 firmwares).
+
+**Shipped in v1.3.1 – v1.4.0:**
+- **Smart installation / version-aware startup (v1.4.0)** — the app recognizes a previous install and
+  reconciles it: an **upgrade** carries settings + the encrypted vault forward silently; a **downgrade**
+  (an older build over a newer config — the "paths collide / overwrite" case) prompts **Keep & Continue**
+  or **Back up & Start Fresh**, and the old config is always **moved aside, never deleted** (restorable).
+  A `.installed_version` marker is written; fully silent for headless/CLI use. Single source of truth for
+  the version in `src/version.py`.
+- **Animated startup (v1.3.3)** — a frameless loading screen (logo + indeterminate progress + status) while
+  the dashboard builds, then a cross-fade to the main window. Motion-token-driven; honors reduced-motion.
+  Reserved for the full PyQt5 GUI; the lightweight Tk/TUI/web UIs stay unanimated.
+- **Four-interface launcher (v1.3.2)** — launching with no `--ui` now offers all four front-ends
+  (**Full GUI (PyQt5) · Lightweight (Tkinter) · Terminal UI (Textual) · Web Remote**); the splash closes
+  before the launcher, and **Web Remote auto-opens your browser** from a packaged build.
+- **Installer splash screen (v1.3.1)** — the Windows onefile shows a splash within ~1–2 s of launch (the
+  ~15 s self-extraction previously gave no feedback and read as a failed install), plus a MinigotchiV3
+  profile fix.
 
 **Shipped in v1.3.0:**
 - **Secure container (opt-in)** — app-internal saves (e.g. recorded command sessions) encrypted at rest
