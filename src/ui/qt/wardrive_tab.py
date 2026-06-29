@@ -166,7 +166,8 @@ class WardriveTab(QWidget):
         port_layout.addWidget(btn_refresh)
         root.addWidget(port_card)
 
-        out_card, out_layout = _make_card("Output (WiGLE CSV)")
+        self._out_card, out_layout = _make_card("Output (WiGLE CSV)")
+        out_card = self._out_card
         orow = QHBoxLayout()
         self._out_edit = QLineEdit(os.path.join(os.path.expanduser("~"), "wardrive-wigle.csv"))
         self._out_edit.setToolTip("WiGLE CSV file to write (WigleWifi-1.6). Upload it at wigle.net.")
@@ -195,6 +196,18 @@ class WardriveTab(QWidget):
         self._log.setReadOnly(True)
         self._log.setMinimumHeight(140)
         root.addWidget(self._log, 1)
+
+    # ── Dual-depth (Simple / Pro) ────────────────────────────────────
+
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple = pick the ESP32 + GPS ports and Start/Stop, logging to the default WiGLE CSV. Hide
+        the baud overrides and the output-path card (defaults to ~/wardrive-wigle.csv). Pro restores
+        full control. Export format stays WiGLE CSV (plaintext, meant to be shared) in both modes."""
+        pro = str(mode).lower() != "simple"
+        for w in (getattr(self, "_dev_baud", None), getattr(self, "_gps_baud", None),
+                  getattr(self, "_out_card", None)):
+            if w is not None:
+                w.setVisible(pro)
 
     def _refresh_ports(self) -> None:
         ports = _list_serial_ports()

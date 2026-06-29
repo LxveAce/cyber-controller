@@ -120,7 +120,8 @@ class DeviceTab(QWidget):
         # (via the palette) which command set is offered. Lets a HaleHound / DIV /
         # BW16 board feed the AutoRouter instead of everything defaulting to Marauder.
         fw_row = QHBoxLayout()
-        fw_row.addWidget(QLabel("Firmware:"))
+        self._firmware_label = QLabel("Firmware:")
+        fw_row.addWidget(self._firmware_label)
         self._firmware_combo = QComboBox()
         self._firmware_combo.addItems(_firmware_choices())
         fw_row.addWidget(self._firmware_combo, stretch=1)
@@ -193,6 +194,18 @@ class DeviceTab(QWidget):
         splitter.setStretchFactor(1, 3)
         splitter.setSizes([240, 720])
         root.addWidget(splitter)
+
+    # ── Dual-depth (Simple / Pro) ────────────────────────────────────
+
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple = device list + Connect/Disconnect + terminal + a plain command input. Hide the
+        per-device firmware selector (parser stays auto/Marauder default) and the command palette
+        (advanced per-firmware command picker) — manual typing still works for everyone."""
+        pro = str(mode).lower() != "simple"
+        for w in (getattr(self, "_firmware_label", None), getattr(self, "_firmware_combo", None),
+                  getattr(self, "_cmd_palette", None)):
+            if w is not None:
+                w.setVisible(pro)
 
     # ── Device list ──────────────────────────────────────────────────
 
