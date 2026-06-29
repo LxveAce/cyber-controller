@@ -97,9 +97,9 @@ Fresh tagged release after P0, picking up the 8 commits master is ahead of v1.1.
 
 ## Dependencies & cross-repo context
 - `esptool>=4.7,<6` (pinned <6, rationale in `pyproject.toml:33-34`); `cryptography>=43` (mandatory; underpins the planned physical-key feature); PyQt5 + PyInstaller (`--onefile`/`--windowed` = proximate crash cause); pyserial, requests, psutil.
-- Submodule `deadmans-switch` -> https://github.com/LxveAce/deadmans-switch.git (successor to Suicide-Marauder; standalone clone at `C:\Users\mmrla\repos\deadmans-switch`).
+- Submodule `deadmans-switch` -> https://github.com/LxveAce/deadmans-switch.git (successor to Suicide-Marauder; standalone clone at `<HOME>\repos\deadmans-switch`).
 - **Ecosystem lineage (CTX):** cyber-controller SUPERSEDES universal-flasher-ui / universal-flasher / headless-marauder-gui — reuse the sd-image/raw-image backend from universal-flasher-ui for Tails; invest only in cyber-controller.
-- **Website:** `C:\Users\mmrla\repos\cybercontroller.org` (index.html + script.js) loads downloads dynamically from the live GitHub Releases API — no hardcoded links to fix, but count/version copy needs reconciling.
+- **Website:** `<HOME>\repos\cybercontroller.org` (index.html + script.js) loads downloads dynamically from the live GitHub Releases API — no hardcoded links to fix, but count/version copy needs reconciling.
 - **Continuity sources:** `session-context/SESSION.md`, `Projects/CLAUDE-TRANSFER.md`.
 
 ## Open questions
