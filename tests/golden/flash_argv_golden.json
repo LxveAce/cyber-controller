@@ -2,148 +2,178 @@
   "airtag-scanner": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -152,148 +182,178 @@
   "bluejammer-bw16": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -302,148 +362,178 @@
   "bluejammer-esp32": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
-        ]
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
-        ]
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
-        ]
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
-        ]
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
-        ]
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
-        ]
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
       }
     },
     "image_model": "multi-file-offsets",
@@ -452,148 +542,178 @@
   "bruce": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -602,148 +722,178 @@
   "custom": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -752,148 +902,178 @@
   "cyt-ng": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -902,151 +1082,371 @@
   "esp32-div": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "--flash_freq",
+            "40m",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "--flash_freq",
-          "40m",
-          "0x10000",
-          "APP.bin"
+        "full": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "--flash_freq",
+            "40m",
+            "0x1000",
+            "<file>",
+            "0x8000",
+            "<file>",
+            "0xe000",
+            "<file>",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "support_offsets": [
+          "0x1000",
+          "0x8000",
+          "0xe000"
         ]
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
+        "full": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "<file>",
+            "0x8000",
+            "<file>",
+            "0xe000",
+            "<file>",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "support_offsets": [
+          "0x0",
+          "0x8000",
+          "0xe000"
         ]
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
+        "full": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x2000",
+            "<file>",
+            "0x8000",
+            "<file>",
+            "0xe000",
+            "<file>",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "support_offsets": [
+          "0x2000",
+          "0x8000",
+          "0xe000"
         ]
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
+        "full": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "<file>",
+            "0x8000",
+            "<file>",
+            "0xe000",
+            "<file>",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "support_offsets": [
+          "0x0",
+          "0x8000",
+          "0xe000"
         ]
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
+        "full": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x1000",
+            "<file>",
+            "0x8000",
+            "<file>",
+            "0xe000",
+            "<file>",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "support_offsets": [
+          "0x1000",
+          "0x8000",
+          "0xe000"
         ]
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "--flash_freq",
+            "80m",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "--flash_freq",
-          "80m",
-          "0x10000",
-          "APP.bin"
+        "full": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "--flash_freq",
+            "80m",
+            "0x0",
+            "<file>",
+            "0x8000",
+            "<file>",
+            "0xe000",
+            "<file>",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "support_offsets": [
+          "0x0",
+          "0x8000",
+          "0xe000"
         ]
       }
     },
@@ -1056,148 +1456,178 @@
   "flock-you": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -1206,148 +1636,178 @@
   "ghostesp": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -1356,148 +1816,178 @@
   "halehound": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -1506,147 +1996,270 @@
   "marauder": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
+        "full": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x1000",
+            "<file>",
+            "0x8000",
+            "<file>",
+            "0xe000",
+            "<file>",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "support_offsets": [
+          "0x1000",
+          "0x8000",
+          "0xe000"
         ]
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
-        ]
+        "full": {
+          "support_error": "RuntimeError: No auto support-file mapping for esp32c3; use local files for a full flash."
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
-        ]
+        "full": {
+          "support_error": "RuntimeError: No auto support-file mapping for esp32c5; use local files for a full flash."
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
-        ]
+        "full": {
+          "support_error": "RuntimeError: No auto support-file mapping for esp32c6; use local files for a full flash."
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
+        "full": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x1000",
+            "<file>",
+            "0x8000",
+            "<file>",
+            "0xe000",
+            "<file>",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "support_offsets": [
+          "0x1000",
+          "0x8000",
+          "0xe000"
         ]
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x10000",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x10000",
-          "APP.bin"
+        "full": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "<file>",
+            "0x8000",
+            "<file>",
+            "0xe000",
+            "<file>",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "support_offsets": [
+          "0x0",
+          "0x8000",
+          "0xe000"
         ]
       }
     },
@@ -1656,148 +2269,178 @@
   "meshtastic": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -1806,148 +2449,178 @@
   "minigotchi-v3": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -1956,28 +2629,58 @@
   "momentum": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -1986,148 +2689,178 @@
   "oui-spy": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -2136,148 +2869,178 @@
   "rtl8720": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -2286,148 +3049,178 @@
   "sky-spy": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c5",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32c6",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s2",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x0",
+            "APP.bin"
+          ]
+        },
         "app_offset": "0x0",
-        "argv": [
-          "<py>",
-          "-m",
-          "esptool",
-          "--chip",
-          "esp32s3",
-          "--port",
-          "PORTX",
-          "--baud",
-          "921600",
-          "--before",
-          "default_reset",
-          "--after",
-          "hard_reset",
-          "write_flash",
-          "-z",
-          "--flash_size",
-          "detect",
-          "0x0",
-          "APP.bin"
-        ]
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
@@ -2436,28 +3229,58 @@
   "unleashed": {
     "chips": {
       "esp32": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32c3": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32c5": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32c6": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32s2": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       },
       "esp32s3": {
+        "app": {
+          "argv": []
+        },
         "app_offset": "0x0",
-        "argv": []
+        "full": {
+          "support": null
+        }
       }
     },
     "image_model": "merged-single-bin",
