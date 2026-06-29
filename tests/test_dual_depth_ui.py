@@ -61,6 +61,8 @@ def test_default_is_pro_full_ui(qapp, isolated_settings):
     assert _shown(win._software_tab._offline_cb)
     assert _shown(win._macro_tab._var_card)
     assert _shown(win._cross_comm_tab._stream_card)
+    assert _shown(win._device_tab._cmd_palette)
+    assert _shown(win._wardrive_tab._out_card)
 
 
 def test_simple_streamlines_every_wired_tab(qapp, isolated_settings):
@@ -96,6 +98,12 @@ def test_simple_streamlines_every_wired_tab(qapp, isolated_settings):
     assert not _shown(win._cross_comm_tab._stream_card)
     assert not _shown(win._cross_comm_tab._rules_card)
     assert not _shown(win._cross_comm_tab._action_card)
+    # Device
+    assert not _shown(win._device_tab._firmware_combo)
+    assert not _shown(win._device_tab._cmd_palette)
+    # Wardrive
+    assert not _shown(win._wardrive_tab._dev_baud)
+    assert not _shown(win._wardrive_tab._out_card)
 
 
 def test_badge_and_ctrl_m_toggle(qapp, isolated_settings):
