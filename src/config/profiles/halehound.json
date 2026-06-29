@@ -65,6 +65,7 @@
   "default_variant": {"strategy": "prefer_fragment", "prefer": ["FULL"]},
   "resolver_params": {
     "api_url": "https://api.github.com/repos/JesseCHale/HaleHound-CYD/releases/latest",
+    "on_error": "source_only_empty",
     "asset_match": {"include_suffixes": [".bin"]},
     "chip_map": {"strategy": "fixed", "chip": "esp32"},
     "emit": {"offset": "0x0", "merged": true, "label_template": "HaleHound CYD", "label_suffix_rules": [["FULL", " (merged full)"], ["OTA", " (OTA update)"]]}
