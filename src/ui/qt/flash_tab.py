@@ -147,14 +147,14 @@ class FlashTab(QWidget):
         self._profile_combo = QComboBox()
         self._profile_combo.setMinimumWidth(160)
         prof_layout.addWidget(self._profile_combo)
-        btn_browse = QPushButton("Browse...")
-        btn_browse.clicked.connect(self._browse_profile)
-        prof_layout.addWidget(btn_browse)
+        self._btn_browse = QPushButton("Browse...")
+        self._btn_browse.clicked.connect(self._browse_profile)
+        prof_layout.addWidget(self._btn_browse)
         # Board / variant picker
-        variant_label = QLabel("Board / variant:")
-        variant_label.setObjectName("muted")
-        variant_label.setWordWrap(True)
-        prof_layout.addWidget(variant_label)
+        self._variant_label = QLabel("Board / variant:")
+        self._variant_label.setObjectName("muted")
+        self._variant_label.setWordWrap(True)
+        prof_layout.addWidget(self._variant_label)
         self._variant_combo = QComboBox()
         self._variant_combo.setMinimumWidth(160)
         self._variant_combo.setToolTip(
@@ -239,7 +239,7 @@ class FlashTab(QWidget):
         bottom.addWidget(log_card, stretch=3)
 
         # Batch queue card
-        queue_card, queue_layout = _make_card("Batch Queue")
+        self._queue_card, queue_layout = _make_card("Batch Queue")
         self._queue_list = QListWidget()
         self._queue_list.setMinimumHeight(60)
         queue_layout.addWidget(self._queue_list)
@@ -249,12 +249,12 @@ class FlashTab(QWidget):
         btn_clear = QPushButton("Clear Queue")
         btn_clear.clicked.connect(self._queue_list.clear)
         queue_layout.addWidget(btn_clear)
-        bottom.addWidget(queue_card, stretch=1)
+        bottom.addWidget(self._queue_card, stretch=1)
 
         root.addLayout(bottom, stretch=1)
 
         # ── Firmware Vault section ───────────────────────────────────
-        vault_card, vault_layout = _make_card("Firmware Vault (Offline Cache)")
+        self._vault_card, vault_layout = _make_card("Firmware Vault (Offline Cache)")
         vault_row = QHBoxLayout()
 
         self._vault_status = QLabel("No cached firmware")
@@ -271,11 +271,33 @@ class FlashTab(QWidget):
         vault_row.addWidget(btn_clear_vault)
 
         vault_layout.addLayout(vault_row)
-        root.addWidget(vault_card)
+        root.addWidget(self._vault_card)
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
         self._refresh_vault_status()
+
+    # ── Dual-depth (Simple / Pro) ────────────────────────────────────
+
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple = streamline to the essential flash flow (Port, Profile, Flash/Backup/Erase,
+        progress, log). Hide the advanced groups: Browse, board/variant picker (locked to Auto),
+        Dead Man's Switch, Batch Queue, Firmware Vault. Pro restores everything (today's UI)."""
+        pro = str(mode).lower() != "simple"
+        for w in (
+            getattr(self, "_btn_browse", None), getattr(self, "_variant_label", None),
+            getattr(self, "_variant_combo", None), getattr(self, "_suicide_card", None),
+            getattr(self, "_queue_card", None), getattr(self, "_vault_card", None),
+        ):
+            if w is not None:
+                w.setVisible(pro)
+        if not pro:
+            # Lock to the firmware default ("Auto") and make sure the Dead Man's Switch is off when its
+            # control is hidden, so a hidden checkbox can't silently arm a destructive flash.
+            if getattr(self, "_variant_combo", None) is not None and self._variant_combo.count():
+                self._variant_combo.setCurrentIndex(0)
+            if getattr(self, "_suicide_checkbox", None) is not None:
+                self._suicide_checkbox.setChecked(False)
 
     # ── Refreshers ───────────────────────────────────────────────────
 
