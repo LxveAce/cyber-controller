@@ -68,7 +68,7 @@ except Exception:  # noqa: BLE001
 
 log = logging.getLogger(__name__)
 
-_VERSION = "1.3.3"
+from src.version import __version__ as _VERSION
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
 
@@ -1363,6 +1363,35 @@ def launch_qt(
     app.setOrganizationName("LxveAce")
     app.setWindowIcon(create_cc_icon())
     apply_theme(app)
+
+    # Smart-install downgrade guard: if the existing ~/.cyber-controller was written by a NEWER version
+    # than this build, offer to keep it or back it up and start fresh (the older build may not read a
+    # newer config/vault format). Nothing is deleted — "start fresh" moves the old config aside.
+    try:
+        from src.core import install
+        if install.classify() == "downgrade":
+            box = QMessageBox()
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Existing configuration is from a newer version")
+            box.setText(
+                f"Your Cyber Controller settings were written by a newer version "
+                f"(v{install.installed_version()}) than this one (v{_VERSION}).\n\n"
+                "Continuing may behave unexpectedly. Keep them, or back them up and start fresh "
+                "(your old config is moved aside, not deleted)."
+            )
+            keep = box.addButton("Keep && Continue", QMessageBox.AcceptRole)
+            box.addButton("Back up && Start Fresh", QMessageBox.DestructiveRole)
+            box.setDefaultButton(keep)
+            box.exec_()
+            if box.clickedButton() is not keep:
+                bk = install.backup_config_dir()
+                install.record_version()  # the now-fresh dir belongs to this version
+                QMessageBox.information(
+                    None, "Fresh start",
+                    f"Previous configuration backed up to:\n{bk}\n\nStarting fresh with defaults.",
+                )
+    except Exception:
+        log.debug("downgrade prompt skipped", exc_info=True)
 
     # Animated startup — PyQt5 (the heaviest UI) ONLY. Hand off from the PyInstaller extraction splash
     # to a richer animated loading screen, build the dashboard, then cross-fade to it. The lightweight
