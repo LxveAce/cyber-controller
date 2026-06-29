@@ -2173,6 +2173,186 @@
     "image_model": "merged-single-bin",
     "supports_suicide": false
   },
+  "hydra32": {
+    "chips": {
+      "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "0x10000",
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
+      },
+      "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "0x10000",
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
+      },
+      "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "0x10000",
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
+      },
+      "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "0x10000",
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
+      },
+      "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "0x10000",
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
+      },
+      "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "0x10000",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "0x10000",
+        "full": {
+          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+        }
+      }
+    },
+    "image_model": "multi-file-offsets",
+    "supports_suicide": false
+  },
   "marauder": {
     "chips": {
       "esp32": {

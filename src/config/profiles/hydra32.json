@@ -1,0 +1,54 @@
+{
+  "name": "Hydra32 (ESP32-Deauther)",
+  "id": "hydra32",
+  "core_id": "hydra32",
+  "label": "Hydra32 (ESP32-Deauther) — authorized testing only",
+  "description": "Hydra32 / ESP32-Deauther (SameerAlSahab) — WiFi recon + deauth toolkit for the ESP32 DevKit V1. *** Authorized security testing on networks you own or are permitted to test ONLY — unauthorized deauthentication is illegal in most jurisdictions. *** GPL-3.0. Cyber Controller flashes the pinned, SHA-256-verified release images and adds no attack capability of its own.",
+  "backend": "esptool",
+  "protocol": "hydra32",
+  "boards": [
+    { "name": "ESP32 DevKit V1", "chip": "esp32", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "80m", "board_id": "esp32-devkit-v1" }
+  ],
+  "default_baud": 921600,
+  "firmware_urls": {
+    "repo": "https://github.com/SameerAlSahab/ESP32-Deauther",
+    "latest": "https://github.com/SameerAlSahab/ESP32-Deauther/releases/latest",
+    "note": "ESP-IDF project; the 'Hydra32' release ships prebuilt bootloader/partition-table/app/storage bins. Pinned + SHA-256-verified at flash time, never vendored."
+  },
+  "note": "esptool offsets confirmed from partitions.csv (branch devkit-v1): bootloader@0x1000, partition-table@0x8000, factory app@0x10000, spiffs storage@0x190000. Single-factory layout = no boot_app0. storage.bin is exactly 0x70000 bytes = the storage partition size (cross-check of the 0x190000 offset).",
+  "repo": "SameerAlSahab/ESP32-Deauther",
+  "supports_suicide": false,
+  "image_model": "multi-file-offsets",
+  "resolver": "pinned_release",
+  "app_offset": "0x10000",
+  "variants_for_chip": "all",
+  "default_variant": { "strategy": "first" },
+  "support_files": {
+    "source": "pinned",
+    "verify_sha256": true,
+    "include_boot_app0": false,
+    "pinned_files": {
+      "bootloader.bin": { "source": "release", "offset": "0x1000", "sha256": "c8a5ed4272db84c157de7b074decec92c08c4a90c85341736fb94a3aac540f54" },
+      "partition-table.bin": { "source": "release", "offset": "0x8000", "sha256": "af77ffb3eb73180082a27b5ffc9a737a2aa4651b4bbc514962683ff0aa5d497a" },
+      "storage.bin": { "source": "release", "offset": "0x190000", "sha256": "527f9d8b7a849531d04bf3281a946014d4fb48cf830a0c50e5bcf50ce1fa100a" }
+    }
+  },
+  "resolver_params": {
+    "tag": "Hydra32",
+    "verify_sha256": true,
+    "url_sources": {
+      "release": "https://github.com/SameerAlSahab/ESP32-Deauther/releases/download/Hydra32"
+    },
+    "assets": [
+      {
+        "name": "projecthydra-32.bin",
+        "source": "release",
+        "chip": "esp32",
+        "offset": "0x10000",
+        "merged": false,
+        "sha256": "f4052d06ff510b13c4b8f0682118482feb41537b7d228be35554640ffe6f0698",
+        "label": "Hydra32 ESP32 app image (authorized testing only)"
+      }
+    ]
+  }
+}
