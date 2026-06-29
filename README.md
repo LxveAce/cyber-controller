@@ -152,6 +152,10 @@ education, and CTF use only.
 21 firmware profiles ship in `src/config/profiles/`. Each tracks its **latest upstream release** at
 flash time and auto-selects the correct per-board binary.
 
+> 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)** — an in-depth, per-firmware
+> walkthrough for every entry below: **what to buy, how to build it, how to flash & run it, how to
+> integrate it into Cyber Controller, and troubleshooting** — each with a downloadable PDF.
+
 | Firmware | Upstream | Chips | Backend |
 |----------|----------|-------|---------|
 | **ESP32 Marauder** | [justcallmekoko/ESP32Marauder](https://github.com/justcallmekoko/ESP32Marauder) | ESP32 / S2 / S3 / C5 | esptool |
