@@ -238,7 +238,8 @@ class CrossCommTab(QWidget):
         bottom_layout.setContentsMargins(0, 0, 0, 0)
 
         # Live event stream card
-        stream_card, stream_layout = _make_card("Live Event Stream")
+        self._stream_card, stream_layout = _make_card("Live Event Stream")
+        stream_card = self._stream_card
         self._event_log = QTextEdit()
         self._event_log.setReadOnly(True)
         self._event_log.setObjectName("terminal")
@@ -254,7 +255,8 @@ class CrossCommTab(QWidget):
         bottom_layout.addWidget(stream_card, 2)
 
         # Auto-routing rules card
-        rules_card, rules_layout = _make_card("Auto-Routing Rules")
+        self._rules_card, rules_layout = _make_card("Auto-Routing Rules")
+        rules_card = self._rules_card
         rules_desc = QLabel("When a matching target is discovered:")
         rules_desc.setWordWrap(True)
         rules_layout.addWidget(rules_desc)
@@ -279,7 +281,8 @@ class CrossCommTab(QWidget):
         splitter.addWidget(bottom)
 
         # ── Action History card ──────────────────────────────────────
-        action_card, action_layout = _make_card("Action History")
+        self._action_card, action_layout = _make_card("Action History")
+        action_card = self._action_card
 
         self._action_table = QTableWidget(0, 5)
         self._action_table.setHorizontalHeaderLabels(
@@ -315,6 +318,18 @@ class CrossCommTab(QWidget):
 
         scroll.setWidget(scroll_container)
         outer.addWidget(scroll)
+
+    # ── Dual-depth (Simple / Pro) ────────────────────────────────────
+
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple = the shared Target Pool (read-only) with Refresh/Clear. Hide the power-user
+        surfaces: the live Event Stream, Auto-Routing Rules, and Action History (auto-routing still
+        runs if rules already exist — Simple just hides the editor)."""
+        pro = str(mode).lower() != "simple"
+        for card in (getattr(self, "_stream_card", None), getattr(self, "_rules_card", None),
+                     getattr(self, "_action_card", None)):
+            if card is not None:
+                card.setVisible(pro)
 
     # ── EventBus wiring ──────────────────────────────────────────────
 
