@@ -2049,8 +2049,25 @@ class GenericProfile(FirmwareProfile):
         return CustomLocalProfile().flash_local(*args, **kwargs)
 
 
+def _validate_profile_urls(cfg: Dict) -> None:
+    """SSRF defense-in-depth: every URL a profile JSON DECLARES (resolver api_url + pinned
+    url_sources) must be an allowlisted https host, validated at LOAD so a malicious/third-party
+    profile is rejected early. The runtime fetch chokepoint (_require_allowed_url inside _http_get/
+    download_to) is the second, authoritative layer."""
+    rp = cfg.get("resolver_params") or {}
+    urls: List[str] = []
+    if isinstance(rp.get("api_url"), str):
+        urls.append(rp["api_url"])
+    src = rp.get("url_sources")
+    if isinstance(src, dict):
+        urls.extend(v for v in src.values() if isinstance(v, str))
+    for u in urls:
+        _require_allowed_url(u)   # raises ValueError on non-https / non-allowlisted host
+
+
 def build_generic_profile(cfg: Dict) -> "GenericProfile":
-    """Construct a GenericProfile from a parsed profile JSON dict."""
+    """Construct a GenericProfile from a parsed profile JSON dict (validates its declared URLs)."""
+    _validate_profile_urls(cfg)
     return GenericProfile(cfg)
 
 
@@ -2080,12 +2097,17 @@ _PROFILE_FILES = (
 
 
 def _load_profiles() -> Dict[str, FirmwareProfile]:
+    import logging
     from src.core.resources import resource_path
     pdir = resource_path("src", "config", "profiles")
     out: Dict[str, FirmwareProfile] = {}
     for fname in _PROFILE_FILES:
-        cfg = json.loads((pdir / fname).read_text(encoding="utf-8"))
-        gp = build_generic_profile(cfg)
+        try:
+            cfg = json.loads((pdir / fname).read_text(encoding="utf-8"))
+            gp = build_generic_profile(cfg)   # validates declared URLs (SSRF) + JSON shape
+        except Exception as exc:  # noqa: BLE001 — a bad/malicious profile must not brick the app
+            logging.getLogger(__name__).warning("skipping invalid profile %s: %s", fname, exc)
+            continue
         out[gp.id] = gp
     return out
 
