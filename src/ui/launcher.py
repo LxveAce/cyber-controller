@@ -151,6 +151,15 @@ def select_ui() -> str:
         app = QApplication(sys.argv)
         own_app = True
 
+    # Close the PyInstaller splash (if present) BEFORE showing this dialog — the splash is always-on-top
+    # and would otherwise cover the launcher, making it look like the app never asks which interface to
+    # use. No-op in source / non-splash builds.
+    try:
+        import pyi_splash  # type: ignore[import-not-found]
+        pyi_splash.close()
+    except Exception:
+        pass
+
     dialog = LauncherDialog()
     dialog.exec_()
     result = dialog.selected_ui or "qt"
