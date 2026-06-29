@@ -1724,6 +1724,276 @@ class MinigotchiV3Profile(FirmwareProfile):
 
 
 # --------------------------------------------------------------------------- #
+# Generic JSON-driven profile  (Stage 1 hybrid model)
+# --------------------------------------------------------------------------- #
+# Reproduces the hardcoded FirmwareProfile subclasses above from a JSON config +
+# a small named-resolver registry (modeled on os_catalog._RESOLVERS), so adding a
+# firmware/board becomes "drop a JSON". The golden-locked base flash_assets() is
+# REUSED UNCHANGED. See command-center/projects/flasher-stage1-DESIGN.md. The old
+# subclasses remain the equivalence ORACLE (tests/test_generic_equiv.py) until the
+# registry swap — GenericProfile is additive and not yet wired into PROFILES.
+
+def _regex_flags(names: Optional[List[str]]) -> int:
+    flags = 0
+    for n in (names or []):
+        flags |= int(getattr(re, n, 0))
+    return flags
+
+
+def _chip_from_spec(spec: Dict, name: str, match: Optional["re.Match"]) -> str:
+    """Map an asset to a chip family from a chip_map spec (fixed | ordered fragments)."""
+    if spec.get("strategy", "fixed") == "fixed":
+        return spec["chip"]
+    source = spec.get("source", "name")
+    if source.startswith("regex_group:") and match is not None:
+        hay = match.group(int(source.split(":", 1)[1])) or ""
+    else:
+        hay = name
+    low = hay.lower()
+    for frag, fam in spec.get("rules", []):
+        if frag in low:
+            return fam
+    return spec.get("default", "esp32")
+
+
+def _emit_label(emit: Dict, name: str, match: Optional["re.Match"]) -> str:
+    tmpl = emit.get("label_template")
+    if not tmpl:
+        return name
+    env = ""
+    grp = emit.get("label_group")
+    if grp is not None and match is not None:
+        env = match.group(grp) or ""
+    label = tmpl.format(name=name, env=env)
+    lg = emit.get("launcher_from_group")
+    if lg is not None and match is not None and match.group(lg):
+        label += emit.get("launcher_label_suffix", "")
+    return label
+
+
+def _resolve_github(cfg: Dict) -> Tuple[str, List[Dict]]:
+    """github_release resolver — fetch the latest release and emit per-chip assets."""
+    p = cfg["resolver_params"]
+    am = p.get("asset_match", {})
+    try:
+        tag, raw = _github_latest(p["api_url"])
+    except Exception:
+        if p.get("on_error") == "source_only_empty":
+            return ("source-only", [])
+        raise
+    if am.get("expand") == "chip_zip_boards":
+        return tag, _expand_chip_zip_boards(p, raw)
+    inc_re = re.compile(am["include_regex"], _regex_flags(am.get("regex_flags"))) if am.get("include_regex") else None
+    suffixes = am.get("include_suffixes", [".bin"])
+    excludes = am.get("exclude_substrings", [])
+    chip_map = p.get("chip_map", {"strategy": "fixed", "chip": "esp32"})
+    emit = p.get("emit", {})
+    assets: List[Dict] = []
+    for a in raw:
+        name = a.get("name", "")
+        match = None
+        if inc_re is not None:
+            match = inc_re.match(name)
+            if not match:
+                continue
+        elif not any(name.endswith(s) for s in suffixes):
+            continue
+        if any(x in name for x in excludes):
+            continue
+        asset: Dict = {
+            "name": name,
+            "url": a.get("browser_download_url"),
+            "chip": _chip_from_spec(chip_map, name, match),
+            "label": _emit_label(emit, name, match),
+        }
+        if emit.get("offset") is not None:
+            asset["offset"] = emit["offset"]
+        asset["merged"] = bool(emit.get("merged"))
+        if emit.get("zip_member") and name.endswith(".zip"):   # per-asset only (must-fix #5)
+            asset["zip_member"] = emit["zip_member"]
+        if emit.get("launcher_from_group") is not None:
+            asset["launcher"] = bool(match.group(emit["launcher_from_group"])) if match else False
+        if emit.get("flash_method"):
+            asset["flash_method"] = emit["flash_method"]
+        assets.append(asset)
+    return tag, assets
+
+
+def _expand_chip_zip_boards(p: Dict, raw: List[Dict]) -> List[Dict]:
+    """Meshtastic-style: match chip-zip assets, cross-join with a curated board list."""
+    czb = p["chip_zip_boards"]
+    zip_re = re.compile(czb["zip_regex"])
+    boards_by_chip = czb["boards_by_chip"]
+    out: List[Dict] = []
+    for a in raw:
+        name = a.get("name", "")
+        m = zip_re.match(name)
+        if not m:
+            continue
+        chip = m.group(czb["chip_group"])
+        version = m.group(czb["version_group"])
+        for board in boards_by_chip.get(chip, []):
+            out.append({
+                "name": czb["asset_name_template"].format(board=board, chip=chip, version=version),
+                "url": a.get("browser_download_url"),
+                "chip": chip,
+                "label": czb.get("label_template", "{board}").format(board=board, chip=chip, version=version),
+                "offset": "0x0",
+                "merged": True,
+                "zip_name": czb["zip_name_template"].format(chip=chip, version=version),
+                "zip_member": czb["member_template"].format(board=board, chip=chip, version=version),
+            })
+    return out
+
+
+def _pinned_url(cfg: Dict, source: str, name: str) -> str:
+    base = cfg["resolver_params"]["url_sources"][source]
+    return f"{base.rstrip('/')}/{name}"
+
+
+def _resolve_pinned(cfg: Dict) -> Tuple[str, List[Dict]]:
+    """pinned_release resolver — no network discovery; assets come from config."""
+    p = cfg["resolver_params"]
+    tag = p.get("tag", "pinned")
+    assets: List[Dict] = []
+    for a in p.get("assets", []):
+        asset: Dict = {
+            "name": a["name"],
+            "url": _pinned_url(cfg, a["source"], a["name"]),
+            "chip": a["chip"],
+            "label": a.get("label", a["name"]),
+        }
+        if a.get("offset") is not None:
+            asset["offset"] = a["offset"]
+        asset["merged"] = bool(a.get("merged"))
+        if a.get("bundle"):
+            asset["bundle"] = True
+        if a.get("sha256"):
+            asset["sha256"] = a["sha256"]
+        assets.append(asset)
+    return tag, assets
+
+
+def _resolve_local(cfg: Dict) -> Tuple[str, List[Dict]]:
+    """local resolver — user supplies files via the bespoke flash_local surface."""
+    return ("local", [])
+
+
+def _fetch_tree(sf: Dict, rel_path: str, cache: str, dest_name: str, on_line: Line) -> str:
+    """Fetch a support file from a repo raw tree, trying configured branches in order."""
+    last_exc: Optional[Exception] = None
+    for branch in sf.get("branches", ["main", "master"]):
+        url = sf["raw_base"].format(branch=branch).rstrip("/") + "/" + rel_path.lstrip("/")
+        try:
+            return download_to(url, cache, dest_name, on_line)
+        except Exception as exc:  # noqa: BLE001 — try the next branch
+            last_exc = exc
+            continue
+    raise last_exc if last_exc else RuntimeError("no branches configured for support files")
+
+
+_RESOLVERS = {
+    "github_release": _resolve_github,
+    "pinned_release": _resolve_pinned,
+    "local": _resolve_local,
+}
+
+
+class GenericProfile(FirmwareProfile):
+    """A FirmwareProfile built entirely from a JSON config (Stage 1 hybrid model).
+
+    Reproduces latest_release / variants_for_chip / default_variant / support_files /
+    app_offset from JSON + a named resolver. The base flash_assets() (golden-locked)
+    is reused unchanged.
+    """
+
+    def __init__(self, cfg: Dict) -> None:
+        self.cfg = cfg
+        self.id = cfg["id"]
+        self.label = cfg.get("label") or cfg.get("name") or cfg["id"]
+        self.repo = cfg.get("repo")
+        self.supports_suicide = bool(cfg.get("supports_suicide"))
+        self.image_model = cfg.get("image_model", IMAGE_MULTI)
+        self.danger = cfg.get("danger", "")
+        self.backend = cfg.get("backend", "esptool")
+
+    def latest_release(self) -> Tuple[str, List[Dict]]:
+        return _RESOLVERS[self.cfg["resolver"]](self.cfg)
+
+    def variants_for_chip(self, assets: List[Dict], chip: str) -> List[Dict]:
+        mode = self.cfg.get("variants_for_chip", "by_chip")
+        if mode == "all":
+            return list(assets)
+        same = [a for a in assets if a.get("chip") == chip]
+        if same or mode == "by_chip":
+            return same
+        return list(assets)  # by_chip_else_all
+
+    def default_variant(self, assets: List[Dict], chip: str) -> Optional[Dict]:
+        cands = self.variants_for_chip(assets, chip)
+        dv = self.cfg.get("default_variant", {"strategy": "first"})
+        strat = dv.get("strategy", "first")
+        if strat == "prefer_non_launcher":
+            for a in cands:
+                if not a.get("launcher"):
+                    return a
+        elif strat == "prefer_fragment":
+            toks: List[str] = []
+            by_chip = dv.get("by_chip", {})
+            if by_chip.get(chip):
+                toks.append(by_chip[chip])
+            toks += dv.get("prefer", [])
+            for t in toks:
+                for a in cands:
+                    if t.lower() in a.get("name", "").lower():
+                        return a
+        return cands[0] if cands else None
+
+    def app_offset(self, chip: str) -> str:
+        by_chip = self.cfg.get("app_offset_by_chip") or {}
+        if by_chip.get(chip):
+            return by_chip[chip]
+        return self.cfg.get("app_offset") or ("0x0" if self.image_model == IMAGE_MERGED else "0x10000")
+
+    def support_files(self, chip: str, cache: str, on_line: Line) -> Optional[Dict[str, str]]:
+        sf = self.cfg.get("support_files")
+        if not sf:
+            return None
+        if sf["source"] == "repo_tree":
+            dirmap = sf.get("support_dir_by_chip")
+            if dirmap is not None:
+                d = dirmap.get(chip)
+                if not d:
+                    raise RuntimeError(
+                        f"No auto support-file mapping for {chip}; use local files for a full flash.")
+            else:
+                d = ""
+            out: Dict[str, str] = {}
+            out[_bootloader_offset(chip)] = _fetch_tree(
+                sf, sf["bootloader_path"].format(dir=d), cache, f"{self.id}_{chip}_bootloader.bin", on_line)
+            out[sf["partitions_offset"]] = _fetch_tree(
+                sf, sf["partitions_path"].format(dir=d), cache, f"{self.id}_{chip}_partitions.bin", on_line)
+            if sf.get("include_boot_app0") and sf.get("boot_app0_path"):
+                out[sf["boot_app0_offset"]] = _fetch_tree(
+                    sf, sf["boot_app0_path"].format(dir=d), cache, f"{self.id}_boot_app0.bin", on_line)
+            return out
+        if sf["source"] == "pinned":
+            out = {}
+            for nm, meta in sf["pinned_files"].items():
+                path = download_to(_pinned_url(self.cfg, meta["source"], nm), cache, nm, on_line)
+                if sf.get("verify_sha256"):
+                    verify_sha256(path, meta["sha256"], on_line)
+                out[meta["offset"]] = path
+            return out
+        return None
+
+
+def build_generic_profile(cfg: Dict) -> "GenericProfile":
+    """Construct a GenericProfile from a parsed profile JSON dict."""
+    return GenericProfile(cfg)
+
+
+# --------------------------------------------------------------------------- #
 # Profile registry
 # --------------------------------------------------------------------------- #
 
