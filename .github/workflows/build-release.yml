@@ -3,6 +3,14 @@ name: Build & Release
 on:
   release:
     types: [published]
+  # Manual re-run for the best-effort Linux-ARM binary against an existing release (the other
+  # platforms only build on a real release event — see the `if:` guards below).
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to attach the ARM binary to (e.g. v1.3.0)"
+        required: true
+        default: "v1.3.0"
 
 permissions:
   contents: write
@@ -17,6 +25,7 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
+    if: github.event_name == 'release'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,6 +51,7 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
+    if: github.event_name == 'release'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -71,8 +81,11 @@ jobs:
 
   build-linux-arm:
     runs-on: ubuntu-latest
-    # ARM/QEMU build is best-effort (slow, PyQt5 ARM wheel dependent) — never fail the release on it.
+    # ARM/QEMU build is best-effort (slow) — never fail the release on it. Runs on a real release AND
+    # via workflow_dispatch (to attach the ARM binary to an existing release after a fix).
     continue-on-error: true
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -81,25 +94,38 @@ jobs:
         with:
           platforms: arm64
       - name: Build with QEMU
+        # Use Debian trixie (Python 3.13, satisfies requires-python>=3.12) and its PREBUILT arm64
+        # PyQt5 + cryptography from apt — so PyQt5 is never source-built (the old failure: no aarch64
+        # wheel -> sip/qmake build with no qmake). pip only installs pyinstaller + the app itself
+        # (--no-deps), so no heavy native build runs under emulation.
         run: |
           docker run --rm --platform linux/arm64 \
             -v ${{ github.workspace }}:/workspace \
             -w /workspace \
-            python:3.12-slim bash -c "
-              apt-get update && apt-get install -y binutils libegl1 libxkbcommon0 && \
-              pip install pyinstaller && \
-              pip install . && \
-              python build.py && \
-              mv dist/CyberController dist/cyber-controller-${{ github.event.release.tag_name }}-linux-arm64 && \
-              chmod +x dist/cyber-controller-${{ github.event.release.tag_name }}-linux-arm64
+            debian:trixie-slim bash -c "
+              set -e
+              export DEBIAN_FRONTEND=noninteractive
+              apt-get update
+              apt-get install -y --no-install-recommends \
+                python3 python3-pip python3-dev binutils \
+                python3-pyqt5 python3-pyqt5.qtsvg \
+                python3-serial python3-requests python3-psutil python3-cryptography \
+                libegl1 libxkbcommon0
+              pip3 install --break-system-packages pyinstaller
+              pip3 install --break-system-packages --no-deps .
+              python3 build.py
+              mv dist/CyberController dist/cyber-controller-${TAG}-linux-arm64
+              chmod +x dist/cyber-controller-${TAG}-linux-arm64
             "
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/cyber-controller-${{ github.event.release.tag_name }}-linux-arm64
+          tag_name: ${{ env.TAG }}
+          files: dist/cyber-controller-${{ env.TAG }}-linux-arm64
 
   build-macos:
     runs-on: macos-latest
+    if: github.event_name == 'release'
     steps:
       - uses: actions/checkout@v4
         with:
