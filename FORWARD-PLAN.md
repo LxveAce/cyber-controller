@@ -46,7 +46,7 @@ Master is 8 commits ahead of the v1.1.0 tag; the fix release should also pick th
 | Profiles `--add-data` destination mismatch (CI vs build.py vs runtime resolver) | `build-release.yml` 27 vs `build.py` 61 vs `firmware_vault.py:24` | P2 | Second silent-crash / empty-profile-list vector in the frozen exe. |
 | `--deadman-setup` hard-fails in releases: CI checkout doesn't fetch the submodule | `src/core/suicide_setup.py` 70-80; `build-release.yml` checkout | P2 | `_load_provision()` raises when `deadmans-switch/provision.py` is absent. Add `submodules: recursive`. |
 | Windows asset is a single UNSIGNED `--onefile` exe (no installer, no signing) | GitHub release assets | P2 | SmartScreen/Defender friction even after the QSS fix. Consider signing + Inno/NSIS or `--onedir`. |
-| Cross-surface count drift: profiles 21/21/19/19+, parsers 9/8, audit findings 10/15 | `README.md`, `CHANGELOG.md`, `src/config/profiles/`, `src/protocols/`, `cybercontroller.org/index.html` | P2 | Disk truth: 21 profile JSONs, 9 parser modules. User must pick canonical numbers. |
+| ~~Cross-surface count drift: profiles 21/21/19/19+, parsers 9/8, audit findings 10/15~~ | `README.md`, `CHANGELOG.md`, `src/config/profiles/`, `src/protocols/`, `cybercontroller.org/index.html` | P2 | **RESOLVED 2026-06-29.** Canonical = **21 profiles / 9 parsers / 10 findings** (disk + README + CHANGELOG agree; `base.py` is the parser base class, not a parser). Site reconciled. |
 | Anti-forensic branding split: code uses `deadmans-switch`, README/UI say "Suicide Marauder" | `.gitmodules`; `suicide_setup.py`; `README.md` 32,253-278 | P2 | Bundles the successor, branded after the predecessor. Unify before adding the new amnesiac features. |
 | Inconsistent Windows asset filename casing across releases | v1.0.0 `Cyber-Controller-...` vs v1.1.0 `cyber-controller-...` | P3 | Site is unaffected (case-insensitive match); hardcoded external links would break. |
 | Version drift: repo/release v1.1.0 vs site v1.0.1/v1.3.0/v1.5.5/v1.6.0 | `cybercontroller.org/index.html` | P3 | Several are demo DEVICE firmware versions, not the app version -- disambiguate, don't assume. |
@@ -95,7 +95,7 @@ Fresh tagged release after P0, picking up the 8 commits master is ahead of v1.1.
 
 ## Open questions
 - **UNVERIFIED (all 3 recons):** nobody could run the .exe; exact Windows failure (silent QSS crash vs SmartScreen vs profiles-not-found) is strong inference, not confirmed. Reproduce on real Windows — #1 gate before declaring P0 fixed.
-- Canonical numbers? Disk = 21 profiles + 9 parsers; CHANGELOG = 19 + 10 findings; site = 19+/8/15.
+- ~~Canonical numbers?~~ **RESOLVED 2026-06-29: 21 profiles / 9 parsers / 10 findings** (disk + README + CHANGELOG agree; site reconciled).
 - Tails delivery model: write official ISO to USB (raw) vs build custom persistence/dead-man config on top? Scope to confirm.
 - Physical key: bind to USB hardware id (resists copy) vs portable keyfile? Does the AND/OR policy cover the web remote or desktop only?
 - Is the empty `deadmans-switch` dir a packaging gap or just uninitialized locally?
