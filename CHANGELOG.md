@@ -3,6 +3,28 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.1] — 2026-06-29
+
+Installer-UX + reliability fixes.
+
+### Fixed
+- **"Installation error" on the Windows .exe was a slow, feedback-less startup.** The `--onefile
+  --windowed` build self-extracts ~80 MB to a temp dir on launch (~15 s on a cold first run) with **no
+  visual feedback**, so users saw nothing for 15+ seconds and assumed it failed. Added a **PyInstaller
+  splash screen** (the cc logo) that appears within ~1–2 s of launch and is closed by `launch_qt()` once
+  the main window is ready (`pyi_splash.close()`). Verified end-to-end: splash visible at t≈2 s →
+  clean hand-off to the GUI. (Full diagnosis: command-center `cc-installer-investigation.md`.)
+- **MinigotchiV3 profile crashed the Flash UI.** Its resolver pointed at `dj1ch/minigotchi-V3`, which
+  upstream renamed to `dj1ch/minigotchi-ESP32` (the old path now 404s) and — unlike the other
+  source-only profiles — had no `on_error` fallback, so resolving it raised an uncaught HTTP 404.
+  Corrected the repo + added the graceful `source_only_empty` fallback. `halehound` given the same
+  defensive fallback (builds from source; no `.bin` release assets).
+
+### Notes
+- Recommended follow-ups for the installer (documented, not all doable in CI here): a `--onedir` build +
+  real installer (Inno Setup) for near-instant startup, bundle slimming, and code-signing (unsigned exes
+  can trip SmartScreen/AV — the most likely cause of a genuine failure on an end user's machine).
+
 ## [1.3.0] — 2026-06-29
 
 Security-hardening + UX release.
