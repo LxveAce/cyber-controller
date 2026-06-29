@@ -219,6 +219,58 @@ def esptool_available() -> bool:
         return False
 
 
+# Supported esptool range. esptool 6 removed the underscore command/option aliases
+# (write_flash, --flash_size, chip_id, flash_id) that the shared flash argv relies on; <4.7 predates
+# chips we target (e.g. C5). The pyproject pin enforces this for managed installs, but a user's global
+# env can still carry an out-of-range esptool — so we detect it and warn clearly instead of letting
+# esptool fail with a cryptic argparse error mid-flash.
+_SUPPORTED_ESPTOOL = "esptool>=4.7,<6"
+
+
+def esptool_version() -> Optional[str]:
+    """Installed esptool version string (e.g. '5.3.0'), or None if it can't be determined."""
+    try:
+        import importlib.metadata as _md
+        return _md.version("esptool")
+    except Exception:
+        return None
+
+
+def esptool_unsupported_reason() -> Optional[str]:
+    """A human-readable reason if the installed esptool is outside the supported range, else None.
+
+    Returns None when the version is unknown/unparseable — we don't block on something we can't read.
+    """
+    v = esptool_version()
+    if not v:
+        return None
+    try:
+        major = int(v.split(".")[0].split("+")[0])
+    except Exception:
+        return None
+    if major >= 6:
+        return (f"esptool {v} is unsupported — v6 removed the write_flash/--flash_size/chip_id aliases "
+                f"this tool uses. Install a supported version:  pip install '{_SUPPORTED_ESPTOOL}'")
+    if major < 4:
+        return (f"esptool {v} is too old for the chips this tool targets. Upgrade:  "
+                f"pip install '{_SUPPORTED_ESPTOOL}'")
+    return None
+
+
+_ESPTOOL_VERSION_WARNED = False
+
+
+def _warn_esptool_version_once(on_line: Line) -> None:
+    """Emit the esptool-out-of-range warning at most once per process, on the flash log."""
+    global _ESPTOOL_VERSION_WARNED
+    if _ESPTOOL_VERSION_WARNED:
+        return
+    _ESPTOOL_VERSION_WARNED = True
+    reason = esptool_unsupported_reason()
+    if reason:
+        on_line(f"[warn] {reason}")
+
+
 def _run_stream(argv: List[str], on_line: Line) -> int:
     """Run a command, stream combined stdout/stderr line-by-line, return exit code.
 
@@ -226,6 +278,10 @@ def _run_stream(argv: List[str], on_line: Line) -> int:
     child is killed and reaped so it can't keep holding the serial port — otherwise the next
     flash fails with 'port busy'.
     """
+    # If this is an esptool invocation and the installed esptool is out of the supported range, say so
+    # clearly up front (once) so a v6 argparse failure isn't a mystery. No-op for non-esptool argv.
+    if len(argv) >= 3 and argv[1] == "-m" and argv[2] == "esptool":
+        _warn_esptool_version_once(on_line)
     on_line("$ " + " ".join(argv))
     try:
         proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
