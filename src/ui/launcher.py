@@ -53,7 +53,7 @@ class LauncherDialog(QDialog):
         super().__init__()
         self.selected_ui = None
         self.setWindowTitle("Cyber Controller — Select Interface")
-        self.setFixedSize(480, 380)
+        self.setFixedSize(500, 500)
         self.setWindowFlags(
             Qt.Dialog
             | Qt.WindowTitleHint
@@ -93,6 +93,9 @@ class LauncherDialog(QDialog):
             ("tui", "Terminal UI",
              "Textual-based terminal interface. Runs in any terminal emulator. "
              "Ideal for SSH sessions, headless servers, and cyberdeck deployments."),
+            ("web", "Web Remote",
+             "Flask + SocketIO server you drive from a browser or phone. Perfect for a headless "
+             "Raspberry Pi cyberdeck — control it from any device on your network."),
         ]
 
         for i, (key, label, desc) in enumerate(options):
