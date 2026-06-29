@@ -3,6 +3,21 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.3.2] — 2026-06-29
+
+Launcher / interface-selection fixes.
+
+### Fixed
+- **The "Select Interface" launcher was hidden by the splash and missing a mode.** When you launch
+  without `--ui` (i.e. double-click the exe), the app shows a chooser for which interface to run — but
+  (a) the always-on-top startup splash (added in 1.3.1) was covering it, so it looked like the app never
+  asked, and (b) it only listed **3** of the **4** advertised UIs. Now: the splash is closed *before* the
+  launcher appears, and the launcher offers all four — **Full GUI (PyQt5) · Lightweight (Tkinter) ·
+  Terminal UI (Textual) · Web Remote (Flask+SocketIO)** — matching the website. Dialog resized to fit.
+- **Web Remote was unusable from a packaged build** — a `--windowed` exe has no console to print the
+  server URL, so picking "Web Remote" appeared to do nothing. It now **opens your default browser** at
+  the server URL automatically once the server is warming up.
+
 ## [1.3.1] — 2026-06-29
 
 Installer-UX + reliability fixes.
