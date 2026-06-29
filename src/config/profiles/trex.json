@@ -1,0 +1,30 @@
+{
+  "name": "T-REX",
+  "id": "trex",
+  "core_id": "trex",
+  "description": "Pocket pentest terminal for LilyGo T-Deck / T-Deck Plus — WiFi (scan/deauth/evil-AP), BLE scan, network recon, USB BadUSB, via on-device CLI + keyboard. Authorized testing only.",
+  "repo": "abdallahnatsheh/T-REX-FIRMWARE",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "app_offset": "0x0",
+  "support_files": null,
+  "default_baud": 115200,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/abdallahnatsheh/T-REX-FIRMWARE/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {"strategy": "fixed", "chip": "esp32s3"},
+    "emit": {"offset": "0x0", "merged": true}
+  },
+  "boards": [
+    {"name": "LilyGo T-Deck", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "has_keyboard": true, "has_display": true},
+    {"name": "LilyGo T-Deck Plus", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "has_keyboard": true, "has_display": true}
+  ],
+  "firmware_urls": {"repo": "https://github.com/abdallahnatsheh/T-REX-FIRMWARE", "latest": "https://github.com/abdallahnatsheh/T-REX-FIRMWARE/releases/latest"},
+  "note": "Single merged .bin per board flashed at 0x0 (web-flasher class). esp32s3 (T-Deck/T-Deck Plus). Flash offset pending real-hardware verification per the Stage-5 gate."
+}
