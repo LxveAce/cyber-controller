@@ -343,10 +343,15 @@ class CyberControllerWindow(QMainWindow):
         self._main_splitter.setStretchFactor(0, 65)
         self._main_splitter.setStretchFactor(1, 35)
 
-        # Restore saved splitter position if available
+        # Restore saved splitter position if available; otherwise set EXPLICIT launch sizes.
+        # setStretchFactor only governs how a RESIZE redistributes space — it does NOT set the initial
+        # split, so without setSizes the window launches at the children's sizeHints (misproportioned).
         saved_splitter = self._qsettings.value("main_splitter_state")
         if saved_splitter:
             self._main_splitter.restoreState(saved_splitter)
+        else:
+            _h = max(self.height(), 600)
+            self._main_splitter.setSizes([int(_h * 0.65), int(_h * 0.35)])  # ~65% top / 35% terminal
 
         self._build_tabs()
         # Default to Devices tab (index 1) — after initial setup/flash, users spend

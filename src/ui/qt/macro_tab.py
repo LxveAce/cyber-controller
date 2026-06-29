@@ -245,9 +245,10 @@ class MacroTab(QWidget):
         right_scroll.setWidget(right)
         splitter.addWidget(right_scroll)
 
-        # Splitter proportions
+        # Splitter proportions — setSizes sets the LAUNCH split (1:3); setStretchFactor only governs resize.
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 3)
+        splitter.setSizes([240, 720])
         root.addWidget(splitter)
 
         # Initial port refresh
