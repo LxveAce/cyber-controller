@@ -1,0 +1,22 @@
+{
+  "name": "Custom / local .bin",
+  "id": "custom",
+  "description": "Flash ANY local .bin(s) you provide, with chip-appropriate default offsets. A lone merged image flashes at 0x0; pass an explicit support map (offset->path) for a full multi-file flash.",
+  "backend": "esptool",
+  "protocol": "custom",
+  "boards": [],
+  "default_baud": 921600,
+  "firmware_urls": {},
+  "note": "No GitHub repo — the user points at local files via the bespoke flash_local()/local_asset() surface. latest_release() returns (\"local\", []); the engine has a dedicated custom branch.",
+  "repo": null,
+  "core_id": "custom",
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "local",
+  "resolver_params": {},
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"}
+}

@@ -124,5 +124,82 @@
     "repo": "https://github.com/justcallmekoko/ESP32Marauder",
     "latest": "https://github.com/justcallmekoko/ESP32Marauder/releases/latest"
   },
-  "note": "justcallmekoko/ESP32Marauder. Release ships app .bin only; bootloader/partitions/boot_app0 pulled from the repo FlashFiles/ tree per chip family."
+  "note": "justcallmekoko/ESP32Marauder. Release ships app .bin only; bootloader/partitions/boot_app0 pulled from the repo FlashFiles/ tree per chip family.",
+  "repo": "justcallmekoko/ESP32Marauder",
+  "core_id": "marauder",
+  "supports_suicide": true,
+  "image_model": "multi-file-offsets",
+  "resolver": "github_release",
+  "app_offset": "0x10000",
+  "variants_for_chip": "by_chip",
+  "default_variant": {
+    "strategy": "prefer_fragment",
+    "by_chip": {
+      "esp32": "old_hardware",
+      "esp32s3": "multiboardS3",
+      "esp32s2": "flipper",
+      "esp32c5": "esp32c5devkitc1"
+    }
+  },
+  "support_files": {
+    "source": "repo_tree",
+    "raw_base": "https://raw.githubusercontent.com/justcallmekoko/ESP32Marauder/{branch}/FlashFiles",
+    "branches": ["master", "main"],
+    "support_dir_by_chip": {
+      "esp32": "MarauderV4",
+      "esp32s2": "FlipperZeroDevBoard",
+      "esp32s3": "FlipperZeroMultiBoardS3"
+    },
+    "bootloader_path": "{dir}/esp32_marauder.ino.bootloader.bin",
+    "partitions_path": "{dir}/esp32_marauder.ino.partitions.bin",
+    "boot_app0_path": "FlipperZeroMultiBoardS3/boot_app0.bin",
+    "include_boot_app0": true,
+    "bootloader_offset_rule": "standard",
+    "partitions_offset": "0x8000",
+    "boot_app0_offset": "0xe000"
+  },
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/justcallmekoko/ESP32Marauder/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {
+      "strategy": "fragments",
+      "source": "name",
+      "default": "esp32",
+      "rules": [
+        ["multiboards3", "esp32s3"],
+        ["m5cardputer", "esp32s3"],
+        ["_flipper", "esp32s2"],
+        ["rev_feather", "esp32s2"],
+        ["mini_v3", "esp32c5"],
+        ["esp32c5devkitc1", "esp32c5"]
+      ]
+    },
+    "emit": {
+      "label_strategy": "longest_substring",
+      "label_map": {
+        "old_hardware": "Generic ESP32 / original v4 hardware (ILI9341)",
+        "lddb": "Generic ESP32 dev board, no display (LDDB/NodeMCU/Wemos)",
+        "v6": "Official Marauder v6",
+        "v6_1": "Official Marauder v6.1",
+        "v7": "Official Marauder v7",
+        "v8": "Official Marauder v8",
+        "kit": "Marauder Kit (Huzzah32)",
+        "mini": "Marauder Mini",
+        "mini_v3": "Marauder Mini v3 (ESP32-C5)",
+        "marauder_dev_board_pro": "Dev Board Pro / BFFB (serial)",
+        "multiboardS3": "Flipper MultiBoard / ESP32-S3",
+        "flipper": "Flipper Zero WiFi Dev Board (ESP32-S2)",
+        "rev_feather": "Rev Feather (ESP32-S2)",
+        "m5cardputer": "M5Cardputer (ESP32-S3)",
+        "m5cardputer_adv": "M5Cardputer Adv (ESP32-S3)",
+        "m5stickc_plus": "M5StickC Plus",
+        "m5stickc_plus2": "M5StickC Plus 2",
+        "cyd_2432S028": "CYD 2.8\"",
+        "cyd_2432S028_2usb": "CYD 2.8\" (2-USB)",
+        "cyd_2432S024_guition": "CYD 2.4\" Guition",
+        "cyd_3_5_inch": "CYD 3.5\"",
+        "esp32c5devkitc1": "ESP32-C5 DevKitC-1"
+      }
+    }
+  }
 }

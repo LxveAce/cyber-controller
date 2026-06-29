@@ -17,5 +17,42 @@
   "default_baud": 115200,
   "firmware_urls": {
     "latest": "https://github.com/meshtastic/firmware/releases/latest"
+  },
+  "repo": "meshtastic/firmware",
+  "core_id": "meshtastic",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["heltec-v3"]},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/meshtastic/firmware/releases/latest",
+    "asset_match": {"expand": "chip_zip_boards"},
+    "chip_zip_boards": {
+      "zip_regex": "^firmware-(esp32|esp32s2|esp32s3|esp32c3|esp32c6)-(.+)\\.zip$",
+      "chip_group": 1,
+      "version_group": 2,
+      "boards_by_chip": {
+        "esp32s3": [
+          "heltec-v3", "heltec-wireless-tracker", "heltec-wsl-v3", "tbeam-s3-core",
+          "t-deck", "t-watch-s3", "t-eth-elite", "seeed-xiao-s3", "station-g2",
+          "tlora-t3s3-v1", "m5stack-cores3", "picomputer-s3", "unphone"
+        ],
+        "esp32": [
+          "tbeam", "tbeam0_7", "tlora-v2-1-1_6", "tlora-v2-1-1_8", "heltec-v2_1",
+          "heltec-v2_0", "heltec-v1", "rak11200", "station-g1", "nano-g1",
+          "m5stack-coreink", "t-lora-v1"
+        ],
+        "esp32c3": ["esp32-c3-devkitm-1", "heltec-ht-ct62"],
+        "esp32c6": ["heltec-mesh-node-t114"],
+        "esp32s2": []
+      },
+      "member_template": "firmware-{board}-{version}.bin",
+      "zip_name_template": "firmware-{chip}-{version}.zip",
+      "asset_name_template": "meshtastic-{board}-{version}",
+      "label_template": "Meshtastic {board}"
+    }
   }
 }
