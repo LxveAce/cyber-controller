@@ -23,14 +23,13 @@
   ],
   "default_baud": 115200,
   "firmware_urls": {
-    "repo": "https://github.com/dj1ch/minigotchi-V3",
-    "latest": "https://github.com/dj1ch/minigotchi-V3/releases/latest",
-    "alt_esp32": "https://github.com/dj1ch/minigotchi-ESP32/releases/latest"
+    "repo": "https://github.com/dj1ch/minigotchi-ESP32",
+    "latest": "https://github.com/dj1ch/minigotchi-ESP32/releases/latest"
   },
-  "note": "ESP32 (dual-core) build, NOT the ESP8266 dj1ch/minigotchi. latest = dj1ch/minigotchi-V3 to match flash_core _MINIGOTCHI_API; dj1ch/minigotchi-ESP32 kept as alt_esp32 per researched correction.",
+  "note": "ESP32 (dual-core) build, NOT the ESP8266 dj1ch/minigotchi. The old dj1ch/minigotchi-V3 repo was renamed to dj1ch/minigotchi-ESP32 (the V3 path now 404s) — corrected here. Upstream releases ship a source .zip (build via Arduino/PlatformIO), so there is usually no prebuilt .bin asset; on_error=source_only_empty makes the flasher degrade gracefully (no crash) until a flashable release exists or you supply a local .bin.",
   "core_id": "minigotchi-v3",
   "label": "MinigotchiV3 (dj1ch)",
-  "repo": "dj1ch/minigotchi-V3",
+  "repo": "dj1ch/minigotchi-ESP32",
   "supports_suicide": false,
   "image_model": "merged-single-bin",
   "resolver": "github_release",
@@ -39,7 +38,8 @@
   "variants_for_chip": "by_chip_else_all",
   "default_variant": {"strategy": "first"},
   "resolver_params": {
-    "api_url": "https://api.github.com/repos/dj1ch/minigotchi-V3/releases/latest",
+    "api_url": "https://api.github.com/repos/dj1ch/minigotchi-ESP32/releases/latest",
+    "on_error": "source_only_empty",
     "asset_match": {"include_suffixes": [".bin"]},
     "chip_map": {
       "strategy": "fragments", "source": "name", "default": "esp32",
