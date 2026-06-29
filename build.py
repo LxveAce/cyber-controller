@@ -54,6 +54,14 @@ def _build() -> int:
     if _ICON.exists():
         cmd.extend(["--icon", str(_ICON)])
 
+    # Splash screen — CRITICAL UX for the onefile build: a --onefile --windowed exe extracts ~80MB to
+    # a temp dir on launch (10-20s on first run / slow disks) with NO visible feedback, so users think
+    # the app failed to start ("installation error"). The splash shows instantly during extraction and
+    # is closed by the app once the main window is ready (see launch_qt -> pyi_splash.close()).
+    # PyInstaller splash is supported on Windows + Linux only (not macOS).
+    if platform.system() in ("Windows", "Linux") and _LOGO.exists():
+        cmd.extend(["--splash", str(_LOGO)])
+
     # Add data files
     sep = ";" if platform.system() == "Windows" else ":"
     profiles_dir = _ROOT / "src" / "config" / "profiles"

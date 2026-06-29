@@ -68,7 +68,7 @@ except Exception:  # noqa: BLE001
 
 log = logging.getLogger(__name__)
 
-_VERSION = "1.3.0"
+_VERSION = "1.3.1"
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
 
@@ -1369,6 +1369,15 @@ def launch_qt(
         firmware_vault, health_monitor, macro_recorder,
     )
     win.show()
+
+    # Close the PyInstaller splash now that the real window is up (present only in a --splash onefile
+    # build; a no-op otherwise). Without this the splash lingers; with it the user gets instant feedback
+    # during the ~15s onefile extraction and a clean hand-off to the GUI.
+    try:
+        import pyi_splash  # type: ignore[import-not-found]
+        pyi_splash.close()
+    except Exception:
+        pass
 
     # One-time legal / authorized-use disclaimer. Shown exactly once (independent
     # of the per-command "suppress all warnings" toggle, so it is always seen at
