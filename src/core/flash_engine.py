@@ -479,3 +479,25 @@ class FlashEngine:
         with self._lock:
             self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
         return ok
+
+    def erase(
+        self,
+        port: str,
+        progress_callback: ProgressCallback | None = None,
+        *,
+        chip: str = "auto",
+    ) -> bool:
+        """Erase the entire flash via the proven esptool plumbing, auto-detecting the chip when
+        ``chip='auto'``. Destructive — callers should confirm with the user first."""
+        with self._lock:
+            self._status = FlashStatus.FLASHING
+        on_line = _percent_adapter(progress_callback)
+        if not chip or chip == "auto":
+            chip = flash_core.detect_chip(port, on_line) or "esp32"
+        rc = flash_core.erase(port, chip, on_line)
+        ok = rc == 0
+        if progress_callback:
+            progress_callback(100 if ok else 0, "Erase complete" if ok else "Erase failed")
+        with self._lock:
+            self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
+        return ok

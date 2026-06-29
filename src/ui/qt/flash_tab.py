@@ -449,7 +449,23 @@ class FlashTab(QWidget):
         if not port:
             self._log("No port selected.")
             return
+        from PyQt5.QtWidgets import QMessageBox
+        resp = QMessageBox.warning(
+            self, "Erase Flash",
+            f"This will ERASE ALL flash on the device at {port}.\n\n"
+            "This is destructive and cannot be undone. Continue?",
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+        )
+        if resp != QMessageBox.Yes:
+            self._log("Erase cancelled.")
+            return
         self._log(f"Erasing flash on {port}...")
+        self._btn_erase.setEnabled(False)
+        try:
+            ok = self._fe.erase(port, progress_callback=self._on_progress_sync)
+            self._log("Erase complete." if ok else "Erase failed.")
+        finally:
+            self._btn_erase.setEnabled(True)
 
     def _add_to_queue(self) -> None:
         port = self._port_combo.currentData()
