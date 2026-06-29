@@ -134,6 +134,17 @@ class FlashEngine:
         self._status = FlashStatus.IDLE
         self._lock = threading.Lock()
         self._current_thread: threading.Thread | None = None
+        # Backend registry: profile.backend -> flash handler. Adding a new flash tool / hardware is now
+        # "write a _flash_<x>(port, profile, progress) method + register it here" (Stage 2 of the
+        # flasher-consolidation — ease-of-growth for backends, mirroring the data-driven profile model).
+        self._backends: dict[str, Callable[[str, "FirmwareProfile", ProgressCallback | None], bool]] = {
+            "esptool": self._flash_esptool,
+            "qflipper": self._flash_qflipper,
+            "adb": self._flash_adb,
+            "sd": self._flash_sd,
+            "sd-image": self._flash_sd,
+            "rtl8720": self._flash_rtl8720,
+        }
 
     @property
     def status(self) -> FlashStatus:
@@ -173,20 +184,13 @@ class FlashEngine:
             self._status = FlashStatus.FLASHING
         try:
             backend = (profile.backend or "esptool").lower()
-            if backend == "esptool":
-                ok = self._flash_esptool(port, profile, progress)
-            elif backend == "qflipper":
-                ok = self._flash_qflipper(port, profile, progress)
-            elif backend == "adb":
-                ok = self._flash_adb(port, profile, progress)
-            elif backend in ("sd", "sd-image"):
-                ok = self._flash_sd(port, profile, progress)
-            elif backend == "rtl8720":
-                ok = self._flash_rtl8720(port, profile, progress)
-            else:
+            handler = self._backends.get(backend)
+            if handler is None:
                 if progress:
                     progress(0, f"Unknown backend: {profile.backend}")
                 ok = False
+            else:
+                ok = handler(port, profile, progress)
         except Exception as exc:  # never let a backend exception leak unlabelled
             log.exception("flash failed")
             if progress:
