@@ -260,9 +260,12 @@ class MacroTab(QWidget):
         """Reload the saved macros list."""
         self._macro_list.clear()
         for info in self._recorder.list_saved_macros():
+            lock = "🔒 " if info.get("secured") else ""
             item = QListWidgetItem(
-                f"{info['name']}  ({info['step_count']} steps)"
+                f"{lock}{info['name']}  ({info['step_count']} steps)"
             )
+            if info.get("secured"):
+                item.setToolTip("Stored encrypted in the secure container")
             item.setData(Qt.UserRole, info["path"])
             self._macro_list.addItem(item)
 

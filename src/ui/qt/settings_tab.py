@@ -159,6 +159,24 @@ class SettingsTab(QWidget):
         gate_outer.addWidget(self._gate_setup_btn)
         root.addWidget(gate_card)
 
+        # ── Secure Container (Security) ──────────────────────────────
+        # When ON, app-internal saves (logs/sessions/captures) are encrypted at rest in a gate-keyed
+        # container and are unreadable while the access gate is locked. Off by default.
+        secure_card, secure_outer = _make_card("Secure Container (Security)")
+        secure_desc = QLabel(
+            "Encrypt app-saved data (logs, sessions, captures) at rest in a gate-keyed container "
+            "(~/.cyber-controller/secure). The container is sealed — unreadable — whenever the access "
+            "gate is locked, so logs can't be recovered off-disk without unlocking. The encryption key "
+            "lives only inside the unlocked vault (never in the clear). Explicit exports you choose to "
+            "share (e.g. a WiGLE wardrive CSV) stay plaintext by design."
+        )
+        secure_desc.setObjectName("muted")
+        secure_desc.setWordWrap(True)
+        secure_outer.addWidget(secure_desc)
+        self._secure_container_check = QCheckBox("Store app logs/sessions/captures in the secure container")
+        secure_outer.addWidget(self._secure_container_check)
+        root.addWidget(secure_card)
+
         # ── Firmware Vault ───────────────────────────────────────────
         vault_card, vault_outer = _make_card("Firmware Vault")
         vault_form = QFormLayout()
@@ -194,6 +212,7 @@ class SettingsTab(QWidget):
         self._reset_btn.clicked.connect(self._on_reset)
         self._vault_browse_btn.clicked.connect(self._on_browse_vault)
         self._suppress_warnings_check.toggled.connect(self._on_suppress_toggled)
+        self._secure_container_check.toggled.connect(self._on_secure_container_toggled)
         self._gate_setup_btn.clicked.connect(self._on_gate_setup)
 
     # ── Load / gather ────────────────────────────────────────────────
@@ -224,6 +243,11 @@ class SettingsTab(QWidget):
         self._suppress_warnings_check.setChecked(bool(sec.get("suppress_all_warnings", False)))
         self._suppress_warnings_check.blockSignals(False)
 
+        security = settings.get("security", {})
+        self._secure_container_check.blockSignals(True)
+        self._secure_container_check.setChecked(bool(security.get("secure_container", False)))
+        self._secure_container_check.blockSignals(False)
+
         vault = settings.get("vault", {})
         self._vault_dir_edit.setText(str(vault.get("dir", "")))
 
@@ -250,6 +274,9 @@ class SettingsTab(QWidget):
             "safety": {
                 "confirm_dangerous": self._confirm_dangerous_check.isChecked(),
                 "suppress_all_warnings": self._suppress_warnings_check.isChecked(),
+            },
+            "security": {
+                "secure_container": self._secure_container_check.isChecked(),
             },
             # Preserve the one-time disclaimer ack: _gather rebuilds the whole dict,
             # so without carrying it forward a Save would reset it to False and
@@ -304,6 +331,30 @@ class SettingsTab(QWidget):
             self._suppress_warnings_check.blockSignals(True)
             self._suppress_warnings_check.setChecked(False)
             self._suppress_warnings_check.blockSignals(False)
+
+    def _on_secure_container_toggled(self, checked: bool) -> None:
+        """When ENABLING the secure container, point out that it depends on the access gate.
+
+        The container's encryption key lives only inside the unlocked vault, so without a configured
+        gate the container can never unseal. Warn (but don't block) so the user can set the gate up.
+        """
+        if not checked:
+            return
+        try:
+            from src.security import physical_key as pk
+            configured = pk.is_configured()
+        except Exception:  # noqa: BLE001
+            configured = False
+        if not configured:
+            QMessageBox.information(
+                self,
+                "Secure container needs the access gate",
+                "The secure container is encrypted with a key held inside the access-gate vault, so it "
+                "stays sealed until you set up and unlock the gate.\n\n"
+                "Enable this now if you like, then set up the access gate above so saves can be "
+                "encrypted. Until the gate exists/unlocks, the app falls back to its normal (plaintext) "
+                "save paths.",
+            )
 
     def _on_gate_setup(self) -> None:
         """Open the access-gate setup dialog (set admin password / physical key / policy)."""

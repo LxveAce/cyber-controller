@@ -325,6 +325,17 @@ class MacroRecorder:
         """
         if path is None:
             safe_name = re.sub(r"[^\w\-]", "_", macro.name.lower().strip())
+            # Internal save: when the secure container is enabled + unlocked, encrypt the recorded
+            # session at rest instead of writing plaintext JSON. Explicit-path saves (exports the
+            # user chose to write elsewhere) deliberately stay plaintext.
+            try:
+                from src.security import secure_store
+                if secure_store.available():
+                    p = secure_store.save("macros", safe_name, macro.to_dict())
+                    log.info("Macro saved to secure container: %s -> %s", macro.name, p)
+                    return p
+            except Exception:
+                log.exception("Secure-container macro save failed; falling back to plaintext")
             path = self.macros_dir / f"{safe_name}.json"
         else:
             path = Path(path)
@@ -350,6 +361,17 @@ class MacroRecorder:
             FileNotFoundError: If the file does not exist.
             json.JSONDecodeError: If the file is not valid JSON.
         """
+        # Secure-container entries (a .enc file under the container dir) decrypt via the gate key;
+        # a tamper/auth failure propagates (fail-closed) rather than being silently retried as JSON.
+        from src.security import secure_store
+        if secure_store.is_container_path(path):
+            data = secure_store.load_file(path)
+            if data is None:
+                raise FileNotFoundError(f"Secure container is locked or entry missing: {path}")
+            macro = Macro.from_dict(data)
+            log.info("Macro loaded from secure container: %s (%d steps)", macro.name, len(macro.steps))
+            return macro
+
         path = Path(path)
         data = json.loads(path.read_text(encoding="utf-8"))
         macro = Macro.from_dict(data)
@@ -373,9 +395,30 @@ class MacroRecorder:
                         "step_count": len(data.get("steps", [])),
                         "protocol": data.get("device_protocol", ""),
                         "created_at": data.get("created_at", ""),
+                        "secured": False,
                     })
                 except (json.JSONDecodeError, OSError):
                     continue
+        # Macros saved while the secure container was active (only listable while unlocked).
+        try:
+            from src.security import secure_store
+            for name in secure_store.list_names("macros"):
+                try:
+                    data = secure_store.load("macros", name)
+                except Exception:
+                    continue  # tampered/unreadable entry — skip from the listing
+                if not data:
+                    continue
+                macros.append({
+                    "name": data.get("name", name),
+                    "path": str(secure_store.entry_path("macros", name)),
+                    "step_count": len(data.get("steps", [])),
+                    "protocol": data.get("device_protocol", ""),
+                    "created_at": data.get("created_at", ""),
+                    "secured": True,
+                })
+        except Exception:
+            log.debug("Secure-container macro listing skipped", exc_info=True)
         return macros
 
     def delete_macro(self, path: str | Path) -> bool:
@@ -385,8 +428,19 @@ class MacroRecorder:
             True if the file was deleted, False if it didn't exist.
         """
         path = Path(path)
-        if path.exists():
-            path.unlink()
-            log.info("Macro deleted: %s", path)
-            return True
-        return False
+        if not path.exists():
+            return False
+        # Container entries get a best-effort secure delete (overwrite then unlink) so a deleted
+        # recorded session leaves no recoverable plaintext-adjacent trace.
+        try:
+            from src.security import secure_store
+            if secure_store.is_container_path(path):
+                from src.security.physical_key import _secure_delete
+                _secure_delete(path)
+                log.info("Secured macro deleted: %s", path)
+                return True
+        except Exception:
+            log.exception("Secure macro delete failed; falling back to unlink")
+        path.unlink()
+        log.info("Macro deleted: %s", path)
+        return True

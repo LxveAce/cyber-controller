@@ -50,6 +50,13 @@ DEFAULTS: dict[str, Any] = {
         "confirm_dangerous": True,       # show a confirm before a dangerous send
         "suppress_all_warnings": False,  # master off-switch for per-command warnings
     },
+    # Secure container: when ON, app-internal saves (logs/sessions/captures) are encrypted at rest
+    # in a gate-keyed container (src/security/secure_store.py) and are unreadable while the access
+    # gate is locked. Off by default; also offerable as an install option. (Explicit exports like a
+    # WiGLE wardrive CSV stay plaintext by design — they're meant to be shared.)
+    "security": {
+        "secure_container": False,
+    },
     # One-time legal/authorized-use disclaimer acknowledgement (top-level scalar,
     # round-trips through _deep_merge). Shown once regardless of suppress_all_warnings.
     "_disclaimer_ack": False,
