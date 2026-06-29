@@ -1364,60 +1364,77 @@ def launch_qt(
     app.setWindowIcon(create_cc_icon())
     apply_theme(app)
 
+    # Animated startup — PyQt5 (the heaviest UI) ONLY. Hand off from the PyInstaller extraction splash
+    # to a richer animated loading screen, build the dashboard, then cross-fade to it. The lightweight
+    # UIs (Tk/TUI/web) intentionally have no such animation.
+    import time as _time
+    from src.ui.qt.loading_splash import LoadingSplash, fade_in_window, reduced_motion
+    from src.core.resources import resource_path
+
+    _logo = str(resource_path("assets", "cc-logo.png"))
+    splash = LoadingSplash(_logo)
+    splash.start()
+    try:
+        import pyi_splash  # type: ignore[import-not-found]
+        pyi_splash.close()  # the static extraction splash hands off to the animated one
+    except Exception:
+        pass
+
+    splash.set_status("Loading firmware profiles…")
+    _t0 = _time.monotonic()
     win = CyberControllerWindow(
         device_manager, flash_engine, event_bus, target_pool,
         firmware_vault, health_monitor, macro_recorder,
     )
-    win.show()
+    splash.set_status("Starting dashboard…")
 
-    # Close the PyInstaller splash now that the real window is up (present only in a --splash onefile
-    # build; a no-op otherwise). Without this the splash lingers; with it the user gets instant feedback
-    # during the ~15s onefile extraction and a clean hand-off to the GUI.
-    try:
-        import pyi_splash  # type: ignore[import-not-found]
-        pyi_splash.close()
-    except Exception:
-        pass
-
-    # One-time legal / authorized-use disclaimer. Shown exactly once (independent
-    # of the per-command "suppress all warnings" toggle, so it is always seen at
-    # least once). This LABELS — acknowledging proceeds; it never disables features.
-    from src.config.settings import load_settings, save_settings
-    from src.core import safety
-    _settings = load_settings()
-    if safety.needs_first_run_disclaimer(_settings):
+    def _first_run_dialogs() -> None:
+        # One-time legal / authorized-use disclaimer (always seen at least once; LABELS, never blocks).
+        from src.config.settings import load_settings, save_settings
+        from src.core import safety
         from PyQt5.QtWidgets import QMessageBox
-        box = QMessageBox(win)
-        box.setIcon(QMessageBox.Warning)
-        box.setWindowTitle("Authorized Use Only")
-        box.setText(safety.legal_disclaimer_text())
-        box.setStandardButtons(QMessageBox.Ok)
-        box.button(QMessageBox.Ok).setText("I Understand")
-        box.exec_()
-        _settings["_disclaimer_ack"] = True
-        save_settings(_settings)
-
-    # One-time interface-mode choice (Simple vs Pro). Shown once; new users are nudged to Simple while
-    # keeping full Pro one click away. Pro stays the stored default so declining/closing changes nothing.
-    _settings = load_settings()
-    if not _settings.get("_interface_mode_ack", False):
-        from PyQt5.QtWidgets import QMessageBox
-        box = QMessageBox(win)
-        box.setIcon(QMessageBox.Question)
-        box.setWindowTitle("Choose your interface")
-        box.setText(
-            "<b>Simple</b> — a guided, streamlined view with fewer options (great to start).<br>"
-            "<b>Pro</b> — the full interface with every control.<br><br>"
-            "You can switch anytime: <b>View ▸ Interface Mode</b>, the status-bar badge, or <b>Ctrl+M</b>."
-        )
-        simple_btn = box.addButton("Use Simple", QMessageBox.AcceptRole)
-        box.addButton("Use Pro", QMessageBox.RejectRole)
-        box.setDefaultButton(simple_btn)
-        box.exec_()
-        if box.clickedButton() is simple_btn:
-            win.set_ui_mode("simple")  # persists interface.mode = simple
         _settings = load_settings()
-        _settings["_interface_mode_ack"] = True
-        save_settings(_settings)
+        if safety.needs_first_run_disclaimer(_settings):
+            box = QMessageBox(win)
+            box.setIcon(QMessageBox.Warning)
+            box.setWindowTitle("Authorized Use Only")
+            box.setText(safety.legal_disclaimer_text())
+            box.setStandardButtons(QMessageBox.Ok)
+            box.button(QMessageBox.Ok).setText("I Understand")
+            box.exec_()
+            _settings["_disclaimer_ack"] = True
+            save_settings(_settings)
+        # One-time interface-mode choice (Simple vs Pro). New users are nudged to Simple; Pro stays the
+        # stored default so declining changes nothing.
+        _settings = load_settings()
+        if not _settings.get("_interface_mode_ack", False):
+            box = QMessageBox(win)
+            box.setIcon(QMessageBox.Question)
+            box.setWindowTitle("Choose your interface")
+            box.setText(
+                "<b>Simple</b> — a guided, streamlined view with fewer options (great to start).<br>"
+                "<b>Pro</b> — the full interface with every control.<br><br>"
+                "You can switch anytime: <b>View ▸ Interface Mode</b>, the status-bar badge, or <b>Ctrl+M</b>."
+            )
+            simple_btn = box.addButton("Use Simple", QMessageBox.AcceptRole)
+            box.addButton("Use Pro", QMessageBox.RejectRole)
+            box.setDefaultButton(simple_btn)
+            box.exec_()
+            if box.clickedButton() is simple_btn:
+                win.set_ui_mode("simple")
+            _settings = load_settings()
+            _settings["_interface_mode_ack"] = True
+            save_settings(_settings)
+
+    def _reveal() -> None:
+        win.show()
+        fade_in_window(win)            # OutQuart fade-in of the dashboard
+        splash.finish(_first_run_dialogs)  # fade the splash out, then run first-run dialogs
+
+    # Let the loading animation breathe for a pleasant minimum (illustrative motion is fine for a
+    # once-per-launch event); skip the delay entirely under reduced motion.
+    min_ms = 0 if reduced_motion() else 1000
+    elapsed_ms = int((_time.monotonic() - _t0) * 1000)
+    QTimer.singleShot(max(0, min_ms - elapsed_ms), _reveal)
 
     return app.exec_()
