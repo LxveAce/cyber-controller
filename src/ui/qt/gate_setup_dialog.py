@@ -25,6 +25,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
 )
 
@@ -101,6 +102,29 @@ class GateSetupDialog(QDialog):
 
         root.addWidget(self._hline())
 
+        # Brute-force / duress self-wipe (opt-in, destructive)
+        root.addWidget(self._label("Duress self-wipe (advanced — destructive)"))
+        wrow = QHBoxLayout()
+        wrow.addWidget(QLabel("Wipe app secrets after N failed unlocks (0 = off):"))
+        self._wipe_spin = QSpinBox()
+        self._wipe_spin.setRange(0, 100)
+        self._wipe_spin.setSpecialValueText("off")
+        self._wipe_spin.setToolTip(
+            "After this many CONSECUTIVE wrong unlocks the app securely wipes its OWN secrets (gate "
+            "config + encrypted vault). Off by default. Set it high enough that ordinary typos won't "
+            "trip it. A persistent counter + cooldown also throttles brute force regardless of this.")
+        wrow.addWidget(self._wipe_spin, 1)
+        btn_wipe = QPushButton("Apply")
+        btn_wipe.clicked.connect(self._apply_wipe)
+        wrow.addWidget(btn_wipe)
+        root.addLayout(wrow)
+        wnote = QLabel("When triggered this destroys THIS app's secrets only (never other files) and "
+                       "cannot be undone. Honest limit: on SSDs, overwrite is not a forensic guarantee.")
+        wnote.setObjectName("muted"); wnote.setWordWrap(True)
+        root.addWidget(wnote)
+
+        root.addWidget(self._hline())
+
         brow = QHBoxLayout()
         self._btn_clear = QPushButton("Clear gate (remove password + key)")
         self._btn_clear.setObjectName("erase_btn")
@@ -131,10 +155,13 @@ class GateSetupDialog(QDialog):
             self._policy.setCurrentIndex(idx)
         kid = (cfg.get("key") or {}).get("key_id") if cfg.get("key") else None
         prov = (("provisioned: " + ", ".join(vault.factors())) if vault.is_provisioned() else "none")
+        wipe_n = int(cfg.get("wipe_on_failures", 0) or 0)
+        self._wipe_spin.setValue(wipe_n)
         self._status.setText(
             f"Configured: {pk.is_configured()}   ·   policy: {cfg.get('policy')}   ·   "
             f"password: {'set' if cfg.get('password') else 'not set'}   ·   "
-            f"key: {('set (' + kid + ')') if kid else 'not set'}   ·   encrypted vault: {prov}"
+            f"key: {('set (' + kid + ')') if kid else 'not set'}   ·   encrypted vault: {prov}   ·   "
+            f"duress wipe: {('after ' + str(wipe_n) + ' fails') if wipe_n else 'off'}"
         )
         self._refresh_drives()
 
@@ -153,6 +180,22 @@ class GateSetupDialog(QDialog):
             QMessageBox.information(self, "Access gate", f"Policy set to '{self._policy.currentText()}'.")
         except ValueError as exc:
             QMessageBox.warning(self, "Access gate", str(exc))
+        self._refresh()
+
+    def _apply_wipe(self) -> None:
+        n = self._wipe_spin.value()
+        if n > 0 and QMessageBox.warning(
+                self, "Duress self-wipe",
+                f"Enable duress self-wipe after {n} consecutive failed unlocks?\n\n"
+                "When triggered this SECURELY DESTROYS this app's secrets (gate config + encrypted "
+                "vault) and CANNOT be undone. Continue?",
+                QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel) != QMessageBox.Yes:
+            return
+        pk.set_wipe_on_failures(n)
+        QMessageBox.information(
+            self, "Access gate",
+            (f"Duress wipe enabled at {n} failed attempts." if n else "Duress wipe disabled.")
+            + " Applies immediately.")
         self._refresh()
 
     def _set_password(self) -> None:
