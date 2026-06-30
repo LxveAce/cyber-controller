@@ -6,6 +6,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Loadout — tailor the GUI to what you actually use.** On first run, pick the firmwares + hardware you use
+  (or **Full Stack** = everything) and Cyber Controller hides the tabs you won't need (de-bloat); change it
+  anytime via **View ▸ Loadout**. Orthogonal to Simple/Pro (which controls depth). Core tabs (Flash, Devices,
+  Health, Macros, Settings, How-To) always stay; **fail-open** — Full Stack / unconfigured / empty shows
+  everything, so nothing is ever stranded. `src/config/loadout.py` + `src/ui/qt/loadout_dialog.py`; +15 tests.
 - **BlueJammer remote-controller framework.** `src/core/bluejammer_control.py` — a transport-abstracted
   controller for the BlueJammer's modes: **UART-first (the inter-board wire — no Wi-Fi AP/IP needed)** with
   the web UI (`http://192.168.1.1`) as an option. STOP (Idle) is the primary, ungated action; arming a
