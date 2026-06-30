@@ -254,9 +254,9 @@ def test_get_commands_covers_confirmed_set(proto: BW16Protocol) -> None:
     names = {c.name for c in proto.get_commands()}
     assert {
         "AT+SCAN",
-        "AT+DEAUTHIDX",
+        "AT+DEAUTHIDX=<idx>",
         "AT+DEAUTHIDX=ALL",
-        "AT+BEACONRANDOM",
+        "AT+BEACONRANDOM=<count>",
         "AT+STOP",
     } <= names
 
@@ -269,7 +269,7 @@ def test_scan_and_stop_are_safe(proto: BW16Protocol) -> None:
 
 @pytest.mark.parametrize(
     "name",
-    ["AT+DEAUTHIDX", "AT+DEAUTHIDX=ALL", "AT+BEACONRANDOM"],
+    ["AT+DEAUTHIDX=<idx>", "AT+DEAUTHIDX=ALL", "AT+BEACONRANDOM=<count>"],
 )
 def test_transmit_commands_are_lab_only(proto: BW16Protocol, name: str) -> None:
     by_name = {c.name: c for c in proto.get_commands()}

@@ -141,7 +141,9 @@ class DeviceTab(QWidget):
         fw_row.addWidget(self._firmware_label)
         self._firmware_combo = QComboBox()
         self._firmware_combo.addItems(_firmware_choices())
-        self._firmware_combo.currentIndexChanged.connect(lambda _i: self._update_bj_panel())
+        self._firmware_combo.currentIndexChanged.connect(
+            lambda _i: (self._update_bj_panel(), self._persist_firmware())
+        )
         fw_row.addWidget(self._firmware_combo, stretch=1)
         left_layout.addLayout(fw_row)
 
@@ -346,6 +348,9 @@ class DeviceTab(QWidget):
             return
         port = current.data(Qt.UserRole)
         self._active_port = port
+        # Keep _active_conn in lock-step with the selected port so Send + the per-firmware line ending
+        # act on the SELECTED device, not whichever was connected last (multi-connect safety).
+        self._active_conn = self._dm.get_connection(port)
         dev = self._dm.get_device(port)
         if dev:
             self._term_label.setText(f"Serial Terminal — {dev.display_name}")
@@ -364,6 +369,15 @@ class DeviceTab(QWidget):
         try:
             conn = self._dm.open_connection(port)
             self._active_conn = conn
+            # Persist the chosen firmware onto the Device so the ActionResolver + BroadcastEngine resolve
+            # the SAME protocol the ingestor parses with (both key off Device.firmware, which scan_ports
+            # never sets — without this the resolver returns zero actions and broadcast/STOP-ALL no-op).
+            dev = self._dm.get_device(port)
+            if dev is not None:
+                try:
+                    dev.firmware = self._selected_protocol().protocol_name
+                except Exception:
+                    pass
             conn.on_line(lambda line: self._line_signal.line_received.emit(line))
             # Cross-comm ingestion: parse this device's serial output into the shared target pool so a
             # scan here can auto-route a command to another connected device (AutoRouter). Defaults to
@@ -404,6 +418,19 @@ class DeviceTab(QWidget):
         if choice == _AUTO_DETECT:
             return get_protocol("marauder")
         return get_protocol_by_display(choice)
+
+    def _persist_firmware(self) -> None:
+        """Re-persist the firmware selection onto the active Device when it's connected, so a post-connect
+        firmware change keeps the resolver + broadcast (which key off Device.firmware) in sync."""
+        port = getattr(self, "_active_port", None)
+        if not port:
+            return
+        dev = self._dm.get_device(port)
+        if dev is not None and dev.connected:
+            try:
+                dev.firmware = self._selected_protocol().protocol_name
+            except Exception:
+                pass
 
     def _open_bj_webui(self) -> None:
         """Open the BlueJammer's own control web UI (its real control surface) in the browser."""
