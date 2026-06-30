@@ -52,6 +52,20 @@ signature — not evidence of a problem. Zero hits would actually be unusual for
 
 We don't hide this. The right response to "is it safe?" isn't "trust me" — it's "here's how to check."
 
+### What the scans actually show
+
+Every release was submitted to VirusTotal — the **per-file reports + SHA-256 are linked right in each
+release's notes**. The pattern is exactly the false-positive signature above:
+
+- **Windows `.exe`: ~1–5 of ~74 engines**, and always the same handful of heuristic/ML engines —
+  **APEX, Bkav, Gridinsoft, Microsoft, Zillya**. Every mainstream engine (Kaspersky, ESET, BitDefender,
+  Sophos, Symantec, Malwarebytes, …) returns clean.
+- **Linux and macOS builds: 0 of ~74.** Clean across the board.
+
+A few minor engines flagging an unsigned PyInstaller exe while every major one passes *is* the
+false-positive pattern — not a real detection. Open the VirusTotal link on any release and read which
+engines flagged it: generic/heuristic labels from a small minority is the expected noise.
+
 ---
 
 ## 3. Check it yourself (recommended)
