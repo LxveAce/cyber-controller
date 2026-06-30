@@ -23,6 +23,8 @@
 
 ---
 
+> ⚠️ **Authorized, lawful use only.** A security-research tool — use it only on systems you own or have explicit permission to test. Provided as-is, no warranty; you assume all risk. See [DISCLAIMER.md](DISCLAIMER.md).
+
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
