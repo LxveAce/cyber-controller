@@ -79,7 +79,8 @@ self-wipe, dual-depth Simple/Pro, +4 firmwares).
 - **Windows one-click `.exe` startup crash fixed and verified** — bundled-asset loading hardened so the packaged GUI starts cleanly on a clean Windows host; a missing bundled resource now degrades gracefully instead of failing.
 
 **Roadmap:**
-- Windows code-signing + installer to reduce SmartScreen/Defender friction.
+- Windows **installer** that registers in Add/Remove Programs — **shipped** (`installer/`, built in CI);
+  **code-signing** (OV/EV cert) is the remaining step to retire the SmartScreen prompt for good.
 <!-- STATUS-ROADMAP:END -->
 
 
@@ -316,11 +317,19 @@ requires `CC_WEB_ALLOW_DEV_SERVER=1` — prefer a reverse proxy.)
 ## Building
 
 ```bash
-python build.py        # PyInstaller single-file executable in dist/
+python build.py            # PyInstaller single-file executable in dist/
+python build.py --onedir   # folder build (instant startup) — what the Windows installer packages
 ```
 
-CI (`.github/workflows/build-release.yml`) builds Windows, Linux, ARM, and macOS executables on tag
-and attaches them to the GitHub release.
+CI (`.github/workflows/build-release.yml`) builds Windows, Linux, ARM, and macOS executables on tag,
+publishes a `.sha256` next to each one, and (best-effort) compiles the Windows installer
+([`installer/`](installer/), Inno Setup) — which registers the app under **Settings → Apps → Installed
+apps** with an uninstaller, instead of a loose `.exe`.
+
+**Downloading on Windows?** The build isn't code-signed yet, so SmartScreen may warn and a couple of AV
+engines may show a heuristic false positive. That's expected for an unsigned PyInstaller build —
+[**docs/WINDOWS-SECURITY.md**](docs/WINDOWS-SECURITY.md) explains why and gives three ways to verify the
+download yourself (SHA-256, VirusTotal, build from source).
 
 ## Development Roadmap
 
