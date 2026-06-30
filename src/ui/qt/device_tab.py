@@ -413,11 +413,23 @@ class DeviceTab(QWidget):
     # ── Serial I/O ───────────────────────────────────────────────────
 
     def _selected_protocol(self):
-        """Protocol for the currently selected firmware (Auto-detect -> Marauder default)."""
+        """Protocol for the currently selected firmware. On 'Auto-detect', seed from the connected device's
+        USB-detected board type (Flipper -> flipper, with its CR terminator; ESP32 / unknown -> marauder,
+        the flagship ESP32 firmware) so a Flipper isn't silently parsed with the Marauder grammar + LF.
+        Full runtime detection that distinguishes the ESP32 firmwares (marauder vs ghostesp vs bruce, which
+        share a USB VID) via identify() is a cross-comm-rework item — the user can still pick explicitly."""
         choice = self._firmware_combo.currentText()
         if choice == _AUTO_DETECT:
-            return get_protocol("marauder")
+            return self._autodetect_protocol()
         return get_protocol_by_display(choice)
+
+    def _autodetect_protocol(self):
+        from src.models.device import BoardType
+        port = getattr(self, "_active_port", None)
+        dev = self._dm.get_device(port) if port else None
+        if getattr(dev, "board_type", None) == BoardType.FLIPPER_ZERO:
+            return get_protocol("flipper")
+        return get_protocol("marauder")
 
     def _persist_firmware(self) -> None:
         """Re-persist the firmware selection onto the active Device when it's connected, so a post-connect
