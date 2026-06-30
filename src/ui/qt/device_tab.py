@@ -168,8 +168,10 @@ class DeviceTab(QWidget):
             "<b>To STOP it (any of):</b> cut power / unplug USB (ends emission instantly) &middot; press the "
             "device button &rarr; Idle &middot; open the web UI and set the mode to <b>Idle</b>.<br>"
             "Web UI: <code>http://192.168.1.1</code> &mdash; join Wi-Fi <code>BlueJ-V2_by_@emensta</code> "
-            "(<code>NoConn1337</code>, 5&nbsp;GHz). Full CC-driven remote arm/stop is planned once the web-UI "
-            "endpoints are captured on hardware (gated behind an illegal-transmit confirmation)."
+            "(<code>NoConn1337</code>, 5&nbsp;GHz). A CC-native controller (over the inter-board <b>UART &mdash; "
+            "no AP needed</b>, or the web UI) is built in; it activates once the control frames are captured "
+            "&amp; validated on hardware &mdash; STOP ungated, arming gated behind an RF-shielded-enclosure "
+            "confirmation."
         )
         _bj_lbl.setWordWrap(True)
         _bj_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)

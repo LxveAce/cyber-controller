@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **BlueJammer remote-controller framework.** `src/core/bluejammer_control.py` — a transport-abstracted
+  controller for the BlueJammer's modes: **UART-first (the inter-board wire — no Wi-Fi AP/IP needed)** with
+  the web UI (`http://192.168.1.1`) as an option. STOP (Idle) is the primary, ungated action; arming a
+  jamming mode requires explicit confirmation (GUI gates it behind an RF-shielded-enclosure attestation,
+  per 47 U.S.C. §333). **Fail-safe:** refuses to send until a hardware-captured/validated control map exists
+  (a STOP that silently does nothing is the failure mode we avoid). The exact UART frames / HTTP endpoints
+  are closed-source and captured on hardware (see the reverse-engineering plan). +10 tests.
 - **BlueJammer control / STOP panel.** When a BlueJammer-V2 is the active firmware, the Devices tab now
   shows a prominent control panel: it's illegal to operate (47 U.S.C. §333, RF-shielded-lab only), the
   stock firmware has **no serial command channel**, and the real control is its own web UI — so the panel
