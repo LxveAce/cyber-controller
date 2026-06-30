@@ -54,6 +54,10 @@ class BaseProtocol(ABC):
     and command enumeration).
     """
 
+    # Line terminator the firmware's CLI expects after each command. Most firmwares read a line on LF
+    # ("\n"); the Flipper Zero shell only submits a line on CR ("\r"). Subclasses override as needed.
+    line_ending: str = "\n"
+
     @property
     @abstractmethod
     def protocol_name(self) -> str:

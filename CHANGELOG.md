@@ -21,6 +21,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   working but doing nothing): HaleHound `analyze`, Meshtastic `relay` (its serial link is protobuf-framed, not
   text), and Flipper `bt spam` (no stock-CLI command) — in both `TARGET_ACTIONS` and the broadcast map.
   `src/protocols/{halehound,meshtastic,flipper}.py`; +3 tests.
+- **Per-firmware command terminator (Flipper CR fix).** The serial line terminator now follows the selected
+  firmware's protocol — most firmwares submit a line on LF, but the **Flipper Zero** CLI shell only submits on
+  CR (`\r`), so CC's commands previously never executed on a Flipper. `BaseProtocol.line_ending` (Flipper =
+  `\r`, everyone else `\n`) is applied to the live connection on connect / firmware-change.
+  `src/core/serial_handler.py` + `src/protocols/{base,flipper}.py` + `src/ui/qt/device_tab.py`; +3 tests.
 - **Loadout — tailor the GUI to what you actually use.** On first run, pick the firmwares + hardware you use
   (or **Full Stack** = everything) and Cyber Controller hides the tabs you won't need (de-bloat); change it
   anytime via **View ▸ Loadout**. Orthogonal to Simple/Pro (which controls depth). Core tabs (Flash, Devices,
