@@ -237,9 +237,8 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
     TargetType.NFC: [
         TargetAction("NFC Emulate", "nfc emulate", "Emulate NFC tag via Flipper", ActionCategory.ATTACK),
     ],
-    TargetType.BLE: [
-        TargetAction("BT Spam", "bt spam", "Bluetooth spam via Flipper", ActionCategory.ATTACK),
-    ],
+    # No BLE target action: the stock Flipper CLI has no "bt spam" (BLE-spam is a separate custom app, not a
+    # CLI command), so the prior phantom is removed rather than shipped broken.
 }
 
 
@@ -250,5 +249,5 @@ from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoid
 BROADCAST_CAPABILITIES = {
     BroadcastVerb.BLE_SCAN:    ((), "bt info"),
     BroadcastVerb.SUBGHZ_SCAN: ((), "subghz rx"),
-    BroadcastVerb.BLE_SPAM:    ((), "bt spam"),
+    # No BLE_SPAM: stock Flipper CLI has no "bt spam" command (phantom removed).
 }
