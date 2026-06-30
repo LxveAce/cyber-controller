@@ -457,6 +457,13 @@ class CyberControllerWindow(QMainWindow):
         self._cross_comm_tab = CrossCommTab(self._bus, self._pool, self._router, self._dm)
         self._tabs.addTab(self._cross_comm_tab, "Cross-Comm")
 
+        # Network graph (experimental "test" tab) — a draggable spider-web of how every device + the
+        # targets it discovered connect; double-click a node to run its commands. Reads the same
+        # DeviceManager + TargetPool + ActionResolver the rest of the cross-comm uses.
+        from src.ui.qt.network_tab import NetworkTab
+        self._network_tab = NetworkTab(self._dm, self._pool, self._action_resolver, self._send_to_port)
+        self._tabs.addTab(self._network_tab, "Network")
+
         # (Mission Planner tab removed — was a non-functional "coming soon" placeholder; tracked as a
         # real future feature in command-center/projects/cc-reformed-roadmap.md. Don't ship dead tabs.)
 
@@ -498,8 +505,8 @@ class CyberControllerWindow(QMainWindow):
             ("Software OS", self._software_tab), ("Health", self._health_tab),
             ("Macros", self._macro_tab), ("Targets", self._targets_tab),
             ("Wardrive", self._wardrive_tab), ("Broadcast", self._broadcast_bar),
-            ("Cross-Comm", self._cross_comm_tab), ("Settings", self._settings_tab),
-            ("How-To", self._howto_tab),
+            ("Cross-Comm", self._cross_comm_tab), ("Network", self._network_tab),
+            ("Settings", self._settings_tab), ("How-To", self._howto_tab),
         ]
 
     def _load_loadout(self) -> dict:
