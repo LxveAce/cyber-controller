@@ -111,15 +111,28 @@ class TargetPool:
         Returns:
             True if this is a new target, False if updated.
         """
+        updated_payload: dict | None = None
         with self._lock:
             existing = self._targets.get(target.key)
             if existing:
-                existing.update_seen(rssi=target.rssi, channel=target.channel)
-                if target.ssid and not existing.ssid:
+                # Don't let a re-observation that omits a field clobber a known value: channel/rssi 0 is
+                # the unknown-sentinel everywhere, so pass None (a no-op in update_seen) when it's 0.
+                existing.update_seen(
+                    rssi=target.rssi if target.rssi else None,
+                    channel=target.channel if target.channel else None,
+                )
+                # Latest-wins on a non-empty SSID (never clobber a known SSID with an empty one). Also
+                # fixes synthetic idx:<port>:<index> keys keeping a stale SSID across re-ordered re-scans.
+                if target.ssid:
                     existing.ssid = target.ssid
-                self.bus.publish("target.updated", existing.to_dict())
-                return False
-            self._targets[target.key] = target
+                updated_payload = existing.to_dict()
+            else:
+                self._targets[target.key] = target
+        # Publish OUTSIDE the lock: the non-reentrant pool lock must not be held across subscriber
+        # callbacks, or a blocking subscriber that reads the pool would deadlock the reader thread.
+        if updated_payload is not None:
+            self.bus.publish("target.updated", updated_payload)
+            return False
         self.bus.publish("target.added", target.to_dict())
         return True
 
