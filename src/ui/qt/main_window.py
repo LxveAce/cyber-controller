@@ -232,6 +232,11 @@ class CyberControllerWindow(QMainWindow):
         act_suicide.triggered.connect(self._on_suicide_setup)
         tools_menu.addAction(act_suicide)
 
+        act_device_view = QAction("Device &View — Marauder (skin)…", self)
+        act_device_view.setStatusTip("Open an on-screen reconstruction of the Marauder's on-board TFT menu (preview).")
+        act_device_view.triggered.connect(self._on_device_view)
+        tools_menu.addAction(act_device_view)
+
         # Help
         help_menu = mb.addMenu("&Help")
 
@@ -1332,6 +1337,26 @@ class CyberControllerWindow(QMainWindow):
     def _on_github(self) -> None:
         import webbrowser
         webbrowser.open(_GITHUB_URL)
+
+    def _on_device_view(self) -> None:
+        """Open a Device View — an on-screen reconstruction of a firmware's on-board UI.
+
+        P2 scope: a faithful, navigable Marauder TFT *skin* (model-driven; runs with no hardware). Live
+        serial drive + the gate/Dead-Man panel are later phases (see the Device-View plan). Honest framing:
+        this is a reconstruction, not a pixel mirror (only Flipper can be a true mirror).
+        """
+        try:
+            from src.ui.qt.device_view import DeviceScreenModel, DeviceView, marauder_menu
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Device View", f"Could not open the Device View: {exc}")
+            return
+        model = DeviceScreenModel("ESP32 Marauder", marauder_menu())
+        # Keep a reference so the top-level window isn't garbage-collected.
+        self._device_view = DeviceView(model)
+        self._device_view.setWindowTitle("Device View — ESP32 Marauder (reconstructed skin · preview)")
+        self._device_view.show()
+        self._device_view.raise_()
+        self._device_view.activateWindow()
 
     def _on_suicide_setup(self) -> None:
         """Open the Dead Man's Switch host-side password & duress setup dialog."""
