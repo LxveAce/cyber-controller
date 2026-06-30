@@ -294,9 +294,9 @@ class HaleHoundProtocol(BaseProtocol):
 # --- Target actions: what this protocol can do to each target type ---
 
 TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
-    TargetType.AP: [
-        TargetAction("Signal Analysis", "analyze {channel}", "Analyze RF signals on this channel", ActionCategory.MONITOR),
-    ],
+    # No verified scriptable target actions for HaleHound yet — the prior "analyze {channel}" entry was a
+    # phantom (no matching command in get_commands; no confirmed scriptable serial CLI), so it is removed
+    # rather than shipped as a broken button. Re-add once the firmware deep-dive confirms a real command.
 }
 
 

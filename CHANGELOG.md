@@ -6,6 +6,21 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Argument-entry form for placeholder commands.** Sending a command that contains `<...>` placeholders
+  (e.g. `scanap -c <ch>`, `select -a <idx>`, `led -r <v> -g <v> -b <v>`) now pops a small parameter form —
+  one field per token, occurrence-ordered so repeated tokens get distinct values — instead of transmitting
+  the literal `<ch>`. Values are sanitized (control chars + angle brackets stripped, 64-char cap); hooks the
+  single send chokepoint so typed and palette-selected commands are both covered. `src/ui/qt/device_tab.py`; +5 tests.
+- **`{index}` target-action substitution + source-restriction.** Target actions that select by scan index
+  (e.g. Marauder's `select -a {index}`) previously sent the literal text `{index}`. The resolver now
+  substitutes a real per-device scan index when known, and — because a scan index is only valid for the
+  device that produced it — **source-restricts** index actions to the discovering device and **drops** them
+  when no index is known (rather than firing at the wrong AP). `src/core/action_resolver.py` +
+  `src/core/target_ingest.py`; +4 tests.
+- **Removed phantom target actions** that referenced commands the firmware never exposes (presented as
+  working but doing nothing): HaleHound `analyze`, Meshtastic `relay` (its serial link is protobuf-framed, not
+  text), and Flipper `bt spam` (no stock-CLI command) — in both `TARGET_ACTIONS` and the broadcast map.
+  `src/protocols/{halehound,meshtastic,flipper}.py`; +3 tests.
 - **Loadout — tailor the GUI to what you actually use.** On first run, pick the firmwares + hardware you use
   (or **Full Stack** = everything) and Cyber Controller hides the tabs you won't need (de-bloat); change it
   anytime via **View ▸ Loadout**. Orthogonal to Simple/Pro (which controls depth). Core tabs (Flash, Devices,

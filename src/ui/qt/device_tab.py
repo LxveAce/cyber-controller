@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from typing import TYPE_CHECKING
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
@@ -52,6 +53,10 @@ log = logging.getLogger(__name__)
 # Firmware options for the per-device protocol selector: "Auto-detect" plus every
 # registered protocol's display name (de-duplicated, generic/raw last).
 _AUTO_DETECT = "Auto-detect"
+
+# Argument placeholders embedded in a CommandInfo.name, e.g. "scanap -c <ch>" / "led -r <v> -g <v> -b <v>".
+# Matched by occurrence (duplicates kept) so each <...> becomes its own form field and substitution slot.
+_PLACEHOLDER_RE = re.compile(r"<([^>]+)>")
 
 
 def _firmware_choices() -> list[str]:
@@ -557,15 +562,82 @@ class DeviceTab(QWidget):
                 return ci
         return None
 
+    @staticmethod
+    def _placeholder_tokens(cmd: str) -> "list[str]":
+        """The <...> placeholder names in *cmd*, in order, duplicates kept (e.g. ['v','v','v'])."""
+        return _PLACEHOLDER_RE.findall(cmd)
+
+    @staticmethod
+    def _sanitize_arg(value: str) -> str:
+        """Clean a user-entered argument: strip, drop control chars + DEL, strip angle brackets (so a value
+        can't smuggle a new <token>), cap at 64 chars (mirrors action_resolver._safe_sub)."""
+        value = value.strip()
+        value = "".join(ch for ch in value if ch >= " " and ch != "\x7f")
+        return value.replace("<", "").replace(">", "")[:64]
+
+    @staticmethod
+    def _substitute_tokens(cmd: str, values: "list[str]") -> str:
+        """Occurrence-ordered substitution: replace each <...> with the next value (handles repeated <v>)."""
+        it = iter(values)
+        return _PLACEHOLDER_RE.sub(lambda _m: next(it), cmd)
+
+    def _resolve_placeholders(self, cmd: str, ci) -> "str | None":
+        """If *cmd* has <...> placeholders, prompt a small form (one field per occurrence) and return the
+        filled command. Returns *cmd* unchanged when there are no placeholders, or None if the user cancels
+        or leaves a field blank. Labels come from ci.args when its count matches; else the token name."""
+        tokens = self._placeholder_tokens(cmd)
+        if not tokens:
+            return cmd
+        labels = [a.strip() for a in (ci.args.split(",") if ci and getattr(ci, "args", "") else [])]
+        use_labels = labels if len(labels) == len(tokens) else None
+        from PyQt5.QtWidgets import (
+            QDialog, QDialogButtonBox, QFormLayout, QLabel, QLineEdit, QVBoxLayout,
+        )
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Command parameters")
+        outer = QVBoxLayout(dlg)
+        head = QLabel(((ci.description + "\n\n") if ci and getattr(ci, "description", "") else "") + cmd)
+        head.setWordWrap(True)
+        outer.addWidget(head)
+        form = QFormLayout()
+        edits: "list[QLineEdit]" = []
+        for i, tok in enumerate(tokens):
+            edit = QLineEdit()
+            edit.setPlaceholderText("<" + tok + ">")
+            form.addRow((use_labels[i] if use_labels else tok) + ":", edit)
+            edits.append(edit)
+        outer.addLayout(form)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        outer.addWidget(buttons)
+        if edits:
+            edits[0].setFocus()
+        if dlg.exec_() != QDialog.Accepted:
+            self._terminal.append(f"[cancelled: {cmd}]")
+            return None
+        values = [self._sanitize_arg(e.text()) for e in edits]
+        if any(v == "" for v in values):
+            self._terminal.append("[cancelled: a parameter was left blank]")
+            return None
+        return self._substitute_tokens(cmd, values)
+
     def _on_send(self) -> None:
         cmd = self._cmd_input.text().strip()
         if not cmd or not self._active_conn:
             return
+        # Capture the CommandInfo BEFORE substitution (its match is on the templated name with <...> tokens),
+        # then prompt for any placeholder args so we never send a literal "<ch>"/"<idx>" over the wire.
+        ci = self._command_info(cmd)
+        resolved = self._resolve_placeholders(cmd, ci)
+        if resolved is None:
+            return
+        cmd = resolved
         # Safety gate: LABEL + warn on dangerous commands; never block. "Yes" always
         # proceeds, and Settings -> "Suppress all safety warnings" turns this off.
         # Reloaded each send so a settings change takes effect immediately.
         settings = load_settings()
-        danger = safety.classify(cmd, self._command_info(cmd))
+        danger = safety.classify(cmd, ci)
         if safety.should_confirm(danger, settings):
             from PyQt5.QtWidgets import QMessageBox
             reply = QMessageBox.warning(

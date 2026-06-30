@@ -83,6 +83,11 @@ class TargetIngestor:
                 rssi=int(d.get("rssi", 0) or 0), channel=int(d.get("channel", 0) or 0),
                 device_source=port,
             )
+            if d.get("index") is not None:
+                # Parser-supplied scan index (e.g. BW16's AT list ordinal). Enables this device's own
+                # {index}-based TARGET_ACTIONS (source-restricted in the resolver). Firmwares that don't
+                # emit an index leave this unset, so their index actions are dropped rather than guessed.
+                t.extra["index"] = d.get("index")
             if et == "rogue_ap":
                 t.extra["rogue"] = True  # HaleHound Guardian flagged this as a rogue/evil-twin
             return t
