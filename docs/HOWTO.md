@@ -28,6 +28,17 @@ Write a verified bootable operating system to a **USB stick** (separate from boa
 Connect to and control attached radios/boards: open a serial console, send commands, and watch live
 output. Targets discovered here are shared across the app via the Target Pool.
 
+## BlueJammer-V2 (lab-only — illegal to operate)
+When a **BlueJammer-V2** is the active firmware, the Devices tab shows a dedicated control/STOP panel.
+**Operating an RF jammer is illegal** outside an authorized RF-shielded enclosure (47 U.S.C. §333) — Cyber
+Controller's job is **flash + STOP/containment**, and it ships **no jammer control frames**.
+- **STOP (set Idle)** — always available, ungated. You can also stop by cutting power or via the device's web UI.
+- **Arming** (Bluetooth / BLE / WiFi / RC-Drone) is **inert scaffolding**: gated behind an RF-shielded-enclosure
+  attestation and disabled until you **Load control map…** — a control map captured from your *own* device. The
+  app supplies none and refuses to transmit without one (fail-safe).
+- **Open control web UI** launches the device's own UI at `http://192.168.1.1` (its real control surface).
+Full how-it-works/setup and the defensive **jammer-detection** guide are in the Cyber Controller hardware guides.
+
 ## Wardrive (lawful, owner-authorized)
 GPS-tagged Wi-Fi survey exported as **WiGLE CSV** (upload at wigle.net). It passively logs broadcast
 beacon metadata + your GPS position — it does **not** deauth or capture traffic.

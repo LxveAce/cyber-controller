@@ -1,0 +1,20 @@
+{
+  "_README": "EMPTY TEMPLATE. Cyber Controller ships NO BlueJammer control frames. This is the slot for YOU to fill in with a control map captured from YOUR OWN device, under your own authorization, for use only inside an authorized RF-shielded enclosure. Operating an RF jammer is illegal outside such a context (47 U.S.C. 333). STOP/Idle, the 'Open control web UI' launcher, and cutting power all work WITHOUT this file. Load a completed map via the BlueJammer panel -> 'Load control map...'.",
+  "_schema": "validated:bool | uart_frames:{Mode: hex-string} | http_calls:{Mode: [method, path, body]}. Modes: Idle | Bluetooth | BLE | WiFi | RC/Drone. Idle = STOP.",
+  "_inert_by_default": "While validated=false (or the frames are blank) the controller stays inert and refuses to send (ControlUnavailable). The app does not provide the frames and will not derive them for you.",
+  "validated": false,
+  "uart_frames": {
+    "Idle": "",
+    "Bluetooth": "",
+    "BLE": "",
+    "WiFi": "",
+    "RC/Drone": ""
+  },
+  "http_calls": {
+    "Idle": ["", "", ""],
+    "Bluetooth": ["", "", ""],
+    "BLE": ["", "", ""],
+    "WiFi": ["", "", ""],
+    "RC/Drone": ["", "", ""]
+  }
+}
