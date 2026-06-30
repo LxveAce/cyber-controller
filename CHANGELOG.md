@@ -26,6 +26,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   CR (`\r`), so CC's commands previously never executed on a Flipper. `BaseProtocol.line_ending` (Flipper =
   `\r`, everyone else `\n`) is applied to the live connection on connect / firmware-change.
   `src/core/serial_handler.py` + `src/protocols/{base,flipper}.py` + `src/ui/qt/device_tab.py`; +3 tests.
+- **Command-correctness pass (source-verified against firmware).** Fixed command tokens that didn't match the
+  real firmware CLIs: **Marauder** v1.12.3 (`scanap`→`scanall`, `channel -s`, `sniffbt`/`sniffskim`,
+  `blespam -t sourapple/windows`, `gpsdata`/`nmea`, `settings -s`, `led -s`) **plus a stateful multi-line AP
+  parser** so the Targets tab actually populates (the firmware prints ESSID/BSSID/RSSI on separate lines);
+  **GhostESP** (`attack -d`, `beaconspam -r/-rr`, `startportal`/`stopportal`, `capture -eapol/-stop`, `startwd`,
+  `list -a`, `chipinfo`); **Bruce** (`ir rx`/`tx`, `subghz rx/tx/tx_from_file`, `badusb run_from_file`; reads its
+  `COMMAND:`/`[CLI] Result:` shell; fabricated wifi/ble/nfc serial verbs removed — those run via menu/loader).
+  Device-View skins updated to the corrected commands. `src/protocols/{marauder,ghost_esp,bruce}.py` +
+  `src/ui/qt/device_view.py`; +tests. (esp32div/halehound kept pending hardware confirmation; Meshtastic is protobuf.)
 - **Loadout — tailor the GUI to what you actually use.** On first run, pick the firmwares + hardware you use
   (or **Full Stack** = everything) and Cyber Controller hides the tabs you won't need (de-bloat); change it
   anytime via **View ▸ Loadout**. Orthogonal to Simple/Pro (which controls depth). Core tabs (Flash, Devices,

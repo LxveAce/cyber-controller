@@ -47,7 +47,7 @@ def test_plan_find_aps_translates_and_skips_unsupported():
               _Dev("COM3", "ghost-esp"), _Dev("COM4", "flipper")])
     plan = BroadcastEngine(dm, _Bus()).plan(BroadcastVerb.FIND_APS)
     assert {c.port: c.command for c in plan.concrete} == {
-        "COM1": "scanap", "COM2": "AT+SCAN", "COM3": "scanap"}
+        "COM1": "scanall", "COM2": "AT+SCAN", "COM3": "scanap"}  # marauder scan = scanall on v1.12.3
     assert plan.skipped == [("COM4", "flipper", "unsupported by this firmware")]
 
 

@@ -107,8 +107,8 @@ def marauder_menu() -> "list[MenuNode]":
     M = MenuNode
     return [
         M("WiFi", children=[
-            M("Scan APs", command="scanap"),
-            M("Scan Stations", command="scansta"),
+            M("Scan APs", command="scanall"),
+            M("Scan Stations", command="scanall"),
             M("Attacks", children=[
                 M("Beacon Spam", command="attack -t beacon -r"),
                 M("Rick Roll", command="attack -t rickroll"),
@@ -124,9 +124,9 @@ def marauder_menu() -> "list[MenuNode]":
             M("Channel", command="channel"),
         ]),
         M("Bluetooth", children=[
-            M("BLE Scan", command="blescan"),
+            M("BLE Scan", command="sniffbt"),
             M("BLE Spam", command="blespam -t all"),
-            M("BLE Track", command="bletrack"),
+            M("BLE Track", command="sniffbt -t airtag"),
         ]),
         M("Device", children=[
             M("Info", command="info"),
@@ -144,33 +144,30 @@ def ghostesp_menu() -> "list[MenuNode]":
             M("Scan APs", command="scanap"),
             M("Scan Stations", command="scansta"),
             M("Attacks", children=[
-                M("Deauth", command="deauth"),
-                M("Beacon Spam", command="beacon"),
+                M("Deauth", command="attack -d"),
+                M("Beacon Spam", command="beaconspam -r"),
                 M("Probe Flood", command="probe"),
-                M("Rick Roll", command="rickroll"),
+                M("Rick Roll", command="beaconspam -rr"),
             ]),
             M("Capture", children=[
-                M("Start", command="capture start"),
-                M("Stop", command="capture stop"),
-                M("Save", command="capture save"),
+                M("Start", command="capture -eapol"),
+                M("Stop", command="capture -stop"),
             ]),
             M("Evil Portal", children=[
-                M("Start", command="portal start"),
-                M("Stop", command="portal stop"),
-                M("Creds", command="portal creds"),
+                M("Start", command="startportal"),
+                M("Stop", command="stopportal"),
             ]),
         ]),
         M("Bluetooth", children=[
             M("BLE Scan", command="blescan"),
-            M("BLE Spam", command="blespam all"),
             M("BLE Track", command="bletrack"),
         ]),
         M("Wardrive", children=[
-            M("Start", command="wardrive start"),
-            M("Stop", command="wardrive stop"),
+            M("Start", command="startwd"),
+            M("Stop", command="startwd -s"),
         ]),
         M("Device", children=[
-            M("Info", command="info"),
+            M("Info", command="chipinfo"),
             M("GPS Info", command="gps info"),
             M("SD Info", command="sd info"),
             M("Settings", command="settings"),

@@ -1,58 +1,45 @@
-"""Meshtastic protocol — minimal best-effort serial parser.
+"""Meshtastic protocol — raw serial-log viewer only (NO text command channel).
 
-NOTE: Meshtastic's real device serial API is NOT a plain-text line protocol.
-On the wire it frames protobuf-encoded packets (the `meshtastic` Python
-library / protobufs handle ToRadio/FromRadio messages over the serial stream).
-A line-oriented text parser therefore cannot fully decode a live Meshtastic
-link. This module is intentionally a BEST-EFFORT text parser only: it scrapes
-human-readable log/debug lines that Meshtastic firmware also prints to the
-serial console, and emits mostly 'info' events. For real telemetry, a future
-backend should speak the protobuf framing via the meshtastic library rather
-than relying on this parser.
+SOURCE-VERIFIED: Meshtastic's device serial link is PROTOBUF-framed — the
+StreamAPI sends length-delimited ToRadio/FromRadio protobuf packets handled by
+the `meshtastic` Python library. It is NOT a plain-text line CLI. Plain-text
+commands written to the port (info, nodes, send <text>, reboot, ...) are simply
+DISCARDED by the firmware; they do nothing. Real control therefore requires
+speaking the protobuf StreamAPI (or shelling out to the `meshtastic` CLI), which
+Cyber-Controller does not yet implement.
 
-Example human-readable lines this scrapes (best effort):
-    Node: !a1b2c3d4 | Name: BaseCamp | SNR: 9.5 | Battery: 92%
-    Position: !a1b2c3d4 | Lat: 37.7749 | Lon: -122.4194
-    Message from !a1b2c3d4: hello mesh
+What CC honestly supports for Meshtastic today:
+  * Flashing (handled by the flash/profile layer — works).
+  * Viewing the RAW serial log — the firmware also prints human-readable
+    boot/debug text to the console, which this parser surfaces verbatim as
+    generic 'info' events.
+
+What this module deliberately does NOT pretend to do:
+  * Send commands — there is no text command channel, so get_commands() is
+    intentionally EMPTY (no fake buttons that silently do nothing).
+  * Decode structured telemetry (nodes / positions / messages) — that data
+    arrives as protobuf frames this text parser cannot decode, so it makes NO
+    structured Node/Position/Message claims.
+
+A future backend should speak the protobuf framing via the meshtastic library
+rather than relying on this passive text scrape.
 """
 
 from __future__ import annotations
 
-import re
-
-from src.models.action import ActionCategory, TargetAction
+from src.models.action import TargetAction
 from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
-# --- Regex patterns for best-effort Meshtastic text scraping ---
-
-# Node: !id | Name: ... | SNR: ... | Battery: ...
-# Name runs up to the next '|' or end-of-line so optional SNR/Battery fields
-# don't truncate it.
-_RE_NODE = re.compile(
-    r"Node:\s*(!?[0-9A-Fa-f]+)\s*\|\s*Name:\s*([^|]+?)\s*(?:\|\s*SNR:\s*(-?[\d.]+))?"
-    r"(?:\s*\|\s*Battery:\s*(\d+%))?\s*$",
-    re.IGNORECASE,
-)
-
-# Position: !id | Lat: ... | Lon: ...
-_RE_POSITION = re.compile(
-    r"Position:\s*(!?[0-9A-Fa-f]+)\s*\|\s*Lat:\s*([\d.\-]+)\s*\|\s*Lon:\s*([\d.\-]+)",
-    re.IGNORECASE,
-)
-
-# Message from !id: text
-_RE_MESSAGE = re.compile(
-    r"Message\s+from\s+(!?[0-9A-Fa-f]+):\s*(.+)",
-    re.IGNORECASE,
-)
-
 
 class MeshtasticProtocol(BaseProtocol):
-    """Best-effort text parser and command formatter for Meshtastic.
+    """Raw serial-log viewer for Meshtastic — no text command channel.
 
-    See the module docstring: real Meshtastic serial traffic is protobuf, so
-    this parser only handles human-readable log lines.
+    See the module docstring: the real Meshtastic serial link is protobuf
+    (StreamAPI), so CC cannot send working text commands and cannot decode
+    structured telemetry over this text path. ``parse_line`` only scrapes the
+    human-readable boot/debug text the firmware also prints; ``get_commands``
+    is empty (no fake control buttons).
     """
 
     @property
@@ -62,65 +49,39 @@ class MeshtasticProtocol(BaseProtocol):
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:
+        """Passive, honest scrape of the human-readable serial log.
+
+        Meshtastic's structured data is protobuf-framed and is NOT decoded
+        here, so this never emits structured Node/Position/Message events. Any
+        non-empty human-readable line is surfaced verbatim as a generic 'info'
+        event; blank lines are noise (None).
+        """
         line = line.strip()
         if not line:
             return None
-
-        # Node announcement / nodedb entry
-        m = _RE_NODE.search(line)
-        if m:
-            data: dict = {"node_id": m.group(1), "name": m.group(2).strip()}
-            if m.group(3) is not None:
-                data["snr"] = float(m.group(3))
-            if m.group(4) is not None:
-                data["battery"] = m.group(4)
-            return ParsedEvent(event_type="info", data=data, raw=line)
-
-        # Position report
-        m = _RE_POSITION.search(line)
-        if m:
-            return ParsedEvent(
-                event_type="info",
-                data={
-                    "node_id": m.group(1),
-                    "lat": float(m.group(2)),
-                    "lon": float(m.group(3)),
-                },
-                raw=line,
-            )
-
-        # Text message
-        m = _RE_MESSAGE.search(line)
-        if m:
-            return ParsedEvent(
-                event_type="info",
-                data={"from": m.group(1), "message": m.group(2).strip()},
-                raw=line,
-            )
-
-        # Everything else (incl. protobuf binary noise that survived decoding):
-        # surface as a generic info event.
         return ParsedEvent(event_type="info", data={"message": line}, raw=line)
 
     # ── Commands ─────────────────────────────────────────────────────
 
     def get_commands(self) -> list[CommandInfo]:
-        """Minimal Meshtastic command set.
+        """No sendable commands.
 
-        These mirror common `meshtastic` CLI flags but are emitted as simple
-        text tokens here; a protobuf-aware backend would translate them.
+        Meshtastic's serial link is protobuf (StreamAPI); plain-text commands
+        are discarded by the firmware. Rather than ship buttons that silently
+        do nothing, this returns an empty list. Real control would require a
+        protobuf-aware backend or the external `meshtastic` CLI.
         """
-        return [
-            CommandInfo("info", "System", "Show device / radio info"),
-            CommandInfo("nodes", "Mesh", "List known nodes in the mesh"),
-            CommandInfo("send <text>", "Mesh", "Send a text message to the mesh", "text"),
-            CommandInfo("reboot", "System", "Reboot device"),
-        ]
+        return []
 
     # ── Formatting ───────────────────────────────────────────────────
 
     def format_command(self, cmd: str, args: dict[str, str] | None = None) -> str:
-        """Format a command for transmission (best-effort text form)."""
+        """Format a command string (BaseProtocol interface requirement).
+
+        There are no real commands to send (see get_commands); any text written
+        to the port is discarded by the protobuf firmware. Retained only so the
+        abstract interface is satisfied.
+        """
         if args:
             arg_str = " ".join(str(v) for v in args.values())
             return f"{cmd} {arg_str}"
@@ -129,24 +90,26 @@ class MeshtasticProtocol(BaseProtocol):
     # ── Auto-detection ───────────────────────────────────────────────
 
     def identify(self, line: str) -> bool:
-        """Return True if line looks like Meshtastic output (best effort)."""
-        markers = ("Meshtastic", "meshtastic", "Node: !", "Position: !", "ToRadio", "FromRadio")
+        """Return True if the line looks like Meshtastic output (best effort)."""
+        markers = ("Meshtastic", "meshtastic", "ToRadio", "FromRadio")
         return any(m in line for m in markers)
 
 
 # --- Target actions: what this protocol can do to each target type ---
 
 TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
-    # No target actions: Meshtastic's serial link is protobuf-framed (ToRadio/FromRadio), so a plain-text
-    # command like the prior "relay {mac}" phantom never executes. Removed rather than shipped broken — a
-    # protobuf-aware backend (or the `meshtastic` CLI bridge) is the real fix (see firmware deep-dive).
+    # Intentionally empty. Meshtastic's serial link is protobuf-framed
+    # (ToRadio/FromRadio), so a plain-text target action like the prior phantom
+    # "relay {mac}" never executes — removed rather than shipped broken. A
+    # protobuf-aware backend (or the `meshtastic` CLI bridge) is the real fix.
 }
 
 
 # --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
-# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
-from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
-
-BROADCAST_CAPABILITIES = {
-    BroadcastVerb.MESH_RELAY: ((), "nodes"),
-}
+# Intentionally EMPTY. Every Meshtastic broadcast verb would have to be realized
+# as a plain-text serial command (e.g. the old MESH_RELAY -> "nodes"), but the
+# firmware discards text on the serial link — it speaks protobuf/StreamAPI. A
+# broadcast "Mesh Status" button wired to "nodes" would write bytes the firmware
+# ignores: a phantom. So Meshtastic advertises NO broadcast capability until a
+# protobuf-aware backend exists.
+BROADCAST_CAPABILITIES: dict = {}

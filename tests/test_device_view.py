@@ -96,9 +96,9 @@ def test_enter_leaf_sends_command():
     m = DeviceScreenModel("ESP32 Marauder", marauder_menu())
     m.enter()                # WiFi
     m.sel = 0
-    m.enter(send)            # Scan APs -> command
-    assert sent == ["scanap"]
-    assert m.status.endswith("scanap") and "sent" in m.status
+    m.enter(send)            # Scan APs -> command (v1.12.3: scanall)
+    assert sent == ["scanall"]
+    assert m.status.endswith("scanall") and "sent" in m.status
 
 
 def test_enter_leaf_preview_when_not_delivered():
