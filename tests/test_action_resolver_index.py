@@ -54,3 +54,15 @@ def test_index_action_source_restricted(monkeypatch):
     t = Target(mac="AA:BB:CC:DD:EE:FF", target_type=TargetType.AP, device_source="COM9")
     t.extra["index"] = 3
     assert "Deauth" not in [a.name for a in r.resolve(t).get("COM3", [])]
+
+
+def test_render_strips_control_chars_from_ssid():
+    # A scanned SSID with an embedded control char must not survive into a {ssid} command (it would trip
+    # SerialConnection.write's injection guard). The resolver render path now strips control chars.
+    from src.core.action_resolver import ActionResolver
+    from src.models.action import TargetAction
+    from src.models.target import Target, TargetType
+    a = TargetAction("Beacon", "attack -t beacon -s {ssid}", "beacon clone")
+    t = Target(mac="AA:BB:CC:DD:EE:FF", target_type=TargetType.AP, ssid="Cof\x07fee\x00Shop")
+    rendered = ActionResolver(None)._render_action(a, t)
+    assert rendered.command_template == "attack -t beacon -s CoffeeShop"

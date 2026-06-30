@@ -126,12 +126,14 @@ class FlipperProtocol(BaseProtocol):
                 raw=line,
             )
 
-        # RFID tag
+        # RFID tag (125 kHz) — distinct from 13.56 MHz NFC; emit rfid_found so the ingestor keeps it as
+        # an RFID target (keyed by the tag serial) instead of dropping it for a missing NFC uid.
         m = _RE_RFID.search(line)
         if m:
+            serial = m.group(2).strip()
             return ParsedEvent(
-                event_type="nfc_found",
-                data={"rfid_type": m.group(1), "data": m.group(2).strip()},
+                event_type="rfid_found",
+                data={"rfid_type": m.group(1), "data": serial, "uid": serial},
                 raw=line,
             )
 
@@ -242,6 +244,9 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
     ],
     TargetType.NFC: [
         TargetAction("NFC Emulate", "nfc emulate", "Emulate NFC tag via Flipper", ActionCategory.ATTACK),
+    ],
+    TargetType.RFID: [
+        TargetAction("RFID Emulate", "rfid emulate", "Emulate 125 kHz RFID tag via Flipper", ActionCategory.ATTACK),
     ],
     # No BLE target action: the stock Flipper CLI has no "bt spam" (BLE-spam is a separate custom app, not a
     # CLI command), so the prior phantom is removed rather than shipped broken.
