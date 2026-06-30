@@ -87,9 +87,14 @@ class DeviceScreenModel:
             self.path.append(self.sel)
             self.sel = 0
         elif node.command is not None:
-            self.status = "> " + node.command
+            sent = False
             if send is not None:
-                send(node.command)
+                try:
+                    sent = bool(send(node.command))
+                except Exception:  # noqa: BLE001 — a send failure must never break menu navigation
+                    sent = False
+            # Honest status: "sent" only if it actually went to a device; otherwise it's a preview.
+            self.status = ("» sent: " if sent else "preview: ") + node.command
 
     def back(self) -> None:
         if self.path:
