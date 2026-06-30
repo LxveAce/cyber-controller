@@ -22,8 +22,11 @@ class ActionResolver:
     The resolver iterates over every connected device, loads its protocol
     module, and checks the module-level ``TARGET_ACTIONS`` dict for entries
     matching the target's :attr:`~Target.target_type`.  Placeholder tokens
-    in command templates (``{mac}``, ``{ssid}``, ``{channel}``, ``{rssi}``)
-    are substituted from the target's fields.
+    in command templates (``{mac}``, ``{ssid}``, ``{channel}``, ``{rssi}``,
+    ``{index}``) are substituted from the target's fields.  ``{index}``-based
+    actions are source-restricted (only offered by the device that discovered
+    the target) and dropped when no scan index is known — a scan index is only
+    valid for its own device's list.
     """
 
     def __init__(self, device_manager: DeviceManager) -> None:
@@ -43,20 +46,42 @@ class ActionResolver:
                 continue
             actions = getattr(protocol_mod, "TARGET_ACTIONS", {})
             matching = actions.get(target.target_type, [])
-            if matching:
+            usable = [a for a in matching if self._action_applicable(a, device, target)]
+            if usable:
                 result[device.port] = [
-                    self._render_action(a, target) for a in matching
+                    self._render_action(a, target) for a in usable
                 ]
         return result
+
+    @staticmethod
+    def _uses_index(action: TargetAction) -> bool:
+        """True if the action depends on a per-device scan index ({index} in template or a pre-command)."""
+        return "{index}" in action.command_template or any(
+            "{index}" in c for c in action.pre_commands
+        )
+
+    def _action_applicable(self, action: TargetAction, device: object, target: Target) -> bool:
+        """Index-based actions are only valid when (a) we actually know this target's scan index and (b) the
+        device offering the action is the one that discovered the target — a scan index is meaningful only to
+        its own device's list, so firing it cross-device (or with no index) could select the WRONG AP. Without
+        a known index we drop the action rather than send a literal/guessed ``{index}`` (lab-safety)."""
+        if not self._uses_index(action):
+            return True
+        extra = getattr(target, "extra", None) or {}
+        if extra.get("index") in (None, ""):
+            return False
+        return getattr(device, "port", None) == getattr(target, "device_source", None)
 
     def _render_action(self, action: TargetAction, target: Target) -> TargetAction:
         """Create a copy of the action with placeholders filled from the target."""
         rendered = copy.deepcopy(action)
+        extra = getattr(target, "extra", None) or {}
         subs = {
             "mac": target.mac,
             "ssid": target.ssid,
             "channel": str(target.channel),
             "rssi": str(target.rssi),
+            "index": str(extra.get("index", "")),
         }
         rendered.command_template = self._safe_sub(action.command_template, subs)
         rendered.pre_commands = [self._safe_sub(c, subs) for c in action.pre_commands]

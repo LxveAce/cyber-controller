@@ -137,9 +137,9 @@ class MeshtasticProtocol(BaseProtocol):
 # --- Target actions: what this protocol can do to each target type ---
 
 TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
-    TargetType.AP: [
-        TargetAction("Mesh Relay", "relay {mac}", "Relay target info across mesh network", ActionCategory.UTILITY),
-    ],
+    # No target actions: Meshtastic's serial link is protobuf-framed (ToRadio/FromRadio), so a plain-text
+    # command like the prior "relay {mac}" phantom never executes. Removed rather than shipped broken — a
+    # protobuf-aware backend (or the `meshtastic` CLI bridge) is the real fix (see firmware deep-dive).
 }
 
 
