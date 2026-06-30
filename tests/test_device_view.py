@@ -90,12 +90,23 @@ def test_model_navigation():
 
 def test_enter_leaf_sends_command():
     sent = []
+    def send(c):
+        sent.append(c)
+        return True          # actually delivered
     m = DeviceScreenModel("ESP32 Marauder", marauder_menu())
     m.enter()                # WiFi
     m.sel = 0
-    m.enter(sent.append)     # Scan APs -> command
+    m.enter(send)            # Scan APs -> command
     assert sent == ["scanap"]
-    assert m.status == "> scanap"
+    assert m.status.endswith("scanap") and "sent" in m.status
+
+
+def test_enter_leaf_preview_when_not_delivered():
+    m = DeviceScreenModel("ESP32 Marauder", marauder_menu())
+    m.enter()
+    m.sel = 0
+    m.enter(lambda c: False)  # no device -> preview, not "sent"
+    assert m.status.startswith("preview")
 
 
 def test_render_native_is_a_real_image(qapp):
