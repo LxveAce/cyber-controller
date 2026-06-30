@@ -224,6 +224,12 @@ class CyberControllerWindow(QMainWindow):
         shortcut_mode = QShortcut(QKeySequence("Ctrl+M"), self)
         shortcut_mode.activated.connect(self._toggle_ui_mode)
 
+        view_menu.addSeparator()
+        act_loadout = QAction("&Loadout…", self)
+        act_loadout.setStatusTip("Choose which firmwares/hardware you use — hide unused features (or Full Stack).")
+        act_loadout.triggered.connect(self.configure_loadout)
+        view_menu.addAction(act_loadout)
+
         # Tools
         tools_menu = mb.addMenu("&Tools")
 
@@ -389,9 +395,10 @@ class CyberControllerWindow(QMainWindow):
             self._main_splitter.setSizes([int(_h * 0.65), int(_h * 0.35)])  # ~65% top / 35% terminal
 
         self._build_tabs()
-        # Default to Devices tab (index 1) — after initial setup/flash, users spend
-        # most time on device control.
-        self._tabs.setCurrentIndex(1)
+        # Apply the saved loadout (hide unused tabs) before choosing the default tab.
+        self.apply_loadout(self._load_loadout(), persist=False)
+        # Default to the Devices tab (a core tab, always present) — most time is on device control.
+        self._tabs.setCurrentWidget(self._device_tab)
         self._refresh_sidebar_devices()
         self._build_command_palette()
 
@@ -482,6 +489,65 @@ class CyberControllerWindow(QMainWindow):
         except Exception:  # noqa: BLE001
             pass
         return recommended_ui_mode(avail_h, explicit)
+
+    # ── Loadout (which firmwares/hardware → which tabs are shown) ─────
+    def _tab_registry(self) -> "list[tuple[str, object]]":
+        """Canonical (label, widget) tabs in order — the source of truth for loadout show/hide."""
+        return [
+            ("Flash", self._flash_tab), ("Devices", self._device_tab),
+            ("Software OS", self._software_tab), ("Health", self._health_tab),
+            ("Macros", self._macro_tab), ("Targets", self._targets_tab),
+            ("Wardrive", self._wardrive_tab), ("Broadcast", self._broadcast_bar),
+            ("Cross-Comm", self._cross_comm_tab), ("Settings", self._settings_tab),
+            ("How-To", self._howto_tab),
+        ]
+
+    def _load_loadout(self) -> dict:
+        from src.config import loadout as L
+        try:
+            from src.config.settings import load_settings
+            return L.normalize(load_settings().get("interface", {}).get("loadout"))
+        except Exception:  # noqa: BLE001
+            return L.default_loadout()
+
+    def apply_loadout(self, lo: dict, *, persist: bool = True) -> None:
+        """Show only the tabs the loadout calls for (Full Stack / unconfigured → all). Re-runnable."""
+        from src.config import loadout as L
+        visible = L.visible_tabs(lo)
+        reg = dict(self._tab_registry())
+        popouts = getattr(self._tabs, "_popouts", {})
+        cur = self._tabs.currentWidget()
+        # Remove every registered tab from the bar (widgets are retained as attributes; detached stay out).
+        for _label, w in self._tab_registry():
+            i = self._tabs.indexOf(w)
+            if i >= 0:
+                self._tabs.removeTab(i)
+        # Add the visible ones back in canonical order (skip any currently popped out into a window).
+        for label in visible:
+            w = reg.get(label)
+            if w is not None and w not in popouts and self._tabs.indexOf(w) < 0:
+                self._tabs.addTab(w, label)
+        # Restore the selection, or fall back to Devices (a core tab).
+        if cur is not None and self._tabs.indexOf(cur) >= 0:
+            self._tabs.setCurrentWidget(cur)
+        elif self._tabs.indexOf(self._device_tab) >= 0:
+            self._tabs.setCurrentWidget(self._device_tab)
+        self._loadout = L.normalize(lo)
+        if persist:
+            try:
+                from src.config.settings import load_settings, save_settings
+                s = load_settings()
+                s.setdefault("interface", {})["loadout"] = self._loadout
+                save_settings(s)
+            except Exception:  # noqa: BLE001
+                log.exception("Failed to persist loadout")
+
+    def configure_loadout(self) -> None:
+        """Open the loadout picker (View ▸ Loadout / first run) and apply + persist the choice."""
+        from src.ui.qt.loadout_dialog import LoadoutDialog
+        result = LoadoutDialog.choose(self, getattr(self, "_loadout", None) or self._load_loadout())
+        if result is not None:
+            self.apply_loadout(result, persist=True)
 
     @property
     def ui_mode(self) -> str:
@@ -1529,6 +1595,13 @@ def launch_qt(
             _settings = load_settings()
             _settings["_interface_mode_ack"] = True
             save_settings(_settings)
+        # One-time loadout choice — tailor the GUI to the firmwares/hardware in use (or Full Stack).
+        if not win._load_loadout().get("configured", False):
+            from src.config import loadout as _L
+            from src.ui.qt.loadout_dialog import LoadoutDialog
+            _result = LoadoutDialog.choose(win, win._load_loadout())
+            # On cancel, default to Full Stack so nothing is hidden (and we don't re-ask every launch).
+            win.apply_loadout(_result if _result is not None else _L.full_stack_loadout(), persist=True)
 
     def _reveal() -> None:
         win.show()
