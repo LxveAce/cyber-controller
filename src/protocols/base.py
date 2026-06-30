@@ -58,6 +58,13 @@ class BaseProtocol(ABC):
     # ("\n"); the Flipper Zero shell only submits a line on CR ("\r"). Subclasses override as needed.
     line_ending: str = "\n"
 
+    # What this firmware/board can do — a set of canonical capability tokens used to surface each connected
+    # device as a node in the network (Devices-tab capability chips) and to inform Broadcast/AutoRouter which
+    # devices a verb applies to. Canonical tokens (keep consistent across protocols):
+    #   wifi · ble · bt · subghz · nfc · rfid · ir · gps · lora · mesh · nrf24 · rc · badusb · jammer
+    # Subclasses override; an empty set means "no declared capabilities" (e.g. generic/raw).
+    capabilities: "frozenset[str]" = frozenset()
+
     @property
     @abstractmethod
     def protocol_name(self) -> str:

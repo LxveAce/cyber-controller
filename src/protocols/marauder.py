@@ -72,6 +72,8 @@ class MarauderProtocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "marauder"
 
+    capabilities = frozenset({"ble", "deauth", "gps", "wifi"})
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:

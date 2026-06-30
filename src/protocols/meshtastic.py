@@ -46,6 +46,8 @@ class MeshtasticProtocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "meshtastic"
 
+    capabilities = frozenset({"lora", "mesh"})
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:

@@ -145,6 +145,15 @@ class DeviceTab(QWidget):
         fw_row.addWidget(self._firmware_combo, stretch=1)
         left_layout.addLayout(fw_row)
 
+        # Capability chips — surface what the selected firmware/board can do (this device's "node" role in
+        # the network). Driven off BaseProtocol.capabilities; updated when the firmware selection changes.
+        self._caps_label = QLabel("")
+        self._caps_label.setObjectName("caps_label")
+        self._caps_label.setWordWrap(True)
+        self._caps_label.setStyleSheet("color:#8b949e;font-size:11px;")
+        left_layout.addWidget(self._caps_label)
+        self._update_capabilities()
+
         btn_row = QHBoxLayout()
         self._btn_connect = QPushButton("Connect")
         self._btn_connect.clicked.connect(self._on_connect)
@@ -415,6 +424,20 @@ class DeviceTab(QWidget):
         # connection state (mirror the Disconnect button).
         self._btn_send.setEnabled(False if is_bj else self._btn_disconnect.isEnabled())
         self._apply_line_ending()
+        self._update_capabilities()
+
+    def _update_capabilities(self) -> None:
+        """Show the selected firmware's capability tokens (its 'node' role) as a chip line in the Devices
+        tab. Empty for firmwares that declare none (e.g. generic/raw)."""
+        if not hasattr(self, "_caps_label"):
+            return
+        try:
+            caps = sorted(getattr(self._selected_protocol(), "capabilities", frozenset()))
+        except Exception:  # noqa: BLE001
+            caps = []
+        self._caps_label.setText(
+            ("Capabilities: " + "  ·  ".join(c.upper() for c in caps)) if caps else ""
+        )
 
     def _apply_line_ending(self) -> None:
         """Apply the selected firmware's command terminator to the live connection (Flipper needs CR; most

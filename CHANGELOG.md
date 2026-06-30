@@ -6,6 +6,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Per-device capability map (network integration).** Each firmware/board now declares what it can do
+  (`wifi`/`ble`/`subghz`/`nfc`/`ir`/`rfid`/`gps`/`lora`/`nrf24`/`deauth`/`badusb`…) via `BaseProtocol.capabilities`,
+  surfaced as a capability chip line in the Devices tab so every connected device reads as a node in the
+  network, and exposed via `protocols.capabilities_for(name)` for Broadcast/AutoRouter. `src/protocols/*.py` +
+  `src/ui/qt/device_tab.py`; +tests.
 - **Argument-entry form for placeholder commands.** Sending a command that contains `<...>` placeholders
   (e.g. `scanap -c <ch>`, `select -a <idx>`, `led -r <v> -g <v> -b <v>`) now pops a small parameter form —
   one field per token, occurrence-ordered so repeated tokens get distinct values — instead of transmitting
