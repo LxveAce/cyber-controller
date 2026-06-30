@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from src.models.action import TargetAction
@@ -14,6 +15,11 @@ if TYPE_CHECKING:
     from src.core.device_manager import DeviceManager
 
 log = logging.getLogger(__name__)
+
+# Control chars (C0 + DEL): an over-the-air value (e.g. a scanned SSID) carrying one would trip
+# SerialConnection.write()'s injection guard (ValueError) on a {ssid}-bearing action. Strip them here so
+# the resolver render path matches the sibling sanitizers (device_tab._sanitize_arg, _sanitize_value).
+_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
 
 
 class ActionResolver:
@@ -96,7 +102,9 @@ class ActionResolver:
         """
         result = template
         for key, val in subs.items():
-            safe_val = val[:64].replace("{", "").replace("}", "")
+            # Strip control chars first, then cap, then remove braces — keeps the value safe for both
+            # the serial injection guard and recursive-expansion.
+            safe_val = _CTRL_RE.sub("", val)[:64].replace("{", "").replace("}", "")
             result = result.replace("{" + key + "}", safe_val)
         return result
 

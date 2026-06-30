@@ -134,9 +134,23 @@ class TargetIngestor:
                 return None
             return Target(
                 mac=uid, target_type=TargetType.NFC,
-                ssid=str(d.get("type", d.get("sak", ""))),
+                # Parsers emit 'nfc_type' (Flipper/HaleHound); keep 'type' as a tolerant fallback,
+                # then degrade to the SAK byte — so the label is the tag type, not "08".
+                ssid=str(d.get("nfc_type") or d.get("type") or d.get("sak", "")),
                 device_source=port,
                 extra={"atqa": d.get("atqa", ""), "sak": d.get("sak", "")},
+            )
+
+        if et == "rfid_found":
+            # 125 kHz RFID (Flipper) — keyed by the tag serial (no MAC, like SubGHz keys on frequency),
+            # routed to TargetType.RFID so the resolver picks 'rfid emulate' (not the NFC path).
+            serial = str(d.get("uid") or d.get("data") or "").strip()
+            if not serial:
+                return None
+            return Target(
+                mac=serial, target_type=TargetType.RFID,
+                ssid=str(d.get("rfid_type", "")), device_source=port,
+                extra={"data": d.get("data", "")},
             )
 
         return None

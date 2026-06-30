@@ -113,3 +113,22 @@ def test_halehound_rogue_ap_flagged_in_pool():
     aps = [t for t in pool.all() if t.target_type == TargetType.AP]
     assert len(aps) == 1
     assert aps[0].mac == "11:22:33:44:55:66" and aps[0].extra.get("rogue") is True
+
+
+# ── Flipper RFID + NFC label (bug-hunt fixes #13/#15, #25) ────────────────────────────────────────
+
+def test_flipper_rfid_becomes_rfid_target():
+    # 125 kHz RFID was emitted as nfc_found without a uid and silently dropped; now it's a routable
+    # RFID target keyed by the tag serial.
+    pool = _ingest("flipper", ["RFID: Type: EM4100 | Data: 01 02 03 04 05"])
+    rfids = [t for t in pool.all() if t.target_type == TargetType.RFID]
+    assert len(rfids) == 1
+    assert rfids[0].mac == "01 02 03 04 05" and rfids[0].ssid == "EM4100"
+
+
+def test_flipper_nfc_label_uses_nfc_type():
+    # The ingestor read 'type' but parsers emit 'nfc_type', so the label degraded to the SAK byte ("08").
+    pool = _ingest("flipper", ["NFC: Type: Mifare Classic 1K | UID: 04:AB:CD:EF | ATQA: 0004 | SAK: 08"])
+    nfcs = [t for t in pool.all() if t.target_type == TargetType.NFC]
+    assert len(nfcs) == 1
+    assert nfcs[0].ssid == "Mifare Classic 1K"
