@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import codecs
 import logging
 import threading
 from enum import Enum
@@ -59,6 +60,10 @@ class SerialConnection:
         self._state = ConnectionState.DISCONNECTED
         self._read_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        # Serializes the _serial lifetime against writers: write() and disconnect()/teardown take this
+        # so a concurrent close (hotplug/reader-error thread) can't null the handle mid-write (which
+        # would raise an uncaught AttributeError in write()).
+        self._io_lock = threading.Lock()
 
         # Callback lists
         self._line_callbacks: list[Callable[[str], None]] = []
@@ -114,6 +119,16 @@ class SerialConnection:
             log.warning("Already connected to %s", self.port)
             return
 
+        # Idempotent re-open: release any leftover handle from a prior read error so the OS port is
+        # free. On Windows COM ports open exclusively, so a stale handle would make the re-open raise
+        # "Access is denied" — connect() must be safe to call to recover an ERROR-state connection.
+        if self._serial is not None:
+            try:
+                self._serial.close()
+            except Exception:
+                pass
+            self._serial = None
+
         self._set_state(ConnectionState.CONNECTING)
         try:
             self._serial = serial.Serial(
@@ -141,16 +156,26 @@ class SerialConnection:
         if self._state == ConnectionState.DISCONNECTED:
             return
         self._stop_event.set()
+        # Join the reader thread OUTSIDE the I/O lock (the join can take up to 3s; holding the lock
+        # there would needlessly block writers). Then take the lock only for the handle teardown so it
+        # cannot interleave with an in-flight write().
         if self._read_thread and self._read_thread.is_alive():
             self._read_thread.join(timeout=3.0)
-        if self._serial and self._serial.is_open:
-            try:
-                self._serial.close()
-            except Exception:
-                pass
-        self._serial = None
+        self._release_serial()
         self._set_state(ConnectionState.DISCONNECTED)
         log.info("Disconnected from %s", self.port)
+
+    def _release_serial(self) -> None:
+        """Close and drop the serial handle under the I/O lock so a later connect() can reopen the
+        port cleanly. Safe if already closed/None; called from disconnect() and the reader thread."""
+        with self._io_lock:
+            if self._serial is not None:
+                try:
+                    if self._serial.is_open:
+                        self._serial.close()
+                except Exception:
+                    pass
+                self._serial = None
 
     # ── I/O ──────────────────────────────────────────────────────────
 
@@ -168,10 +193,9 @@ class SerialConnection:
             RuntimeError: If not connected.
             ValueError: If *data* contains a newline or other control character.
         """
-        if not self._serial or not self._serial.is_open:
-            raise RuntimeError(f"Not connected to {self.port}")
         cleaned = data.rstrip("\r\n")
-        # C0 controls (0x00–0x1F), DEL (0x7F): never legitimate inside a single command.
+        # C0 controls (0x00–0x1F), DEL (0x7F): never legitimate inside a single command. Validate the
+        # input up front (before touching the port) so bad input is rejected fast.
         bad = [ch for ch in cleaned if ord(ch) < 0x20 or ord(ch) == 0x7F]
         if bad:
             raise ValueError(
@@ -179,20 +203,29 @@ class SerialConnection:
                 f"{[hex(ord(c)) for c in bad]} — possible command injection"
             )
         payload = (cleaned + self.line_ending).encode(self.encoding)
-        try:
-            self._serial.write(payload)
-            self._serial.flush()
-            log.debug("TX [%s]: %s", self.port, data.strip())
-        except serial.SerialException as exc:
-            self._set_state(ConnectionState.ERROR)
-            self._emit_error(exc)
-            raise
+        # Hold the I/O lock across the check+write+flush so disconnect()/teardown can't null/close the
+        # handle between the guard and the write (which would raise an uncaught AttributeError).
+        with self._io_lock:
+            ser = self._serial
+            if ser is None or not ser.is_open:
+                raise RuntimeError(f"Not connected to {self.port}")
+            try:
+                ser.write(payload)
+                ser.flush()
+                log.debug("TX [%s]: %s", self.port, data.strip())
+            except (serial.SerialException, OSError) as exc:
+                self._set_state(ConnectionState.ERROR)
+                self._emit_error(exc)
+                raise
 
     # ── Internal ─────────────────────────────────────────────────────
 
     def _reader_loop(self) -> None:
         """Background thread: read lines until stopped or error."""
         buf = ""
+        # One incremental decoder for the whole loop, so a multi-byte UTF-8 sequence split across two
+        # reads reconstructs into a single code point (a per-read decode() would emit two U+FFFD).
+        decoder = codecs.getincrementaldecoder(self.encoding)(errors="replace")
         while not self._stop_event.is_set():
             try:
                 if not self._serial or not self._serial.is_open:
@@ -200,7 +233,7 @@ class SerialConnection:
                 raw = self._serial.read(self._serial.in_waiting or 1)
                 if not raw:
                     continue
-                buf += raw.decode(self.encoding, errors="replace")
+                buf += decoder.decode(raw)
                 while "\n" in buf:
                     line, buf = buf.split("\n", 1)
                     line = line.rstrip("\r")
@@ -211,31 +244,38 @@ class SerialConnection:
                     log.error("Serial read error on %s: %s", self.port, exc)
                     self._set_state(ConnectionState.ERROR)
                     self._emit_error(exc)
+                self._release_serial()
                 break
             except Exception as exc:
                 if not self._stop_event.is_set():
                     log.error("Unexpected reader error on %s: %s", self.port, exc)
+                    # A non-SerialException (e.g. a bare OSError on device removal) must STILL move us
+                    # out of CONNECTED — otherwise is_connected lies and connect() refuses to reopen.
+                    self._set_state(ConnectionState.ERROR)
                     self._emit_error(exc)
+                self._release_serial()
                 break
 
     def _set_state(self, new_state: ConnectionState) -> None:
         if new_state != self._state:
             self._state = new_state
-            for cb in self._state_callbacks:
+            # Snapshot the callback list: a subscriber attaching/detaching mid-fan-out (web/Qt threads)
+            # must not skip or stale-fire callbacks during iteration.
+            for cb in list(self._state_callbacks):
                 try:
                     cb(new_state)
                 except Exception:
                     log.exception("State callback error")
 
     def _emit_line(self, line: str) -> None:
-        for cb in self._line_callbacks:
+        for cb in list(self._line_callbacks):
             try:
                 cb(line)
             except Exception:
                 log.exception("Line callback error")
 
     def _emit_error(self, exc: Exception) -> None:
-        for cb in self._error_callbacks:
+        for cb in list(self._error_callbacks):
             try:
                 cb(exc)
             except Exception:
