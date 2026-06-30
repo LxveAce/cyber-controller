@@ -1422,12 +1422,51 @@ class CyberControllerWindow(QMainWindow):
             return
         title, factory = SKINS.get(firmware, SKINS["marauder"])
         model = DeviceScreenModel(title, factory())
-        # Keep a reference so the top-level window isn't garbage-collected.
-        self._device_view = DeviceView(model)
+        # Keep a reference so the top-level window isn't garbage-collected. Wire it to actually drive the
+        # connected device when its firmware matches the skin (else it stays a preview).
+        self._device_view = DeviceView(model, send=lambda c, fw=firmware: self._device_view_send(fw, c))
         self._device_view.setWindowTitle(f"Device View — {title} (reconstructed skin · preview)")
         self._device_view.show()
         self._device_view.raise_()
         self._device_view.activateWindow()
+
+    # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
+    _SKIN_PROTOCOL = {"marauder": "marauder", "ghostesp": "ghostesp", "esp32div": "esp32_div"}
+
+    def _device_view_send(self, firmware: str, cmd: str) -> bool:
+        """Send a Device-View command to the active device IFF its selected firmware matches the skin.
+
+        Routes through the same safety classifier as the Devices tab (destructive commands prompt for
+        confirmation). Returns True only if the command was actually written — so the skin shows "sent"
+        vs "preview" honestly, and one firmware's commands are never sent to a different device.
+        """
+        dt = getattr(self, "_device_tab", None)
+        conn = getattr(dt, "_active_conn", None) if dt is not None else None
+        if conn is None:
+            return False
+        try:
+            proto = dt._selected_protocol()
+        except Exception:  # noqa: BLE001
+            return False
+        if getattr(proto, "protocol_name", None) != self._SKIN_PROTOCOL.get(firmware, firmware):
+            return False  # don't send a Marauder command to a GhostESP, etc.
+        from src.core import safety
+        from src.config.settings import load_settings
+        info = next((ci for ci in proto.cached_commands() if ci.name == cmd), None)
+        danger = safety.classify(cmd, info)
+        if safety.should_confirm(danger, load_settings()):
+            reply = QMessageBox.warning(
+                self, "Confirm dangerous command", safety.lab_only_warning_text(cmd, danger),
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return False
+        try:
+            conn.write(cmd)
+            return True
+        except Exception:  # noqa: BLE001
+            log.exception("Device View send failed")
+            return False
 
     def _on_suicide_setup(self) -> None:
         """Open the Dead Man's Switch host-side password & duress setup dialog."""

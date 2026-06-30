@@ -24,13 +24,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   surfaces the **STOP paths** (cut power / device button → Idle / web UI → Idle), an **Open control web UI**
   launcher (`http://192.168.1.1`), and disables the inert serial Send box. Full CC-driven remote arm/stop
   is planned once the web-UI endpoints are captured. `src/ui/qt/device_tab.py`; +4 tests.
-- **Device View (preview) — Marauder + GhostESP skins.** A new **Tools → Device View** opens an on-screen
-  reconstruction of a firmware's on-board TFT menu (header, breadcrumb, selection highlight, submenus) at
-  the device's real 240×320 resolution, scaled into a resizable window. It's model-driven so it runs with
-  no hardware, and every menu leaf maps to a **real serial command** for that firmware (grounded by tests
-  against each protocol's command set). Honest framing: this is a faithful *reconstruction*, not a pixel
-  mirror — only the Flipper's RPC can be a true mirror (a later phase). `src/ui/qt/device_view.py`; +8
-  tests. (Device-View plan P2/P3.)
+- **Device View — Marauder / GhostESP / ESP32-DIV skins (now drives the device).** A new
+  **Tools → Device View** opens an on-screen reconstruction of a firmware's on-board TFT menu (header,
+  breadcrumb, selection highlight, submenus) at the device's real 240×320 resolution, scaled into a
+  resizable window. **Clicking a menu item now sends that firmware's real serial command to the connected
+  device** — but only when the active device's firmware matches the skin, and routed through the same safety
+  prompts as the Devices tab; otherwise it stays a labelled **preview** (so it never sends one firmware's
+  commands to another, and never implies control it doesn't have). Every leaf is grounded against the real
+  protocol command set by tests. Honest framing: a faithful *reconstruction*, not a pixel mirror — only the
+  Flipper's RPC can be a true mirror (a later phase). `src/ui/qt/device_view.py`; +12 tests. (Plan P2/P3.)
 - **Detachable / pop-out tabs.** Any tab can pop out into its own resizable, top-level window — drag it to a
   second monitor, resize it freely — and re-dock seamlessly back onto the tab strip. Detach via the tab-strip
   **⇱** corner button, **double-clicking** a tab, the tab right-click **"Pop out"**, or **Ctrl+Shift+D**;
