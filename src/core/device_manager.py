@@ -59,6 +59,7 @@ class DeviceManager:
     def __init__(self) -> None:
         self._devices: dict[str, Device] = {}  # keyed by port
         self._connections: dict[str, SerialConnection] = {}
+        self._conn_owners: dict[str, set[str]] = {}  # port -> UI owners sharing the connection
         self._lock = threading.Lock()
 
         # Callbacks
@@ -90,6 +91,7 @@ class DeviceManager:
         with self._lock:
             device = self._devices.pop(port, None)
             conn = self._connections.pop(port, None)
+            self._conn_owners.pop(port, None)  # a physical removal drops all owners
         if conn:
             conn.disconnect()
         if device:
@@ -113,29 +115,76 @@ class DeviceManager:
 
     # ── Serial connections ───────────────────────────────────────────
 
-    def open_connection(self, port: str, baud: int = 115200) -> SerialConnection:
-        """Open (or return existing) SerialConnection for *port*.
+    def open_connection(self, port: str, baud: int = 115200, owner: str | None = None) -> SerialConnection:
+        """Open (or return the existing) SerialConnection for *port*.
+
+        Multiple UI panels can share one connection on a port; pass an *owner* tag (e.g. ``"devices_tab"``,
+        ``"pterm"``) and the connection is only torn down when the LAST owner releases it via
+        :meth:`close_connection` — so disconnecting in one panel can't kill another panel's in-use
+        connection. A physical unplug (:meth:`remove_device`) or :meth:`shutdown` still force-closes.
 
         Raises:
-            KeyError: If port is not in the device registry.
+            KeyError: If port is not in the device registry, or the device was hot-unplugged mid-connect.
         """
         with self._lock:
             if port not in self._devices:
                 raise KeyError(f"No registered device on port {port}")
-            if port in self._connections and self._connections[port].is_connected:
-                return self._connections[port]
+            existing = self._connections.get(port)
+            if existing is not None and existing.is_connected:
+                if owner:
+                    self._conn_owners.setdefault(port, set()).add(owner)
+                self._devices[port].connected = True
+                return existing
+            stale = existing  # a dead/errored conn for this port, if any
+            fw = self._devices[port].firmware or ""
 
-        conn = SerialConnection(port, baud=baud)
+        # Build + connect OUTSIDE the lock (connect() can block / join a thread). Release any stale handle
+        # first so the exclusive COM port is free, and seed the per-firmware terminator at open time.
+        if stale is not None:
+            try:
+                stale.disconnect()
+            except Exception:
+                pass
+        try:
+            from src.protocols import line_ending_for
+            terminator = line_ending_for(fw) if fw else "\n"
+        except Exception:
+            terminator = "\n"
+        conn = SerialConnection(port, baud=baud, line_ending=terminator)
         conn.connect()
+
+        to_close: SerialConnection | None = None
+        removed = False
         with self._lock:
-            self._connections[port] = conn
-            self._devices[port].connected = True
+            dev = self._devices.get(port)
+            if dev is None:
+                # Hot-unplugged during connect(): discard the new conn cleanly rather than KeyError- on a
+                # popped key (and never leak the freshly opened port).
+                to_close = conn
+                removed = True
+            else:
+                self._connections[port] = conn
+                dev.connected = True
+                if owner:
+                    self._conn_owners.setdefault(port, set()).add(owner)
+        if to_close is not None:
+            to_close.disconnect()  # outside the lock (disconnect joins the reader thread)
+        if removed:
+            raise KeyError(f"Device on port {port} was removed during connect")
         return conn
 
-    def close_connection(self, port: str) -> None:
-        """Close the serial connection for *port*."""
+    def close_connection(self, port: str, owner: str | None = None) -> None:
+        """Release the serial connection for *port*. With an *owner* tag only the LAST owner's release
+        tears the connection down (so one panel disconnecting can't kill another's in-use connection); a
+        release with no owner (shutdown / hot-unplug) force-closes regardless."""
         with self._lock:
+            owners = self._conn_owners.get(port)
+            if owner and owners is not None:
+                owners.discard(owner)
+                if owners:
+                    return  # other owners still using it -> keep it alive
             conn = self._connections.pop(port, None)
+            self._conn_owners.pop(port, None)
             dev = self._devices.get(port)
         if conn:
             conn.disconnect()

@@ -831,7 +831,7 @@ class CyberControllerWindow(QMainWindow):
                 continue  # already connected and live
             self._pterm_conns.pop(port, None)  # stale/dead entry -> fall through and reopen
             try:
-                conn = self._dm.open_connection(port)
+                conn = self._dm.open_connection(port, owner="pterm")
                 self._pterm_conns[port] = conn
                 color = self._pterm_assign_color(port)
                 # Capture port in closure
@@ -857,7 +857,7 @@ class CyberControllerWindow(QMainWindow):
             if port not in self._pterm_conns:
                 continue
             try:
-                self._dm.close_connection(port)
+                self._dm.close_connection(port, owner="pterm")
             except Exception:
                 pass
             del self._pterm_conns[port]
