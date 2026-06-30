@@ -15,6 +15,7 @@ class TargetType(Enum):
     BLE = "ble"
     SUBGHZ = "subghz"
     NFC = "nfc"
+    RFID = "rfid"  # 125 kHz tags (Flipper) — distinct from 13.56 MHz NFC; different emulate command
 
 
 @dataclass
