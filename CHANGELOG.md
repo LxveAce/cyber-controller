@@ -24,6 +24,20 @@ All notable changes to Cyber Controller are documented here. This project adhere
   benign `SM>{…}` status JSON is explicitly never treated as an auth prompt (safe to poll). (`deadman_auth.py`;
   +6 tests.) Full suite **488 passed / 2 skipped**.
 
+### Distribution / trust
+- **App icon.** Generated `assets/icon.ico` (multi-resolution 16–256 px) so the Windows `.exe` is branded in
+  Explorer/taskbar (build.py already passed `--icon` but the file was missing, so it was a no-op until now).
+- **Real Windows installer.** New `installer/cyber-controller.iss` (Inno Setup) packages a `--onedir` build
+  (added to `build.py`) and registers the standard Add/Remove Programs keys, so the app appears under
+  **Settings → Apps → Installed apps** with an uninstaller instead of being a loose `.exe`. CI builds it on
+  release (best-effort; unsigned — see below).
+- **Published checksums.** The release workflow now emits a `.sha256` next to each binary (Windows/Linux/macOS)
+  so downloads are verifiable.
+- **Trust guide.** New `docs/WINDOWS-SECURITY.md` explains the SmartScreen "unrecognized app" prompt (and how
+  to *More info → Run anyway*), why an unsigned PyInstaller build draws AV false positives, and three ways to
+  verify the download yourself (SHA-256, VirusTotal, build from source). Code-signing remains the cert-gated
+  follow-up that retires the prompt for good.
+
 ## [1.4.0] — 2026-06-29
 
 ### Added
