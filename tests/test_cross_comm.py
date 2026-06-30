@@ -78,3 +78,40 @@ def test_sanitize_value_caps_length() -> None:
 
 def test_sanitize_value_coerces_non_str() -> None:
     assert cross_comm._sanitize_value(12345) == "12345"
+
+
+# ── TargetPool.add update semantics (bug-hunt fixes #4, #14, #16) ─────────────────────────────────
+
+def _ap(mac, ssid="", channel=0, rssi=0):
+    from src.models.target import Target, TargetType
+    return Target(mac=mac, target_type=TargetType.AP, ssid=ssid, channel=channel, rssi=rssi)
+
+
+def test_pool_add_does_not_clobber_known_channel_rssi_with_zero() -> None:
+    # A re-observation that omits channel/rssi (the 0 sentinel) must NOT erase the learned values.
+    pool = cross_comm.TargetPool(cross_comm.EventBus())
+    pool.add(_ap("AA:BB:CC:DD:EE:FF", ssid="Net", channel=6, rssi=-40))
+    pool.add(_ap("AA:BB:CC:DD:EE:FF", ssid="", channel=0, rssi=0))  # re-seen, no channel line
+    t = pool.get("ap:AA:BB:CC:DD:EE:FF")
+    assert t.channel == 6 and t.rssi == -40 and t.ssid == "Net"
+
+
+def test_pool_add_latest_wins_ssid_for_synthetic_index_key() -> None:
+    # Synthetic idx:<port>:<index> keys are reused across re-ordered scans -> SSID must be latest-wins,
+    # not stuck on the first label (else the display SSID mismatches the channel/rssi).
+    pool = cross_comm.TargetPool(cross_comm.EventBus())
+    pool.add(_ap("idx:COM3:0", ssid="HomeWiFi", channel=1, rssi=-42))
+    pool.add(_ap("idx:COM3:0", ssid="CoffeeShop", channel=6, rssi=-50))
+    t = pool.get("ap:idx:COM3:0")
+    assert t.ssid == "CoffeeShop" and t.channel == 6 and t.rssi == -50
+
+
+def test_pool_add_publishes_update_outside_lock_no_deadlock() -> None:
+    # The update is published OUTSIDE the pool lock, so a subscriber that reads the pool in its
+    # callback must not deadlock (this call would hang forever with the old in-lock publish).
+    pool = cross_comm.TargetPool(cross_comm.EventBus())
+    snapshots: list[int] = []
+    pool.bus.subscribe("target.updated", lambda _topic, _p: snapshots.append(len(pool.all())))
+    pool.add(_ap("AA:BB:CC:DD:EE:FF", ssid="Net", channel=6, rssi=-40))
+    pool.add(_ap("AA:BB:CC:DD:EE:FF", ssid="Net", channel=6, rssi=-41))  # triggers target.updated
+    assert snapshots == [1]  # pool.all() succeeded inside the callback
