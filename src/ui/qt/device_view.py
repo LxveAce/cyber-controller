@@ -174,10 +174,49 @@ def ghostesp_menu() -> "list[MenuNode]":
     ]
 
 
+# ── a faithful ESP32-DIV menu (leaves are real ESP32-DIV serial commands) ──
+def esp32div_menu() -> "list[MenuNode]":
+    M = MenuNode
+    return [
+        M("WiFi", children=[
+            M("Scan APs", command="scanwifi"),
+            M("Scan Stations", command="scansta"),
+            M("Capture", children=[
+                M("Sniff", command="sniff"),
+                M("PMKID", command="pmkid"),
+                M("Handshake", command="handshake"),
+            ]),
+            M("Attacks", children=[
+                M("Deauth", command="deauth"),
+                M("Deauth All", command="deauth all"),
+                M("Beacon", command="beacon"),
+                M("Rick Roll", command="rickroll"),
+            ]),
+            M("Channel", command="getch"),
+        ]),
+        M("Bluetooth", children=[
+            M("BLE Scan", command="scanble"),
+            M("BLE Spam", command="blespam"),
+        ]),
+        M("2.4GHz", children=[
+            M("NRF Scan", command="nrf scan"),
+            M("NRF Sniff", command="nrf sniff"),
+            M("NRF Jam", command="nrf jam"),
+        ]),
+        M("Device", children=[
+            M("Info", command="info"),
+            M("SD Info", command="sd info"),
+            M("Settings", command="settings"),
+            M("Reboot", command="reboot"),
+        ]),
+    ]
+
+
 # firmware -> (display title, menu factory) for the Device View chooser
 SKINS = {
     "marauder": ("ESP32 Marauder", marauder_menu),
     "ghostesp": ("GhostESP", ghostesp_menu),
+    "esp32div": ("ESP32-DIV", esp32div_menu),
 }
 
 
