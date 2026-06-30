@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
@@ -188,13 +189,22 @@ class BroadcastEngine:
 
         results: list[BroadcastResult] = []
         lock = threading.Lock()
+        finalized = False  # set once we summarize; a slow worker must not append/publish after that
 
         def _send(cc: ConcreteCommand) -> None:
+            nonlocal finalized
             conn = self._dm.get_connection(cc.port)
             if conn is None:
                 res = BroadcastResult(cc.port, cc.firmware, cc.command, "failed", "no active connection")
             else:
                 try:
+                    # Stamp the firmware's terminator before writing: a CR-only firmware (Flipper) would
+                    # otherwise get an LF-terminated command its shell ignores, so results never converge.
+                    try:
+                        from src.protocols import line_ending_for
+                        conn.line_ending = line_ending_for(cc.firmware)
+                    except Exception:
+                        pass
                     for pre in cc.pre_commands:
                         conn.write(pre)
                     conn.write(cc.command)
@@ -202,24 +212,33 @@ class BroadcastEngine:
                 except Exception as exc:  # isolate one device's failure from the rest
                     res = BroadcastResult(cc.port, cc.firmware, cc.command, "failed", str(exc))
             with lock:
+                if finalized:
+                    return  # broadcast already summarized (slow write) -> drop the late result + event
                 results.append(res)
-            self._publish("action.executed", {
-                "port": cc.port, "firmware": cc.firmware, "command": cc.command,
-                "status": res.status, "detail": res.detail, "source": "broadcast",
-            })
+                payload = {
+                    "port": cc.port, "firmware": cc.firmware, "command": cc.command,
+                    "status": res.status, "detail": res.detail, "source": "broadcast",
+                }
+            self._publish("action.executed", payload)
 
         threads = [threading.Thread(target=_send, args=(cc,), daemon=True) for cc in plan.concrete]
         for t in threads:
             t.start()
+        # ONE total deadline (not 10s per thread); whatever hasn't finished by then counts as a timeout
+        # rather than vanishing from the summary.
+        deadline = time.monotonic() + 10.0
         for t in threads:
-            t.join(timeout=10)
-
-        sent = sum(1 for r in results if r.status == "sent")
+            t.join(timeout=max(0.0, deadline - time.monotonic()))
+        with lock:
+            finalized = True
+            done = list(results)  # snapshot — the caller's len() can't be mutated by a late worker
+        sent = sum(1 for r in done if r.status == "sent")
+        timed_out = len(plan.concrete) - len(done)
         self._publish("broadcast.completed", {
             "verb": plan.action.verb.value, "label": plan.action.label,
-            "sent": sent, "failed": len(results) - sent, "skipped": len(plan.skipped),
+            "sent": sent, "failed": (len(done) - sent) + timed_out, "skipped": len(plan.skipped),
         })
-        return results
+        return done
 
     # ── helpers ──────────────────────────────────────────────────────
     @staticmethod

@@ -66,3 +66,25 @@ def test_render_strips_control_chars_from_ssid():
     t = Target(mac="AA:BB:CC:DD:EE:FF", target_type=TargetType.AP, ssid="Cof\x07fee\x00Shop")
     rendered = ActionResolver(None)._render_action(a, t)
     assert rendered.command_template == "attack -t beacon -s CoffeeShop"
+
+
+def test_execute_action_stamps_firmware_terminator():
+    # execute_action must stamp the device's firmware terminator (Flipper CR) before writing, so a routed
+    # action on a non-active connection still executes.
+    import types
+    from src.core.action_resolver import execute_action
+    from src.models.action import TargetAction
+
+    class _C:
+        def __init__(self):
+            self.line_ending = "\n"
+            self.writes: list[str] = []
+
+        def write(self, s):
+            self.writes.append(s)
+
+    conn = _C()
+    dev = types.SimpleNamespace(firmware="flipper", name="flipper")
+    dm = types.SimpleNamespace(get_connection=lambda _p: conn, get_device=lambda _p: dev)
+    assert execute_action(TargetAction("RFID Emulate", "rfid emulate", "x"), "COM5", dm) is True
+    assert conn.line_ending == "\r" and conn.writes == ["rfid emulate"]

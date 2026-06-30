@@ -132,6 +132,16 @@ def execute_action(
         log.warning("No active connection on %s", device_port)
         return False
 
+    # Stamp the firmware terminator (Flipper CR vs LF) so a routed action on a non-active device's
+    # connection still executes instead of being silently dropped by a CR-only shell.
+    dev = device_manager.get_device(device_port)
+    if dev is not None:
+        try:
+            from src.protocols import line_ending_for
+            conn.line_ending = line_ending_for(dev.firmware or dev.name)
+        except Exception:
+            pass
+
     # Send pre-commands (e.g., "select -a 0")
     for pre_cmd in action.pre_commands:
         log.info("Pre-command -> %s: %s", device_port, pre_cmd)
