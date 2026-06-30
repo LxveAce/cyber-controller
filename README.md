@@ -400,6 +400,15 @@ flash-only critical section; recoverable only by the owner over UART on T1).
 Issues and PRs welcome. Run `python -m pytest` before submitting — the suite covers the flash core,
 protocols, backends, the security hardening, and the broadcast engine.
 
+## Credits
+
+Cyber Controller flashes, drives, and coordinates firmware and tools it did not write. It
+stands on the work of many upstream firmware authors, flashing-tool maintainers, OS
+projects, and Python library developers — none of whom endorse this project. See
+[CREDITS.md](CREDITS.md) for full acknowledgments and licenses. Nothing upstream is
+vendored or redistributed here; binaries are fetched from their official releases, pinned
+and SHA-256 verified. Trademarks and copyrights belong to their respective owners.
+
 ## License
 
 MIT — Copyright © 2026 [LxveAce](https://github.com/LxveAce). See [LICENSE](LICENSE).
