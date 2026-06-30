@@ -72,6 +72,14 @@ is appreciated.
 ### Auditing
 - A tamper-evident SHA-256 hash-chain **audit trail** records flash, serial-command, and auth events.
 
+## Download & distribution trust
+
+The release binaries are **not code-signed yet**, so Windows SmartScreen may warn and a few antivirus
+engines may show a heuristic false positive — the normal pattern for an unsigned PyInstaller build.
+Every release publishes **SHA-256 checksums** (`SHA256SUMS.txt`) so you can verify the download, the files
+are scanned on **VirusTotal**, and the project is open source so you can build it yourself. See
+[`docs/WINDOWS-SECURITY.md`](docs/WINDOWS-SECURITY.md) for the full explanation and verification steps.
+
 ## Supported versions
 
 The latest `master` is the supported version. Security fixes are applied to `master`.
