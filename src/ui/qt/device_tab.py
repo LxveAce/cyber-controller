@@ -124,6 +124,7 @@ class DeviceTab(QWidget):
         fw_row.addWidget(self._firmware_label)
         self._firmware_combo = QComboBox()
         self._firmware_combo.addItems(_firmware_choices())
+        self._firmware_combo.currentIndexChanged.connect(lambda _i: self._update_bj_panel())
         fw_row.addWidget(self._firmware_combo, stretch=1)
         left_layout.addLayout(fw_row)
 
@@ -150,6 +151,34 @@ class DeviceTab(QWidget):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
+
+        # BlueJammer control/stop panel — shown only when a BlueJammer is the active firmware. Its stock
+        # firmware has NO serial command channel, so the real control surface is the device's own web UI;
+        # this surfaces it + the STOP paths (owner: "full control = safe handling" for an RF-shielded lab).
+        self._bj_panel = QFrame()
+        self._bj_panel.setObjectName("card")
+        self._bj_panel.setStyleSheet("QFrame#card{border:1px solid #f0883e;background:rgba(240,136,62,0.09);}")
+        _bj_lay = QVBoxLayout(self._bj_panel)
+        _bj_lay.setContentsMargins(12, 10, 12, 10)
+        _bj_lbl = QLabel(
+            "<b style='color:#f0883e;'>&#9888; BlueJammer-V2 &mdash; control &amp; STOP</b><br>"
+            "Operating an RF jammer is <b>illegal</b> in most jurisdictions (47&nbsp;U.S.C. &sect;333). Use "
+            "only inside an authorized RF-shielded enclosure, on hardware you own. This device has <b>no "
+            "serial command channel</b> &mdash; it's controlled from its own web UI.<br>"
+            "<b>To STOP it (any of):</b> cut power / unplug USB (ends emission instantly) &middot; press the "
+            "device button &rarr; Idle &middot; open the web UI and set the mode to <b>Idle</b>.<br>"
+            "Web UI: <code>http://192.168.1.1</code> &mdash; join Wi-Fi <code>BlueJ-V2_by_@emensta</code> "
+            "(<code>NoConn1337</code>, 5&nbsp;GHz). Full CC-driven remote arm/stop is planned once the web-UI "
+            "endpoints are captured on hardware (gated behind an illegal-transmit confirmation)."
+        )
+        _bj_lbl.setWordWrap(True)
+        _bj_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        _bj_lay.addWidget(_bj_lbl)
+        self._bj_webui_btn = QPushButton("Open control web UI (set Idle to STOP)")
+        self._bj_webui_btn.clicked.connect(self._open_bj_webui)
+        _bj_lay.addWidget(self._bj_webui_btn)
+        self._bj_panel.setVisible(False)
+        right_layout.addWidget(self._bj_panel)
 
         self._term_label = QLabel("Serial Terminal")
         self._term_label.setObjectName("card_title")
@@ -243,6 +272,7 @@ class DeviceTab(QWidget):
             self._btn_connect.setEnabled(not connected)
             self._btn_disconnect.setEnabled(connected)
             self._btn_send.setEnabled(connected)
+        self._update_bj_panel()
 
     # ── Connect / Disconnect ─────────────────────────────────────────
 
@@ -268,6 +298,7 @@ class DeviceTab(QWidget):
             self._btn_disconnect.setEnabled(True)
             self._btn_send.setEnabled(True)
             self._refresh_devices()
+            self._update_bj_panel()
         except Exception as exc:
             self._terminal.append(f"[Error: {exc}]")
 
@@ -282,6 +313,7 @@ class DeviceTab(QWidget):
         self._btn_disconnect.setEnabled(False)
         self._btn_send.setEnabled(False)
         self._refresh_devices()
+        self._update_bj_panel()
 
     # ── Serial I/O ───────────────────────────────────────────────────
 
@@ -291,6 +323,25 @@ class DeviceTab(QWidget):
         if choice == _AUTO_DETECT:
             return get_protocol("marauder")
         return get_protocol_by_display(choice)
+
+    def _open_bj_webui(self) -> None:
+        """Open the BlueJammer's own control web UI (its real control surface) in the browser."""
+        import webbrowser
+        webbrowser.open("http://192.168.1.1")
+
+    def _update_bj_panel(self) -> None:
+        """Show the BlueJammer control/STOP panel only when a BlueJammer is the active firmware, and
+        disable the inert serial-send affordances (the stock firmware has no serial command channel)."""
+        try:
+            is_bj = self._selected_protocol().protocol_name == "bluejammer"
+        except Exception:  # noqa: BLE001
+            is_bj = False
+        self._bj_panel.setVisible(is_bj)
+        self._cmd_input.setEnabled(not is_bj)
+        self._cmd_palette.setEnabled(not is_bj)
+        # No serial command channel for BlueJammer -> Send can't do anything; otherwise governed by the
+        # connection state (mirror the Disconnect button).
+        self._btn_send.setEnabled(False if is_bj else self._btn_disconnect.isEnabled())
 
     def _command_info(self, cmd: str):
         """Return the CommandInfo for *cmd* from the selected protocol, if any."""
