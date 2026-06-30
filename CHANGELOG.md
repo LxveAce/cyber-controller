@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **BlueJammer control / STOP panel.** When a BlueJammer-V2 is the active firmware, the Devices tab now
+  shows a prominent control panel: it's illegal to operate (47 U.S.C. §333, RF-shielded-lab only), the
+  stock firmware has **no serial command channel**, and the real control is its own web UI — so the panel
+  surfaces the **STOP paths** (cut power / device button → Idle / web UI → Idle), an **Open control web UI**
+  launcher (`http://192.168.1.1`), and disables the inert serial Send box. Full CC-driven remote arm/stop
+  is planned once the web-UI endpoints are captured. `src/ui/qt/device_tab.py`; +4 tests.
 - **Device View (preview) — Marauder + GhostESP skins.** A new **Tools → Device View** opens an on-screen
   reconstruction of a firmware's on-board TFT menu (header, breadcrumb, selection highlight, submenus) at
   the device's real 240×320 resolution, scaled into a resizable window. It's model-driven so it runs with
