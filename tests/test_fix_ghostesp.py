@@ -164,4 +164,5 @@ def test_broadcast_renamed_verbs() -> None:
     assert BROADCAST_CAPABILITIES[BroadcastVerb.CAPTURE_HANDSHAKES][1] == "capture -eapol"
     # untouched verbs stay put
     assert BROADCAST_CAPABILITIES[BroadcastVerb.FIND_APS][1] == "scanap"
-    assert BROADCAST_CAPABILITIES[BroadcastVerb.STOP_ALL][1] == "stopscan"
+    # STOP ALL must be the universal `stop` (not scan-only `stopscan`), so it halts deauth/beacon too.
+    assert BROADCAST_CAPABILITIES[BroadcastVerb.STOP_ALL][1] == "stop"

@@ -154,6 +154,18 @@ def capabilities_for(name: str) -> "frozenset[str]":
         return frozenset()
 
 
+def line_ending_for(name: str) -> str:
+    """The per-firmware serial command terminator (LF by default, CR for Flipper). Programmatic send paths
+    (AutoRouter, Broadcast, execute_action) must stamp this on the connection before writing, because the
+    interactive device tab only sets it on the *active* tab's connection — so without this a command routed
+    to a non-active Flipper would be LF-terminated and silently ignored by its CR-only shell. Falls back to
+    LF for unknown firmwares."""
+    try:
+        return getattr(get_protocol(name), "line_ending", "\n") or "\n"
+    except Exception:  # noqa: BLE001
+        return "\n"
+
+
 # --- Protocol module lookup (for TARGET_ACTIONS access) ---
 
 # Maps internal name -> dotted module path so get_protocol_module() can return

@@ -257,5 +257,7 @@ BROADCAST_CAPABILITIES = {
     BroadcastVerb.CAPTURE_HANDSHAKES: ((), "capture -eapol"),
     BroadcastVerb.DEAUTH_ALL:         (("select -a all",), "attack -d"),
     BroadcastVerb.BEACON_SPAM:        ((), "beaconspam -r"),
-    BroadcastVerb.STOP_ALL:           ((), "stopscan"),
+    # `stop` is GhostESP's universal kill (stops attacks + scans + background tasks); `stopscan` only
+    # halts a scan, so STOP ALL must NOT use it or an in-progress deauth/beacon flood keeps transmitting.
+    BroadcastVerb.STOP_ALL:           ((), "stop"),
 }

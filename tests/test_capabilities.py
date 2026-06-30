@@ -24,6 +24,13 @@ def test_capabilities_for_helper():
     assert capabilities_for("does-not-exist") == frozenset()
 
 
+def test_line_ending_for_helper():
+    from src.protocols import line_ending_for
+    assert line_ending_for("flipper") == "\r"   # Flipper CLI submits on CR
+    assert line_ending_for("marauder") == "\n"
+    assert line_ending_for("does-not-exist") == "\n"  # safe LF default
+
+
 @pytest.fixture(scope="module")
 def qapp():
     pytest.importorskip("PyQt5.QtWidgets")
