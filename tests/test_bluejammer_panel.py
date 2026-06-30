@@ -136,6 +136,17 @@ def test_parse_map_file_roundtrip(qapp, tmp_path):
     assert cmap.has_http(Mode.WIFI)
 
 
+def test_shipped_scaffolding_is_inert(qapp):
+    """Invariant: as shipped (no user-loaded control map) the controller CANNOT transmit — the arm/STOP
+    scaffolding is present but the activator carries no frames. Cyber Controller ships none."""
+    tab = _tab()
+    tab._bj_build_controller()
+    assert tab._bj_controller is not None
+    assert tab._bj_controller.available is False  # no validated Idle/arm frame -> nothing can be sent
+    assert not tab._bj_map.validated
+    assert not tab._bj_map.uart_frames and not tab._bj_map.http_calls
+
+
 def test_loaded_validated_map_sends_stop(qapp, monkeypatch):
     """With a validated map loaded, STOP actually dispatches over the (mocked) web-UI transport."""
     from src.core.bluejammer_control import ControlMap, Mode
