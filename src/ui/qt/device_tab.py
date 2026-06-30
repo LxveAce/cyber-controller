@@ -217,6 +217,10 @@ class DeviceTab(QWidget):
         for _m in (Mode.BLUETOOTH, Mode.BLE, Mode.WIFI, Mode.RC_DRONE):
             _ab = QPushButton("Arm " + _m.value)
             _ab.setEnabled(False)
+            _ab.setToolTip(
+                "Scaffolding — inert until you load a control map captured from your own device. "
+                "Cyber Controller ships no jammer frames; the controller refuses to send without a validated map."
+            )
             _ab.clicked.connect(lambda _checked=False, m=_m: self._bj_set_mode(m))
             self._bj_arm_btns.append(_ab)
             _bj_arm_row.addWidget(_ab)
