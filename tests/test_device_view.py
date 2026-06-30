@@ -1,0 +1,94 @@
+"""Device View — reconstructed firmware-UI skin (src/ui/qt/device_view.py).
+
+Covers the model navigation, the offscreen-testable pure render, and — importantly — that every menu leaf
+in the Marauder skin maps to a REAL Marauder serial command (so the reconstruction drives the actual
+firmware, not invented commands). Runs offscreen.
+"""
+
+from __future__ import annotations
+
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import pytest
+
+pytest.importorskip("PyQt5.QtWidgets")
+from PyQt5.QtWidgets import QApplication  # noqa: E402
+from PyQt5.QtGui import QImage  # noqa: E402
+
+from src.ui.qt.device_view import DeviceScreenModel, DeviceView, MenuNode, marauder_menu  # noqa: E402
+
+
+@pytest.fixture(scope="module")
+def qapp():
+    return QApplication.instance() or QApplication([])
+
+
+def _leaf_commands(nodes):
+    out = []
+    for n in nodes:
+        if n.is_menu:
+            out += _leaf_commands(n.children)
+        elif n.command:
+            out.append(n.command)
+    return out
+
+
+def test_every_marauder_leaf_is_a_real_command():
+    from src.protocols.marauder import MarauderProtocol
+    real = {c.name for c in MarauderProtocol().get_commands()}
+    # CommandInfo.name holds the command string (e.g. "scanap", "attack -t deauth")
+    for cmd in _leaf_commands(marauder_menu()):
+        assert cmd in real, f"skin leaf {cmd!r} is not a real Marauder command"
+
+
+def test_model_navigation():
+    m = DeviceScreenModel("ESP32 Marauder", marauder_menu())
+    assert m.crumb() == "Main Menu"
+    assert [n.label for n in m.items()] == ["WiFi", "Bluetooth", "Device"]
+    m.down()
+    assert m.sel == 1
+    m.up(); m.up()           # wraps
+    assert m.sel == 2
+    m.sel = 0
+    m.enter()                # into WiFi (a submenu)
+    assert m.crumb() == "WiFi"
+    assert "Scan APs" in [n.label for n in m.items()]
+    m.back()
+    assert m.crumb() == "Main Menu" and m.sel == 0
+
+
+def test_enter_leaf_sends_command():
+    sent = []
+    m = DeviceScreenModel("ESP32 Marauder", marauder_menu())
+    m.enter()                # WiFi
+    m.sel = 0
+    m.enter(sent.append)     # Scan APs -> command
+    assert sent == ["scanap"]
+    assert m.status == "> scanap"
+
+
+def test_render_native_is_a_real_image(qapp):
+    m = DeviceScreenModel("ESP32 Marauder", marauder_menu())
+    v = DeviceView(m)
+    img = v.render_native()
+    assert isinstance(img, QImage)
+    assert (img.width(), img.height()) == (240, 320)
+    # the selected row is painted neon-green -> at least some non-background pixels exist
+    bg = img.pixel(2, 120)  # somewhere likely background
+    distinct = sum(1 for y in range(44, 70) for x in range(0, 240, 20) if img.pixel(x, y) != bg)
+    assert distinct > 0
+
+
+def test_widget_constructs_and_grabs_offscreen(qapp):
+    m = DeviceScreenModel("ESP32 Marauder", marauder_menu())
+    v = DeviceView(m)
+    v.resize(480, 640)
+    pix = v.grab()           # must not raise; paintEvent path exercised
+    assert not pix.isNull()
+
+
+def test_custom_menu_node():
+    n = MenuNode("X", children=[MenuNode("Y", command="info")])
+    assert n.is_menu and not n.children[0].is_menu

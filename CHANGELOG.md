@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Device View (preview) — Marauder skin.** A new **Tools → Device View** opens an on-screen
+  reconstruction of the ESP32 Marauder's on-board TFT menu (header, breadcrumb, selection highlight,
+  submenus) at the device's real 240×320 resolution, scaled into a resizable window. It's model-driven so
+  it runs with no hardware, and every menu leaf maps to a **real Marauder serial command** (grounded by a
+  test). Honest framing: this is a faithful *reconstruction*, not a pixel mirror — only the Flipper's RPC
+  can be a true mirror (a later phase). `src/ui/qt/device_view.py`; +6 tests. (Device-View plan P2.)
 - **Detachable / pop-out tabs.** Any tab can pop out into its own resizable, top-level window — drag it to a
   second monitor, resize it freely — and re-dock seamlessly back onto the tab strip. Detach via the tab-strip
   **⇱** corner button, **double-clicking** a tab, the tab right-click **"Pop out"**, or **Ctrl+Shift+D**;
