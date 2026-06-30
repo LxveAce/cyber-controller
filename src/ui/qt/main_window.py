@@ -750,6 +750,14 @@ class CyberControllerWindow(QMainWindow):
 
     def _pterm_refresh_ports(self) -> None:
         """Refresh the persistent terminal device checklist from the device manager."""
+        # Self-heal: drop any stored connection that has died (hot-unplug) or whose device is gone, so the
+        # list never renders a dead port as connected (the "@"/color key off _pterm_conns) and a replugged
+        # port can be reconnected instead of being silently skipped. Runs on the GUI thread (3s timer).
+        for p in list(self._pterm_conns):
+            c = self._pterm_conns.get(p)
+            if c is None or not getattr(c, "is_connected", False) or self._dm.get_device(p) is None:
+                self._pterm_conns.pop(p, None)
+                self._pterm_port_colors.pop(p, None)
         # Remember which ports were checked
         checked_ports: set[str] = set()
         for i in range(self._pterm_device_list.count()):
@@ -818,8 +826,10 @@ class CyberControllerWindow(QMainWindow):
             )
             return
         for port in ports:
-            if port in self._pterm_conns:
-                continue  # already connected
+            existing = self._pterm_conns.get(port)
+            if existing is not None and getattr(existing, "is_connected", False):
+                continue  # already connected and live
+            self._pterm_conns.pop(port, None)  # stale/dead entry -> fall through and reopen
             try:
                 conn = self._dm.open_connection(port)
                 self._pterm_conns[port] = conn
@@ -900,11 +910,14 @@ class CyberControllerWindow(QMainWindow):
         self._pterm_output.append(
             f'<span style="color:{color};">[{port}]</span> {line}'
         )
-        # Also mirror to the device tab terminal if it's connected to the same port
+        # Also mirror to the device tab terminal if it has the port SELECTED but does NOT itself hold the
+        # same shared connection — otherwise the device tab's own on_line callback already appended this
+        # line and we'd duplicate it (both panels co-own one SerialConnection on a shared port).
         if (
             hasattr(self._device_tab, '_active_port')
             and self._device_tab._active_port == port
             and hasattr(self._device_tab, '_terminal')
+            and getattr(self._device_tab, '_active_conn', None) is not conn
         ):
             self._device_tab._terminal.append(line)
 
