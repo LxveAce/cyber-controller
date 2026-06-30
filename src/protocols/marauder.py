@@ -18,6 +18,18 @@ _RE_AP = re.compile(
     r"RSSI:\s*(-?\d+)"
 )
 
+# v1.12.3 prints each scanned AP across SEPARATE lines, e.g.
+#     ESSID: MyNet
+#     BSSID: aa:bb:cc:dd:ee:ff
+#      RSSI: -52
+# (some outputs add a 'Ch:' line). These anchored, single-field patterns feed the
+# stateful accumulator in parse_line(). They are anchored so the live-scan one-liner
+# ' Ch: 6  RSSI: -50  ESSID: MyNet' (which has NO BSSID) does NOT match any of them.
+_RE_AP_ESSID = re.compile(r"^E?SSID:\s*(.*)$")
+_RE_AP_BSSID = re.compile(r"^BSSID:\s*([\da-fA-F:]{17})\s*$")
+_RE_AP_RSSI = re.compile(r"^RSSI:\s*(-?\d+)\s*$")
+_RE_AP_CH = re.compile(r"^Ch(?:annel)?:\s*(\d+)\s*$")
+
 _RE_CLIENT = re.compile(
     r"Client:\s*([\da-fA-F:]{17})\s+"
     r"AP:\s*([\da-fA-F:]{17})"
@@ -49,6 +61,13 @@ class MarauderProtocol(BaseProtocol):
     grouped by category.
     """
 
+    def __init__(self) -> None:
+        super().__init__()
+        # Accumulator for the multi-line AP record (see parse_line). Holds the
+        # fields of the AP currently being read across separate serial lines, or
+        # None when no record is in progress.
+        self._ap_record: dict[str, Any] | None = None
+
     @property
     def protocol_name(self) -> str:
         return "marauder"
@@ -56,12 +75,20 @@ class MarauderProtocol(BaseProtocol):
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:
-        """Parse a single Marauder serial output line."""
+        """Parse a single Marauder serial output line.
+
+        AP discovery is STATEFUL: v1.12.3 prints each AP across separate
+        ESSID / BSSID / RSSI lines (with an optional Ch line). We accumulate
+        those into ``self._ap_record`` and emit a single ``ap_found`` event once
+        the record is complete (ESSID seen + BSSID + RSSI). A BSSID is required,
+        so the live-scan one-liner ' Ch: 6  RSSI: -50  ESSID: MyNet' (no BSSID)
+        never becomes an ``ap_found`` — it falls through to an ``info`` line.
+        """
         line = line.strip()
         if not line:
             return None
 
-        # AP discovered
+        # AP discovered — legacy single-line form (kept for back-compat / other tools)
         m = _RE_AP.search(line)
         if m:
             return ParsedEvent(
@@ -73,6 +100,36 @@ class MarauderProtocol(BaseProtocol):
                     "rssi": int(m.group(4)),
                 },
                 raw=line,
+            )
+
+        # AP discovered — multi-line form (the v1.12.3 default). Accumulate
+        # ESSID -> BSSID -> RSSI (+ optional Ch) into one record, emitting
+        # ap_found only when BSSID + RSSI have both been seen for this ESSID.
+        m = _RE_AP_ESSID.match(line)
+        if m:
+            # A fresh ESSID line starts a new record (drops any incomplete one).
+            self._ap_record = {"ssid": m.group(1).strip()}
+            return ParsedEvent(event_type="info", data={"message": line}, raw=line)
+
+        m = _RE_AP_BSSID.match(line)
+        if m and self._ap_record is not None:
+            self._ap_record["bssid"] = m.group(1)
+            done = self._complete_ap(line)
+            return done if done is not None else ParsedEvent(
+                event_type="info", data={"message": line}, raw=line
+            )
+
+        m = _RE_AP_CH.match(line)
+        if m and self._ap_record is not None:
+            self._ap_record["channel"] = int(m.group(1))
+            return ParsedEvent(event_type="info", data={"message": line}, raw=line)
+
+        m = _RE_AP_RSSI.match(line)
+        if m and self._ap_record is not None:
+            self._ap_record["rssi"] = int(m.group(1))
+            done = self._complete_ap(line)
+            return done if done is not None else ParsedEvent(
+                event_type="info", data={"message": line}, raw=line
             )
 
         # Client discovered
@@ -165,15 +222,34 @@ class MarauderProtocol(BaseProtocol):
         # Unrecognised but non-empty
         return ParsedEvent(event_type="info", data={"message": line}, raw=line)
 
+    def _complete_ap(self, raw: str) -> ParsedEvent | None:
+        """Emit an ``ap_found`` event iff the in-progress record is complete.
+
+        Complete = an ESSID record exists and both BSSID and RSSI have been
+        captured. (Channel is optional and included when present.) Resets the
+        accumulator on emit so the next ESSID starts a fresh record.
+        """
+        rec = self._ap_record
+        if rec is not None and "ssid" in rec and "bssid" in rec and "rssi" in rec:
+            data = {
+                "ssid": rec["ssid"],
+                "bssid": rec["bssid"],
+                "rssi": rec["rssi"],
+            }
+            if "channel" in rec:
+                data["channel"] = rec["channel"]
+            self._ap_record = None
+            return ParsedEvent(event_type="ap_found", data=data, raw=raw)
+        return None
+
     # ── Commands ─────────────────────────────────────────────────────
 
     def get_commands(self) -> list[CommandInfo]:
-        """Return 70+ Marauder serial commands grouped by category."""
+        """Return the Marauder v1.12.3 serial command set grouped by category."""
         return [
             # ---- Scanning ----
-            CommandInfo("scanap", "Scanning", "Scan for access points"),
-            CommandInfo("scansta", "Scanning", "Scan for client stations"),
-            CommandInfo("scanap -c <ch>", "Scanning", "Scan APs on specific channel", "ch"),
+            # v1.12.3 removed scanap/scansta; the combined scan is 'scanall'.
+            CommandInfo("scanall", "Scanning", "Scan for APs and stations (combined)"),
             CommandInfo("stopscan", "Scanning", "Stop current scan"),
             CommandInfo("list -a", "Scanning", "List discovered APs"),
             CommandInfo("list -s", "Scanning", "List discovered stations"),
@@ -199,64 +275,52 @@ class MarauderProtocol(BaseProtocol):
             # ---- Sniffing ----
             CommandInfo("sniffbeacon", "Sniffing", "Sniff beacon frames"),
             CommandInfo("sniffdeauth", "Sniffing", "Sniff deauth frames"),
-            CommandInfo("sniffesp", "Sniffing", "Sniff ESP-NOW frames"),
             CommandInfo("sniffpmkid", "Sniffing", "Sniff PMKID frames"),
             CommandInfo("sniffpwn", "Sniffing", "Sniff-then-deauth for handshakes"),
             CommandInfo("sniffraw", "Sniffing", "Raw 802.11 packet sniffing"),
             CommandInfo("stopscan", "Sniffing", "Stop sniffing"),
-            # ---- PCAP / Capture ----
-            CommandInfo("ssid -a <name>", "SSID", "Add SSID to list", "name"),
+            # ---- SSID list ----
+            # v1.12.3: add/generate live under 'ssid -a' (-n name / -g count).
+            CommandInfo("ssid -a -n <name>", "SSID", "Add named SSID to list", "name"),
             CommandInfo("ssid -r <idx>", "SSID", "Remove SSID by index", "idx"),
-            CommandInfo("ssid -g <count>", "SSID", "Generate random SSIDs", "count"),
+            CommandInfo("ssid -a -g <count>", "SSID", "Generate random SSIDs", "count"),
             CommandInfo("ssid -l", "SSID", "List SSIDs"),
             CommandInfo("ssid -c", "SSID", "Clear SSID list"),
             # ---- Channel ----
-            CommandInfo("channel <ch>", "Channel", "Set Wi-Fi channel", "ch"),
+            CommandInfo("channel -s <ch>", "Channel", "Set Wi-Fi channel", "ch"),
             CommandInfo("channel", "Channel", "Show current channel"),
             # ---- Settings ----
             CommandInfo("settings", "Settings", "Show current settings"),
-            CommandInfo("setsetting -e", "Settings", "Enable display"),
-            CommandInfo("setsetting -d", "Settings", "Disable display"),
+            CommandInfo("settings -s <key> enable", "Settings", "Enable a setting by key", "key"),
+            CommandInfo("settings -s <key> disable", "Settings", "Disable a setting by key", "key"),
             CommandInfo("reboot", "Settings", "Reboot the device"),
-            CommandInfo("update", "Settings", "Check for firmware updates"),
-            CommandInfo("gps data", "Settings", "Show GPS data"),
-            CommandInfo("gps nmea", "Settings", "Show raw NMEA data"),
+            CommandInfo("update -s", "Settings", "Update firmware from SD card"),
+            CommandInfo("gpsdata", "Settings", "Show GPS data"),
+            CommandInfo("nmea", "Settings", "Show raw NMEA data"),
             # ---- BLE ----
-            CommandInfo("blescan", "BLE", "Scan for BLE devices"),
-            CommandInfo("blespam -t apple", "BLE", "BLE spam (Apple notifications)"),
+            CommandInfo("sniffbt", "BLE", "Scan / sniff for BLE devices"),
+            CommandInfo("sniffbt -t airtag", "BLE", "Sniff for AirTag / tracker beacons"),
+            CommandInfo("sniffskim", "BLE", "BLE skimmer detection"),
+            CommandInfo("blespam -t sourapple", "BLE", "BLE spam (Apple / SourApple)"),
             CommandInfo("blespam -t samsung", "BLE", "BLE spam (Samsung)"),
             CommandInfo("blespam -t google", "BLE", "BLE spam (Google Fast Pair)"),
-            CommandInfo("blespam -t microsoft", "BLE", "BLE spam (Microsoft Swift Pair)"),
+            CommandInfo("blespam -t windows", "BLE", "BLE spam (Windows / Microsoft Swift Pair)"),
             CommandInfo("blespam -t all", "BLE", "BLE spam (all vendors)"),
-            CommandInfo("bletrack", "BLE", "Track BLE devices"),
-            CommandInfo("bleskimmer", "BLE", "BLE skimmer detection"),
             CommandInfo("stopscan", "BLE", "Stop BLE operation"),
             # ---- Karma ----
             CommandInfo("karma", "Karma", "Start Karma AP attack"),
             CommandInfo("karma -s <ssid>", "Karma", "Karma with specific SSID", "ssid"),
-            # ---- Packet Monitor ----
-            CommandInfo("packetmonitor", "Monitor", "Start packet monitor"),
-            CommandInfo("packetmonitor -c <ch>", "Monitor", "Packet monitor on channel", "ch"),
-            CommandInfo("eapolmonitor", "Monitor", "Start EAPOL monitor"),
             # ---- Wardrive ----
             CommandInfo("wardrive", "Wardrive", "Start wardriving (GPS required)"),
             CommandInfo("wardrive -s", "Wardrive", "Stop wardriving"),
             # ---- Signal Strength ----
             CommandInfo("sigmon", "Signal", "Signal strength monitor"),
-            # ---- Flipper Zero integration ----
-            CommandInfo("fzgps", "Flipper", "Flipper Zero GPS bridge"),
-            CommandInfo("fzbtscan", "Flipper", "Flipper Zero BT scan bridge"),
             # ---- System / Misc ----
-            CommandInfo("status", "System", "Show system status"),
             CommandInfo("info", "System", "Show firmware info"),
-            CommandInfo("version", "System", "Show firmware version"),
             CommandInfo("help", "System", "Show help text"),
             CommandInfo("save", "System", "Save settings to flash"),
             CommandInfo("load", "System", "Load settings from flash"),
-            CommandInfo("clearap", "System", "Clear AP results"),
-            CommandInfo("clearsta", "System", "Clear station results"),
-            CommandInfo("led -r <v> -g <v> -b <v>", "System", "Set LED colour", "r,g,b"),
-            CommandInfo("draw", "System", "Enter draw mode on display"),
+            CommandInfo("led -s <hexcolor>", "System", "Set LED colour (hex, e.g. FF0000)", "hexcolor"),
         ]
 
     # ── Formatting ───────────────────────────────────────────────────
@@ -294,7 +358,7 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("Deauth AP", "attack -t deauth", "Disconnect all clients from this AP", ActionCategory.ATTACK, requires_selection=True, pre_commands=["select -a {index}"], chain_events=["deauth_detected"]),
         TargetAction("Beacon Clone", "attack -t beacon -s {ssid}", "Broadcast cloned beacons of this AP", ActionCategory.ATTACK),
         TargetAction("Sniff PMKID", "sniffpmkid -c {channel}", "Capture PMKID handshakes on this channel", ActionCategory.CAPTURE),
-        TargetAction("Monitor Channel", "packetmonitor -c {channel}", "Monitor all traffic on this AP's channel", ActionCategory.MONITOR),
+        TargetAction("Monitor Channel", "sniffraw", "Raw-sniff all traffic on this AP's channel", ActionCategory.MONITOR, pre_commands=["channel -s {channel}"]),
         TargetAction("Probe Flood", "attack -t probe -s {ssid}", "Flood probe requests for this SSID", ActionCategory.ATTACK),
         TargetAction("Rickroll Beacon", "attack -t rickroll", "Broadcast rickroll beacon spam", ActionCategory.ATTACK),
         TargetAction("Karma Clone", "karma -s {ssid}", "Start evil-twin karma attack for this SSID", ActionCategory.ATTACK),
@@ -305,8 +369,8 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("Track Client", "sniffbeacon", "Sniff beacons to track this client's probes", ActionCategory.MONITOR),
     ],
     TargetType.BLE: [
-        TargetAction("BLE Track", "bletrack", "Track this BLE device", ActionCategory.MONITOR),
-        TargetAction("BLE Skimmer Scan", "bleskimmer", "Scan for BLE credit card skimmers", ActionCategory.SCAN),
+        TargetAction("BLE Track", "sniffbt -t airtag", "Sniff for tracker/AirTag beacons", ActionCategory.MONITOR),
+        TargetAction("BLE Skimmer Scan", "sniffskim", "Scan for BLE credit card skimmers", ActionCategory.SCAN),
     ],
 }
 
@@ -316,9 +380,9 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
 from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
 
 BROADCAST_CAPABILITIES = {
-    BroadcastVerb.FIND_APS:           ((), "scanap"),
-    BroadcastVerb.SCAN_STATIONS:      ((), "scansta"),
-    BroadcastVerb.BLE_SCAN:           ((), "blescan"),
+    BroadcastVerb.FIND_APS:           ((), "scanall"),
+    BroadcastVerb.SCAN_STATIONS:      ((), "scanall"),
+    BroadcastVerb.BLE_SCAN:           ((), "sniffbt"),
     BroadcastVerb.CAPTURE_HANDSHAKES: ((), "sniffpwn"),
     BroadcastVerb.DEAUTH_ALL:         (("select -a all",), "attack -t deauth"),
     BroadcastVerb.BEACON_SPAM:        ((), "attack -t beacon -r"),

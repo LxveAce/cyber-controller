@@ -72,9 +72,11 @@ _SAMPLES = [
         "ap_found",
     ),
     (
+        # Bruce speaks a Flipper-CLI-style shell (COMMAND:/[CLI] Result:/'# '), not the fabricated "[WIFI]"
+        # tag format — so it no longer claims structured ap_found events; non-CLI lines surface as info.
         "bruce",
         "[WIFI] AP: CoffeeShop | BSSID: AA:BB:CC:DD:EE:FF | CH: 1 | RSSI: -50 | AUTH: WPA2",
-        "ap_found",
+        "info",
     ),
     (
         "flipper",

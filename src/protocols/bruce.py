@@ -1,18 +1,21 @@
 """Bruce protocol — serial parser for Bruce multi-tool firmware.
 
-Bruce is a multi-tool firmware for ESP32 (CYD and similar boards). It emits
-structured, tagged serial output for WiFi / BLE / SubGHz / NFC / IR scans.
-This parser is ported from the universal-flasher-ui DeviceProtocol port, but
-adapted to cyber-controller's BaseProtocol contract: it returns ParsedEvent
-objects (event_type, data, raw) in the same style as ghost_esp.py instead of
-Target objects.
+Bruce is a multi-tool firmware for ESP32 boards (CYD, Cardputer, M5Stack, …).
+Its serial interface is a Flipper-CLI-style shell: it echoes the command it is
+running, prints any output, then reports a pass/fail result and re-draws the
+prompt. The radio/menu features (WiFi / BLE / NFC scanning and attacks) are
+driven from the on-device UI, the loader, or the JS interpreter — they are NOT
+exposed as named serial commands. So this parser surfaces shell status/info
+events only and never fabricates target discoveries.
 
-Example serial lines:
-    [WIFI] AP: CoffeeShop | BSSID: AA:BB:CC:DD:EE:FF | CH: 1 | RSSI: -50 | AUTH: WPA2
-    [BLE] Device: FitBand | ADDR: AA:BB:CC:DD:EE:FF | RSSI: -60
-    [SUBGHZ] Freq: 433.92MHz | Protocol: Princeton | Data: 0x1234ABCD
-    [NFC] Type: NTAG215 | UID: 04:AB:CD:EF:12:34:56
-    [IR] Protocol: NEC | Address: 0x04 | Command: 0x08
+Source-verified serial commands: info, free, uptime, reboot, ir rx, ir tx,
+subghz rx, subghz tx, subghz tx_from_file, badusb run_from_file, loader open.
+
+Example serial exchange:
+    COMMAND: info
+    Bruce v1.x | board: ...
+    [CLI] Result: TRUE
+    #
 """
 
 from __future__ import annotations
@@ -23,37 +26,17 @@ from src.models.action import ActionCategory, TargetAction
 from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
-# --- Regex patterns for Bruce serial output (ported verbatim) ---
+# --- Regex patterns for the Bruce serial CLI shell ---
 
-# [WIFI] AP: ... | BSSID: ... | CH: ... | RSSI: ...
-_RE_WIFI = re.compile(
-    r"\[WIFI\]\s*AP:\s*(.+?)\s*\|\s*BSSID:\s*([0-9A-Fa-f:]{17})"
-    r"\s*\|\s*CH:\s*(\d+)\s*\|\s*RSSI:\s*(-?\d+)"
-)
+# "COMMAND: <x>" — the shell echoes the command it is about to run.
+_RE_COMMAND = re.compile(r"^COMMAND:\s*(.+)$")
 
-# [BLE] Device: ... | ADDR: ... | RSSI: ...
-_RE_BLE = re.compile(
-    r"\[BLE\]\s*Device:\s*(.+?)\s*\|\s*ADDR:\s*([0-9A-Fa-f:]{17})\s*\|\s*RSSI:\s*(-?\d+)"
-)
-
-# [SUBGHZ] Freq: ... | Protocol: ... | Data: ...
-_RE_SUBGHZ = re.compile(
-    r"\[SUBGHZ\]\s*Freq:\s*([\d.]+\s*MHz)\s*\|\s*Protocol:\s*(\w+)\s*\|\s*Data:\s*(\S+)"
-)
-
-# [NFC] Type: ... | UID: ...
-_RE_NFC = re.compile(
-    r"\[NFC\]\s*Type:\s*(.+?)\s*\|\s*UID:\s*([0-9A-Fa-f:]+)"
-)
-
-# [IR] Protocol: ... | Address: ... | Command: ...
-_RE_IR = re.compile(
-    r"\[IR\]\s*Protocol:\s*(\w+)\s*\|\s*Address:\s*(\S+)\s*\|\s*Command:\s*(\S+)"
-)
+# "[CLI] Result: TRUE" / "[CLI] Result: FALSE" — pass/fail of the last command.
+_RE_CLI_RESULT = re.compile(r"\[CLI\]\s*Result:\s*(TRUE|FALSE)\b", re.IGNORECASE)
 
 
 class BruceProtocol(BaseProtocol):
-    """Parser and command formatter for Bruce firmware."""
+    """Parser and command formatter for Bruce firmware's serial CLI."""
 
     @property
     def protocol_name(self) -> str:
@@ -66,100 +49,60 @@ class BruceProtocol(BaseProtocol):
         if not line:
             return None
 
-        # WiFi AP
-        m = _RE_WIFI.search(line)
+        # Command echo: "COMMAND: <x>".
+        m = _RE_COMMAND.match(line)
         if m:
             return ParsedEvent(
-                event_type="ap_found",
-                data={
-                    "ssid": m.group(1).strip(),
-                    "bssid": m.group(2),
-                    "channel": int(m.group(3)),
-                    "rssi": int(m.group(4)),
-                },
+                event_type="command",
+                data={"command": m.group(1).strip()},
                 raw=line,
             )
 
-        # BLE device
-        m = _RE_BLE.search(line)
+        # Pass/fail result line: "[CLI] Result: TRUE" / "[CLI] Result: FALSE".
+        m = _RE_CLI_RESULT.search(line)
         if m:
+            result = m.group(1).upper()
             return ParsedEvent(
-                event_type="ble_found",
-                data={
-                    "name": m.group(1).strip(),
-                    "mac": m.group(2),
-                    "rssi": int(m.group(3)),
-                },
+                event_type="status",
+                data={"success": result == "TRUE", "result": result},
                 raw=line,
             )
 
-        # SubGHz signal
-        m = _RE_SUBGHZ.search(line)
-        if m:
-            return ParsedEvent(
-                event_type="subghz_found",
-                data={
-                    "frequency": m.group(1).strip(),
-                    "protocol": m.group(2),
-                    "data": m.group(3),
-                },
-                raw=line,
-            )
+        # Shell prompt "# " (stripped to "#") — a benign heartbeat, surfaced as status.
+        if line == "#":
+            return ParsedEvent(event_type="status", data={"prompt": True}, raw=line)
 
-        # NFC tag
-        m = _RE_NFC.search(line)
-        if m:
-            return ParsedEvent(
-                event_type="nfc_found",
-                data={"nfc_type": m.group(1).strip(), "uid": m.group(2)},
-                raw=line,
-            )
-
-        # IR signal
-        m = _RE_IR.search(line)
-        if m:
-            return ParsedEvent(
-                event_type="ir_found",
-                data={
-                    "protocol": m.group(1),
-                    "address": m.group(2),
-                    "command": m.group(3),
-                },
-                raw=line,
-            )
-
-        # Unrecognised but non-empty
+        # Unrecognised but non-empty — plain info, never a fabricated target event.
         return ParsedEvent(event_type="info", data={"message": line}, raw=line)
 
     # ── Commands ─────────────────────────────────────────────────────
 
     def get_commands(self) -> list[CommandInfo]:
-        """Bruce command set (ported from source command catalog)."""
+        """Bruce serial-CLI command set (source-verified).
+
+        Only the commands the Bruce serial shell actually accepts are listed.
+        The former WiFi/BLE/NFC entries were fabricated — there is no such
+        serial command (those features live in the on-device menu / loader /
+        JS interpreter) — so they are removed rather than shipped as broken
+        buttons.
+        """
         return [
-            # ---- WiFi ----
-            CommandInfo("wifi scan", "WiFi", "Scan WiFi networks"),
-            CommandInfo("wifi deauth", "WiFi", "Deauth attack"),
-            CommandInfo("wifi beacon", "WiFi", "Beacon spam"),
-            # ---- BLE ----
-            CommandInfo("ble scan", "BLE", "Scan BLE devices"),
-            CommandInfo("ble spam", "BLE", "BLE advertisement spam"),
-            # ---- SubGHz ----
-            CommandInfo("subghz scan", "SubGHz", "Scan SubGHz frequencies"),
-            CommandInfo("subghz send", "SubGHz", "Send SubGHz signal"),
-            CommandInfo("subghz replay", "SubGHz", "Replay captured SubGHz signal"),
-            # ---- NFC ----
-            CommandInfo("nfc read", "NFC", "Read NFC tag"),
-            CommandInfo("nfc emulate", "NFC", "Emulate NFC tag"),
-            # ---- IR ----
-            CommandInfo("ir send", "IR", "Send IR signal"),
-            CommandInfo("ir receive", "IR", "Receive IR signal"),
-            # ---- BadUSB ----
-            CommandInfo("badusb run <script>", "BadUSB", "Run a BadUSB/Ducky script", "script"),
-            CommandInfo("badusb list", "BadUSB", "List available BadUSB scripts"),
             # ---- System ----
-            CommandInfo("stop", "System", "Stop current operation"),
+            CommandInfo("info", "System", "Show device / firmware info"),
+            CommandInfo("free", "System", "Show free heap memory"),
+            CommandInfo("uptime", "System", "Show device uptime"),
             CommandInfo("reboot", "System", "Reboot device"),
-            CommandInfo("status", "System", "Device status"),
+            # ---- IR ----
+            CommandInfo("ir rx", "IR", "Receive an IR signal"),
+            CommandInfo("ir tx", "IR", "Transmit an IR signal"),
+            # ---- SubGHz ----
+            CommandInfo("subghz rx", "SubGHz", "Receive SubGHz signals"),
+            CommandInfo("subghz tx", "SubGHz", "Transmit a SubGHz signal"),
+            CommandInfo("subghz tx_from_file", "SubGHz", "Replay a saved SubGHz capture"),
+            # ---- BadUSB ----
+            CommandInfo("badusb run_from_file <script>", "BadUSB", "Run a BadUSB/Ducky script file", "script"),
+            # ---- Apps ----
+            CommandInfo("loader open <app>", "Apps", "Open an app / module by name", "app"),
         ]
 
     # ── Formatting ───────────────────────────────────────────────────
@@ -174,45 +117,28 @@ class BruceProtocol(BaseProtocol):
     # ── Auto-detection ───────────────────────────────────────────────
 
     def identify(self, line: str) -> bool:
-        """Return True if line looks like Bruce output."""
-        markers = ("[WIFI]", "[SUBGHZ]", "Bruce", "[BLE] Device:", "[NFC] Type:")
+        """Return True if line looks like Bruce serial-CLI output."""
+        markers = ("[CLI] Result:", "Bruce")
         return any(m in line for m in markers)
 
 
 # --- Target actions: what this protocol can do to each target type ---
+# WiFi/BLE/NFC target actions were removed: Bruce exposes no serial command for
+# them (deauth / beacon / ble-spam / nfc are on-device-menu / JS-only, not CLI).
 
 TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
-    TargetType.AP: [
-        TargetAction("WiFi Deauth", "wifi deauth", "Deauth attack on this AP", ActionCategory.ATTACK),
-        TargetAction("WiFi Beacon", "wifi beacon", "Beacon flood near this AP", ActionCategory.ATTACK),
-    ],
-    TargetType.CLIENT: [
-        TargetAction("WiFi Deauth", "wifi deauth", "Deauth this client", ActionCategory.ATTACK),
-    ],
-    TargetType.BLE: [
-        TargetAction("BLE Spam", "ble spam", "BLE advertisement spam", ActionCategory.ATTACK),
-    ],
     TargetType.SUBGHZ: [
-        TargetAction("SubGHz Replay", "subghz replay", "Replay captured SubGHz signal", ActionCategory.ATTACK),
-        TargetAction("SubGHz Scan", "subghz scan", "Scan for SubGHz transmissions", ActionCategory.SCAN),
-    ],
-    TargetType.NFC: [
-        TargetAction("NFC Read", "nfc read", "Read NFC tag data", ActionCategory.SCAN),
-        TargetAction("NFC Emulate", "nfc emulate", "Emulate this NFC tag", ActionCategory.ATTACK),
+        TargetAction("SubGHz Replay", "subghz tx_from_file", "Replay captured SubGHz signal", ActionCategory.ATTACK),
+        TargetAction("SubGHz Scan", "subghz rx", "Scan for SubGHz transmissions", ActionCategory.SCAN),
     ],
 }
 
 
 # --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
-# Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
+# Commands are each firmware's NATIVE realization; absent verb == device skipped.
+# WiFi/BLE/STOP verbs are absent: those commands don't exist on the Bruce serial CLI. ---
 from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
 
 BROADCAST_CAPABILITIES = {
-    BroadcastVerb.FIND_APS:    ((), "wifi scan"),
-    BroadcastVerb.BLE_SCAN:    ((), "ble scan"),
-    BroadcastVerb.SUBGHZ_SCAN: ((), "subghz scan"),
-    BroadcastVerb.DEAUTH_ALL:  ((), "wifi deauth"),
-    BroadcastVerb.BEACON_SPAM: ((), "wifi beacon"),
-    BroadcastVerb.BLE_SPAM:    ((), "ble spam"),
-    BroadcastVerb.STOP_ALL:    ((), "stop"),
+    BroadcastVerb.SUBGHZ_SCAN: ((), "subghz rx"),
 }
