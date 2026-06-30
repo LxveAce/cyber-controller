@@ -22,6 +22,7 @@ from src.ui.qt.device_view import (  # noqa: E402
     DeviceScreenModel,
     DeviceView,
     MenuNode,
+    esp32div_menu,
     ghostesp_menu,
     marauder_menu,
 )
@@ -55,6 +56,13 @@ def test_every_ghostesp_leaf_is_a_real_command():
     real = {c.name for c in GhostESPProtocol().get_commands()}
     for cmd in _leaf_commands(ghostesp_menu()):
         assert cmd in real, f"skin leaf {cmd!r} is not a real GhostESP command"
+
+
+def test_every_esp32div_leaf_is_a_real_command():
+    from src.protocols.esp32_div import Esp32DivProtocol
+    real = {c.name for c in Esp32DivProtocol().get_commands()}
+    for cmd in _leaf_commands(esp32div_menu()):
+        assert cmd in real, f"skin leaf {cmd!r} is not a real ESP32-DIV command"
 
 
 def test_skins_registry_builds_and_renders(qapp):
