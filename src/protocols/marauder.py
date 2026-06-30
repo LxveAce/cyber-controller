@@ -358,10 +358,10 @@ class MarauderProtocol(BaseProtocol):
 TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
     TargetType.AP: [
         TargetAction("Deauth AP", "attack -t deauth", "Disconnect all clients from this AP", ActionCategory.ATTACK, requires_selection=True, pre_commands=["select -a {index}"], chain_events=["deauth_detected"]),
-        TargetAction("Beacon Clone", "attack -t beacon -s {ssid}", "Broadcast cloned beacons of this AP", ActionCategory.ATTACK),
-        TargetAction("Sniff PMKID", "sniffpmkid -c {channel}", "Capture PMKID handshakes on this channel", ActionCategory.CAPTURE),
+        TargetAction("Beacon Clone", "attack -t beacon -l", "Broadcast cloned beacons of this AP", ActionCategory.ATTACK, pre_commands=["ssid -a -n {ssid}"]),
+        TargetAction("Sniff PMKID", "sniffpmkid", "Capture PMKID handshakes on this channel", ActionCategory.CAPTURE, pre_commands=["channel -s {channel}"]),
         TargetAction("Monitor Channel", "sniffraw", "Raw-sniff all traffic on this AP's channel", ActionCategory.MONITOR, pre_commands=["channel -s {channel}"]),
-        TargetAction("Probe Flood", "attack -t probe -s {ssid}", "Flood probe requests for this SSID", ActionCategory.ATTACK),
+        TargetAction("Probe Flood", "attack -t probe", "Flood probe requests for this SSID", ActionCategory.ATTACK),
         TargetAction("Rickroll Beacon", "attack -t rickroll", "Broadcast rickroll beacon spam", ActionCategory.ATTACK),
         TargetAction("Karma Clone", "karma -s {ssid}", "Start evil-twin karma attack for this SSID", ActionCategory.ATTACK),
         TargetAction("Wardrive Log", "wardrive", "Start wardrive logging (requires GPS)", ActionCategory.SCAN),
