@@ -92,6 +92,8 @@ class BW16Protocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "bw16"
 
+    capabilities = frozenset({"deauth", "wifi"})
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:

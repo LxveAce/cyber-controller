@@ -88,6 +88,8 @@ class Esp32DivProtocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "esp32-div"
 
+    capabilities = frozenset({"ble", "nrf24", "wifi"})
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:

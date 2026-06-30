@@ -91,6 +91,8 @@ class HaleHoundProtocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "halehound"
 
+    capabilities = frozenset({"ble", "nfc", "nrf24", "subghz", "wifi"})
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:
