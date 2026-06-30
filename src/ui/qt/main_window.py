@@ -1497,6 +1497,12 @@ class CyberControllerWindow(QMainWindow):
         conn = self._dm.get_connection(port)
         if conn and conn.is_connected:
             try:
+                # Resolve the target device's firmware terminator (Flipper CR vs LF) before writing, so a
+                # routed command isn't silently dropped just because that device isn't the focused tab.
+                dev = self._dm.get_device(port)
+                if dev is not None:
+                    from src.protocols import line_ending_for
+                    conn.line_ending = line_ending_for(dev.firmware or dev.name)
                 conn.write(command)  # rejects embedded control chars
             except Exception:
                 log.exception("AutoRouter send to %s failed", port)

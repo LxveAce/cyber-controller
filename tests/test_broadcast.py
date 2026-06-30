@@ -115,3 +115,24 @@ def test_dispatch_emits_bus_trail():
     topics = [t for t, _ in bus.events]
     assert "broadcast.started" in topics and "broadcast.completed" in topics
     assert topics.count("action.executed") == 2  # one per device
+
+
+# ── Bug-hunt fixes #18 (GhostESP STOP_ALL) + #19 (per-firmware terminator on the broadcast path) ───
+
+def test_ghostesp_stop_all_uses_universal_stop():
+    # `stopscan` only halts a scan; STOP ALL must use `stop` (the universal kill) so an in-progress
+    # deauth/beacon flood is actually stopped.
+    dm = _DM([_Dev("COM1", "ghost-esp")])
+    eng = BroadcastEngine(dm, _Bus())
+    res = {r.port: r.command for r in eng.dispatch(eng.plan(BroadcastVerb.STOP_ALL), confirmed=False)}
+    assert res == {"COM1": "stop"}
+
+
+def test_dispatch_stamps_flipper_cr_terminator():
+    # A CR-only firmware (Flipper) must get its terminator stamped on the broadcast path or its shell
+    # ignores the LF-terminated command.
+    conn = _Conn()
+    dm = _DM([_Dev("COM1", "flipper")], {"COM1": conn})
+    eng = BroadcastEngine(dm, _Bus())
+    eng.dispatch(eng.plan(BroadcastVerb.SUBGHZ_SCAN), confirmed=True)
+    assert conn.line_ending == "\r" and conn.writes == ["subghz rx"]
