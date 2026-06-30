@@ -131,6 +131,56 @@ def marauder_menu() -> "list[MenuNode]":
     ]
 
 
+# ── a faithful GhostESP menu (leaves are real GhostESP serial commands) ──
+def ghostesp_menu() -> "list[MenuNode]":
+    M = MenuNode
+    return [
+        M("WiFi", children=[
+            M("Scan APs", command="scanap"),
+            M("Scan Stations", command="scansta"),
+            M("Attacks", children=[
+                M("Deauth", command="deauth"),
+                M("Beacon Spam", command="beacon"),
+                M("Probe Flood", command="probe"),
+                M("Rick Roll", command="rickroll"),
+            ]),
+            M("Capture", children=[
+                M("Start", command="capture start"),
+                M("Stop", command="capture stop"),
+                M("Save", command="capture save"),
+            ]),
+            M("Evil Portal", children=[
+                M("Start", command="portal start"),
+                M("Stop", command="portal stop"),
+                M("Creds", command="portal creds"),
+            ]),
+        ]),
+        M("Bluetooth", children=[
+            M("BLE Scan", command="blescan"),
+            M("BLE Spam", command="blespam all"),
+            M("BLE Track", command="bletrack"),
+        ]),
+        M("Wardrive", children=[
+            M("Start", command="wardrive start"),
+            M("Stop", command="wardrive stop"),
+        ]),
+        M("Device", children=[
+            M("Info", command="info"),
+            M("GPS Info", command="gps info"),
+            M("SD Info", command="sd info"),
+            M("Settings", command="settings"),
+            M("Reboot", command="reboot"),
+        ]),
+    ]
+
+
+# firmware -> (display title, menu factory) for the Device View chooser
+SKINS = {
+    "marauder": ("ESP32 Marauder", marauder_menu),
+    "ghostesp": ("GhostESP", ghostesp_menu),
+}
+
+
 class DeviceView(QWidget):
     """A scaled, bezel-framed reconstruction of a 240x320 TFT firmware UI.
 

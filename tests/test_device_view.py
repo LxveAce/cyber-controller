@@ -17,7 +17,14 @@ pytest.importorskip("PyQt5.QtWidgets")
 from PyQt5.QtWidgets import QApplication  # noqa: E402
 from PyQt5.QtGui import QImage  # noqa: E402
 
-from src.ui.qt.device_view import DeviceScreenModel, DeviceView, MenuNode, marauder_menu  # noqa: E402
+from src.ui.qt.device_view import (  # noqa: E402
+    SKINS,
+    DeviceScreenModel,
+    DeviceView,
+    MenuNode,
+    ghostesp_menu,
+    marauder_menu,
+)
 
 
 @pytest.fixture(scope="module")
@@ -41,6 +48,20 @@ def test_every_marauder_leaf_is_a_real_command():
     # CommandInfo.name holds the command string (e.g. "scanap", "attack -t deauth")
     for cmd in _leaf_commands(marauder_menu()):
         assert cmd in real, f"skin leaf {cmd!r} is not a real Marauder command"
+
+
+def test_every_ghostesp_leaf_is_a_real_command():
+    from src.protocols.ghost_esp import GhostESPProtocol
+    real = {c.name for c in GhostESPProtocol().get_commands()}
+    for cmd in _leaf_commands(ghostesp_menu()):
+        assert cmd in real, f"skin leaf {cmd!r} is not a real GhostESP command"
+
+
+def test_skins_registry_builds_and_renders(qapp):
+    for key, (title, factory) in SKINS.items():
+        m = DeviceScreenModel(title, factory())
+        img = DeviceView(m).render_native()
+        assert (img.width(), img.height()) == (240, 320), key
 
 
 def test_model_navigation():
