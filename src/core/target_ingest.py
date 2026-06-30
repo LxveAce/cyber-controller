@@ -76,18 +76,25 @@ class TargetIngestor:
 
         if et in ("ap_found", "rogue_ap"):
             mac = str(d.get("bssid", "")).strip()
-            if not mac:  # e.g. the BW16 Vampire scan prints no BSSID — not routable by MAC
-                return None
+            idx = d.get("index")
+            if not mac:
+                # No BSSID (e.g. the BW16 Vampire scan prints index + SSID only). If the device gave a
+                # per-scan index, keep the AP under a synthetic, SOURCE-TAGGED key so it can still be acted
+                # on by THAT device's index-based actions (BW16 AT+DEAUTHIDX); otherwise it is unroutable
+                # by MAC -> drop. (The synthetic key includes the port so two devices' indices never collide.)
+                if idx is None:
+                    return None
+                mac = f"idx:{port}:{idx}"
             t = Target(
                 mac=mac, target_type=TargetType.AP, ssid=str(d.get("ssid", "")),
                 rssi=int(d.get("rssi", 0) or 0), channel=int(d.get("channel", 0) or 0),
                 device_source=port,
             )
-            if d.get("index") is not None:
+            if idx is not None:
                 # Parser-supplied scan index (e.g. BW16's AT list ordinal). Enables this device's own
                 # {index}-based TARGET_ACTIONS (source-restricted in the resolver). Firmwares that don't
                 # emit an index leave this unset, so their index actions are dropped rather than guessed.
-                t.extra["index"] = d.get("index")
+                t.extra["index"] = idx
             if et == "rogue_ap":
                 t.extra["rogue"] = True  # HaleHound Guardian flagged this as a rogue/evil-twin
             return t

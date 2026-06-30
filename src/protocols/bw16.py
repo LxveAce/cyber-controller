@@ -41,6 +41,8 @@ from __future__ import annotations
 
 import re
 
+from src.models.action import ActionCategory, TargetAction
+from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for BW16 / Vampire Deauther serial output ---
@@ -236,6 +238,24 @@ class BW16Protocol(BaseProtocol):
             "AmebaD",
         )
         return any(m in line for m in markers)
+
+
+# --- Target actions: what this protocol can do to each target type ---
+# BW16 selects scan results by INDEX (AT+DEAUTHIDX=<n>), not by MAC, and its Vampire scan prints no BSSID.
+# The ingest layer keeps those APs under a synthetic source-tagged key with their scan index, and the
+# resolver only offers this {index} action for APs THIS BW16 discovered (source-restricted) and drops it
+# when no index is known — a scan index is valid only for its own device's list.
+TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
+    TargetType.AP: [
+        TargetAction(
+            "Deauth (this index)",
+            "AT+DEAUTHIDX={index}",
+            "Deauth the AP at its BW16 scan index — lab-only, illegal to operate over the air; valid only "
+            "for the BW16 that scanned it.",
+            ActionCategory.ATTACK,
+        ),
+    ],
+}
 
 
 # --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
