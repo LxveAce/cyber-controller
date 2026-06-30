@@ -70,6 +70,10 @@ _RE_POWER = re.compile(
 class FlipperProtocol(BaseProtocol):
     """Parser and command formatter for Flipper Zero CLI."""
 
+    # The Flipper CLI shell submits a line only on CR ("\r"); LF is ignored, so commands never execute.
+    # (Verified against the firmware shell — see cc-firmware-comms-verification.md.)
+    line_ending = "\r"
+
     @property
     def protocol_name(self) -> str:
         return "flipper"

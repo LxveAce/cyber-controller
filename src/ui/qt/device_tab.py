@@ -414,6 +414,18 @@ class DeviceTab(QWidget):
         # No serial command channel for BlueJammer -> Send can't do anything; otherwise governed by the
         # connection state (mirror the Disconnect button).
         self._btn_send.setEnabled(False if is_bj else self._btn_disconnect.isEnabled())
+        self._apply_line_ending()
+
+    def _apply_line_ending(self) -> None:
+        """Apply the selected firmware's command terminator to the live connection (Flipper needs CR; most
+        firmwares use LF). Called whenever the firmware selection or connection changes."""
+        conn = getattr(self, "_active_conn", None)
+        if conn is None:
+            return
+        try:
+            conn.line_ending = getattr(self._selected_protocol(), "line_ending", "\n")
+        except Exception:  # noqa: BLE001
+            conn.line_ending = "\n"
 
     # ── BlueJammer full remote control ───────────────────────────────
     def _bj_build_controller(self) -> None:

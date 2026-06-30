@@ -45,11 +45,15 @@ class SerialConnection:
         baud: int = 115200,
         timeout: float = 1.0,
         encoding: str = "utf-8",
+        line_ending: str = "\n",
     ) -> None:
         self.port = port
         self.baud = baud
         self.timeout = timeout
         self.encoding = encoding
+        # Per-firmware command terminator (default LF; Flipper needs CR). Settable after construction —
+        # the UI applies the selected firmware's BaseProtocol.line_ending to the live connection.
+        self.line_ending = line_ending
 
         self._serial: serial.Serial | None = None
         self._state = ConnectionState.DISCONNECTED
@@ -151,7 +155,8 @@ class SerialConnection:
     # ── I/O ──────────────────────────────────────────────────────────
 
     def write(self, data: str) -> None:
-        """Send a single command line (exactly one trailing newline is appended).
+        """Send a single command line (exactly one trailing line terminator is appended; LF by default,
+        CR for firmwares like Flipper — see :attr:`line_ending`).
 
         Security: the firmware serial protocol is newline-delimited, so an embedded
         newline/carriage-return (or other control character) would let ONE logical
@@ -173,7 +178,7 @@ class SerialConnection:
                 f"Refusing to send command with embedded control character(s) "
                 f"{[hex(ord(c)) for c in bad]} — possible command injection"
             )
-        payload = (cleaned + "\n").encode(self.encoding)
+        payload = (cleaned + self.line_ending).encode(self.encoding)
         try:
             self._serial.write(payload)
             self._serial.flush()
