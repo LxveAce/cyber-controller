@@ -17,6 +17,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   device that produced it — **source-restricts** index actions to the discovering device and **drops** them
   when no index is known (rather than firing at the wrong AP). `src/core/action_resolver.py` +
   `src/core/target_ingest.py`; +4 tests.
+- **BW16 right-click deauth-by-index.** The BW16 Vampire scan prints index + SSID but no BSSID, so those APs
+  used to be dropped from the Target Pool. They now enter under a synthetic **source-tagged** key carrying the
+  scan index, and BW16 gets a `Deauth (this index)` action (`AT+DEAUTHIDX={index}`) the resolver offers only
+  on the BW16 that scanned it. Completes the one fully-verified firmware. `src/protocols/bw16.py` +
+  `src/core/target_ingest.py`; +3 tests.
 - **Removed phantom target actions** that referenced commands the firmware never exposes (presented as
   working but doing nothing): HaleHound `analyze`, Meshtastic `relay` (its serial link is protobuf-framed, not
   text), and Flipper `bt spam` (no stock-CLI command) — in both `TARGET_ACTIONS` and the broadcast map.
