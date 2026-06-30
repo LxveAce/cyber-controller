@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import TYPE_CHECKING
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QColor, QFont
 from PyQt5.QtWidgets import (
+    QCheckBox,
     QComboBox,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
+    QMessageBox,
     QPushButton,
     QScrollArea,
     QSplitter,
@@ -33,7 +37,15 @@ from src.protocols import (
 )
 from src.protocols.base import CommandInfo
 from src.core import safety
-from src.config.settings import load_settings
+from src.config.settings import load_settings, save_settings
+from src.core.bluejammer_control import (
+    BlueJammerController,
+    ControlMap,
+    ControlUnavailable,
+    HttpTransport,
+    Mode,
+    UartTransport,
+)
 
 log = logging.getLogger(__name__)
 
@@ -152,35 +164,84 @@ class DeviceTab(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
 
-        # BlueJammer control/stop panel — shown only when a BlueJammer is the active firmware. Its stock
-        # firmware has NO serial command channel, so the real control surface is the device's own web UI;
-        # this surfaces it + the STOP paths (owner: "full control = safe handling" for an RF-shielded lab).
+        # ── BlueJammer-V2 FULL remote-control panel (shown only when BlueJammer is the active firmware) ──
+        # Owner: proper remote control IS the safety mechanism — arm AND, critically, instantly STOP the
+        # device without standing next to an active transmitter. The controller is FAIL-SAFE: it refuses to
+        # send guessed frames, so live transmission activates only once a validated control map captured from
+        # the user's OWN device is loaded (closed-source frames are never shipped with the app). STOP/Idle is
+        # ungated; arming is gated behind an RF-shielded-enclosure attestation + a per-press confirm.
+        # Operating a jammer outside an authorized, shielded, lawful context is illegal (47 U.S.C. §333).
+        self._bj_map: ControlMap = ControlMap()
+        self._bj_controller: "BlueJammerController | None" = None
         self._bj_panel = QFrame()
         self._bj_panel.setObjectName("card")
         self._bj_panel.setStyleSheet("QFrame#card{border:1px solid #f0883e;background:rgba(240,136,62,0.09);}")
         _bj_lay = QVBoxLayout(self._bj_panel)
         _bj_lay.setContentsMargins(12, 10, 12, 10)
         _bj_lbl = QLabel(
-            "<b style='color:#f0883e;'>&#9888; BlueJammer-V2 &mdash; control &amp; STOP</b><br>"
-            "Operating an RF jammer is <b>illegal</b> in most jurisdictions (47&nbsp;U.S.C. &sect;333). Use "
-            "only inside an authorized RF-shielded enclosure, on hardware you own. This device has <b>no "
-            "serial command channel</b> &mdash; it's controlled from its own web UI.<br>"
-            "<b>To STOP it (any of):</b> cut power / unplug USB (ends emission instantly) &middot; press the "
-            "device button &rarr; Idle &middot; open the web UI and set the mode to <b>Idle</b>.<br>"
-            "Web UI: <code>http://192.168.1.1</code> &mdash; join Wi-Fi <code>BlueJ-V2_by_@emensta</code> "
-            "(<code>NoConn1337</code>, 5&nbsp;GHz). A CC-native controller (over the inter-board <b>UART &mdash; "
-            "no AP needed</b>, or the web UI) is built in; it activates once the control frames are captured "
-            "&amp; validated on hardware &mdash; STOP ungated, arming gated behind an RF-shielded-enclosure "
-            "confirmation."
+            "<b style='color:#f0883e;'>&#9888; BlueJammer-V2 &mdash; full remote control</b><br>"
+            "Operating an RF jammer is <b>illegal</b> outside an authorized RF-shielded enclosure "
+            "(47&nbsp;U.S.C. &sect;333) &mdash; use only on hardware you own, in a lawful, shielded lab. "
+            "<b>Remote control is a safety feature:</b> arm and, critically, <b>STOP</b> the device without "
+            "standing next to an active transmitter.<br>"
+            "The control frames are closed-source, so the app <b>never sends guessed frames</b>: live arming "
+            "activates once you <b>load a validated control map captured from your own device</b>, or drive it "
+            "via its web UI. <b>STOP/Idle is always available; arming needs the shielded-enclosure confirmation "
+            "below.</b> Web UI: <code>http://192.168.1.1</code> (Wi-Fi <code>BlueJ-V2_by_@emensta</code> / "
+            "<code>NoConn1337</code>, 5&nbsp;GHz)."
         )
         _bj_lbl.setWordWrap(True)
         _bj_lbl.setTextInteractionFlags(Qt.TextSelectableByMouse)
         _bj_lay.addWidget(_bj_lbl)
+
+        # STOP — the always-available safety action (ungated)
+        self._bj_stop_btn = QPushButton("■  STOP  (set Idle)")
+        self._bj_stop_btn.setStyleSheet(
+            "QPushButton{background:#f85149;color:#fff;font-weight:700;padding:7px;border-radius:4px;}"
+            "QPushButton:hover{background:#ff6a60;}"
+        )
+        self._bj_stop_btn.clicked.connect(self._bj_stop)
+        _bj_lay.addWidget(self._bj_stop_btn)
+
+        # RF-shielded attestation — arming stays disabled until this is checked
+        self._bj_attest = QCheckBox(
+            "I confirm an authorized, RF-shielded enclosure on hardware I own (enables arming)"
+        )
+        self._bj_attest.setStyleSheet("color:#f0883e;")
+        self._bj_attest.toggled.connect(self._bj_attest_changed)
+        _bj_lay.addWidget(self._bj_attest)
+
+        # Arm-mode buttons (gated by attestation + a per-press confirm + a validated control map)
+        _bj_arm_row = QHBoxLayout()
+        self._bj_arm_btns: "list[QPushButton]" = []
+        for _m in (Mode.BLUETOOTH, Mode.BLE, Mode.WIFI, Mode.RC_DRONE):
+            _ab = QPushButton("Arm " + _m.value)
+            _ab.setEnabled(False)
+            _ab.clicked.connect(lambda _checked=False, m=_m: self._bj_set_mode(m))
+            self._bj_arm_btns.append(_ab)
+            _bj_arm_row.addWidget(_ab)
+        _bj_lay.addLayout(_bj_arm_row)
+
+        # Status + map/web controls
+        self._bj_status = QLabel(
+            "No validated control map loaded — STOP/arm will guide you; the web UI / button / power work meanwhile."
+        )
+        self._bj_status.setWordWrap(True)
+        self._bj_status.setStyleSheet("color:#8b949e;font-size:11px;")
+        _bj_lay.addWidget(self._bj_status)
+
+        _bj_btn_row = QHBoxLayout()
+        self._bj_loadmap_btn = QPushButton("Load control map…")
+        self._bj_loadmap_btn.clicked.connect(self._bj_load_map)
+        _bj_btn_row.addWidget(self._bj_loadmap_btn)
         self._bj_webui_btn = QPushButton("Open control web UI (set Idle to STOP)")
         self._bj_webui_btn.clicked.connect(self._open_bj_webui)
-        _bj_lay.addWidget(self._bj_webui_btn)
+        _bj_btn_row.addWidget(self._bj_webui_btn)
+        _bj_lay.addLayout(_bj_btn_row)
+
         self._bj_panel.setVisible(False)
         right_layout.addWidget(self._bj_panel)
+        self._bj_load_map_from_settings()
 
         self._term_label = QLabel("Serial Terminal")
         self._term_label.setObjectName("card_title")
@@ -344,6 +405,146 @@ class DeviceTab(QWidget):
         # No serial command channel for BlueJammer -> Send can't do anything; otherwise governed by the
         # connection state (mirror the Disconnect button).
         self._btn_send.setEnabled(False if is_bj else self._btn_disconnect.isEnabled())
+
+    # ── BlueJammer full remote control ───────────────────────────────
+    def _bj_build_controller(self) -> None:
+        """(Re)build the controller from the current control map over the web-UI (HTTP) transport — the
+        control surface reachable over the device's AP. Fail-safe: with an empty/unvalidated map the
+        controller refuses to send (ControlUnavailable). The inter-board UART path is supported by the
+        framework for advanced wired setups but is not auto-bound here (it is a separate physical wire)."""
+        transport = HttpTransport(self._bj_http_request)
+        self._bj_controller = BlueJammerController(transport, self._bj_map, on_event=self._bj_on_event)
+
+    @staticmethod
+    def _bj_http_request(method: str, url: str, body) -> int:
+        """Generic HTTP delivery to the device's own web UI (endpoints come from the user's control map;
+        nothing jammer-specific is shipped). Returns the HTTP status."""
+        import urllib.request
+
+        data = body.encode() if isinstance(body, str) else body
+        req = urllib.request.Request(url, data=data, method=method)  # noqa: S310 - user-supplied LAN endpoint
+        with urllib.request.urlopen(req, timeout=4) as resp:  # noqa: S310
+            return int(getattr(resp, "status", 200) or 200)
+
+    def _bj_on_event(self, kind: str, mode: "Mode", transport: str) -> None:
+        self._terminal.append(f"[BlueJammer {kind}: {mode.value} via {transport}]")
+
+    def _bj_stop(self) -> None:
+        """STOP (set Idle) — the always-available safety action; never gated."""
+        if self._bj_controller is None:
+            self._bj_build_controller()
+        try:
+            self._bj_controller.stop()
+            self._bj_status.setText("STOP sent — Idle (emission halted).")
+        except ControlUnavailable as exc:
+            self._bj_status.setText(
+                f"In-app STOP unavailable ({exc})  →  cut power / press the device button / set Idle in the web UI."
+            )
+
+    def _bj_set_mode(self, mode: "Mode") -> None:
+        """Arm a jamming mode — gated by the RF-shielded attestation + a per-press confirm + a validated map."""
+        if not self._bj_attest.isChecked():
+            self._bj_status.setText("Arming requires the RF-shielded-enclosure confirmation above.")
+            return
+        reply = QMessageBox.warning(
+            self,
+            "Confirm arm — illegal outside an authorized RF-shielded lab",
+            f"Arm BlueJammer in {mode.value} mode?\n\nOperating an RF jammer is illegal outside an authorized, "
+            f"RF-shielded enclosure (47 U.S.C. §333), on hardware you own. STOP is always available.",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if reply != QMessageBox.Yes:
+            return
+        if self._bj_controller is None:
+            self._bj_build_controller()
+        try:
+            self._bj_controller.set_mode(mode, confirm_unsafe=True)
+            self._bj_status.setText(f"Armed: {mode.value}.")
+        except ControlUnavailable as exc:
+            self._bj_status.setText(
+                f"Arm unavailable ({exc})  Load a validated control map captured from your device, or use the web UI."
+            )
+        except PermissionError as exc:
+            self._bj_status.setText(str(exc))
+
+    def _bj_attest_changed(self, on: bool) -> None:
+        for b in self._bj_arm_btns:
+            b.setEnabled(bool(on))
+
+    def _bj_load_map(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load BlueJammer control map (JSON)", "", "JSON (*.json);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            self._bj_map = self._bj_parse_map_file(path)
+        except Exception as exc:  # noqa: BLE001
+            self._bj_status.setText(f"Could not load control map: {exc}")
+            return
+        self._bj_build_controller()
+        self._bj_status.setText(self._bj_map_summary())
+        try:
+            s = load_settings()
+            s.setdefault("bluejammer", {})["control_map_path"] = path
+            save_settings(s)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _bj_load_map_from_settings(self) -> None:
+        try:
+            path = (load_settings().get("bluejammer") or {}).get("control_map_path")
+        except Exception:  # noqa: BLE001
+            path = None
+        if not path or not os.path.exists(path):
+            return
+        try:
+            self._bj_map = self._bj_parse_map_file(path)
+            self._bj_build_controller()
+            self._bj_status.setText(self._bj_map_summary())
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _bj_map_summary(self) -> str:
+        kinds = []
+        if self._bj_map.uart_frames:
+            kinds.append(f"{len(self._bj_map.uart_frames)} UART")
+        if self._bj_map.http_calls:
+            kinds.append(f"{len(self._bj_map.http_calls)} web-UI")
+        if not self._bj_map.validated:
+            return "Control map loaded but not marked validated — it will not send."
+        return "Control map loaded (" + (", ".join(kinds) or "empty") + ") — full remote control active."
+
+    @staticmethod
+    def _bj_parse_map_file(path: str) -> ControlMap:
+        """Parse a USER-SUPPLIED control map JSON (frames/endpoints captured from their own device; none are
+        shipped with the app). Schema::
+
+            {"validated": true,
+             "uart_frames": {"Idle": "<hex>", "WiFi": "<hex>"},
+             "http_calls":  {"Idle": ["POST", "/mode", "idle"]}}
+        """
+        import json
+
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+
+        def _mode(key: str) -> "Mode":
+            try:
+                return Mode(key)
+            except ValueError:
+                return Mode[key]
+
+        uart = {
+            _mode(k): (bytes.fromhex(v) if isinstance(v, str) else bytes(v))
+            for k, v in (data.get("uart_frames") or {}).items()
+        }
+        http = {
+            _mode(k): (v[0], v[1], v[2] if len(v) > 2 else None)
+            for k, v in (data.get("http_calls") or {}).items()
+        }
+        return ControlMap(uart_frames=uart, http_calls=http, validated=bool(data.get("validated", True)))
 
     def _command_info(self, cmd: str):
         """Return the CommandInfo for *cmd* from the selected protocol, if any."""

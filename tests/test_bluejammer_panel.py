@@ -71,3 +71,83 @@ def test_open_webui_does_not_raise(qapp, monkeypatch):
     monkeypatch.setattr(webbrowser, "open", lambda url: called.setdefault("url", url))
     tab._open_bj_webui()
     assert called.get("url") == "http://192.168.1.1"
+
+
+# ── full remote control surface ──────────────────────────────────────
+
+def test_full_control_surface_present(qapp):
+    """STOP, the four arm-mode buttons, and the RF-shielded attestation are all present; arming is
+    disabled until the attestation is checked."""
+    tab = _tab()
+    assert tab._bj_stop_btn is not None
+    assert len(tab._bj_arm_btns) == 4
+    assert not tab._bj_attest.isChecked()
+    assert all(not b.isEnabled() for b in tab._bj_arm_btns)  # arm disabled by default
+
+
+def test_attestation_enables_arming(qapp):
+    tab = _tab()
+    tab._bj_attest.setChecked(True)  # fires _bj_attest_changed
+    assert all(b.isEnabled() for b in tab._bj_arm_btns)
+    tab._bj_attest.setChecked(False)
+    assert all(not b.isEnabled() for b in tab._bj_arm_btns)
+
+
+def test_stop_without_map_is_safe_and_guides(qapp):
+    """STOP with no validated control map must NOT raise — it surfaces the fail-safe guidance."""
+    tab = _tab()
+    tab._bj_stop()  # must not raise
+    assert "unavailable" in tab._bj_status.text().lower()
+    assert "web ui" in tab._bj_status.text().lower()
+
+
+def test_arm_blocked_without_attestation(qapp, monkeypatch):
+    from PyQt5.QtWidgets import QMessageBox
+    from src.core.bluejammer_control import Mode
+    tab = _tab()
+    # confirm dialog should never even be reached without attestation
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: pytest.fail("must not confirm un-attested"))
+    tab._bj_set_mode(Mode.WIFI)
+    assert "confirmation" in tab._bj_status.text().lower()
+
+
+def test_arm_unavailable_without_validated_map(qapp, monkeypatch):
+    from PyQt5.QtWidgets import QMessageBox
+    from src.core.bluejammer_control import Mode
+    tab = _tab()
+    tab._bj_attest.setChecked(True)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    tab._bj_set_mode(Mode.WIFI)  # attested + confirmed, but no validated map -> fail-safe
+    assert "unavailable" in tab._bj_status.text().lower()
+
+
+def test_parse_map_file_roundtrip(qapp, tmp_path):
+    from src.core.bluejammer_control import Mode
+    import json
+    p = tmp_path / "map.json"
+    p.write_text(json.dumps({
+        "validated": True,
+        "http_calls": {"Idle": ["POST", "/mode", "idle"], "WiFi": ["POST", "/mode", "wifi"]},
+    }), encoding="utf-8")
+    from src.ui.qt.device_tab import DeviceTab
+    cmap = DeviceTab._bj_parse_map_file(str(p))
+    assert cmap.validated
+    assert cmap.http_calls[Mode.IDLE] == ("POST", "/mode", "idle")
+    assert cmap.has_http(Mode.WIFI)
+
+
+def test_loaded_validated_map_sends_stop(qapp, monkeypatch):
+    """With a validated map loaded, STOP actually dispatches over the (mocked) web-UI transport."""
+    from src.core.bluejammer_control import ControlMap, Mode
+    from src.ui.qt.device_tab import DeviceTab
+    sent = []
+    monkeypatch.setattr(
+        DeviceTab, "_bj_http_request",
+        staticmethod(lambda method, url, body: sent.append((method, url, body)) or 200),
+    )
+    tab = _tab()
+    tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
+    tab._bj_build_controller()
+    tab._bj_stop()
+    assert sent and sent[0][0] == "POST" and sent[0][1].endswith("/mode")
+    assert "stop sent" in tab._bj_status.text().lower()
