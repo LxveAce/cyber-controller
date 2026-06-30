@@ -4,7 +4,8 @@ Detects the current platform and runs PyInstaller with the correct
 options to produce a single-file executable.
 
 Usage:
-    python build.py
+    python build.py            # default: --onefile (single self-extracting .exe)
+    python build.py --onedir   # folder build (instant startup) — what the Windows installer packages
 """
 
 from __future__ import annotations
@@ -38,15 +39,17 @@ def _detect_platform() -> str:
 
 
 def _build() -> int:
+    onedir = "--onedir" in sys.argv[1:]
     plat = _detect_platform()
     print(f"Platform : {plat}")
+    print(f"Mode     : {'--onedir (folder; instant startup, for the installer)' if onedir else '--onefile'}")
     print(f"Entry    : {_ENTRY}")
     print(f"Icon     : {_ICON if _ICON.exists() else '(not found, skipping)'}")
     print()
 
     cmd: list[str] = [
         sys.executable, "-m", "PyInstaller",
-        "--onefile",
+        "--onedir" if onedir else "--onefile",
         "--windowed",
         "--name", _NAME,
     ]
@@ -54,12 +57,13 @@ def _build() -> int:
     if _ICON.exists():
         cmd.extend(["--icon", str(_ICON)])
 
-    # Splash screen — CRITICAL UX for the onefile build: a --onefile --windowed exe extracts ~80MB to
-    # a temp dir on launch (10-20s on first run / slow disks) with NO visible feedback, so users think
+    # Splash screen — CRITICAL UX for the ONEFILE build only: a --onefile --windowed exe extracts ~80MB
+    # to a temp dir on launch (10-20s on first run / slow disks) with NO visible feedback, so users think
     # the app failed to start ("installation error"). The splash shows instantly during extraction and
     # is closed by the app once the main window is ready (see launch_qt -> pyi_splash.close()).
-    # PyInstaller splash is supported on Windows + Linux only (not macOS).
-    if platform.system() in ("Windows", "Linux") and _LOGO.exists():
+    # PyInstaller splash is supported on Windows + Linux only (not macOS). A --onedir build starts
+    # instantly (no self-extract), so it needs no splash.
+    if not onedir and platform.system() in ("Windows", "Linux") and _LOGO.exists():
         cmd.extend(["--splash", str(_LOGO)])
 
     # Add data files
@@ -146,13 +150,17 @@ def _build() -> int:
     print()
     if result.returncode == 0:
         dist = _ROOT / "dist"
-        exes = list(dist.glob(f"{_NAME}*"))
         print("Build succeeded.")
         print(f"  Time   : {elapsed:.1f}s")
         print(f"  Output : {dist}")
-        for exe in exes:
-            size_mb = exe.stat().st_size / (1024 * 1024)
-            print(f"  Binary : {exe.name} ({size_mb:.1f} MB)")
+        if onedir:
+            folder = dist / _NAME
+            print(f"  Folder : {folder}  (package this with the installer)")
+        else:
+            for exe in dist.glob(f"{_NAME}*"):
+                if exe.is_file():
+                    size_mb = exe.stat().st_size / (1024 * 1024)
+                    print(f"  Binary : {exe.name} ({size_mb:.1f} MB)")
     else:
         print(f"Build FAILED (exit code {result.returncode})")
 
