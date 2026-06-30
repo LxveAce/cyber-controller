@@ -3,6 +3,27 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **Detachable / pop-out tabs.** Any tab can pop out into its own resizable, top-level window — drag it to a
+  second monitor, resize it freely — and re-dock seamlessly back onto the tab strip. Detach via the tab-strip
+  **⇱** corner button, **double-clicking** a tab, the tab right-click **"Pop out"**, or **Ctrl+Shift+D**;
+  re-dock via the **⤓ Re-dock** button or simply **closing** the pop-out (closing re-docks by default, so a
+  working panel is never lost). The set of popped-out tabs + their window geometry persists across sessions.
+  Foundation for the planned per-firmware "Device View." (`src/ui/qt/detachable_tabs.py`; +10 tests.)
+- **Cyberdeck-aware scaling.** The app now adapts to the screen instead of assuming a desktop: the hard
+  900×600 minimum is **relaxed to fit small deck panels** (down to ~480×320 on an 800×480 / 1024×600 screen),
+  the launch size is clamped to the screen, **high-DPI fractional scaling** is enabled app-wide, and the
+  streamlined **Simple interface auto-engages on small/touch screens** (your explicit Simple/Pro choice still
+  wins). (`src/ui/qt/screen.py`; +11 tests.)
+
+### Fixed
+- **Dead Man's Switch serial auth detection.** The host-side prompt/result patterns now match the boot-gate's
+  *actual* serial strings (`suicide-gate: enter …` / `… wrong. attempts left: N` / `… locked for Ns.`), and
+  benign `SM>{…}` status JSON is explicitly never treated as an auth prompt (safe to poll). (`deadman_auth.py`;
+  +6 tests.) Full suite **488 passed / 2 skipped**.
+
 ## [1.4.0] — 2026-06-29
 
 ### Added

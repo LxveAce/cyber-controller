@@ -10,8 +10,15 @@ from typing import Callable, Optional
 
 log = logging.getLogger(__name__)
 
-# Patterns the device might send when it needs auth
+# Patterns the device might send when it needs auth.
+# The CANONICAL strings are the deadmans-switch boot-gate's actual serial output (GateInput_serial.cpp /
+# SPEC §5-6): the prompt is `suicide-gate: enter 'unlock <password>' ...`, a wrong try is
+# `suicide-gate: wrong. attempts left: N`, and a backoff is `suicide-gate: locked for Ns.`. The older
+# BOOTGATE/SM_AUTH/DMS patterns are kept as defensive aliases but do NOT match real firmware output.
+# NOTE: `SM>{...}` status JSON (SM_STATUS/SM_INFO) is deliberately NOT treated as an auth prompt — it is
+# safe to poll and must never trigger a password send.
 AUTH_PATTERNS = [
+    re.compile(r"suicide-gate\s*:\s*enter", re.IGNORECASE),          # real prompt
     re.compile(r"BOOTGATE[:\s]*enter\s*password", re.IGNORECASE),
     re.compile(r"SM_AUTH_REQ", re.IGNORECASE),
     re.compile(r"DMS[:\s]*password\s*required", re.IGNORECASE),
@@ -19,12 +26,17 @@ AUTH_PATTERNS = [
 ]
 
 AUTH_SUCCESS_PATTERNS = [
+    # The real gate prints no distinct "unlocked" line — on a correct password it simply boots (GATE_PASS).
+    # These remain as defensive aliases for other firmwares.
     re.compile(r"BOOTGATE[:\s]*unlocked", re.IGNORECASE),
     re.compile(r"SM_AUTH_OK", re.IGNORECASE),
     re.compile(r"DMS[:\s]*authenticated", re.IGNORECASE),
 ]
 
 AUTH_FAIL_PATTERNS = [
+    re.compile(r"suicide-gate\s*:\s*wrong", re.IGNORECASE),          # real wrong-attempt line
+    re.compile(r"suicide-gate\s*:\s*locked", re.IGNORECASE),         # real backoff/lockout line
+    re.compile(r"attempts?\s*left[:\s]*(\d+)", re.IGNORECASE),       # real "attempts left: N"
     re.compile(r"BOOTGATE[:\s]*denied", re.IGNORECASE),
     re.compile(r"SM_AUTH_FAIL", re.IGNORECASE),
     re.compile(r"DMS[:\s]*wrong\s*password", re.IGNORECASE),

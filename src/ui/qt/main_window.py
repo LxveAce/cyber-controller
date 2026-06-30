@@ -53,6 +53,13 @@ from src.ui.qt.targets_tab import TargetsTab
 from src.ui.qt.cross_comm_tab import CrossCommTab
 from src.ui.qt.settings_tab import SettingsTab
 from src.ui.qt.theme import apply_theme
+from src.ui.qt.detachable_tabs import DetachableTabWidget
+from src.ui.qt.screen import (
+    adaptive_launch_size,
+    adaptive_minimum_size,
+    enable_high_dpi,
+    recommended_ui_mode,
+)
 from src.ui.qt.widgets.cc_logo import CCLogo
 from src.ui.qt.widgets.cc_icon import create_cc_icon
 from src.ui.qt.widgets.command_palette import CommandPalette
@@ -127,8 +134,16 @@ class CyberControllerWindow(QMainWindow):
         self._health.start()
 
         self.setWindowTitle(f"Cyber Controller v{_VERSION}")
-        self.setMinimumSize(900, 600)
-        self.resize(1280, 800)
+        # Cyberdeck-aware sizing: the desktop ideal is a 900x600 floor / 1280x800 launch, but a small
+        # deck panel (800x480, 1024x600) can't hold a 900-wide window — clamp both to the actual screen.
+        _screen = QApplication.primaryScreen()
+        if _screen is not None:
+            _ag = _screen.availableGeometry()
+            self.setMinimumSize(*adaptive_minimum_size(_ag.width(), _ag.height()))
+            self.resize(*adaptive_launch_size(_ag.width(), _ag.height()))
+        else:  # no screen (offscreen/headless) — keep the desktop defaults
+            self.setMinimumSize(900, 600)
+            self.resize(1280, 800)
         self.setWindowIcon(create_cc_icon())
 
         # QSettings for persisting splitter state
@@ -250,6 +265,10 @@ class CyberControllerWindow(QMainWindow):
         shortcut_suicide = QShortcut(QKeySequence("Ctrl+Shift+S"), self)
         shortcut_suicide.activated.connect(self._on_suicide_setup)
 
+        # Pop the current tab out into its own window (re-dock by closing it).
+        shortcut_detach = QShortcut(QKeySequence("Ctrl+Shift+D"), self)
+        shortcut_detach.activated.connect(lambda: self._tabs.detach_current())
+
     # ── Main layout with sidebar + tabs ──────────────────────────────
 
     def _build_main_layout(self) -> None:
@@ -338,7 +357,8 @@ class CyberControllerWindow(QMainWindow):
         top_layout.addWidget(sidebar)
 
         # ── Tab widget (right side) ──────────────────────────────────
-        self._tabs = QTabWidget()
+        # Detachable: any tab can pop out into its own resizable window and re-dock seamlessly.
+        self._tabs = DetachableTabWidget()
         top_layout.addWidget(self._tabs)
 
         self._main_splitter.addWidget(top_widget)
@@ -369,6 +389,12 @@ class CyberControllerWindow(QMainWindow):
 
         # Apply the persisted interface mode to every tab now that they exist (no persist write-back).
         self._apply_ui_mode(self._load_ui_mode(), persist=False)
+
+        # Re-open any tabs the user had popped out into their own windows last session.
+        try:
+            self._tabs.restore_detached(self._qsettings.value("detached_tabs", "") or "")
+        except Exception:  # noqa: BLE001 — restoring pop-outs must never block startup
+            log.exception("Failed to restore detached tabs")
 
     # ── Tabs ─────────────────────────────────────────────────────────
 
@@ -431,12 +457,23 @@ class CyberControllerWindow(QMainWindow):
     # ── Interface mode (dual-depth Simple / Pro) ────────────────────
 
     def _load_ui_mode(self) -> str:
+        # Honor an explicit user choice; otherwise auto-pick Simple on a small/deck screen, Pro on desktop.
+        explicit: str | None = None
         try:
             from src.config.settings import load_settings
-            mode = str(load_settings().get("interface", {}).get("mode", "pro")).lower()
+            cfg = load_settings().get("interface", {})
+            if "mode" in cfg:
+                explicit = str(cfg.get("mode")).lower()
         except Exception:  # noqa: BLE001
-            mode = "pro"
-        return "simple" if mode == "simple" else "pro"
+            explicit = None
+        avail_h = 1000  # assume roomy if we can't read the screen (keeps the old Pro default off-screen)
+        try:
+            scr = QApplication.primaryScreen()
+            if scr is not None:
+                avail_h = scr.availableGeometry().height()
+        except Exception:  # noqa: BLE001
+            pass
+        return recommended_ui_mode(avail_h, explicit)
 
     @property
     def ui_mode(self) -> str:
@@ -1331,6 +1368,13 @@ class CyberControllerWindow(QMainWindow):
         self._sidebar_timer.stop()
         # Save splitter state
         self._qsettings.setValue("main_splitter_state", self._main_splitter.saveState())
+        # Remember which tabs were popped out (+ their window geometry), then re-dock them so no
+        # orphan windows linger after the main window closes.
+        try:
+            self._qsettings.setValue("detached_tabs", self._tabs.detached_state())
+            self._tabs.close_all_popouts()
+        except Exception:  # noqa: BLE001
+            pass
         # Disconnect all persistent terminal connections
         for port in list(self._pterm_conns.keys()):
             try:
@@ -1358,6 +1402,7 @@ def launch_qt(
     Returns:
         QApplication exit code.
     """
+    enable_high_dpi()  # must precede QApplication construction; no-op if one already exists
     app = QApplication.instance() or QApplication(sys.argv)
     app.setApplicationName("Cyber Controller")
     app.setOrganizationName("LxveAce")
