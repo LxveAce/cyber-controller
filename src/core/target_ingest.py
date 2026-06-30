@@ -103,10 +103,17 @@ class TargetIngestor:
             mac = str(d.get("client_mac") or d.get("mac") or "").strip()
             if not mac:
                 return None
-            return Target(
+            t = Target(
                 mac=mac, target_type=TargetType.CLIENT, ssid="",
                 rssi=int(d.get("rssi", 0) or 0), device_source=port,
             )
+            idx = d.get("index")
+            if idx is not None:
+                # Parser-supplied station index -> enables the source-restricted {index} "Deauth Client"
+                # action. Firmwares that don't emit an index leave it unset (the action is dropped, not
+                # fired on a guessed index).
+                t.extra["index"] = idx
+            return t
 
         if et == "ble_found":
             mac = str(d.get("mac", "")).strip()
