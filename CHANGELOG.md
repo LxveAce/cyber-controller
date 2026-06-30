@@ -18,12 +18,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
   per 47 U.S.C. §333). **Fail-safe:** refuses to send until a hardware-captured/validated control map exists
   (a STOP that silently does nothing is the failure mode we avoid). The exact UART frames / HTTP endpoints
   are closed-source and captured on hardware (see the reverse-engineering plan). +10 tests.
-- **BlueJammer control / STOP panel.** When a BlueJammer-V2 is the active firmware, the Devices tab now
-  shows a prominent control panel: it's illegal to operate (47 U.S.C. §333, RF-shielded-lab only), the
-  stock firmware has **no serial command channel**, and the real control is its own web UI — so the panel
-  surfaces the **STOP paths** (cut power / device button → Idle / web UI → Idle), an **Open control web UI**
-  launcher (`http://192.168.1.1`), and disables the inert serial Send box. Full CC-driven remote arm/stop
-  is planned once the web-UI endpoints are captured. `src/ui/qt/device_tab.py`; +4 tests.
+- **BlueJammer control / STOP panel — full in-app remote control.** When a BlueJammer-V2 is the active
+  firmware, the Devices tab shows a prominent control panel wired to the `BlueJammerController`: a large,
+  always-available **STOP** (set Idle); an **RF-shielded-enclosure attestation** that gates the **arm-mode**
+  buttons (Bluetooth / BLE / WiFi / RC-Drone), each behind a per-press confirm; a **Load control map…**
+  action; an **Open control web UI** launcher; and a live status line. Proper remote control is the safety
+  mechanism — arm and, critically, *instantly STOP* without standing next to an active transmitter.
+  **Fail-safe:** the control frames are closed-source, so the app never sends guessed frames — live
+  transmission activates once a **validated control map captured from your own device** is loaded (UART
+  frames or web-UI calls); STOP / web UI / power remain available meanwhile. Illegal to operate outside an
+  authorized RF-shielded lab (47 U.S.C. §333). `src/ui/qt/device_tab.py`; +7 panel tests.
 - **Device View — Marauder / GhostESP / ESP32-DIV skins (now drives the device).** A new
   **Tools → Device View** opens an on-screen reconstruction of a firmware's on-board TFT menu (header,
   breadcrumb, selection highlight, submenus) at the device's real 240×320 resolution, scaled into a
