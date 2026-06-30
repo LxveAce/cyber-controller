@@ -66,6 +66,53 @@ A few minor engines flagging an unsigned PyInstaller exe while every major one p
 false-positive pattern — not a real detection. Open the VirusTotal link on any release and read which
 engines flagged it: generic/heuristic labels from a small minority is the expected noise.
 
+### Latest release (v1.4.0) — actual results
+
+| File | Detections | Flagged by |
+|------|-----------|------------|
+| `cyber-controller-v1.4.0-windows-x64.exe` | **4 / 74** | APEX, Bkav, Gridinsoft, Zillya |
+| `cyber-controller-v1.4.0-linux-x64` | 0 / 74 | — clean |
+| `cyber-controller-v1.4.0-linux-arm64` | 0 / 74 | — clean |
+| `cyber-controller-v1.4.0-macos-arm64` | 0 / 74 | — clean |
+
+(Per-file SHA-256 + the live VirusTotal report link are in each GitHub release's notes.)
+
+### Why *those specific* engines flagged it (and why it's a false positive)
+
+Across every release, the Windows hits only ever come from the same five heuristic/ML/reputation engines —
+**APEX, Bkav, Gridinsoft, Microsoft, Zillya** — never from a signature match of a *named* malware family,
+and never from a mainstream engine:
+
+- **APEX** — a pure *machine-learning* engine (CyberArk). It scores a file by statistical resemblance to
+  packed/obfuscated binaries. A PyInstaller bootloader wrapping a compressed Python runtime *looks* like a
+  packer to the model, so it flags the **shape of the packaging, not the code**. Known for a high
+  false-positive rate on legitimate packed apps.
+- **Bkav (Pro)** — an aggressive heuristic/ML engine that emits generic `…AIDetectMalware` /
+  `W64.AIDetect…` labels. It flags virtually *every* unsigned PyInstaller/Nuitka/packed Windows exe; it's one
+  of the highest false-positive engines on VirusTotal.
+- **Gridinsoft** — a heuristic engine that labels unsigned, packed installers/exes as a generic
+  `PUA`/`Trojan.Heur` on sight — no specific family identified.
+- **Microsoft Defender** — occasionally tags a *brand-new, unsigned, low-prevalence* build with a
+  reputation/heuristic label (e.g. `Wacatac`/`Sabsik`). It's reputation-driven and clears as downloads
+  accumulate or once the binary is code-signed. (It flagged a couple of older releases; **not** v1.4.0.)
+- **Zillya** — a heuristic engine that flags packed/unsigned binaries generically.
+
+Every one of those is a **heuristic / ML / reputation** detector, not a real signature hit. The three root
+causes are all about *distribution*, not the program:
+
+1. **PyInstaller "unpack-and-run" shape** — the one-file exe is a small stub that unpacks ~80 MB of
+   compressed Python + DLLs to a temp dir and runs it. Malware packers do the same thing, so heuristics flag
+   the pattern.
+2. **No code-signing certificate** — unsigned ⇒ no publisher identity ⇒ a trust/reputation penalty.
+3. **Low prevalence** — a fresh release has been seen by almost nobody, and some ML engines default-flag
+   unknown packed exes.
+
+The tell that it's a false positive: it's a **minority of engines, all heuristic, with generic labels**,
+while **Kaspersky, ESET, BitDefender, Sophos, Symantec, Malwarebytes** and the rest of the majors return
+clean — and the Linux/macOS builds (same source, same CI) score **0/74**. A real infection would be a named
+family agreed on by many engines across platforms; this is the opposite. Code-signing (the roadmap item
+below) is what makes even these heuristic engines stop.
+
 ---
 
 ## 3. Check it yourself (recommended)
