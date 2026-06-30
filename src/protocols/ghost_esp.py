@@ -47,6 +47,8 @@ class GhostESPProtocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "ghost-esp"
 
+    capabilities = frozenset({"ble", "deauth", "gps", "wifi"})
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:

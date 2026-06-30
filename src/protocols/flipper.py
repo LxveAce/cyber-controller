@@ -78,6 +78,8 @@ class FlipperProtocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "flipper"
 
+    capabilities = frozenset({"badusb", "ble", "ir", "nfc", "rfid", "subghz"})
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:

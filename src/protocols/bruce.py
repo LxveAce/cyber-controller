@@ -42,6 +42,8 @@ class BruceProtocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "bruce"
 
+    capabilities = frozenset({"badusb", "ble", "ir", "nfc", "rfid", "subghz", "wifi"})
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:

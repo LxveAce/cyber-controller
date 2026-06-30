@@ -144,6 +144,16 @@ def list_protocols() -> list[str]:
     return list(PROTOCOLS.keys())
 
 
+def capabilities_for(name: str) -> "frozenset[str]":
+    """Capability tokens a firmware/board supports (wifi/ble/subghz/nfc/ir/gps/lora/...). Used to surface each
+    connected device as a node in the network (capability view, Broadcast/AutoRouter applicability). Returns an
+    empty set for unknown names or firmwares that declare none."""
+    try:
+        return frozenset(getattr(get_protocol(name), "capabilities", frozenset()))
+    except Exception:  # noqa: BLE001
+        return frozenset()
+
+
 # --- Protocol module lookup (for TARGET_ACTIONS access) ---
 
 # Maps internal name -> dotted module path so get_protocol_module() can return
