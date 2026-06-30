@@ -367,7 +367,7 @@ class DeviceTab(QWidget):
         if not port:
             return
         try:
-            conn = self._dm.open_connection(port)
+            conn = self._dm.open_connection(port, owner="devices_tab")
             self._active_conn = conn
             # Persist the chosen firmware onto the Device so the ActionResolver + BroadcastEngine resolve
             # the SAME protocol the ingestor parses with (both key off Device.firmware, which scan_ports
@@ -401,7 +401,7 @@ class DeviceTab(QWidget):
         port = self._active_port
         if not port:
             return
-        self._dm.close_connection(port)
+        self._dm.close_connection(port, owner="devices_tab")
         self._active_conn = None
         self._terminal.append(f"[Disconnected from {port}]")
         self._btn_connect.setEnabled(True)
