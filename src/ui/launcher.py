@@ -148,6 +148,8 @@ def select_ui() -> str:
     app = QApplication.instance()
     own_app = False
     if app is None:
+        from src.ui.qt.screen import enable_high_dpi
+        enable_high_dpi()  # before the first QApplication so high-DPI scaling is on app-wide
         app = QApplication(sys.argv)
         own_app = True
 

@@ -116,6 +116,8 @@ def unlock_gui() -> bool:
     app = QApplication.instance()
     owns_app = app is None
     if owns_app:
+        from src.ui.qt.screen import enable_high_dpi
+        enable_high_dpi()  # before the first QApplication so high-DPI scaling is on app-wide
         app = QApplication(sys.argv)
     try:
         from src.ui.qt.theme import apply_theme
