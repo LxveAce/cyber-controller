@@ -327,36 +327,50 @@ class FlashEngine:
     def _flash_qflipper(
         self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
     ) -> bool:
-        """Best-effort Flipper Zero update via the qFlipper CLI.
+        """Flipper Zero (Momentum/Unleashed) update via qFlipper.
 
-        Flipper firmware (Momentum/Unleashed) ships as web-update .tgz/.dfu packages,
-        not esptool images. We download the release asset and hand it to a locally
-        installed ``qFlipper`` if present; otherwise we report clearly that the user
-        needs qFlipper or the web updater (we never pretend a flash happened).
+        Flipper firmware ships as web-update ``.tgz`` packages, not esptool images. We resolve +
+        download the real release package, then delegate to the proven flash_core Momentum/Unleashed
+        ``flash_assets`` which shells ``qFlipper --install <package>`` through ``_run_stream`` (stdin
+        + kill/reap handling for free). We NEVER launch a bare qFlipper with no package and report
+        success — the previous version did exactly that (``local_path`` is empty for the shipped
+        download profiles), so closing an idle qFlipper returned rc 0 and the UI logged a flash that
+        never actually happened, with nothing downloaded or installed.
         """
-        import shutil
-        import subprocess
-
         on_line = _percent_adapter(progress)
-        qflipper = shutil.which("qFlipper") or shutil.which("qflipper")
-        if not qflipper:
-            on_line("[qflipper] qFlipper not found on PATH. Install qFlipper "
-                    "(https://flipperzero.one/update) or use the web updater; "
-                    "Flipper firmware cannot be flashed with esptool.")
-            return False
-        on_line(f"[qflipper] using {qflipper} — launching firmware update")
-        try:
-            proc = subprocess.Popen(
-                [qflipper, "--update", profile.local_path] if profile.local_path else [qflipper],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-            )
-            assert proc.stdout is not None
-            for line in proc.stdout:
-                on_line(line.rstrip())
-            rc = proc.wait()
-        except Exception as exc:
-            on_line(f"[qflipper] error: {exc}")
-            return False
+        if profile.local_path:
+            app_path = profile.local_path
+        else:
+            core_id = profile.core_id if profile.core_id in flash_core.PROFILES else "custom"
+            if core_id == "custom":
+                on_line("[error] no flash-core profile for this Flipper firmware and no local "
+                        "package provided — nothing to flash")
+                return False
+            core = flash_core.get_profile(core_id)
+            try:
+                on_line(f"[release] fetching latest {core_id} release...")
+                _tag, assets = core.latest_release()
+            except Exception as exc:
+                on_line(f"[error] could not fetch release: {exc}")
+                return False
+            variant = self._resolve_variant(core, assets, "flipper", profile.variant, on_line)
+            if not variant:
+                on_line(f"[error] no firmware package in the {core_id} release")
+                return False
+            try:
+                app_path = flash_core.download_to(
+                    variant["url"], flash_core.cache_dir(), variant["name"], on_line)
+                if variant.get("sha256"):
+                    flash_core.verify_sha256(app_path, variant["sha256"], on_line)
+            except Exception as exc:
+                on_line(f"[error] download/verify failed: {exc}")
+                return False
+        core = flash_core.get_profile(
+            profile.core_id if profile.core_id in flash_core.PROFILES else "momentum")
+        rc = core.flash_assets(port, "flipper", app_path, on_line,
+                               mode=profile.flash_mode, baud=profile.baud)
+        if progress:
+            progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
         return rc == 0
 
     # ── ADB (RayHunter / Orbic RC400L) ───────────────────────────────
@@ -455,10 +469,15 @@ class FlashEngine:
         progress_callback: ProgressCallback | None = None,
         *,
         chip: str = "auto",
-        size: str = "0x400000",
+        size: str = "detect",
     ) -> bool:
         """Read the entire flash to *output_path* (exact file) via the proven esptool
-        plumbing, auto-detecting the chip when ``chip='auto'``.
+        plumbing, auto-detecting the chip when ``chip='auto'`` and the real flash SIZE when
+        ``size='detect'`` (the default).
+
+        A hardcoded 4 MB read silently truncated the backup of any >4 MB board (S3 DevKit 8 MB,
+        T-Deck 16 MB, …): esptool reads only the first 4 MB with no error, so a later restore can
+        never recover anything above 0x400000 — defeating the safety net the backup exists for.
 
         (For a richer backup-with-restore + .meta sidecar + listing, see
         :mod:`src.core.backup`, surfaced through a dedicated backup flow.)
@@ -468,6 +487,8 @@ class FlashEngine:
         on_line = _percent_adapter(progress_callback)
         if not chip or chip == "auto":
             chip = flash_core.detect_chip(port, on_line) or "esp32"
+        if not size or size in ("detect", "auto"):
+            size = self._detect_flash_size(port, chip, on_line)
         argv = flash_core.esptool_argv(
             "--chip", chip, "--port", port, "--baud", "921600",
             "read_flash", "0x0", size, str(output_path),
@@ -479,6 +500,30 @@ class FlashEngine:
         with self._lock:
             self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
         return ok
+
+    @staticmethod
+    def _detect_flash_size(port: str, chip: str, on_line: Callable[[str], None]) -> str:
+        """Detect the chip's real flash size via ``esptool flash_id`` and return it as a hex byte
+        count. Falls back to 0x400000 (4 MB) if detection yields nothing — so an undetectable board
+        still backs up its first 4 MB rather than failing, while >4 MB boards get a FULL image."""
+        lines: list[str] = []
+
+        def cap(s: str) -> None:
+            lines.append(s)
+            on_line(s)
+
+        try:
+            flash_core._run_stream(
+                flash_core.esptool_argv("--chip", chip, "--port", port, "flash_id"), cap)
+        except Exception as exc:  # noqa: BLE001 — detection is best-effort; fall back to 4 MB
+            on_line(f"[backup] flash-size detection failed ({exc}); assuming 4 MB")
+        size_map = {"1MB": "0x100000", "2MB": "0x200000", "4MB": "0x400000",
+                    "8MB": "0x800000", "16MB": "0x1000000", "32MB": "0x2000000"}
+        for line in lines:
+            if "Detected flash size:" in line:
+                return size_map.get(line.split(":")[-1].strip(), "0x400000")
+        on_line("[backup] could not detect flash size; defaulting to a 4 MB read")
+        return "0x400000"
 
     def erase(
         self,
