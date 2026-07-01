@@ -84,6 +84,16 @@ class Device:
         from src.protocols import capabilities_for  # lazy: keep models independent of the protocols package
         return capabilities_for(self.firmware or self.protocol.value)
 
+    @property
+    def driver_type(self) -> str:
+        """How CC talks to this node: "text-cli" (a line-based command shell — the default), "stream" (a
+        binary/framed link with no text command channel, e.g. Meshtastic protobuf), or "controlmap" (no serial
+        command channel at all, e.g. BlueJammer's web UI). Read-only view over the protocol map — lets a node
+        say honestly whether it even has a sendable command channel. The firmware identifier is the lookup key;
+        the protocol enum is the fallback."""
+        from src.protocols import driver_type_for  # lazy: keep models independent of the protocols package
+        return driver_type_for(self.firmware or self.protocol.value)
+
     def to_dict(self) -> dict:
         """Serialize to a plain dict."""
         return {

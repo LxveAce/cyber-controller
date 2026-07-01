@@ -65,6 +65,16 @@ class BaseProtocol(ABC):
     # Subclasses override; an empty set means "no declared capabilities" (e.g. generic/raw).
     capabilities: "frozenset[str]" = frozenset()
 
+    # How CC actually talks to this firmware — the transport/driver kind, not the parser. Lets a node say
+    # honestly whether it even has a text command channel, instead of every empty-command firmware looking
+    # alike. Canonical tokens:
+    #   "text-cli"    -- line-based ASCII command shell (the default: Marauder, GhostESP, Bruce, Flipper, …)
+    #   "stream"      -- a binary/framed stream, not a text CLI (Meshtastic protobuf StreamAPI). Text writes
+    #                    are discarded by the firmware, so there is no sendable command channel over serial.
+    #   "controlmap"  -- no serial command channel at all; control lives elsewhere (BlueJammer's web UI).
+    # Subclasses override; the default "text-cli" fits every line-shell firmware.
+    driver_type: str = "text-cli"
+
     @property
     @abstractmethod
     def protocol_name(self) -> str:

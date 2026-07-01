@@ -28,6 +28,10 @@ _RE_TAG = re.compile(r"^\[(?P<tag>[A-Za-z0-9_]+)\]\s*(?P<msg>.*)$")
 class BlueJammerProtocol(BaseProtocol):
     """Telemetry-only parser for BlueJammer-V2 (no sendable serial commands)."""
 
+    # No serial command channel — control is the physical button + the device's own web UI (see the module
+    # docstring). "controlmap" marks the node as controlled elsewhere, not an empty text CLI.
+    driver_type = "controlmap"
+
     @property
     def protocol_name(self) -> str:
         return "bluejammer"
