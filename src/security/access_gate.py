@@ -155,7 +155,11 @@ def set_password_cli() -> int:
 
 
 def set_policy_cli(policy: str) -> int:
-    pk.set_policy(policy)
+    try:
+        pk.set_policy(policy)
+    except ValueError as exc:
+        print(f"Cannot set policy: {exc}", file=sys.stderr)
+        return 2
     print(f"Access-gate policy set to: {policy}")
     return 0
 
