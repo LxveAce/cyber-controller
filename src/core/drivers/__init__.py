@@ -63,9 +63,24 @@ class StreamDriver(Driver):
                     getattr(dev, "firmware", ""), command)
         return False
 
-    def deliver_raw(self, conn, frames: bytes) -> bool:
-        """The framed-byte transport path. Not implemented until S3-b (Meshtastic protobuf framer)."""
-        raise NotImplementedError("stream raw-byte transport lands in S3-b (Meshtastic protobuf framer)")
+    def deliver_raw(self, conn, payload: bytes) -> bool:
+        """Wrap a protobuf *payload* in a Meshtastic Stream-API frame and put it on the wire.
+
+        The framing is real + tested (`StreamFramer`). The live serial write is NOT wired yet: it needs a
+        BINARY write path on SerialConnection (`SerialConnection.write` is text-only — it appends a line
+        terminator and rejects control bytes, which would corrupt a protobuf frame). So this frames the
+        bytes and, if the connection exposes a raw `write_bytes`, sends them; otherwise it raises to say the
+        binary transport (and the meshtastic protobuf layer above it) is still to come. Honest boundary."""
+        from src.protocols.stream_framer import StreamFramer
+        framed = StreamFramer.frame(payload)
+        writer = getattr(conn, "write_bytes", None)
+        if writer is None:
+            raise NotImplementedError(
+                "stream raw serial transport not wired yet — framing is ready, but sending needs a binary "
+                "write path on SerialConnection + the Meshtastic protobuf layer (semantic decode)."
+            )
+        writer(framed)
+        return True
 
 
 class ControlMapDriver(Driver):
