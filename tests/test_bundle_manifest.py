@@ -116,7 +116,7 @@ def test_resource_path_targets_exist():
 
 # ── (b) data sources build.py bundles ────────────────────────────────
 
-def _bundled_sources() -> list[tuple[Path, str]]:
+def _bundled_sources() -> list[tuple[Path, str, bool]]:
     """Static list of the data *sources* build.py declares for the bundle.
 
     Tolerates the two shapes the manifest may take:
@@ -150,6 +150,32 @@ def _bundled_sources() -> list[tuple[Path, str]]:
             ):
                 glob_base[node.target.id] = it.func.value.id
 
+    # Names tested with `.is_dir()/.exists()/.is_file()` in build.py — a source bundled behind such a
+    # guard is OPTIONAL (a missing one is not a build failure, e.g. the deadmans-switch submodule on a
+    # fresh clone), so the test must not require it to exist.
+    guarded_names: set[str] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr in {"is_dir", "exists", "is_file"}
+            and isinstance(node.func.value, ast.Name)
+        ):
+            guarded_names.add(node.func.value.id)
+
+    def _base_name(expr: ast.AST) -> str | None:
+        """The leading Name id of a source expr (direct, or the FormattedValue of an f-string)."""
+        if isinstance(expr, ast.JoinedStr):
+            for piece in expr.values:
+                if isinstance(piece, ast.FormattedValue):
+                    return _base_name(piece.value)
+            return None
+        return expr.id if isinstance(expr, ast.Name) else None
+
+    def _is_guarded(expr: ast.AST) -> bool:
+        n = _base_name(expr)
+        return n is not None and (n in guarded_names or glob_base.get(n, n) in guarded_names)
+
     def _parts_from_source_expr(expr: ast.AST) -> list[str] | None:
         """Resolve a --add-data / DATA_FILES source expression to repo-relative parts."""
         if isinstance(expr, ast.Name):
@@ -180,7 +206,7 @@ def _bundled_sources() -> list[tuple[Path, str]]:
                 ):
                     parts = _parts_from_add_data_value(elts[i + 1])
                     if parts is not None:
-                        sources.append((_REPO_ROOT.joinpath(*parts), "--add-data"))
+                        sources.append((_REPO_ROOT.joinpath(*parts), "--add-data", _is_guarded(elts[i + 1])))
 
         # Form 2: DATA_FILES / datas = [(src, dest), ...]
         if (
@@ -195,7 +221,7 @@ def _bundled_sources() -> list[tuple[Path, str]]:
                     parts = _parts_from_source_expr(entry.elts[0])
                     if parts is not None:
                         sources.append(
-                            (_REPO_ROOT.joinpath(*parts), node.targets[0].id)
+                            (_REPO_ROOT.joinpath(*parts), node.targets[0].id, _is_guarded(entry.elts[0]))
                         )
 
     return sources
@@ -205,8 +231,11 @@ def test_build_data_sources_exist():
     sources = _bundled_sources()
     assert sources, "no --add-data / DATA_FILES sources parsed from build.py — parser broke?"
 
-    missing = {path: label for path, label in sources if not path.exists()}
-    assert not missing, "build.py bundles data sources that do not exist on disk:\n" + "\n".join(
+    # A source is a failure only if build.py bundles it UNCONDITIONALLY (not behind an is_dir()/exists()
+    # guard). Guarded-but-missing sources are expected — e.g. the optional deadmans-switch submodule on a
+    # fresh clone (build.py skips them; CI checks out submodules recursively).
+    missing = {path: label for path, label, guarded in sources if not guarded and not path.exists()}
+    assert not missing, "build.py bundles (unconditionally) data sources that do not exist on disk:\n" + "\n".join(
         f"  {path}  (declared via {label})"
         for path, label in sorted(missing.items(), key=lambda kv: str(kv[0]))
     )
