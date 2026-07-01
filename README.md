@@ -28,13 +28,18 @@
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
-**Status:** **v1.5.0** is the latest release — a reliability + integrity pass (20 hardening fixes, each test-guarded), the **LxveAce violet identity** across all four UIs, and experimental **dfu-util / UF2** flash backends (HW-validation pending), on top of the v1.4.0 release — **smart installation / version-aware startup**: on launch
-the app reconciles its config against the running version, carries an upgrade forward silently, and on a
-downgrade/overwrite prompts to **Keep & Continue** or **Back up & Start Fresh** (the old config is moved
-aside, never deleted). It builds on a run of installer/UX releases (v1.3.1–v1.3.3): an **animated startup**
-loading screen, a **four-interface launcher**, and a **splash screen** for the slow onefile self-extract —
-all on top of the **v1.3.0** security-hardening base (secure container, brute-force lockout, duress
-self-wipe, dual-depth Simple/Pro, +4 firmwares).
+**Status:** **v1.5.0** is the latest release. It's a reliability and integrity pass: 20 hardening fixes, each
+with a test guarding it, the LxveAce violet identity carried across all four UIs, and experimental dfu-util /
+UF2 flash backends (hardware validation still pending).
+
+That builds on v1.4.0, which added smart, version-aware startup. On launch the app checks its config against
+the running version. An upgrade is carried forward silently; a downgrade or overwrite prompts you to
+**Keep & Continue** or **Back up & Start Fresh**, and the old config is moved aside, never deleted.
+
+Before that came a run of installer and UX releases (v1.3.1–v1.3.3): an animated startup loading screen, a
+four-interface launcher, and a splash screen for the slow onefile self-extract. All of it sits on the v1.3.0
+security base: the secure container, brute-force lockout, duress self-wipe, the Simple/Pro dual-depth view,
+and four more firmwares.
 
 **Shipped in v1.3.1 – v1.4.0:**
 - **Smart installation / version-aware startup (v1.4.0)** — the app recognizes a previous install and
