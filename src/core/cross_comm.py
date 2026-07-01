@@ -125,6 +125,16 @@ class TargetPool:
                 # fixes synthetic idx:<port>:<index> keys keeping a stale SSID across re-ordered re-scans.
                 if target.ssid:
                     existing.ssid = target.ssid
+                # A per-device scan index (extra['index']) is only meaningful paired with the device
+                # whose current scan produced it. On a re-observation that carries an index, refresh
+                # BOTH the index and device_source together — otherwise a reordered rescan strands a
+                # stale ordinal that an {index}-based action (BW16 AT+DEAUTHIDX) would then fire at a
+                # DIFFERENT AP. If the new observation has no index, leave the pair untouched (don't
+                # orphan a prior index under a later non-index source).
+                incoming_extra = getattr(target, "extra", None) or {}
+                if incoming_extra.get("index") is not None:
+                    existing.extra["index"] = incoming_extra["index"]
+                    existing.device_source = target.device_source
                 updated_payload = existing.to_dict()
             else:
                 self._targets[target.key] = target
