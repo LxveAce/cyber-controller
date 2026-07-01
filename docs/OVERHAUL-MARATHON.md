@@ -212,3 +212,4 @@ deep flash-engine hunt (C5 brick fixed in universal-flasher + HMG). The autonomy
 **essentially exhausted** — remaining high-value work is owner-gated (see Owner Decisions). The loop
 stays alive at a longer cadence and will fold in any real bug a future hunt surfaces, but will not
 manufacture marginal changes. **Owner: the decision list above is the highest-leverage next step.**
+- **2026-06-30 ~21:2x** — C5-fix follow-up VERIFIED clean: no repo uses `_BOOTLOADER_0` directly for an offset decision (cc `_bootloader_offset` checks the 0x2000 override first; uf/HMG likewise). The `_BOOTLOADER_0` import in cc + uf `backup.py` is unused — backups do a whole-flash `read_flash 0x0 <size>`, so no bootloader offset is applied there; no residual brick trap. Left the two dead imports as-is (no-churn). cc's newer modules (os_catalog/tails/macro/wardrive/health) were already in the B12+ hunt's scope, so no round-2 hunt — no diminishing-returns churn. Loop → 60-min re-check.
