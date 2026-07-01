@@ -61,11 +61,29 @@ class SuicideConfig:
     build_dir: str = ""            # dir with bootloader/partitions/app/boot_app0 bins (when built)
 
 
+_FLASH_ALIASES = {"4mb": "4MB", "8mb": "8MB", "16mb": "16MB"}
+
+
+def _canon_flash_size(v: str) -> str:
+    """Canonicalize free-form flash-size text ('16mb', '16 MB') to the exact key ('16MB')."""
+    return _FLASH_ALIASES.get(v.strip().lower().replace(" ", ""), v.strip())
+
+
 def partitions_csv(cfg: SuicideConfig) -> Path:
-    """Resolve the partition CSV for a config."""
-    name = (_CSV_BY_SIZE.get((cfg.flash_size, cfg.variant))
-            or _CSV_BY_SIZE.get((cfg.flash_size, "fork"))
-            or "suicide_4MB.csv")
+    """Resolve the partition CSV for a config.
+
+    RAISES on an unknown (flash_size, variant) instead of silently returning the 4MB layout. A wrong
+    table bakes ``guardcfg`` at the wrong flash offset (4MB vs 16MB); the firmware then reads no config
+    from its real offset, treats the board as unprovisioned, and — per the fail-safe — boots with NO
+    password gate at all, while the owner believes the boot password is set. Fail loud instead.
+    """
+    flash = _canon_flash_size(cfg.flash_size)
+    name = _CSV_BY_SIZE.get((flash, cfg.variant)) or _CSV_BY_SIZE.get((flash, "fork"))
+    if name is None:
+        raise ValueError(
+            f"no partition table for flash_size={cfg.flash_size!r} variant={cfg.variant!r}; "
+            f"known combos: {sorted(_CSV_BY_SIZE)}"
+        )
     return _PARTS / name
 
 
