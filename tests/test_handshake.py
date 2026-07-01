@@ -7,11 +7,12 @@ from __future__ import annotations
 from src.core.device_manager import DeviceManager
 from src.core.handshake import (
     classify_reply,
+    detect_firmware,
     learn_vocabulary,
     probe_commands_for,
     probe_device,
 )
-from src.models.device import Device
+from src.models.device import Device, Protocol
 
 # A representative Marauder `help` reply (banner line + a few real commands).
 MARAUDER_HELP = [
@@ -116,6 +117,37 @@ def test_probe_device_no_cli_for_stream_without_writing():
     assert res.health == "no-cli"
     assert dev.health == "no-cli"
     assert conn.writes == []  # nothing written to a non-text-CLI node
+
+
+# ── firmware autodetect (1.4) ──────────────────────────────────────────
+
+GHOST_HELP = ["GhostESP v1.0.0", "  scanwifi", "  stopscan", "  help"]
+
+
+def test_detect_firmware_from_banner():
+    assert detect_firmware(MARAUDER_HELP) == "marauder"
+    assert detect_firmware(GHOST_HELP) == "ghost-esp"
+
+
+def test_detect_firmware_none_on_unrecognized():
+    assert detect_firmware(["> ready", "unknown board", "ok"]) is None
+    assert detect_firmware([]) is None
+
+
+def test_probe_sets_firmware_on_unknown_device():
+    # An unknown board (no firmware; USB VID only) that prints a Marauder banner should be identified.
+    dev = Device(port="C_U", firmware="")
+    probe_device(_FakeConn(MARAUDER_HELP), dev)
+    assert dev.firmware == "marauder"
+    assert dev.protocol == Protocol.MARAUDER
+    assert dev.health == "alive"
+
+
+def test_probe_does_not_override_known_firmware():
+    # firmware already set -> detection must not clobber it even if the reply looks like another firmware.
+    dev = Device(port="C_K", firmware="bruce")
+    probe_device(_FakeConn(MARAUDER_HELP), dev)
+    assert dev.firmware == "bruce"
 
 
 # ── DeviceManager.probe entry point ────────────────────────────────────

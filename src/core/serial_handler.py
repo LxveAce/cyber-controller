@@ -218,6 +218,30 @@ class SerialConnection:
                 self._emit_error(exc)
                 raise
 
+    def send_interrupt(self) -> None:
+        """Send a raw Ctrl-C (0x03) to interrupt a blocking command — e.g. a long-running Flipper CLI command
+        that otherwise holds the shell until it finishes.
+
+        :meth:`write` deliberately rejects every control character (command-injection guard), so it can't send
+        0x03. This is the narrow, explicit exception: it writes the single byte 0x03 — and nothing else, no
+        line terminator — bypassing that guard for this one documented control code only.
+
+        Raises:
+            RuntimeError: If not connected.
+        """
+        with self._io_lock:
+            ser = self._serial
+            if ser is None or not ser.is_open:
+                raise RuntimeError(f"Not connected to {self.port}")
+            try:
+                ser.write(b"\x03")
+                ser.flush()
+                log.debug("TX [%s]: <0x03 interrupt>", self.port)
+            except (serial.SerialException, OSError) as exc:
+                self._set_state(ConnectionState.ERROR)
+                self._emit_error(exc)
+                raise
+
     # ── Internal ─────────────────────────────────────────────────────
 
     def _reader_loop(self) -> None:

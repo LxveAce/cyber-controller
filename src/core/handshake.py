@@ -81,6 +81,37 @@ def classify_reply(lines, device) -> "tuple[str, str]":
     return ("alive", (banner or nonempty[0])[:120])
 
 
+def _has_known_firmware(device) -> bool:
+    fw = (getattr(device, "firmware", "") or "").strip().lower()
+    return bool(fw) and fw not in ("generic", "raw", "unknown")
+
+
+def detect_firmware(lines) -> "str | None":
+    """Guess the firmware from the probe-reply *lines* by running each protocol's ``identify()`` over them and
+    returning the internal name of the best match (the protocol that claims the most lines), or ``None``. The
+    generic passthrough never claims a line, so it's excluded. This is how a shared-VID ESP32 board is
+    identified from what it actually prints, instead of trusting the USB VID alone."""
+    try:
+        from src.protocols import PROTOCOLS
+    except Exception:  # noqa: BLE001
+        return None
+    best_name, best_score = None, 0
+    for name, cls in PROTOCOLS.items():
+        if name in ("generic", "raw"):
+            continue
+        proto = cls()
+        score = 0
+        for ln in lines:
+            try:
+                if ln and proto.identify(ln):
+                    score += 1
+            except Exception:  # noqa: BLE001
+                pass
+        if score > best_score:
+            best_name, best_score = name, score
+    return best_name
+
+
 def learn_vocabulary(lines, device) -> "frozenset[str]":
     """Pure. Which of the firmware's known command names actually appear in the reply text (whole-token match,
     so ``scan`` doesn't match inside ``scanap``). Confirms the device's live vocabulary from what it advertises
@@ -131,6 +162,18 @@ def probe_device(conn, device, *, timeout: float = 0.8, settle: float = 0.15) ->
             conn.remove_line_callback(cb)
         except Exception:  # noqa: BLE001
             pass
+
+    # Identify the firmware from what it printed, BEFORE classifying — so an unknown board gets its real
+    # firmware set and the banner/vocabulary use the right protocol. Never override an already-known firmware.
+    if not _has_known_firmware(device):
+        detected = detect_firmware(lines)
+        if detected:
+            device.firmware = detected
+            try:
+                from src.models.device import Protocol
+                device.protocol = Protocol(detected)
+            except ValueError:
+                pass  # firmware string is the source of truth; some names have no Protocol enum (esp32-div/bw16)
 
     health, banner = classify_reply(lines, device)
     vocab = learn_vocabulary(lines, device)
