@@ -249,7 +249,12 @@ class NetworkTab(QWidget):
             cmds = []
         for ci in cmds[:40]:  # cap the menu length
             name = getattr(ci, "name", str(ci))
-            out.append((name, lambda c=name, p=port: self._run_device_cmd(p, c)))
+            if "<" in name or ">" in name:
+                # A placeholder template (e.g. "select -a <idx>", "channel -s <ch>") the Network tab
+                # can't fill in — sending it raw would transmit the literal "<idx>" to the radio. These
+                # stay reachable via the Devices tab, which collects the argument first.
+                continue
+            out.append((name, lambda c=name, p=port, info=ci: self._run_device_cmd(p, c, info)))
         if not out:
             out.append(("(no commands for this firmware)", lambda: None))
         return out
@@ -270,12 +275,28 @@ class NetworkTab(QWidget):
             out.append(("(no actions — connect the discovering device)", lambda: None))
         return out
 
-    def _run_device_cmd(self, port: str, cmd: str) -> None:
-        if self._send_cmd is not None and port:
-            try:
-                self._send_cmd(port, cmd)
-            except Exception:  # noqa: BLE001
-                pass
+    def _run_device_cmd(self, port: str, cmd: str, ci=None) -> None:
+        if self._send_cmd is None or not port:
+            return
+        # This is a real send surface, so dangerous commands (deauth / jam / spam) must clear the same
+        # safety gate as the Devices tab (_on_send) and Device View — otherwise the experimental Network
+        # tab is a silent bypass that fires attack commands with no confirmation.
+        from src.core import safety
+        from src.config.settings import load_settings
+        danger = safety.classify(cmd, ci)
+        if safety.should_confirm(danger, load_settings()):
+            from PyQt5.QtWidgets import QMessageBox
+            reply = QMessageBox.warning(
+                self, "Confirm dangerous command",
+                safety.lab_only_warning_text(cmd, danger),
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
+        try:
+            self._send_cmd(port, cmd)
+        except Exception:  # noqa: BLE001
+            pass
 
     def _run_target_action(self, action, port: str) -> None:
         if self._dm is None:
