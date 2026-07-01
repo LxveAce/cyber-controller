@@ -38,8 +38,8 @@ from PyQt5.QtWidgets import (
 
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FlashEngine
-from src.core.cross_comm import AutoRouter, EventBus, TargetPool
-from src.core.target_ingest import TargetIngestor
+from src.core.cross_comm import EventBus, TargetPool
+from src.core.cross_comm_hub import CrossCommHub
 from src.core.firmware_vault import FirmwareVault
 from src.core.health_monitor import HealthMonitor
 from src.core.macro_recorder import MacroRecorder
@@ -64,14 +64,6 @@ from src.ui.qt.widgets.cc_logo import CCLogo
 from src.ui.qt.widgets.cc_icon import create_cc_icon
 from src.ui.qt.widgets.command_palette import CommandPalette
 from src.core.deadman_auth import DeadManAuth
-
-# Graceful import for the action resolver (created by a parallel agent).
-try:
-    from src.core.action_resolver import ActionResolver
-    _HAS_ACTION_RESOLVER = True
-except Exception:  # noqa: BLE001
-    ActionResolver = None  # type: ignore[assignment,misc]
-    _HAS_ACTION_RESOLVER = False
 
 log = logging.getLogger(__name__)
 
@@ -103,27 +95,17 @@ class CyberControllerWindow(QMainWindow):
         self._vault = firmware_vault or FirmwareVault()
         self._health = health_monitor or HealthMonitor()
         self._macro = macro_recorder or MacroRecorder()
-        # Auto-router drives cross-device routing rules; send_command writes to a port.
-        self._router = AutoRouter(self._bus, self._send_to_port)
-        # Target ingestor feeds each connected device's parsed serial output (APs/clients) into the
-        # shared pool, completing the cross-comm loop: a scan on device A -> target.added -> AutoRouter
-        # -> a command on device B. DeviceTab attaches it per-connection.
-        self._ingestor = TargetIngestor(self._pool)
-
-        # Unified Action Broadcast — one verb fans out to every connected device in its native
-        # command; results converge via the same ingestor/pool. See src/core/broadcast.py.
-        from src.core.broadcast import BroadcastEngine
-        self._broadcast = BroadcastEngine(self._dm, self._bus)
-
-        # Action resolver — maps targets to firmware-specific actions per connected device.
-        # Created by a parallel agent; gracefully absent if not yet available.
-        self._action_resolver = None
-        if _HAS_ACTION_RESOLVER and ActionResolver is not None:
-            try:
-                self._action_resolver = ActionResolver(self._dm)
-                log.info("ActionResolver initialized")
-            except Exception:
-                log.warning("ActionResolver creation failed — actions disabled", exc_info=True)
+        # The cross-comm layer is now assembled in one place — the CrossCommHub spine (src/core/
+        # cross_comm_hub.py) — rather than hand-wired here. The window is a thin consumer: it holds the
+        # hub and aliases each part so the rest of the UI keeps its familiar self._router/_ingestor/... refs.
+        # (Router feeds off target.added and dispatches via hub.send_to_port; ingestor feeds the shared pool,
+        # so a scan on device A -> target.added -> a command on device B. DeviceTab attaches the ingestor
+        # per-connection. Broadcast fans one verb out to every connected device. ActionResolver is optional.)
+        self._hub = CrossCommHub(self._dm, self._bus, self._pool)
+        self._router = self._hub.router
+        self._ingestor = self._hub.ingestor
+        self._broadcast = self._hub.broadcast
+        self._action_resolver = self._hub.action_resolver
 
         # Dead Man's Switch auth flow
         self._dms_auth = DeadManAuth()
@@ -1524,21 +1506,10 @@ class CyberControllerWindow(QMainWindow):
     # ── Cross-comm send ──────────────────────────────────────────────
 
     def _send_to_port(self, port: str, command: str) -> None:
-        """AutoRouter callback — write a routed command to a connected device."""
-        conn = self._dm.get_connection(port)
-        if conn and conn.is_connected:
-            try:
-                # Resolve the target device's firmware terminator (Flipper CR vs LF) before writing, so a
-                # routed command isn't silently dropped just because that device isn't the focused tab.
-                dev = self._dm.get_device(port)
-                if dev is not None:
-                    from src.protocols import line_ending_for
-                    conn.line_ending = line_ending_for(dev.firmware or dev.name)
-                conn.write(command)  # rejects embedded control chars
-            except Exception:
-                log.exception("AutoRouter send to %s failed", port)
-        else:
-            log.warning("AutoRouter: no active connection on %s for routed command", port)
+        """Write a routed command to a connected device. Thin delegate to the cross-comm spine — the logic
+        lives once on the hub (src/core/cross_comm_hub.py); kept here for the callers that pass this bound
+        method as a send callback (e.g. the Network tab)."""
+        self._hub.send_to_port(port, command)
 
     # ── Cleanup ──────────────────────────────────────────────────────
 
