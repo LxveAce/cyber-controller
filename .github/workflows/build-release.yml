@@ -47,18 +47,12 @@ jobs:
         shell: cmd
         run: |
           move dist\CyberController.exe dist\cyber-controller-${{ env.TAG }}-windows-x64.exe
-      - name: Checksum (exe)
-        shell: pwsh
-        run: |
-          $f = "dist/cyber-controller-${{ env.TAG }}-windows-x64.exe"
-          (Get-FileHash $f -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $f -Leaf) | Out-File "$f.sha256" -Encoding ascii
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
           files: |
             dist/cyber-controller-${{ env.TAG }}-windows-x64.exe
-            dist/cyber-controller-${{ env.TAG }}-windows-x64.exe.sha256
       # ── Installer (registers in Settings > Apps > Installed apps). Best-effort: never block the
       # ── core binary release on an installer hiccup. NOTE: unsigned — SmartScreen still applies
       # ── until a code-signing cert is added (see docs/WINDOWS-SECURITY.md).
@@ -78,8 +72,6 @@ jobs:
           # exist), so ISCC was never found and the installer silently never built (continue-on-error
           # masked it — the installer never shipped in any release before this fix).
           & "${Env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" "installer\cyber-controller.iss"
-          $setup = Get-ChildItem "installer\Output\*.exe" | Select-Object -First 1
-          if ($setup) { (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $setup.Name | Out-File "$($setup.FullName).sha256" -Encoding ascii }
       - name: Upload installer asset
         continue-on-error: true
         uses: softprops/action-gh-release@v2
@@ -87,7 +79,6 @@ jobs:
           tag_name: ${{ env.TAG }}
           files: |
             installer/Output/*.exe
-            installer/Output/*.sha256
 
   build-linux:
     runs-on: ubuntu-latest
@@ -114,15 +105,11 @@ jobs:
         run: |
           mv dist/CyberController dist/cyber-controller-${{ github.event.release.tag_name }}-linux-x64
           chmod +x dist/cyber-controller-${{ github.event.release.tag_name }}-linux-x64
-      - name: Checksum
-        run: |
-          cd dist && sha256sum cyber-controller-${{ github.event.release.tag_name }}-linux-x64 > cyber-controller-${{ github.event.release.tag_name }}-linux-x64.sha256
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/cyber-controller-${{ github.event.release.tag_name }}-linux-x64
-            dist/cyber-controller-${{ github.event.release.tag_name }}-linux-x64.sha256
 
   build-linux-arm:
     runs-on: ubuntu-latest
@@ -196,13 +183,69 @@ jobs:
         run: |
           mv dist/CyberController dist/cyber-controller-${TAG}-macos-arm64
           chmod +x dist/cyber-controller-${TAG}-macos-arm64
-      - name: Checksum
-        run: |
-          cd dist && shasum -a 256 cyber-controller-${TAG}-macos-arm64 > cyber-controller-${TAG}-macos-arm64.sha256
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.TAG }}
           files: |
             dist/cyber-controller-${{ env.TAG }}-macos-arm64
-            dist/cyber-controller-${{ env.TAG }}-macos-arm64.sha256
+
+  # ── Consolidate every attached binary into ONE SHA256SUMS.txt (de-bulked layout — no per-file *.sha256). ──
+  checksums:
+    runs-on: ubuntu-latest
+    needs: [build-windows, build-linux, build-linux-arm, build-macos]
+    if: always()
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Build consolidated SHA256SUMS.txt
+        run: |
+          mkdir dl && cd dl
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'cyber-controller-*' --clobber
+          rm -f *.sha256
+          sha256sum cyber-controller-* | sed 's/ \*/  /' > ../SHA256SUMS.txt
+          cat ../SHA256SUMS.txt
+      - name: Upload SHA256SUMS.txt
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          files: SHA256SUMS.txt
+
+  # ── VirusTotal on EVERY release, results posted in the notes. Needs the VT_API_KEY repo secret; skips
+  # ── gracefully (no-op) if it's absent so a missing secret never fails a release. ──
+  virustotal:
+    runs-on: ubuntu-latest
+    needs: [checksums]
+    if: always()
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      VT_API_KEY: ${{ secrets.VT_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gate on the VT secret
+        id: gate
+        run: |
+          if [ -z "$VT_API_KEY" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::VT_API_KEY secret not set — skipping VirusTotal (add it in Settings → Secrets to enable)."
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-python@v5
+        if: steps.gate.outputs.run == 'true'
+        with:
+          python-version: "3.12"
+      - name: Install requests
+        if: steps.gate.outputs.run == 'true'
+        run: pip install requests
+      - name: Download binaries
+        if: steps.gate.outputs.run == 'true'
+        run: |
+          mkdir dl && cd dl
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern 'cyber-controller-*' --clobber
+          rm -f *.sha256
+      - name: Scan + post VirusTotal results
+        if: steps.gate.outputs.run == 'true'
+        run: python scripts/vt_release_scan.py "$TAG" dl
