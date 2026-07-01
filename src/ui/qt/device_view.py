@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import QWidget
 # ── palette (mirrors cyber_dark.qss) ─────────────────────────────────
 _BG = QColor("#0d1117")
 _HEAD_BG = QColor("#001a00")
-_ACCENT = QColor("#39ff14")
+_ACCENT = QColor("#a371f7")
 _TEXT = QColor("#e6edf3")
 _MUTED = QColor("#8b949e")
 _LINE = QColor("#16321a")
