@@ -195,3 +195,20 @@ clean.**
   but flashes via esptool (fails clean); `batch._flash_one` drops the asset `offset` (app-only 0x10000
   update would write at 0x0); flock-you/oui-spy/sky-spy/cyt-ng tag every release as merged@0x0 without
   confirming. All non-brick or narrow; flagged, not changed.
+
+- **2026-06-30 ~20:5x** — Cross-repo follow-through on the C5 offset bug: **headless-marauder-gui had
+  the SAME latent brick** (`marauder_core/flasher.py`, C5 in `_BOOTLOADER_0` → bootloader@0x0 at two
+  sites, and the `esp32c5devkitc1` variant is reachable). Fixed with the same esptool-faithful
+  `_bootloader_offset()` SSOT + test, pushed (`e5484df`). **cyber-controller was already correct**
+  (`_BOOTLOADER_OFFSET={"esp32c5":"0x2000"}` checked first). C5-brick class now closed across the whole
+  flasher lineage.
+
+## Marathon status (2026-06-30 ~21:00) — safe backlog worked out; loop → measured cadence
+
+Delivered tonight, all pushed as LxveAce (~95 commits across 12+ repos + the `feat/major-revamp`
+branch): Phase 1 cc reliability+identity · Phase 2 (53 commits/10 repos) · Phase 3 cc revamp branch
+(roadmap + dfu/uf2 backends + bundle-guard) · Phase 4 second pass (12 commits, real bugs) · Phase 5
+deep flash-engine hunt (C5 brick fixed in universal-flasher + HMG). The autonomy-safe backlog is now
+**essentially exhausted** — remaining high-value work is owner-gated (see Owner Decisions). The loop
+stays alive at a longer cadence and will fold in any real bug a future hunt surfaces, but will not
+manufacture marginal changes. **Owner: the decision list above is the highest-leverage next step.**
