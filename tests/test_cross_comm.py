@@ -19,6 +19,29 @@ cross_comm = pytest.importorskip("src.core.cross_comm")
 _MAX = cross_comm._MAX_VALUE_LEN
 
 
+def test_pool_add_refreshes_stale_index_on_mac_keyed_rescan() -> None:
+    # A MAC-keyed AP (BW16 bracketed fork prints index + BSSID) that reorders between scans must
+    # refresh extra['index'] (and device_source) on update, else an {index} deauth hits the WRONG AP.
+    from src.models.target import Target, TargetType
+    pool = cross_comm.TargetPool(cross_comm.EventBus())
+    pool.add(Target(mac="AA:BB:CC:DD:EE:FF", target_type=TargetType.AP, ssid="CoffeeShop",
+                    channel=6, rssi=-42, device_source="COM7", extra={"index": 1}))
+    pool.add(Target(mac="AA:BB:CC:DD:EE:FF", target_type=TargetType.AP, ssid="CoffeeShop",
+                    channel=6, rssi=-40, device_source="COM7", extra={"index": 0}))  # reordered -> idx 0
+    t = pool.get("ap:AA:BB:CC:DD:EE:FF")
+    assert t.extra["index"] == 0 and t.device_source == "COM7"
+
+
+def test_pool_add_keeps_index_when_reobserved_without_one() -> None:
+    # A later index-less re-observation (e.g. Marauder sees the same BSSID) must NOT wipe a known index.
+    from src.models.target import Target, TargetType
+    pool = cross_comm.TargetPool(cross_comm.EventBus())
+    pool.add(Target(mac="AA:BB:CC:DD:EE:FF", target_type=TargetType.AP, device_source="COM7", extra={"index": 2}))
+    pool.add(Target(mac="AA:BB:CC:DD:EE:FF", target_type=TargetType.AP, device_source="COM3"))  # no index
+    t = pool.get("ap:AA:BB:CC:DD:EE:FF")
+    assert t.extra["index"] == 2 and t.device_source == "COM7"
+
+
 # ── _safe_render ─────────────────────────────────────────────────────
 
 def test_safe_render_substitutes_all_placeholders() -> None:
