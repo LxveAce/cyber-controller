@@ -146,6 +146,12 @@ class BatchFlasher:
             app_path = flasher_module.download_to(
                 variant["url"], cache, variant["name"], capture
             )
+            # Pinned-firmware integrity gate (parity with FlashEngine._flash_esptool): reject a
+            # tampered / changed pinned app image (bluejammer-esp32, hydra32, …) BEFORE esptool writes
+            # it. Non-pinned profiles carry no "sha256" so this is a no-op; a mismatch raises
+            # ValueError, caught below -> FlashResult(success=False), aborting that job.
+            if variant.get("sha256"):
+                flasher_module.verify_sha256(app_path, variant["sha256"], capture)
 
             support = None
             if job.mode == "full":
