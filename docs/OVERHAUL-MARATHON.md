@@ -141,3 +141,39 @@ pushed. Sensitive + count-blocked + owner-edited repos were untouched (see Owner
   complete for owner review** (roadmap + dfu-util/UF2 backends + bundle-manifest guard); remaining
   Phase-3 items are all owner decisions (mission-planner build-vs-delete, HackRF/Proxmark3 HW backends,
   v1.5.0 cut, code-signing, counts). Moving to **Phase 4** — second-pass overhaul sweep of the safe repos.
+
+---
+
+## Phase 4 — second-pass overhaul (DONE) — 2026-06-30 ~20:4x
+
+Re-swept the 10 safe repos: first-pass backlog was already complete everywhere, so the value was a
+**light bug-hunt → 12 more commits pushed, 1 held.** Real new bugs found + fixed with tests:
+
+| Repo | Pushed | Notable |
+|---|---|---|
+| universal-flasher | 1 | **`send_and_capture` silent data-loss** when the 500-line serial ring buffer fills (returned [] — broke get_status/get_nodes on chatty devices); fixed via subscriber-capture + test (`a7700fb`) |
+| universal-flasher-ui | 2 | **settings.json corruption → startup crash** hardened; **CrossCommBroker `.format()` crash** on a malformed user rule guarded (`e571030`,`45e0c4d`) |
+| Automated-Tag-Production | 2 | **CSV dtype fix** (leading-zero SKUs `007`→`7` were silently reformatted) + **single-column CSV shredding** fix (`37b23e4`,`36eb662`) |
+| claude-compact-controller | 2 | install/uninstall dedupe tests + FORWARD-PLAN refresh (`30b6982`,`d0aa0d7`) |
+| cyber-controller-guides | 1 | drop dead `boards` field from projects.json (`ca368ac`) |
+| Barcode-Tag-Creation | 1 | reconcile lone stale "Code 39" doc → 128B (majority + version.json); *owner: confirm vs the actual exe* (`73587dc`) |
+| Projects | 2 | UNIVERSAL-FLASHER.md repoint + FORWARD-PLAN staleness (`1c00fd9`,`1d2f31b`) |
+| LxveAce, vibe-coding-website-security | 0 | already clean — nothing safe left |
+| headless-marauder-gui | 1 + **held** | .pytest_cache gitignore (`6dadab3`); **HELD `0c7c871`** frozen-binary esptool fix (unit-tested, but needs a real PyInstaller build to validate the reexec path — owner) |
+
+**State of the marathon:** the autonomy-safe backlog across the safe code/docs repos is now
+**essentially exhausted** — 2 repos clean, the rest down to owner-decisions + hardware/validation-gated
+work. cyber-controller `feat/major-revamp` (roadmap + dfu/uf2 + bundle-guard) awaits review/merge.
+
+## Owner Decisions — the full list (nothing below was done autonomously)
+
+**cyber-controller:** firmware-profile **COUNT** (26 on disk vs "21" marketed — blocks website
+stats) · **v1.5.0 release cut** (60+ commits unreleased) · Windows **code-signing** · **mission-planner**
+build-vs-delete (`src/models/mission.py`) · new **HW backends** (HackRF/Proxmark3/Chameleon Ultra —
+dfu/uf2 scaffolded, need boards) · merge `feat/major-revamp`.
+**Held code (unit-tested, needs your validation):** HMG `0c7c871` frozen-esptool reexec.
+**Owner-held repos (untouched):** deadmans-switch & Suicide-Marauder (anti-forensic wipe/eFuse),
+worldviewosnit (disclosure/PII), tag-studio (licensing + confidential), BlueJammer-V2 (supply-chain),
+the 3 marketing sites (count-blocked + lxveace.com owner-edited), Catalyst UI/-testing (Electron release).
+**Per-repo decisions** (licensing, PII/codename scrubs, release cuts) are in the session backlog's
+`ownerDecisions`.
