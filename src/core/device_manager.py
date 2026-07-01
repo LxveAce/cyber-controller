@@ -151,6 +151,20 @@ class DeviceManager:
         except Exception:
             terminator = "\n"
         conn = SerialConnection(port, baud=baud, line_ending=terminator)
+
+        def _reconcile(_state, _conn=conn, _port=port):
+            # Reflect the connection's OWN state changes back onto the Device so the indicator can't
+            # lie. A mid-session ERROR (cable brown-out / firmware reboot that drops the CDC endpoint
+            # but keeps the COM name) doesn't make the port disappear, so HotPlug never fires and
+            # Device.connected would otherwise stay True forever — the sidebar shows green while the
+            # AutoRouter silently drops every routed command to the dead port. A late callback after a
+            # remove_device finds no device and no-ops.
+            with self._lock:
+                d = self._devices.get(_port)
+                if d is not None:
+                    d.connected = _conn.is_connected
+
+        conn.on_state_change(_reconcile)
         conn.connect()
 
         to_close: SerialConnection | None = None

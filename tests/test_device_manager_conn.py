@@ -13,13 +13,23 @@ class _FakeConn:
         self.line_ending = line_ending
         self._open = False
         self.disconnected = 0
+        self._state_cbs = []
+
+    def on_state_change(self, cb):
+        self._state_cbs.append(cb)
+
+    def _fire(self):
+        for cb in list(self._state_cbs):
+            cb(self._open)
 
     def connect(self):
         self._open = True
+        self._fire()
 
     def disconnect(self):
         self._open = False
         self.disconnected += 1
+        self._fire()
 
     @property
     def is_connected(self):
@@ -73,3 +83,48 @@ def test_open_connection_hotplug_during_connect_raises_and_cleans_up(monkeypatch
         dm.open_connection("COM9", owner="devices_tab")
     # The freshly opened orphan conn must be disconnected, not leaked, and no zombie left in the registry.
     assert dm.get_connection("COM9") is None
+
+
+def test_error_state_reflects_in_device_connected(monkeypatch):
+    """A mid-session serial ERROR (not a full unplug) must flip Device.connected False, so the UI stops
+    showing 'connected' and the AutoRouter stops silently dropping routed commands to a dead port."""
+    import src.core.device_manager as DM
+    from src.models.device import Device
+    from src.core.serial_handler import ConnectionState
+
+    class _StatefulFake:
+        def __init__(self, port, baud=115200, line_ending="\n"):
+            self.port = port
+            self.line_ending = line_ending
+            self._state = ConnectionState.DISCONNECTED
+            self._cbs = []
+
+        def on_state_change(self, cb):
+            self._cbs.append(cb)
+
+        def _set(self, s):
+            self._state = s
+            for cb in list(self._cbs):
+                cb(s)
+
+        def connect(self):
+            self._set(ConnectionState.CONNECTED)
+
+        def disconnect(self):
+            self._set(ConnectionState.DISCONNECTED)
+
+        def fail(self):
+            self._set(ConnectionState.ERROR)  # transient glitch / reboot in the reader loop
+
+        @property
+        def is_connected(self):
+            return self._state == ConnectionState.CONNECTED
+
+    monkeypatch.setattr(DM, "SerialConnection", _StatefulFake)
+    dm = DM.DeviceManager()
+    dm.add_device(Device(port="COM7"))
+    conn = dm.open_connection("COM7", owner="devices_tab")
+    assert dm.get_device("COM7").connected is True
+    conn.fail()
+    assert conn.is_connected is False
+    assert dm.get_device("COM7").connected is False  # indicator no longer lies
