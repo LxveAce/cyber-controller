@@ -134,3 +134,10 @@ pushed. Sensitive + count-blocked + owner-edited repos were untouched (see Owner
   success, `INFO_UF2.TXT` volume auto-detect; +11 unit tests, full suite **672 passed / 2 skipped**.
   Flagged **HW-validation pending** (RP2040 / Pi Pico / HackRF / Proxmark3 / Chameleon Ultra each need a
   board before being marketed as supported). Branch pushed for owner review — not merged to master.
+- **2026-06-30 ~20:3x** — Phase 3 dev: **bundle-manifest regression test** landed on
+  `feat/major-revamp` (`eb663d2`) — guards that every literal `resource_path()` target and every
+  `build.py --add-data` source exists (5 targets / 7 sources), and **removed the stale
+  `src/config/missions` bundle line**. Full suite **674 passed / 2 skipped**. **Phase 3 branch now
+  complete for owner review** (roadmap + dfu-util/UF2 backends + bundle-manifest guard); remaining
+  Phase-3 items are all owner decisions (mission-planner build-vs-delete, HackRF/Proxmark3 HW backends,
+  v1.5.0 cut, code-signing, counts). Moving to **Phase 4** — second-pass overhaul sweep of the safe repos.
