@@ -7,9 +7,9 @@ from PyQt5.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QRadialGrad
 from PyQt5.QtWidgets import QWidget
 
 
-_ACCENT = "#39ff14"
-_ACCENT_GLOW = QColor(57, 255, 20, 40)
-_ACCENT_MID = QColor(57, 255, 20, 120)
+_ACCENT = "#a371f7"
+_ACCENT_GLOW = QColor(163, 113, 247, 40)
+_ACCENT_MID = QColor(163, 113, 247, 120)
 
 
 class CCLogo(QWidget):
@@ -51,7 +51,7 @@ class CCLogo(QWidget):
         self._draw_c(painter, cx + 11, cy, radius=14, pen_width=3, color=accent, flip=True)
 
         # --- Gear teeth ---
-        tooth_color = QColor(57, 255, 20, 160)
+        tooth_color = QColor(163, 113, 247, 160)
         self._draw_teeth(painter, cx - 11, cy, radius=14, tooth_len=3, color=tooth_color)
         self._draw_teeth(painter, cx + 11, cy, radius=14, tooth_len=3, color=tooth_color, flip=True)
 
