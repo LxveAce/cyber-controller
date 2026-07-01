@@ -28,7 +28,7 @@
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
-**Status:** **v1.4.0** is the latest release — **smart installation / version-aware startup**: on launch
+**Status:** **v1.5.0** is the latest release — a reliability + integrity pass (20 hardening fixes, each test-guarded), the **LxveAce violet identity** across all four UIs, and experimental **dfu-util / UF2** flash backends (HW-validation pending), on top of the v1.4.0 release — **smart installation / version-aware startup**: on launch
 the app reconciles its config against the running version, carries an upgrade forward silently, and on a
 downgrade/overwrite prompts to **Keep & Continue** or **Back up & Start Fresh** (the old config is moved
 aside, never deleted). It builds on a run of installer/UX releases (v1.3.1–v1.3.3): an **animated startup**
