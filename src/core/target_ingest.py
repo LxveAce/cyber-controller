@@ -130,9 +130,13 @@ class TargetIngestor:
                 return None
             return Target(
                 mac=freq, target_type=TargetType.SUBGHZ,
-                ssid=str(d.get("modulation", "")),
+                # Firmwares disagree on field names: HaleHound emits 'modulation'/'data', the Flipper
+                # emits 'protocol'/'key'. Fall back across both so a Flipper SubGHz capture keeps its
+                # decoded protocol label AND its Key payload (the field that identifies the signal)
+                # instead of landing in the pool blank.
+                ssid=str(d.get("modulation") or d.get("protocol") or ""),
                 rssi=int(d.get("rssi", 0) or 0), device_source=port,
-                extra={"data": d.get("data", "")},
+                extra={"data": d.get("data") or d.get("key") or ""},
             )
 
         if et == "nfc_found":
