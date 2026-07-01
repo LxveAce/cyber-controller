@@ -1,6 +1,6 @@
 [project]
 name = "cyber-controller"
-version = "1.4.0"
+version = "1.5.0"
 description = "Flagship cyberdeck-oriented all-in-one security hardware controller"
 readme = "README.md"
 license = {text = "MIT"}

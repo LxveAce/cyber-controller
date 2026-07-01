@@ -5,7 +5,22 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.5.0] — 2026-07-01
+
+### Fixed
+- **Access gate (data-loss).** A key-only gate under the default policy no longer burns every unlock attempt instantly (which tripped the lockout and any opt-in duress vault-wipe on a normal boot); and an exclusive policy whose factor isn’t configured is now rejected (no self-lockout).
+- **Flashing.** Flipper (Momentum/Unleashed) flashes the real downloaded package instead of launching a bare qFlipper and reporting false success; backup detects the real flash size instead of truncating >4 MB boards; the batch flasher enforces the SHA-256 pin; the ESP32-C5 2nd-stage bootloader offset is 0x2000 via an esptool-faithful SSOT helper.
+- **Safety.** Network-tab device-node commands are gated + no longer send unfilled `<…>` templates raw; BlueJammer control-map loader defaults `validated=False` (an unmarked map can’t send frames); RF-transmit commands (Tesla opener, SubGHz tx) now hit the lab-only confirmation.
+- **Cross-device.** MAC-keyed target scan index is refreshed on re-observation (index actions stop firing at the wrong AP); the AutoRouter cooldown is atomic + bounded; the Dead-Man-Switch auto-auth reply goes to the device that emitted the prompt; per-device line terminator is re-stamped on send; on_line/ingest callbacks no longer stack on reconnect (both serial UIs); `TargetIngestor.attach` is idempotent; a device serial ERROR now reflects into `Device.connected`; targets-tab actions resolve against the pooled target.
+- **Integrity.** Settings Save no longer wipes interface mode + loadout; the audit trail survives a torn JSONL line instead of disabling all persistence; Flipper SubGHz captures keep their protocol + key; the Dead-Man-Switch provisioner fails loud on an unknown flash_size instead of silently baking the 4 MB layout; the app version is single-sourced (`src/__init__` re-exports `src/version`).
+
+### Changed
+- **LxveAce violet identity theme.** The interactive/brand accent is now LxveAce violet (`#a371f7`), retiring the generic acid-green across all four front-ends (Qt/Tk/TUI/Web); functional green is kept for connected/online status and live serial output. Guarded by `test_no_acid_green`.
+
 ### Added
+- **dfu-util + UF2 flash backends** *(experimental — HW-validation pending)* behind `FlashEngine._backends` for RP2040 / Pi Pico (DFU) and UF2 mass-storage bootloaders; download-or-local resolve, never fake success; unit-tested. See `docs/ROADMAP-FUTURE.md`.
+- **`docs/ROADMAP-FUTURE.md`** — the forward roadmap (more backends/hardware, mission planner, RF/recon).
+- **Regression guards:** bundle-manifest test (`build.py` data ↔ runtime `resource_path()`), firmware-profile count drift-lock (README ↔ shipped JSONs), and a `resource_path` frozen-bundle check.
 - **Per-device capability map (network integration).** Each firmware/board now declares what it can do
   (`wifi`/`ble`/`subghz`/`nfc`/`ir`/`rfid`/`gps`/`lora`/`nrf24`/`deauth`/`badusb`…) via `BaseProtocol.capabilities`,
   surfaced as a capability chip line in the Devices tab so every connected device reads as a node in the
