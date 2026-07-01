@@ -119,3 +119,27 @@ def test_audit_trail_detects_on_disk_tampering():
         ok, bad = b.verify_integrity()
         assert not ok
         assert bad == 0
+
+
+def test_audit_trail_survives_torn_trailing_line():
+    """A torn/partial trailing line (unclean exit mid-append) must be skipped, NOT abort the whole
+    load — otherwise persist_path is set to None and ALL further auditing is silently in-memory."""
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "audit-trail.jsonl"
+        a = AuditTrail(persist_path=path)
+        a.record("app_start", {})
+        a.record("web_auth_fail", {"user": "mallory"})
+        # Simulate a crash mid-append: a torn, newline-less partial JSON line.
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write('{"timestamp":"2026-01-01T00:00:00+00:00","action":"fla')
+        # Reload: torn line skipped, prior chain kept, durable persistence stays live.
+        b = AuditTrail(persist_path=path)
+        assert b.length == 2
+        assert b._persist_path is not None            # durability NOT disabled by one bad line
+        ok, bad = b.verify_integrity()
+        assert ok and bad == -1
+        # New events still persist durably after the torn-line recovery (file was re-normalized).
+        b.record("flash", {"port": "COM9"})
+        c = AuditTrail(persist_path=path)
+        assert c.length == 3
+        assert [e.action for e in c.entries] == ["app_start", "web_auth_fail", "flash"]

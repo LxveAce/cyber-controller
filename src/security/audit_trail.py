@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -107,14 +108,31 @@ class AuditTrail:
             self._persist_path = None
 
     def _load_jsonl(self, path: Path) -> None:
-        """Load entries from an append-only JSONL file (one entry per line)."""
+        """Load entries from an append-only JSONL file (one entry per line).
+
+        Parses DEFENSIVELY: a torn/malformed line (e.g. the partial trailing line left by an unclean
+        exit or power loss mid-append) is skipped with a warning instead of aborting the whole load.
+        A single bad line must never abort the load — that would bubble to _init_persistence's broad
+        except, set persist_path=None, and silently disable ALL durable auditing for the session
+        (defeating the exact L-2 crash-durability guarantee this file exists for).
+        """
         entries: list[AuditEntry] = []
+        torn = False
         for line in path.read_text(encoding="utf-8").splitlines():
             line = line.strip()
             if not line:
                 continue
-            entries.append(AuditEntry(**json.loads(line)))
+            try:
+                entries.append(AuditEntry(**json.loads(line)))
+            except (json.JSONDecodeError, TypeError, ValueError) as exc:
+                torn = True
+                log.warning("Skipping unparseable audit line in %s: %s", path, exc)
         self._entries = entries
+        if torn:
+            # Rewrite the file from the clean in-memory chain so the next append lands on a well-formed
+            # boundary (drops the torn tail) instead of gluing onto a newline-less partial line.
+            data = "".join(json.dumps(asdict(e), separators=(",", ":")) + "\n" for e in entries)
+            path.write_text(data, encoding="utf-8")
 
     def _append_jsonl(self, entry: AuditEntry) -> None:
         if self._persist_path is None:
@@ -124,6 +142,7 @@ class AuditTrail:
             with self._persist_path.open("a", encoding="utf-8") as fh:
                 fh.write(line + "\n")
                 fh.flush()
+                os.fsync(fh.fileno())  # shrink the torn-write window on a crash/power-loss
         except Exception:
             log.exception("Failed to append audit entry to %s", self._persist_path)
 
