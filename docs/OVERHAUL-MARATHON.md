@@ -177,3 +177,21 @@ worldviewosnit (disclosure/PII), tag-studio (licensing + confidential), BlueJamm
 the 3 marketing sites (count-blocked + lxveace.com owner-edited), Catalyst UI/-testing (Electron release).
 **Per-repo decisions** (licensing, PII/codename scrubs, release cuts) are in the session backlog's
 `ownerDecisions`.
+
+## Phase 5 — deep flash-engine bug-hunt (universal-flasher) — 2026-06-30 ~20:5x
+
+Deep adversarial hunt on the shared flash engine (`flasher.py` 1.75k lines + backends). **1 real
+latent-brick bug found + fixed + pushed; 4 more noted for the owner; SSRF/verify/suicide paths audited
+clean.**
+
+- ✅ **`4765476` — wrong ESP32-C5 bootloader offset (brick).** `flasher.py` grouped C5 with the
+  `0x0`-bootloader chips; C5's 2nd-stage bootloader is at **`0x2000`** (verified vs esptool 5.3.0:
+  c5/p4/h4=0x2000; matches the C5 gotcha in memory). Replaced the inline test with an esptool-faithful
+  `_bootloader_offset(chip)` SSOT; parity-checked (only the C5 cell changes). +test. Live trigger is
+  narrow today (no shipping path targets C5 full-flash yet) but it's the canonical table the engine +
+  the future `uf_core` share — correct-and-pushed. Suite 92 passed.
+- 🔑 **Owner-noted (real, need a board/upstream to fix):** DIV `support_files` fetches the S3 bootloader
+  for a classic-ESP32 DIV-v1 (wrong-arch, ROM-recoverable); Meshtastic profile lists nRF52/UF2 boards
+  but flashes via esptool (fails clean); `batch._flash_one` drops the asset `offset` (app-only 0x10000
+  update would write at 0x0); flock-you/oui-spy/sky-spy/cyt-ng tag every release as merged@0x0 without
+  confirming. All non-brick or narrow; flagged, not changed.
