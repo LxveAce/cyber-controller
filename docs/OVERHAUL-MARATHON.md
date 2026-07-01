@@ -236,3 +236,10 @@ Owner said: do it all, push it all, keep going without me. Executed on cyber-con
 | tag-studio | 4 | **docs only** — SECURITY.md version-table + Windows-only scoping, README schema, LABEL-TAG doc clarified (licensing/pricing untouched) |
 
 All guardrail-clean: no anti-forensic wipe/eFuse behavior, no licensing/pricing, no third-party PII, no binary modification. REMAINING: **catalyst-ui / catalyst-ui-testing** safe docs items in progress; **worldviewosnit** stays fully owner-held (third-party PII + disclosure — untouched).
+
+### Phase 6 — Catalyst UI safe docs (DONE) + breadth COMPLETE (2026-07-01)
+
+- **catalyst-ui** (2): SECURITY.md broken advisory URL + supported-versions + product-name fixed (`2d1cd29`); stale 'Claude Code Studio' name in runtime-verify script (`3901d35`). Dependabot triaged (notes only — npm bumps need a build; Action major-bumps are owner policy).
+- **catalyst-ui-testing** (6): merged duplicate CHANGELOG `[4.0.2]` (25 bullets preserved); added `[Unreleased]` v4.1 section; refreshed docs/STATUS.md; corrected README lmm-coverage claim; purged stale `claude-code-studio` labels/URLs in ci.yml + forge.config; de-staled electron-builder comments (`e0f5e4a` `2117da2` `b0d35fd` `f76b0c7` `94a7616` `9c8d602`). No release/version/signing/fuses touched.
+
+**BREADTH COMPLETE.** Every LxveAce repo has had its autonomy-safe overhaul executed + pushed — except **worldviewosnit**, held in full (third-party PII + live-vuln disclosure = owner-only). Session total: **~110 commits across 13 repos + the cyber-controller v1.5.0 release**, all LxveAce, all test/parse-verified, all guardrails honored (no anti-forensic wipe/eFuse behavior, no licensing/pricing, no PII, no codename-scrub-needing-rebuilds, no unauthorized release/signing). Loop → measured cadence.
