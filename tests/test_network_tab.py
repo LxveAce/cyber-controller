@@ -83,3 +83,29 @@ def test_auto_arrange_resets_layout(qapp):
     tab._auto_arrange()  # no skip -> full reset to the default fan-out
     moved = tab._nodes["dev:COM7"]
     assert (round(moved.x()), round(moved.y())) != (999, 999)
+
+
+def test_device_node_gates_danger_and_skips_templates(qapp, monkeypatch):
+    """The experimental Network tab is a REAL send surface, so it must not (1) bind unfilled command
+    templates as raw sends (that would transmit the literal '<idx>' to the radio), nor (2) fire a
+    dangerous command with no safety confirmation — every other send path gates deauth/jam/spam."""
+    monkeypatch.setattr("src.config.settings.load_settings", lambda: {})  # defaults -> confirm dangerous
+    tab, sent = _make_tab()
+    dev_node = tab._nodes["dev:COM7"]
+    labels = [lbl for lbl, _cb in dev_node.actions]
+
+    # (1) no unfilled-template command is offered as a raw send
+    assert labels, "device node should still list its non-template commands"
+    assert not any("<" in lbl or ">" in lbl for lbl in labels), labels
+
+    # (2) a dangerous command is gated: user answers No -> nothing is sent
+    from PyQt5.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.No))
+    deauth = next(cb for lbl, cb in dev_node.actions if lbl == "attack -t deauth")
+    deauth()
+    assert ("COM7", "attack -t deauth") not in sent
+
+    # (3) a safe command still routes unchanged
+    scan = next(cb for lbl, cb in dev_node.actions if lbl == "scanall")
+    scan()
+    assert ("COM7", "scanall") in sent
