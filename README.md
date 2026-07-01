@@ -125,17 +125,17 @@ by reading it back.
 
 ## What is this?
 
-Cyber Controller is the flagship convergence of the **Lxve ESP32 security toolchain** — it merges
+Cyber Controller pulls the Lxve ESP32 security toolchain into one place. It merges
 [Headless Marauder GUI](https://github.com/LxveAce/headless-marauder-gui),
 [Universal Flasher](https://github.com/LxveAce/universal-flasher), and
-[Universal Flasher & UI](https://github.com/LxveAce/universal-flasher-ui) into a single unified tool,
-with [Dead Man's Switch](https://github.com/LxveAce/deadmans-switch) anti-forensic provisioning built in.
-It is built for **cyberdecks, field deployments, and security research** — runs on ARM + x64, on a
+[Universal Flasher & UI](https://github.com/LxveAce/universal-flasher-ui) into a single tool, with
+[Dead Man's Switch](https://github.com/LxveAce/deadmans-switch) anti-forensic provisioning built in.
+It's meant for cyberdecks, field deployments, and security research, so it runs on ARM and x64 — on a
 7" touchscreen, headless over SSH, or from a phone.
 
-> Designed to drive a multi-device cyberdeck — but just as happy flashing a single $12 CYD on your desk.
+> Built to drive a multi-device cyberdeck, but just as happy flashing a single $12 CYD on your desk.
 
-It is a self-taught hobby project, hardened and tested as it grows. Authorized security testing,
+It's a self-taught hobby project, hardened and tested as it grows. Authorized security testing,
 education, and CTF use only.
 
 ## Three Pillars
