@@ -8,9 +8,9 @@ from PyQt5.QtCore import Qt, QRectF, QPointF
 from PyQt5.QtGui import QColor, QIcon, QImage, QPainter, QPen, QPixmap
 import math
 
-_ACCENT = QColor(57, 255, 20)
-_ACCENT_GLOW = QColor(57, 255, 20, 40)
-_ACCENT_MID = QColor(57, 255, 20, 120)
+_ACCENT = QColor(163, 113, 247)
+_ACCENT_GLOW = QColor(163, 113, 247, 40)
+_ACCENT_MID = QColor(163, 113, 247, 120)
 _BG = QColor(13, 17, 23)
 
 
@@ -98,7 +98,7 @@ def _render_cc(size: int) -> QPixmap:
     if size >= 32:
         tooth_len = max(2, size * 0.03)
         tooth_pw = max(1, size * 0.015)
-        tooth_color = QColor(57, 255, 20, 160)
+        tooth_color = QColor(163, 113, 247, 160)
         _draw_teeth(p, lx, cy, r, tooth_len, tooth_pw, tooth_color)
         _draw_teeth(p, rx, cy, r, tooth_len, tooth_pw, tooth_color, flip=True)
 
