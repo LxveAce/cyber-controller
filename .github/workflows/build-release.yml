@@ -25,7 +25,10 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    if: github.event_name == 'release'
+    # Runs on a real release AND via workflow_dispatch (to re-attach the core exe + installer to an
+    # existing release tag after a fix — no tag/release surgery needed).
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -43,18 +46,19 @@ jobs:
       - name: Rename binary
         shell: cmd
         run: |
-          move dist\CyberController.exe dist\cyber-controller-${{ github.event.release.tag_name }}-windows-x64.exe
+          move dist\CyberController.exe dist\cyber-controller-${{ env.TAG }}-windows-x64.exe
       - name: Checksum (exe)
         shell: pwsh
         run: |
-          $f = "dist/cyber-controller-${{ github.event.release.tag_name }}-windows-x64.exe"
+          $f = "dist/cyber-controller-${{ env.TAG }}-windows-x64.exe"
           (Get-FileHash $f -Algorithm SHA256).Hash.ToLower() + "  " + (Split-Path $f -Leaf) | Out-File "$f.sha256" -Encoding ascii
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           files: |
-            dist/cyber-controller-${{ github.event.release.tag_name }}-windows-x64.exe
-            dist/cyber-controller-${{ github.event.release.tag_name }}-windows-x64.exe.sha256
+            dist/cyber-controller-${{ env.TAG }}-windows-x64.exe
+            dist/cyber-controller-${{ env.TAG }}-windows-x64.exe.sha256
       # ── Installer (registers in Settings > Apps > Installed apps). Best-effort: never block the
       # ── core binary release on an installer hiccup. NOTE: unsigned — SmartScreen still applies
       # ── until a code-signing cert is added (see docs/WINDOWS-SECURITY.md).
@@ -68,14 +72,19 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          $ver = "${{ github.event.release.tag_name }}".TrimStart('v')
-          & "$Env:ProgramFiles(x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" "installer\cyber-controller.iss"
+          $ver = "${{ env.TAG }}".TrimStart('v')
+          # NOTE: ${Env:ProgramFiles(x86)} MUST be brace-wrapped — the '(x86)' in the var name otherwise
+          # parses as a call and yields the space-less 'C:\Program Files(x86)\...' path (which does not
+          # exist), so ISCC was never found and the installer silently never built (continue-on-error
+          # masked it — the installer never shipped in any release before this fix).
+          & "${Env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" "installer\cyber-controller.iss"
           $setup = Get-ChildItem "installer\Output\*.exe" | Select-Object -First 1
           if ($setup) { (Get-FileHash $setup.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $setup.Name | Out-File "$($setup.FullName).sha256" -Encoding ascii }
       - name: Upload installer asset
         continue-on-error: true
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           files: |
             installer/Output/*.exe
             installer/Output/*.sha256
