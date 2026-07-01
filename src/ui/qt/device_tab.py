@@ -76,7 +76,7 @@ _ALL_PROTOCOLS = [
 
 class _LineSignal(QObject):
     """Helper to bridge threaded serial callbacks to Qt signals."""
-    line_received = pyqtSignal(str)
+    line_received = pyqtSignal(str, str)  # (source port, line) — identifies the emitting connection
 
 
 class DeviceTab(QWidget):
@@ -98,6 +98,7 @@ class DeviceTab(QWidget):
         self._dms_auth = None  # Optional DeadManAuth instance, set by main window
         self._line_signal = _LineSignal()
         self._line_signal.line_received.connect(self._on_line_received)
+        self._devtab_line_cbs: dict = {}  # port -> our on_line cb, so disconnect removes exactly it
 
         self._build_ui()
         self._refresh_devices()
@@ -378,7 +379,13 @@ class DeviceTab(QWidget):
                     dev.firmware = self._selected_protocol().protocol_name
                 except Exception:
                     pass
-            conn.on_line(lambda line: self._line_signal.line_received.emit(line))
+            # Carry the SOURCE port through the signal so line handling (esp. the DMS auto-auth reply)
+            # targets the device that emitted the line, and keep a handle so disconnect can remove
+            # exactly this callback (a co-owned conn survives close_connection, so a left-behind
+            # callback would stack on the next reconnect and double-process every line).
+            cb = lambda line, p=port: self._line_signal.line_received.emit(p, line)
+            conn.on_line(cb)
+            self._devtab_line_cbs[port] = cb
             # Cross-comm ingestion: parse this device's serial output into the shared target pool so a
             # scan here can auto-route a command to another connected device (AutoRouter). Defaults to
             # the Marauder parser; a per-device firmware selector can refine this later.
@@ -401,6 +408,21 @@ class DeviceTab(QWidget):
         port = self._active_port
         if not port:
             return
+        # Remove OUR callbacks before releasing the connection. A co-owned connection (e.g. the
+        # persistent terminal still holds it) survives close_connection, so a left-behind on_line /
+        # ingestor callback would stack a duplicate on the next reconnect and parse every line twice.
+        conn = self._dm.get_connection(port)
+        if conn is not None:
+            cb = self._devtab_line_cbs.pop(port, None)
+            if cb is not None:
+                remover = getattr(conn, "remove_line_callback", None)
+                if callable(remover):
+                    try:
+                        remover(cb)
+                    except Exception:
+                        pass
+            if self._ingestor is not None:
+                self._ingestor.detach(conn)
         self._dm.close_connection(port, owner="devices_tab")
         self._active_conn = None
         self._terminal.append(f"[Disconnected from {port}]")
@@ -729,18 +751,34 @@ class DeviceTab(QWidget):
                 self._terminal.append(f"[cancelled: {cmd}]")
                 return
         try:
+            # Per-device terminator: re-stamp from the SELECTED device's own persisted firmware right
+            # before writing. The single shared firmware combo can still hold a DIFFERENT device's
+            # firmware after a device switch, so without this, selecting a CR-only Flipper while the
+            # combo is left on an LF firmware sends LF-terminated commands the Flipper CLI silently
+            # ignores. (AutoRouter/execute_action already re-stamp per write; _on_send didn't.)
+            try:
+                from src.protocols import line_ending_for
+                _dev = self._dm.get_device(self._active_port)
+                _fw = (getattr(_dev, "firmware", "") or "").strip()
+                if _fw:
+                    self._active_conn.line_ending = line_ending_for(_fw)
+            except Exception:
+                pass
             self._active_conn.write(cmd)
             self._terminal.append(f"> {cmd}")
             self._cmd_input.clear()
         except Exception as exc:
             self._terminal.append(f"[Send error: {exc}]")
 
-    def _on_line_received(self, line: str) -> None:
-        # Run through Dead Man's Switch auth detection if available
-        if self._dms_auth and self._active_conn:
-            self._dms_auth.check_line(
-                line, lambda pw: self._active_conn.write(pw)
-            )
+    def _on_line_received(self, port: str, line: str) -> None:
+        # Dead Man's Switch auto-auth must reply to the device that EMITTED the prompt — not whatever
+        # row happens to be selected (self._active_conn). With two devices connected, a DMS prompt from
+        # A while B is selected would otherwise write A's boot password to B (credential leak) AND never
+        # answer A, exhausting its attempt counter -> the exact flash-wipe/brick the DMS is built around.
+        if self._dms_auth is not None:
+            conn = self._dm.get_connection(port)
+            if conn is not None:
+                self._dms_auth.check_line(line, lambda pw, c=conn: c.write(pw))
         self._terminal.append(line)
 
     # ── Command palette ──────────────────────────────────────────────
