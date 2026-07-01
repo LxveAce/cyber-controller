@@ -125,3 +125,7 @@ pushed. Sensitive + count-blocked + owner-edited repos were untouched (see Owner
 - **2026-06-30 ~20:1x** — Phase 2 first execution pass complete: **53 commits pushed across 10
   code/docs repos**, 1 held (see table). Next: continue deep per-project overhauls, then the
   cyber-controller major revamp + future roadmap + added support (Phase 3), then re-iterate.
+- **2026-06-30 ~20:2x** — Phase 3 started on branch **`feat/major-revamp`** (pushed, for owner review —
+  not master): `docs/ROADMAP-FUTURE.md` landed (near/mid/long-term + the "more support" plan). Next on
+  the branch: bundle-manifest reliability test, remaining inline-style→token consolidation, and
+  scaffolding the planned backends (dfu-util/UF2) + new profiles — each flagged HW-validation-pending.
