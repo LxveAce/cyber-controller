@@ -20,7 +20,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
+import shutil
+import string
 import threading
 from dataclasses import dataclass, field
 from enum import Enum
@@ -144,6 +147,9 @@ class FlashEngine:
             "sd": self._flash_sd,
             "sd-image": self._flash_sd,
             "rtl8720": self._flash_rtl8720,
+            # Phase-3 scaffolds (HW-validation pending — argv/flow unit-tested, no board yet):
+            "dfu": self._flash_dfu,   # dfu-util → RP2040/Pi Pico in DFU + generic USB-DFU
+            "uf2": self._flash_uf2,   # UF2 mass-storage → RP2040-family / UF2 bootloaders
         }
 
     @property
@@ -306,6 +312,57 @@ class FlashEngine:
                     "set a variant if your board's display stays blank)")
         return v
 
+    def _resolve_binary(
+        self, profile: "FirmwareProfile", on_line: Callable[[str], None], label: str
+    ) -> str | None:
+        """Download-or-local resolution shared by the qFlipper/DFU/UF2 backends.
+
+        Returns a filesystem path to the artifact to flash, or ``None`` on any failure
+        (always with a clear ``on_line`` message — this NEVER returns a path that wasn't
+        actually resolved, so a backend can't fake success on nothing).
+
+        Order of resolution (mirrors the rewritten ``_flash_qflipper``):
+            1. ``profile.local_path`` — an explicit local file the user pointed at.
+            2. otherwise resolve ``profile.core_id`` in :data:`flash_core.PROFILES`,
+               fetch ``core.latest_release()``, pick the asset via ``_resolve_variant``,
+               ``flash_core.download_to`` it, and ``verify_sha256`` when the variant pins one.
+
+        ``label`` is a short backend tag ("dfu"/"uf2"/…) used only in log lines.
+        """
+        if profile.local_path:
+            on_line(f"[{label}] using local file: {profile.local_path}")
+            return profile.local_path
+        core_id = profile.core_id if profile.core_id in flash_core.PROFILES else "custom"
+        if core_id == "custom":
+            on_line(f"[{label}] no flash-core profile for this firmware and no local file "
+                    "provided — nothing to flash")
+            return None
+        core = flash_core.get_profile(core_id)
+        try:
+            on_line(f"[release] fetching latest {core_id} release...")
+            _tag, assets = core.latest_release()
+        except Exception as exc:  # offline / API error — never fake success
+            on_line(f"[{label}] could not fetch release: {exc}")
+            return None
+        # Prefer an explicit chip; fall back to a chip declared in the raw profile, else 'auto'
+        # (the variant resolver logs whichever asset it picks, so a wrong pick stays visible).
+        chip = profile.chip if profile.chip and profile.chip != "auto" else (
+            profile.raw.get("chip") or "auto")
+        variant = self._resolve_variant(core, assets, chip, profile.variant, on_line)
+        if not variant:
+            on_line(f"[{label}] no firmware asset in the {core_id} release")
+            return None
+        try:
+            app_path = flash_core.download_to(
+                variant["url"], flash_core.cache_dir(), variant["name"], on_line)
+            # Pinned-firmware integrity gate: reject a tampered/changed image BEFORE flashing it.
+            if variant.get("sha256"):
+                flash_core.verify_sha256(app_path, variant["sha256"], on_line)
+        except Exception as exc:
+            on_line(f"[{label}] download/verify failed: {exc}")
+            return None
+        return app_path
+
     def list_variants(self, profile: "FirmwareProfile", chip: str | None = None) -> list[dict]:
         """Return the selectable firmware variants (``{name, label, chip, url}``) for *profile*'s
         firmware on *chip*, so a UI can offer a board picker. Empty list if not a download profile
@@ -372,6 +429,127 @@ class FlashEngine:
         if progress:
             progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
         return rc == 0
+
+    # ── dfu-util (RP2040/Pi Pico in DFU + generic USB-DFU) ───────────
+
+    def _flash_dfu(
+        self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
+    ) -> bool:
+        """USB-DFU flashing via ``dfu-util``.
+
+        HW-validation pending — argv/flow unit-tested only. Targets: RP2040/Pi Pico in
+        DFU + generic USB-DFU.
+
+        We resolve the firmware image (local or downloaded+verified, via ``_resolve_binary``),
+        then shell ``dfu-util`` through the proven ``flash_core._run_stream`` (stdin/kill/reap
+        for free). Backend-specific options come from ``profile.raw``: ``dfu_alt`` (the DFU alt
+        setting, default 0) and ``dfu_id`` ("VID:PID" passed to ``-d`` to disambiguate the
+        device). ``-R`` resets the target after a successful download. We NEVER report success
+        when ``dfu-util`` is missing or nothing was flashed.
+        """
+        on_line = _percent_adapter(progress)
+        if not shutil.which("dfu-util"):
+            on_line("[dfu] dfu-util not found. Install it "
+                    "(Windows: 'winget install dfu-util' or the dfu-util.sourceforge.io binaries; "
+                    "Debian/Ubuntu: 'sudo apt install dfu-util'; macOS: 'brew install dfu-util') "
+                    "and re-run.")
+            return False
+        app_path = self._resolve_binary(profile, on_line, "dfu")
+        if not app_path:
+            return False
+        alt = profile.raw.get("dfu_alt", 0)
+        dfu_id = profile.raw.get("dfu_id")  # "VID:PID"
+        argv = ["dfu-util", "-a", str(alt)]
+        if dfu_id:
+            argv += ["-d", dfu_id]
+        argv += ["-D", app_path, "-R"]
+        rc = flash_core._run_stream(argv, on_line)
+        if progress:
+            progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
+        return rc == 0
+
+    # ── UF2 (mass-storage drag-drop bootloader) ──────────────────────
+
+    def _flash_uf2(
+        self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
+    ) -> bool:
+        """UF2 mass-storage flashing (drag-drop a ``.uf2`` onto the bootloader volume).
+
+        HW-validation pending — detection/copy logic unit-tested. Targets: RP2040-family
+        and other UF2 bootloaders (which mount as a removable FAT volume, e.g. ``RPI-RP2``).
+
+        We resolve the ``.uf2`` (local or downloaded+verified, via ``_resolve_binary``), find the
+        target volume (``profile.raw['uf2_target']`` if set, else auto-detect a removable volume
+        containing ``INFO_UF2.TXT``), copy the file onto it, then best-effort flush the OS write
+        cache so the bytes land before the board reboots and unmounts. We NEVER report success
+        when nothing was resolved or no bootloader volume is present.
+        """
+        on_line = _percent_adapter(progress)
+        app_path = self._resolve_binary(profile, on_line, "uf2")
+        if not app_path:
+            return False
+        target = profile.raw.get("uf2_target") or self._find_uf2_volume(on_line)
+        if not target:
+            on_line("[uf2] no UF2 bootloader volume found. Put the board into bootloader mode "
+                    "(RP2040/Pi Pico: hold BOOTSEL while plugging it in — it mounts as 'RPI-RP2') "
+                    "and retry, or set 'uf2_target' in the profile.")
+            return False
+        try:
+            dest = shutil.copy2(app_path, target)
+            on_line(f"[uf2] copied {app_path} -> {dest}")
+        except Exception as exc:
+            on_line(f"[uf2] copy to {target} failed: {exc}")
+            return False
+        # Best-effort flush: push the OS write cache to disk so the .uf2 is fully committed
+        # before the board reboots (many UF2 bootloaders reset the instant the file lands).
+        try:
+            if hasattr(os, "sync"):
+                os.sync()
+        except Exception:
+            pass
+        if progress:
+            progress(100, "Flash complete")
+        return True
+
+    def _uf2_candidate_volumes(self) -> list[str]:
+        """Return candidate removable-volume mount points to probe for a UF2 bootloader.
+
+        Windows: every ``<LETTER>:\\`` drive root. POSIX: the usual removable mount roots
+        (``/media``, ``/run/media``, ``/Volumes``) plus one nested level so per-user layouts
+        like ``/run/media/<user>/<label>`` and ``/media/<user>/<label>`` are covered.
+        Split out from :meth:`_find_uf2_volume` so the scan is easy to stub in tests.
+        """
+        candidates: list[str] = []
+        if os.name == "nt":
+            candidates.extend(f"{letter}:\\" for letter in string.ascii_uppercase)
+        else:
+            for root in ("/media", "/run/media", "/Volumes"):
+                try:
+                    children = [os.path.join(root, e) for e in os.listdir(root)]
+                except OSError:
+                    continue
+                candidates.extend(children)
+                for child in children:  # /media/<user>/<label>, /run/media/<user>/<label>
+                    try:
+                        candidates.extend(os.path.join(child, e) for e in os.listdir(child))
+                    except OSError:
+                        continue
+        return candidates
+
+    def _find_uf2_volume(self, on_line: Callable[[str], None]) -> str | None:
+        """Auto-detect a mounted UF2 bootloader volume (one containing ``INFO_UF2.TXT``).
+
+        HW-validation pending — detection logic unit-tested. Returns the mount path of the
+        first matching removable volume, or ``None`` if none is present.
+        """
+        for vol in self._uf2_candidate_volumes():
+            try:
+                if os.path.isfile(os.path.join(vol, "INFO_UF2.TXT")):
+                    on_line(f"[uf2] found UF2 bootloader volume: {vol}")
+                    return vol
+            except OSError:
+                continue
+        return None
 
     # ── ADB (RayHunter / Orbic RC400L) ───────────────────────────────
 
