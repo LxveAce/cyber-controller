@@ -67,13 +67,13 @@ _BG = "#0d1117"
 _BG_LIGHT = "#161b22"
 _BG_CARD = "#1c2128"
 _FG = "#e6edf3"
-_ACCENT = "#39ff14"
+_ACCENT = "#a371f7"
 _BORDER = "#30363d"
 _INPUT_BG = "#2d333b"
 _WARNING = "#f0883e"
 _ERROR = "#f85149"
 _TERM_BG = "#0d1117"
-_TERM_FG = "#39ff14"
+_TERM_FG = "#7ee787"
 
 
 def _apply_dark_theme(style: ttk.Style) -> None:

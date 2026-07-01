@@ -231,7 +231,7 @@ class HealthTab(QWidget):
         if gps:
             self._gps_status.setText("Fix Acquired")
             self._gps_status.setObjectName("gps_fix")
-            self._gps_status.setStyleSheet("color: #39ff14; font-weight: bold;")
+            self._gps_status.setStyleSheet("color: #3fb950; font-weight: bold;")
         else:
             self._gps_status.setText("No Fix")
             self._gps_status.setObjectName("muted")
@@ -265,7 +265,7 @@ class HealthTab(QWidget):
 
             # Color status
             status = info.get("status", "unknown")
-            color = QColor("#39ff14") if status == "connected" else QColor("#8b949e")
+            color = QColor("#3fb950") if status == "connected" else QColor("#8b949e")
             for col in range(5):
                 item = self._device_table.item(row, col)
                 if item:

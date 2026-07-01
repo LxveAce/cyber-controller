@@ -1,7 +1,7 @@
 """Design token constants for the Cyber Controller dark theme — LxveAce identity.
 
 The interactive/brand accent is LxveAce violet (ace-of-spades), NOT the previous generic
-acid-green (#39ff14) that read as a Marauder clone. Functional green is retained only where it
+acid-green that read as a Marauder clone. Functional green is retained only where it
 carries meaning — "live / connected / go" (serial output, connect, online dots).
 """
 

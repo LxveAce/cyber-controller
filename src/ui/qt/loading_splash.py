@@ -110,7 +110,7 @@ class LoadingSplash(QWidget):
                 self._logo.setPixmap(pm.scaledToWidth(190, Qt.SmoothTransformation))
         else:
             self._logo.setText("CYBER CONTROLLER")
-            self._logo.setStyleSheet("color:#39ff14;font:bold 18px 'JetBrains Mono';")
+            self._logo.setStyleSheet("color:#a371f7;font:bold 18px 'JetBrains Mono';")
         root.addWidget(self._logo)
 
         self._status = QLabel("Starting Cyber Controller…", alignment=Qt.AlignCenter)
