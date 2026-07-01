@@ -13,7 +13,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20ARM-blue?style=for-the-badge)](#ui-modes)
 [![ESP32](https://img.shields.io/badge/ESP32-Marauder%20%7C%20Bruce%20%7C%20Ghost__ESP-E7352C?style=for-the-badge&logo=espressif&logoColor=white)](#supported-firmwares)
 [![Flipper Zero](https://img.shields.io/badge/Flipper%20Zero-Unleashed%20%7C%20Momentum-FF8200?style=for-the-badge)](#supported-firmwares)
-[![Firmwares](https://img.shields.io/badge/firmware%20profiles-21-success?style=for-the-badge)](#supported-firmwares)
+[![Firmwares](https://img.shields.io/badge/firmware%20profiles-26-success?style=for-the-badge)](#supported-firmwares)
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release)](https://github.com/LxveAce/cyber-controller/releases)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
 
@@ -136,7 +136,7 @@ education, and CTF use only.
 ## Three Pillars
 
 ### Flash
-- **21 firmware profiles** across **5 backends**: `esptool` (ESP32 family), `qFlipper` (Flipper Zero),
+- **26 firmware profiles** across **5 backends**: `esptool` (ESP32 family), `qFlipper` (Flipper Zero),
   `ADB` (Android / Orbic), `SD image` (Raspberry Pi), and **`rtl8720` (Realtek AmebaD)** for the
   dual-band 2.4/5 GHz **BW16 / RTL8720DN** — hardware-validated end-to-end (fetches the firmware
   bundle, drives the AmebaD ImageTool, SHA-256-verifies before flashing).
@@ -173,7 +173,7 @@ education, and CTF use only.
 
 ## Supported Firmwares
 
-21 firmware profiles ship in `src/config/profiles/`. Each tracks its **latest upstream release** at
+26 firmware profiles ship in `src/config/profiles/`. Each tracks its **latest upstream release** at
 flash time and auto-selects the correct per-board binary.
 
 > 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)** — an in-depth, per-firmware
