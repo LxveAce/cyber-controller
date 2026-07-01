@@ -186,7 +186,7 @@ class FlipperProtocol(BaseProtocol):
         return [
             # ---- SubGHz ----
             CommandInfo("subghz rx", "SubGHz", "Receive SubGHz signals"),
-            CommandInfo("subghz tx", "SubGHz", "Transmit SubGHz signal"),
+            CommandInfo("subghz tx", "SubGHz", "Transmit SubGHz signal", danger="lab-only"),
             CommandInfo("subghz decode_raw", "SubGHz", "Decode raw SubGHz recording"),
             # ---- NFC ----
             CommandInfo("nfc detect", "NFC", "Detect NFC tags"),
