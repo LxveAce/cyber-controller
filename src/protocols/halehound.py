@@ -250,12 +250,13 @@ class HaleHoundProtocol(BaseProtocol):
             CommandInfo("subghz_replay", "SubGHz", "SubGHz replay attack"),
             CommandInfo("subghz_brute", "SubGHz", "SubGHz brute force"),
             CommandInfo(
-                "tesla_charge", "SubGHz", "Tesla charge port opener (315/433MHz)"
+                "tesla_charge", "SubGHz", "Tesla charge port opener (315/433MHz)",
+                danger="lab-only",
             ),
             # ---- NFC ----
             CommandInfo("nfc_scan", "NFC", "NFC card scan (PN532)"),
             CommandInfo("nfc_read", "NFC", "NFC card read"),
-            CommandInfo("nfc_clone", "NFC", "NFC card clone"),
+            CommandInfo("nfc_clone", "NFC", "NFC card clone", danger="lab-only"),
             # ---- NRF24 ----
             CommandInfo("nrf_scan", "NRF24", "NRF24 2.4GHz scan"),
             # ---- MouseJack ----

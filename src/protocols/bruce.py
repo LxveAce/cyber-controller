@@ -99,8 +99,9 @@ class BruceProtocol(BaseProtocol):
             CommandInfo("ir tx", "IR", "Transmit an IR signal"),
             # ---- SubGHz ----
             CommandInfo("subghz rx", "SubGHz", "Receive SubGHz signals"),
-            CommandInfo("subghz tx", "SubGHz", "Transmit a SubGHz signal"),
-            CommandInfo("subghz tx_from_file", "SubGHz", "Replay a saved SubGHz capture"),
+            CommandInfo("subghz tx", "SubGHz", "Transmit a SubGHz signal", danger="lab-only"),
+            CommandInfo("subghz tx_from_file", "SubGHz", "Replay a saved SubGHz capture",
+                        danger="lab-only"),
             # ---- BadUSB ----
             CommandInfo("badusb run_from_file <script>", "BadUSB", "Run a BadUSB/Ducky script file", "script"),
             # ---- Apps ----
