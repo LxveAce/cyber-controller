@@ -322,6 +322,14 @@ class TargetsTab(QWidget):
         target = self._target_from_row(row)
         if target is None:
             return
+        # Resolve against the AUTHORITATIVE pooled Target: it carries extra['index'] (and the live
+        # device_source), which the row-reconstructed Target omits. Without this, index-gated actions
+        # (e.g. the BW16 'Deauth (this index)' -> AT+DEAUTHIDX=n) were silently dropped in THIS menu
+        # even though they show up in the Network tab, which resolves against the real pool objects.
+        if self._pool is not None:
+            pooled = self._pool.get(target.key)
+            if pooled is not None:
+                target = pooled
 
         menu = QMenu(self)
         menu.setStyleSheet(_MENU_QSS)
