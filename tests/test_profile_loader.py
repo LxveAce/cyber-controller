@@ -33,6 +33,7 @@ FirmwareProfile = flash_engine.FirmwareProfile
         ("esp32_div", "esp32-div"),
         ("minigotchi", "minigotchi-v3"),
         ("flipper_momentum", "momentum"),
+        ("flipper_roguemaster", "roguemaster"),
         ("marauder", "marauder"),
     ],
 )

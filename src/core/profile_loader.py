@@ -49,6 +49,7 @@ CORE_ID_MAP: dict[str, str] = {
     "minigotchi": "minigotchi-v3",
     "flipper_momentum": "momentum",
     "flipper_unleashed": "unleashed",
+    "flipper_roguemaster": "roguemaster",
     # ids that are already canonical / new profiles map to themselves; unknown -> custom
 }
 
