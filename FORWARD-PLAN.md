@@ -1,6 +1,6 @@
 # LxveAce/cyber-controller - Forward Plan
 
-> Status: v1.1.0 code-stable (228 tests pass, 0 open issues) but the shipped Windows .exe almost certainly crashes silently on launch. | Health: YELLOW | Date: _____ (pick up here)
+> Status: v1.4.0 shipped — 660 tests green on Py3.12; frozen-safe resource loading + Inno installer + CI build all landed, so the old silent-.exe-crash P0 is RESOLVED. master is ~57 commits ahead of the v1.4.0 tag (features + 20 reliability fixes + the violet-identity theme, unreleased). | Health: GREEN | Date: 2026-06-30
 
 > **⭐ MAJOR DIRECTION (2026-06-29): the flashing engine in `src/core/` is being extracted into the
 > universal-flasher repo as a shared, UI-free library and consumed here as a dependency (submodule), so
