@@ -22,6 +22,7 @@ import logging
 
 from src.core.cross_comm import AutoRouter, EventBus, TargetPool
 from src.core.device_manager import DeviceManager
+from src.core.drivers import driver_for
 from src.core.target_ingest import TargetIngestor
 
 log = logging.getLogger(__name__)
@@ -75,22 +76,20 @@ class CrossCommHub:
             log.warning("ActionResolver unavailable — actions disabled", exc_info=True)
 
     def send_to_port(self, port: str, command: str) -> None:
-        """Write a command to a connected device (the AutoRouter / Network-tab send sink).
+        """Deliver a command to a connected device (the AutoRouter / Network-tab send sink).
 
-        Pure core: resolve the target device's firmware line terminator (Flipper CR vs LF) before writing,
-        so a routed command isn't silently dropped just because that device isn't the focused UI tab, then
-        write it (``SerialConnection.write`` rejects embedded control chars). No-ops with a warning when the
-        port has no live connection.
+        Pure core. The *how* is delegated to the node's :class:`~src.core.drivers.Driver` (selected by its
+        ``driver_type``): a text-CLI node gets the firmware terminator stamped + a serial write; a stream
+        (Meshtastic protobuf) or control-map (BlueJammer web-UI) node has no text command channel, so the
+        command is an honest logged no-op rather than useless bytes on the wire. No-ops with a warning when
+        the port has no live connection.
         """
         conn = self.dm.get_connection(port)
-        if conn and conn.is_connected:
-            try:
-                dev = self.dm.get_device(port)
-                if dev is not None:
-                    from src.protocols import line_ending_for
-                    conn.line_ending = line_ending_for(dev.firmware or dev.name)
-                conn.write(command)  # rejects embedded control chars
-            except Exception:
-                log.exception("send_to_port %s failed", port)
-        else:
+        if not (conn and conn.is_connected):
             log.warning("send_to_port: no active connection on %s for routed command", port)
+            return
+        dev = self.dm.get_device(port)
+        try:
+            driver_for(dev).deliver_text(conn, dev, command)
+        except Exception:
+            log.exception("send_to_port %s failed", port)
