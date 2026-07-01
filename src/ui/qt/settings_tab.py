@@ -302,6 +302,13 @@ class SettingsTab(QWidget):
             # so without carrying it forward a Save would reset it to False and
             # re-show the first-run disclaimer on next launch.
             "_disclaimer_ack": self._settings.get("_disclaimer_ack", False),
+            # Same hazard for the interface section (Simple/Pro mode + the de-bloat loadout) and its
+            # first-run ack — this tab owns no widgets for them, so rebuilding the dict without
+            # carrying them forward makes save_settings' deep-merge reset mode to 'pro', DROP the
+            # loadout, and reset _interface_mode_ack to False: a plain Save silently undoes the Simple
+            # choice + loadout and re-arms both first-run choosers on the next launch.
+            "interface": self._settings.get("interface", {}),
+            "_interface_mode_ack": self._settings.get("_interface_mode_ack", False),
         }
 
     # ── Actions ──────────────────────────────────────────────────────
