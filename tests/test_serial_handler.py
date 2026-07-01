@@ -84,6 +84,21 @@ def test_write_without_serial_raises_runtime_error() -> None:
         conn.write("scanap")
 
 
+def test_send_interrupt_writes_raw_ctrl_c() -> None:
+    # send_interrupt() must put exactly one 0x03 byte on the wire — no line terminator, and bypassing the
+    # control-char guard that write() enforces (so a blocking Flipper command can be stopped).
+    conn, fake = _make_conn()
+    conn.send_interrupt()
+    assert fake.written == [b"\x03"]
+    assert fake.flushed == 1
+
+
+def test_send_interrupt_without_serial_raises_runtime_error() -> None:
+    conn = SerialConnection("COM-NONE")
+    with pytest.raises(RuntimeError):
+        conn.send_interrupt()
+
+
 # ── Reader-loop / lifecycle hardening (bug-hunt fixes #1, #10, #23, #24) ───────────────────────────
 
 import threading  # noqa: E402
