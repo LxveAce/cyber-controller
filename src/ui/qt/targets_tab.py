@@ -88,7 +88,7 @@ QMenu::item {
 }
 QMenu::item:selected {
     background-color: #1c2128;
-    color: #39ff14;
+    color: #a371f7;
 }
 QMenu::item:disabled {
     color: #484f58;
@@ -472,7 +472,7 @@ class TargetsTab(QWidget):
     @staticmethod
     def _rssi_color(rssi: int) -> QColor:
         if rssi >= _RSSI_STRONG:
-            return QColor("#39ff14")  # strong — green
+            return QColor("#3fb950")  # strong — green
         if rssi >= _RSSI_WEAK:
             return QColor("#ffd700")  # medium — yellow
         return QColor("#ff8c00")      # weak — orange

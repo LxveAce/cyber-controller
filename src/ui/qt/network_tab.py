@@ -34,7 +34,7 @@ from PyQt5.QtWidgets import (
 
 # Node palette (mirrors the cyber_dark theme). kind -> (fill, border).
 _KIND_COLORS = {
-    "device": ("#16321a", "#39ff14"),   # the controllers / boards — green
+    "device": ("#16321a", "#3fb950"),   # the controllers / boards — green
     "ap": ("#10243d", "#58a6ff"),        # discovered access points — blue
     "client": ("#3a2410", "#f0883e"),    # client stations — orange
     "ble": ("#2a1a3d", "#d2a8ff"),       # BLE devices — purple

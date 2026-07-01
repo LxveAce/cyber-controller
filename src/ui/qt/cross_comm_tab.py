@@ -452,7 +452,7 @@ class CrossCommTab(QWidget):
 
     # Status -> color mapping for the action history table.
     _STATUS_COLORS: dict[str, str] = {
-        "success": "#39ff14",
+        "success": "#3fb950",
         "sent": "#ffd700",
         "failed": "#f85149",
     }

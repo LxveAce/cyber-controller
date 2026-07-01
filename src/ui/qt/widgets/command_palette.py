@@ -63,7 +63,7 @@ class CommandPalette(QDialog):
             """
             CommandPalette {
                 background-color: #161b22;
-                border: 2px solid #39ff14;
+                border: 2px solid #a371f7;
                 border-radius: 10px;
             }
             """
@@ -77,7 +77,7 @@ class CommandPalette(QDialog):
         header = QHBoxLayout()
         icon_label = QLabel(">")
         icon_label.setFont(QFont("JetBrains Mono", 14, QFont.Bold))
-        icon_label.setStyleSheet("color: #39ff14; background: transparent;")
+        icon_label.setStyleSheet("color: #a371f7; background: transparent;")
         header.addWidget(icon_label)
 
         self._search = QLineEdit()
@@ -92,11 +92,11 @@ class CommandPalette(QDialog):
                 border-radius: 6px;
                 padding: 8px 12px;
                 font-size: 11pt;
-                selection-background-color: #39ff14;
+                selection-background-color: #a371f7;
                 selection-color: #000;
             }
             QLineEdit:focus {
-                border-color: #39ff14;
+                border-color: #a371f7;
             }
             """
         )
@@ -124,7 +124,7 @@ class CommandPalette(QDialog):
             }
             QListWidget::item:selected {
                 background-color: #1c2128;
-                color: #39ff14;
+                color: #a371f7;
             }
             QListWidget::item:hover:!selected {
                 background-color: #1c2128;

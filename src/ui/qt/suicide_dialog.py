@@ -68,7 +68,7 @@ class SuicideSetupDialog(QDialog):
             "A disarmed or unprovisioned board can NEVER wipe."
         )
         warn.setWordWrap(True)
-        warn.setStyleSheet("color: #39ff14;")
+        warn.setStyleSheet("color: #a371f7;")
         root.addWidget(warn)
 
         # Target hardware
