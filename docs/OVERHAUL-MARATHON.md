@@ -129,3 +129,8 @@ pushed. Sensitive + count-blocked + owner-edited repos were untouched (see Owner
   not master): `docs/ROADMAP-FUTURE.md` landed (near/mid/long-term + the "more support" plan). Next on
   the branch: bundle-manifest reliability test, remaining inline-style→token consolidation, and
   scaffolding the planned backends (dfu-util/UF2) + new profiles — each flagged HW-validation-pending.
+- **2026-06-30 ~20:2x** — Phase 3 dev: **dfu-util + UF2 flash backends landed on `feat/major-revamp`**
+  (`9856d8d`) — registered behind `FlashEngine._backends`, download-or-local resolve, never fake
+  success, `INFO_UF2.TXT` volume auto-detect; +11 unit tests, full suite **672 passed / 2 skipped**.
+  Flagged **HW-validation pending** (RP2040 / Pi Pico / HackRF / Proxmark3 / Chameleon Ultra each need a
+  board before being marketed as supported). Branch pushed for owner review — not merged to master.
