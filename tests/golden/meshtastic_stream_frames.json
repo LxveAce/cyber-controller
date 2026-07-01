@@ -1,0 +1,9 @@
+{
+  "_comment": "Golden Meshtastic Stream-API frames. Byte format verified against the Meshtastic client-API docs (2026-07-01): 0x94 0xC3 <len MSB> <len LSB> <payload>, big-endian length, max 512. Each entry: a payload and its exact wire frame (both hex). Pins StreamFramer.frame() encode + StreamFramer.feed() decode against the spec so a format regression is caught without a radio. Payloads are representative protobuf byte strings; semantic protobuf decode is out of scope for the framer.",
+  "frames": [
+    { "name": "empty_frame", "payload_hex": "", "frame_hex": "94c30000" },
+    { "name": "two_byte_field", "payload_hex": "0801", "frame_hex": "94c300020801" },
+    { "name": "ascii_helloish", "payload_hex": "48656c6c6f", "frame_hex": "94c3000548656c6c6f" },
+    { "name": "toradio_wantconfig_like", "payload_hex": "3a04089601", "frame_hex": "94c300053a04089601" }
+  ]
+}
