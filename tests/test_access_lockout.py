@@ -73,3 +73,33 @@ def test_secure_delete_overwrites_and_removes(tmp_path):
     f.write_bytes(b"sensitive-data" * 64)
     pk._secure_delete(f)
     assert not f.exists()
+
+
+def test_console_waits_for_key_under_default_both_policy(temp_gate, tmp_path, monkeypatch):
+    """Regression: a key-only gate left at the DEFAULT 'both' policy (i.e. --create-physical-key
+    with no admin password) must PAUSE for the operator to insert the USB — it must not burn all
+    _MAX_TRIES instantly (which trips the persistent lockout and any opt-in duress self-wipe on a
+    perfectly normal boot where the key just isn't plugged in yet)."""
+    import builtins
+    from src.security import access_gate as ag
+
+    pk.create_physical_key(tmp_path)  # key-only gate; policy stays the default 'both'
+    assert pk.get_policy() == "both" and not pk.has_admin_password() and pk.has_physical_key()
+
+    monkeypatch.setattr(pk, "key_present", lambda drives=None: False)  # USB not inserted
+    calls = {"input": 0, "check": 0}
+    real_check = pk.check_access
+    monkeypatch.setattr(pk, "check_access",
+                        lambda *a, **k: (calls.__setitem__("check", calls["check"] + 1), real_check(*a, **k))[1])
+
+    def fake_input(*_a):
+        calls["input"] += 1
+        raise EOFError  # operator cancels instead of inserting
+
+    monkeypatch.setattr(builtins, "input", fake_input)
+
+    ok, pw = ag._unlock_console()
+    assert ok is False and pw is None
+    assert calls["input"] == 1, "must block for key insertion, not auto-fire attempts"
+    assert calls["check"] == 0, "no unlock attempt should be recorded before the operator acts"
+    assert int(pk.load_config().get("failed_attempts", 0)) == 0, "no spurious lockout/duress on a normal boot"

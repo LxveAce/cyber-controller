@@ -89,14 +89,20 @@ def enforce(ui: str | None) -> bool:
 def _unlock_console() -> Tuple[bool, Optional[str]]:
     cfg = pk.load_config()
     need_pw = cfg.get("password") is not None and pk.get_policy() in ("both", "either", "password")
-    if pk.get_policy() == "key" and not need_pw:
+    # Pause for the operator to insert the USB key whenever a key is configured and we are NOT
+    # collecting a password this round. Guarding this on policy=='key' alone meant a key-only gate
+    # under the DEFAULT 'both' (or 'either') policy — the state left by `--create-physical-key` with
+    # no admin password — never blocked: it burned all _MAX_TRIES against an absent key in
+    # milliseconds, tripping the persistent lockout and any opt-in duress self-wipe on a normal boot.
+    wait_for_key = (not need_pw) and cfg.get("key") is not None
+    if wait_for_key:
         print("Insert the physical key USB, then press Enter (Ctrl+C to cancel)...", file=sys.stderr)
     for attempt in range(1, _MAX_TRIES + 1):
         pw = None
         try:
             if need_pw:
                 pw = getpass.getpass("Admin password: ") or None
-            elif pk.get_policy() == "key":
+            elif wait_for_key:
                 input()
         except (EOFError, KeyboardInterrupt):
             return False, None
