@@ -222,3 +222,17 @@ Owner said: do it all, push it all, keep going without me. Executed on cyber-con
 - **Settled the firmware count → 26** (badge + body match the 26 shipped JSONs + the table 1:1; the stale '21' retired) + a drift-lock test (`test_profile_count`). Backends stay marketed at **5** (dfu/uf2 are experimental, HW-validation pending — roadmap, not headline).
 - **Cut v1.5.0** (`b688a52`, tag `v1.5.0` pushed → CI builds binaries + installer): version.py + pyproject → 1.5.0, CHANGELOG promoted [Unreleased]→[1.5.0] with the 20 fixes + violet identity + backends, README status updated.
 - NEXT: reconcile the 3 marketing sites to **v1.5.0 / 26 firmwares / 5 backends / 9 parsers**, then the owner-held repos' SAFE parts (deadmans/Suicide host-tests+docs, BlueJammer SHA-manifest, tag-studio SECURITY scoping, catalyst safe items). Still NOT touching: anti-forensic wipe/eFuse behavior, worldviewosnit third-party PII/disclosure (whole repo held — too sensitive), licensing/pricing models, employer/client codename scrubs that require exe rebuilds.
+
+### Phase 6 execution — 35 commits pushed across 8 repos (2026-07-01)
+
+| Repo | Pushed | What |
+|---|---|---|
+| cybercontroller.org | 10 | reconciled to **v1.5.0 / 26 / 5 / 9**; CSP inline-styles extracted (strict CSP kept); +BW16/BlueJammer parser cards (grid=9); a11y parity; security.txt; keyword trim; mojibake; **framed the Firmware Library as a featured selection** (26 ship, jammer/passthrough not front-paged, full set → guides) |
+| esp32marauder.com | 3 | reconciled CC counts to v1.5.0/26/5/9; mojibake; sitemap |
+| LxveAce.github.io | 6 | null-guard navToggle, mobile nav on 6 subpages, de-orphan /marauder/, stats→v1.5.0/26, removed orphan SVGs, sitemap |
+| deadmans-switch | 3 | **host-side + docs only** — pytest for provision.py, serial-contract reconcile, Suicide→Dead-Man strings (firmware/wipe/eFuse untouched) |
+| Suicide-Marauder | 5 | **host-side + docs only** — 38-test pytest for provision.py, ci/ reconcile, docstring fix, SPEC sync, CHANGELOG (wipe behavior untouched) |
+| BlueJammer-V2 | 4 | **checksums/docs only** — SHA256SUMS provenance manifest, .gitattributes, README folder-name fix, fork-provenance note (binaries untouched, no licensing) |
+| tag-studio | 4 | **docs only** — SECURITY.md version-table + Windows-only scoping, README schema, LABEL-TAG doc clarified (licensing/pricing untouched) |
+
+All guardrail-clean: no anti-forensic wipe/eFuse behavior, no licensing/pricing, no third-party PII, no binary modification. REMAINING: **catalyst-ui / catalyst-ui-testing** safe docs items in progress; **worldviewosnit** stays fully owner-held (third-party PII + disclosure — untouched).
