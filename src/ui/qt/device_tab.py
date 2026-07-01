@@ -627,7 +627,11 @@ class DeviceTab(QWidget):
             _mode(k): (v[0], v[1], v[2] if len(v) > 2 else None)
             for k, v in (data.get("http_calls") or {}).items()
         }
-        return ControlMap(uart_frames=uart, http_calls=http, validated=bool(data.get("validated", True)))
+        # Fail-safe default: an unmarked map is NOT trusted. bluejammer_control.ControlMap defaults
+        # validated=False for exactly this reason (a user map may hold GUESSED frames), and the
+        # controller refuses to transmit an unvalidated map. Defaulting to True here re-opened that hole
+        # (a map omitting "validated" would send frames / silently no-op STOP). The author must assert it.
+        return ControlMap(uart_frames=uart, http_calls=http, validated=bool(data.get("validated", False)))
 
     def _command_info(self, cmd: str):
         """Return the CommandInfo for *cmd* from the selected protocol, if any."""
