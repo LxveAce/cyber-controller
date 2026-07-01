@@ -1,6 +1,6 @@
 # LxveAce/cyber-controller - Forward Plan
 
-> Status: v1.4.0 shipped — 660 tests green on Py3.12; frozen-safe resource loading + Inno installer + CI build all landed, so the old silent-.exe-crash P0 is RESOLVED. master is ~57 commits ahead of the v1.4.0 tag (features + 20 reliability fixes + the violet-identity theme, unreleased). | Health: GREEN | Date: 2026-06-30
+> Status: **v1.5.0 shipped** (2026-07-01) — 4 platforms + a working Inno installer, de-bulked assets (one `SHA256SUMS.txt`) + **VirusTotal posted** on the release. Suite green (Py3.12/3.13). Identity is **violet `#a371f7`**; counts **26 firmware profiles / 5 backends / 9 parsers**. A 26-bug comms/cross-comm hardening pass landed. The old silent-.exe-crash P0 is long RESOLVED. | Health: GREEN | Frontier: the **comms-first cross-comm + GUI rework** (command-center `projects/cc-rework-PLAN.md`). | Date: 2026-07-01
 
 > **⭐ MAJOR DIRECTION (2026-06-29): the flashing engine in `src/core/` is being extracted into the
 > universal-flasher repo as a shared, UI-free library and consumed here as a dependency (submodule), so
@@ -12,13 +12,13 @@
 > touches hardware-validated paths). The "cross-repo de-dup" dig-deeper item is folded into this.**
 
 ## Where this stands
-Cyber Controller is the flagship Python 3.12+ all-in-one security-hardware controller for cyberdecks: it flashes/coordinates ESP32 firmwares (Marauder/Bruce/GhostESP + ~21 profiles), Flipper Zero, and Raspberry Pi gear from one dashboard. Four UIs (PyQt5 GUI, Tkinter, Textual TUI, Flask web remote) via `--ui` or a launcher dialog, plus a Dead Man's Switch anti-forensic provisioning flow (`--deadman-setup`) backed by the `deadmans-switch` git submodule.
+Cyber Controller is the flagship Python 3.12+ all-in-one security-hardware controller for cyberdecks: it flashes/coordinates ESP32 firmwares (Marauder/Bruce/GhostESP + 26 profiles), Flipper Zero, and Raspberry Pi gear from one dashboard. Four UIs (PyQt5 GUI, Tkinter, Textual TUI, Flask web remote) via `--ui` or a launcher dialog, plus a Dead Man's Switch anti-forensic provisioning flow (`--deadman-setup`) backed by the `deadmans-switch` git submodule.
 
 - **Entry point:** `src/app.py` (console script `cyber-controller`).
 - **Build (local):** `python build.py` -> `dist/CyberController*` (bundles QSS, assets, all UI submodules).
-- **Build (release):** `.github/workflows/build-release.yml` on `release: published` -> per-OS `cyber-controller-<tag>-<plat>` assets. **WARNING: CI build args DIVERGE from build.py and are the likely cause of the broken release.**
-- **Test:** `python -m pytest -q` -> 228 passed, 2 skipped (ran on 3.13; CI builds on 3.12).
-- **Current state:** v1.1.0 latest; master is 8 commits AHEAD of the v1.1.0 tag. Core code clean and security-conscious; the live problems are CI packaging gaps + one unguarded file read.
+- **Build (release):** `.github/workflows/build-release.yml` on `release: published` -> per-OS assets + a consolidated `SHA256SUMS.txt` + a VirusTotal-posting job. (The old CI-vs-build.py divergence that caused the silent-crash release is RESOLVED — CI builds via `build.py`.)
+- **Test:** `QT_QPA_PLATFORM=offscreen python -m pytest -q` -> green (Py3.12/3.13).
+- **Current state:** **v1.5.0** is the latest release (working installer, VT-posted, violet identity). The P0/feature sections BELOW are **HISTORICAL** (kept for provenance) — the .exe/packaging P0s are long resolved and the owner-directed features (Tails flashing, physical-key access gate, unified flashing tabs, wardrive, dead-man switch) shipped. Active work + the current plan live in **command-center** (`CONTINUE-HERE.md` → `cc-rework-PLAN.md`).
 
 ## P0 - do first
 
