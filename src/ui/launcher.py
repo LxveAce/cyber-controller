@@ -22,7 +22,7 @@ QFrame#launcher-card {
     border-radius: 8px;
 }
 QFrame#launcher-card:hover {
-    border-color: #39ff14;
+    border-color: #a371f7;
 }
 QRadioButton {
     color: #e6edf3;
@@ -37,11 +37,11 @@ QRadioButton::indicator {
     background: #0d1117;
 }
 QRadioButton::indicator:checked {
-    background: #39ff14;
-    border-color: #39ff14;
+    background: #a371f7;
+    border-color: #a371f7;
 }
 QRadioButton::indicator:hover {
-    border-color: #39ff14;
+    border-color: #a371f7;
 }
 """
 
@@ -69,7 +69,7 @@ class LauncherDialog(QDialog):
 
         title = QLabel("CYBER CONTROLLER")
         title.setFont(QFont("JetBrains Mono", 16, QFont.Bold))
-        title.setStyleSheet("color: #39ff14;")
+        title.setStyleSheet("color: #a371f7;")
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
@@ -128,7 +128,7 @@ class LauncherDialog(QDialog):
         btn.setCursor(Qt.PointingHandCursor)
         btn.setFixedHeight(40)
         btn.setStyleSheet(
-            "QPushButton { background: #39ff14; color: #0d1117; border: none; "
+            "QPushButton { background: #a371f7; color: #0d1117; border: none; "
             "border-radius: 6px; padding: 0 32px; font-weight: bold; }"
             "QPushButton:hover { background: #2dd912; }"
             "QPushButton:pressed { background: #24b00f; }"

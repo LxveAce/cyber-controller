@@ -602,13 +602,13 @@ class CyberControllerWindow(QMainWindow):
             self._act_mode_pro.setChecked(mode == "pro")
         if hasattr(self, "_mode_badge"):
             label = "Simple" if mode == "simple" else "Pro"
-            color = "#f0883e" if mode == "simple" else "#39ff14"
+            color = "#f0883e" if mode == "simple" else "#a371f7"
             self._mode_badge.setText(f'  Mode: <span style="color:{color};font-weight:bold;">{label} ▾</span>  ')
 
     # ── Persistent terminal (bottom dock) ──────────────────────────
 
     # ── Device colors for multi-device terminal ───────────────────
-    _DEVICE_COLORS = ["#39ff14", "#58a6ff", "#f0883e", "#f85149", "#d2a8ff"]
+    _DEVICE_COLORS = ["#3fb950", "#58a6ff", "#f0883e", "#f85149", "#d2a8ff"]
 
     def _build_persistent_terminal(self) -> None:
         """Build the always-visible multi-device terminal panel at the bottom."""
@@ -632,7 +632,7 @@ class CyberControllerWindow(QMainWindow):
 
         self._pterm_label = QLabel("Devices")
         self._pterm_label.setStyleSheet(
-            "color: #39ff14; font-size: 9pt; font-weight: bold; "
+            "color: #a371f7; font-size: 9pt; font-weight: bold; "
             "font-family: 'JetBrains Mono', monospace; background: transparent;"
         )
         device_panel.addWidget(self._pterm_label)
@@ -684,7 +684,7 @@ class CyberControllerWindow(QMainWindow):
 
         term_header = QLabel("Terminal")
         term_header.setStyleSheet(
-            "color: #39ff14; font-size: 10pt; font-weight: bold; "
+            "color: #a371f7; font-size: 10pt; font-weight: bold; "
             "font-family: 'JetBrains Mono', monospace; background: transparent;"
         )
         terminal_panel.addWidget(term_header)
@@ -696,7 +696,7 @@ class CyberControllerWindow(QMainWindow):
         # Bound memory: O(1) auto-trim of oldest lines past the cap (UI-opt #6).
         self._pterm_output.document().setMaximumBlockCount(5000)
         self._pterm_output.setStyleSheet(
-            "QTextEdit#terminal { background-color: #0d1117; color: #39ff14; "
+            "QTextEdit#terminal { background-color: #0d1117; color: #7ee787; "
             "font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 9pt; "
             "border: 1px solid #30363d; border-radius: 4px; padding: 6px; }"
         )
@@ -708,7 +708,7 @@ class CyberControllerWindow(QMainWindow):
 
         prompt_label = QLabel(">")
         prompt_label.setStyleSheet(
-            "color: #39ff14; font-family: 'JetBrains Mono', monospace; "
+            "color: #7ee787; font-family: 'JetBrains Mono', monospace; "
             "font-size: 10pt; font-weight: bold; background: transparent;"
         )
         input_row.addWidget(prompt_label)
@@ -719,7 +719,7 @@ class CyberControllerWindow(QMainWindow):
             "QLineEdit { background-color: #161b22; color: #e6edf3; "
             "font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 9pt; "
             "border: 1px solid #30363d; border-radius: 4px; padding: 6px; }"
-            "QLineEdit:focus { border-color: #39ff14; }"
+            "QLineEdit:focus { border-color: #a371f7; }"
         )
         self._pterm_input.returnPressed.connect(self._pterm_on_send)
         input_row.addWidget(self._pterm_input)
@@ -783,7 +783,7 @@ class CyberControllerWindow(QMainWindow):
                 item.setCheckState(Qt.Unchecked)
             # Color connected devices
             if dev.port in self._pterm_conns:
-                color = self._pterm_port_colors.get(dev.port, "#39ff14")
+                color = self._pterm_port_colors.get(dev.port, "#3fb950")
                 item.setForeground(QColor(color))
             else:
                 item.setForeground(QColor("#8b949e"))
@@ -924,7 +924,7 @@ class CyberControllerWindow(QMainWindow):
             )
             if handled:
                 pass
-        color = self._pterm_port_colors.get(port, "#39ff14")
+        color = self._pterm_port_colors.get(port, "#3fb950")
         self._pterm_output.append(
             f'<span style="color:{color};">[{port}]</span> {line}'
         )
@@ -969,7 +969,7 @@ class CyberControllerWindow(QMainWindow):
         """Handle DMS auth result — show in persistent terminal with coloring."""
         if success:
             self._pterm_output.append(
-                f'<span style="color:#39ff14; font-weight:bold;">'
+                f'<span style="color:#3fb950; font-weight:bold;">'
                 f'[DMS] Authenticated: {message}</span>'
             )
         else:
@@ -1002,7 +1002,7 @@ class CyberControllerWindow(QMainWindow):
             item = QListWidgetItem(f"{prefix}{dev.display_name}")
             item.setData(Qt.UserRole, dev.port)
             if dev.connected:
-                item.setForeground(QColor("#39ff14"))
+                item.setForeground(QColor("#3fb950"))
             else:
                 item.setForeground(QColor("#8b949e"))
             self._sidebar_device_list.addItem(item)
@@ -1021,7 +1021,7 @@ class CyberControllerWindow(QMainWindow):
             status_text = "Connected to " + ", ".join(connected_names[:2])
             if len(connected_names) > 2:
                 status_text += f" +{len(connected_names) - 2} more"
-            dot_color = "#39ff14"
+            dot_color = "#3fb950"
         else:
             status_text = "No device connected"
             dot_color = "#f85149"
@@ -1364,7 +1364,7 @@ class CyberControllerWindow(QMainWindow):
             "alternate-background-color: #1c2128; }"
             "QTableWidget::item { padding: 6px 12px; }"
             "QHeaderView::section { background-color: #0d1117; color: #8b949e; "
-            "border: none; border-bottom: 2px solid #39ff14; padding: 6px 8px; "
+            "border: none; border-bottom: 2px solid #a371f7; padding: 6px 8px; "
             "font-weight: 600; }"
         )
 
@@ -1372,7 +1372,7 @@ class CyberControllerWindow(QMainWindow):
 
         title = QLabel("Keyboard Shortcuts")
         title.setStyleSheet(
-            "font-size: 14pt; font-weight: bold; color: #39ff14; padding: 8px; "
+            "font-size: 14pt; font-weight: bold; color: #a371f7; padding: 8px; "
             "background: transparent;"
         )
         layout.addWidget(title)
@@ -1402,7 +1402,7 @@ class CyberControllerWindow(QMainWindow):
         for row, (key, action) in enumerate(shortcuts):
             key_item = QTableWidgetItem(key)
             key_item.setFont(QFont("JetBrains Mono", 10))
-            key_item.setForeground(QColor("#39ff14"))
+            key_item.setForeground(QColor("#3fb950"))
             table.setItem(row, 0, key_item)
             table.setItem(row, 1, QTableWidgetItem(action))
 

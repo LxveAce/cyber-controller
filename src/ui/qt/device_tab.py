@@ -330,7 +330,7 @@ class DeviceTab(QWidget):
             item = QListWidgetItem(dev.display_name)
             item.setData(Qt.UserRole, dev.port)
             if dev.connected:
-                item.setForeground(QColor("#39ff14"))
+                item.setForeground(QColor("#3fb950"))
             else:
                 item.setForeground(QColor("#8b949e"))
             self._device_list.addItem(item)
