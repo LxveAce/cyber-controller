@@ -210,6 +210,22 @@ class DeviceManager:
         with self._lock:
             return self._connections.get(port)
 
+    def probe(self, port: str, *, timeout: float = 0.8):
+        """Run the connect-time handshake probe on *port* and set the device's ``health``/``fw_banner``.
+
+        The entry point for the S3-c handshake (src/core/handshake.py): it sends the firmware's probe command
+        over the open link, learns liveness + banner + live vocabulary, and returns a ``HandshakeResult`` (or
+        ``None`` if the port has no device / no live connection). Intentionally NOT called from
+        :meth:`open_connection` — a probe writes to the port and blocks briefly, so the caller runs it when it
+        makes sense (e.g. a UI connect flow, in a background thread), rather than on every open.
+        """
+        dev = self.get_device(port)
+        conn = self.get_connection(port)
+        if dev is None or conn is None or not conn.is_connected:
+            return None
+        from src.core.handshake import probe_device
+        return probe_device(conn, dev, timeout=timeout)
+
     # ── Hot-plug monitor ─────────────────────────────────────────────
 
     def start_hotplug(self, poll_interval: float = 2.0) -> None:

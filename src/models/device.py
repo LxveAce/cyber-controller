@@ -63,6 +63,14 @@ class Device:
     pid: str = ""
     description: str = ""
     tags: list[str] = field(default_factory=list)
+    # Handshake/liveness state, set by the connect-time probe (src/core/handshake.py). Distinct from
+    # ``connected`` (is the serial link open) — this is "did the firmware actually answer over that link":
+    #   "unknown"  -- not probed yet (the default)
+    #   "alive"    -- the firmware replied to a probe command
+    #   "no-reply" -- probed over an open text-CLI link but got silence (dead / wrong baud / not really a CLI)
+    #   "no-cli"   -- driver_type is stream/controlmap, so there is no text CLI to probe (honest, not a failure)
+    health: str = "unknown"
+    fw_banner: str = ""  # an identifying line captured from the probe reply (best-effort)
 
     def __post_init__(self) -> None:
         if not self.name:
@@ -109,6 +117,8 @@ class Device:
             "pid": self.pid,
             "description": self.description,
             "tags": self.tags,
+            "health": self.health,
+            "fw_banner": self.fw_banner,
         }
 
     @classmethod
