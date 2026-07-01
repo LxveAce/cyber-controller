@@ -136,6 +136,19 @@ def test_parse_map_file_roundtrip(qapp, tmp_path):
     assert cmap.has_http(Mode.WIFI)
 
 
+def test_parse_map_without_validated_key_defaults_unvalidated(qapp, tmp_path):
+    """Fail-safe: a control map that omits the 'validated' key must be treated as NOT validated, so it
+    can never silently send guessed frames or make STOP a no-op that reports success."""
+    from src.ui.qt.device_tab import DeviceTab
+    import json
+    p = tmp_path / "map.json"
+    p.write_text(json.dumps({
+        "http_calls": {"Idle": ["POST", "/mode", "idle"]},  # NOTE: no "validated" key
+    }), encoding="utf-8")
+    cmap = DeviceTab._bj_parse_map_file(str(p))
+    assert cmap.validated is False
+
+
 def test_shipped_scaffolding_is_inert(qapp):
     """Invariant: as shipped (no user-loaded control map) the controller CANNOT transmit — the arm/STOP
     scaffolding is present but the activator carries no frames. Cyber Controller ships none."""
