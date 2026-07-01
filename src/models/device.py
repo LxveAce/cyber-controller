@@ -75,6 +75,15 @@ class Device:
         fw = f" [{self.firmware}]" if self.firmware else ""
         return f"{self.name} ({self.port}){fw} — {status}"
 
+    @property
+    def capabilities(self) -> "frozenset[str]":
+        """Capability tokens this node's firmware supports (wifi / ble / subghz / nfc / ir / gps / lora / …).
+        A read-only view over the protocol capability map, so a connected device can be treated as a node with
+        known abilities (network view + Broadcast/AutoRouter applicability). Empty for an unknown firmware or
+        one that declares none. The firmware identifier is the lookup key; the protocol enum is the fallback."""
+        from src.protocols import capabilities_for  # lazy: keep models independent of the protocols package
+        return capabilities_for(self.firmware or self.protocol.value)
+
     def to_dict(self) -> dict:
         """Serialize to a plain dict."""
         return {
