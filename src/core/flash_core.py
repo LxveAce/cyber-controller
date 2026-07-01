@@ -2146,6 +2146,9 @@ _PROFILE_FILES = (
     "rtl8720.json", "bluejammer_esp32.json", "bluejammer_bw16.json", "meshtastic.json",
     "flock_you.json", "oui_spy.json", "sky_spy.json", "airtag_scanner.json", "cyt_ng.json",
     "minigotchi.json", "flipper_momentum.json", "flipper_unleashed.json", "custom.json",
+    # RogueMaster — third Flipper CFW; identical qFlipper path to Momentum/Unleashed. Release assets
+    # (.tgz/.zip) verified live against RogueMaster/flipperzero-firmware-wPlugins (2026-06-30, v0.420.0).
+    "flipper_roguemaster.json",
     # New (2026-06-29 discovery): added via the hybrid model — drop-a-JSON, no code. Lawful, verified
     # releases; merged single-bin @ 0x0 web-flasher class; flash offset pending the Stage-5 hardware gate.
     "trex.json", "mclite.json", "bit_pirate.json",
