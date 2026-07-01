@@ -20,10 +20,13 @@ import pytest
 pytest.importorskip("PyQt5.QtWidgets")
 from PyQt5.QtWidgets import (  # noqa: E402
     QApplication,
+    QComboBox,
     QLabel,
+    QLineEdit,
     QListWidget,
     QPushButton,
     QTableWidget,
+    QTextBrowser,
 )
 
 
@@ -129,3 +132,24 @@ def test_health_tab_widget_inventory(qapp, isolated_settings):
         assert getattr(t, g) is not None, f"HealthTab missing gauge {g!r}"
     assert isinstance(t._device_table, QTableWidget)
     assert hasattr(t, "_dev_card")
+
+
+def test_macro_tab_widget_inventory(qapp, isolated_settings):
+    # MacroTab: recorded-macro list + steps table + transport combos + record/stop/play/save controls
+    # + the {mac}/{ssid}/{channel} substitution fields.
+    t = _make_window()._macro_tab
+    assert isinstance(t._macro_list, QListWidget)
+    assert isinstance(t._steps_table, QTableWidget)
+    assert isinstance(t._macro_name_label, QLabel)
+    for combo in ("_port_combo", "_speed_combo"):
+        assert isinstance(getattr(t, combo), QComboBox), f"MacroTab.{combo} not a QComboBox"
+    for btn in ("_btn_record", "_btn_stop", "_btn_play", "_btn_save"):
+        assert isinstance(getattr(t, btn), QPushButton), f"MacroTab.{btn} not a QPushButton"
+    for var in ("_var_mac", "_var_ssid", "_var_channel"):
+        assert isinstance(getattr(t, var), QLineEdit), f"MacroTab.{var} not a QLineEdit"
+
+
+def test_howto_tab_widget_inventory(qapp, isolated_settings):
+    # HowToTab: a single rich-text documentation browser.
+    t = _make_window()._howto_tab
+    assert isinstance(t._view, QTextBrowser)
