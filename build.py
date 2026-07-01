@@ -78,10 +78,6 @@ def _build() -> int:
     if os_catalog.is_file():
         cmd.extend(["--add-data", f"{os_catalog}{sep}src/config"])
 
-    missions_dir = _ROOT / "src" / "config" / "missions"
-    if missions_dir.is_dir():
-        cmd.extend(["--add-data", f"{missions_dir}{sep}config/missions"])
-
     # Include assets (logo, icons)
     assets_dir = _ROOT / "assets"
     if assets_dir.is_dir():
