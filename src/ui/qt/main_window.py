@@ -735,6 +735,10 @@ class CyberControllerWindow(QMainWindow):
         self._pterm_conns: dict[str, object] = {}
         # Maps port -> color (assigned on connect)
         self._pterm_port_colors: dict[str, str] = {}
+        # Maps port -> our on_line callback, so disconnect removes EXACTLY it. A co-owned connection
+        # survives close_connection, so a left-behind callback would stack a duplicate on the next
+        # reconnect and mirror every line twice — the same leak fixed in the Devices tab.
+        self._pterm_line_cbs: dict = {}
 
         # Bridge serial callbacks to the Qt thread (carries port + line)
         from PyQt5.QtCore import QObject, pyqtSignal as _sig
@@ -836,7 +840,9 @@ class CyberControllerWindow(QMainWindow):
                 color = self._pterm_assign_color(port)
                 # Capture port in closure
                 _port = port
-                conn.on_line(lambda line, p=_port: self._pterm_line_signal.line_received.emit(p, line))
+                cb = lambda line, p=_port: self._pterm_line_signal.line_received.emit(p, line)
+                conn.on_line(cb)
+                self._pterm_line_cbs[port] = cb
                 self._pterm_output.append(
                     f'<span style="color:{color};">[{port}] Connected</span>'
                 )
@@ -856,6 +862,18 @@ class CyberControllerWindow(QMainWindow):
         for port in ports:
             if port not in self._pterm_conns:
                 continue
+            # Remove our on_line callback before releasing (capture the conn first — after
+            # close_connection, get_connection may return None). A co-owned conn stays alive, so this
+            # stops a duplicate callback stacking on the next reconnect.
+            conn = self._dm.get_connection(port)
+            cb = self._pterm_line_cbs.pop(port, None)
+            if conn is not None and cb is not None:
+                remover = getattr(conn, "remove_line_callback", None)
+                if callable(remover):
+                    try:
+                        remover(cb)
+                    except Exception:
+                        pass
             try:
                 self._dm.close_connection(port, owner="pterm")
             except Exception:
