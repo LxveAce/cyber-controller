@@ -32,14 +32,16 @@ def test_core_tabs_always_visible():
 
 
 def test_wifi_scanning_gates_targets_broadcast():
-    # Meshtastic is not a wifi-scanning fw -> no Targets/Broadcast/Cross-Comm
+    # Meshtastic is not a wifi-scanning fw -> no Targets/Broadcast/Network. (S4 regroup: "Network" is the
+    # wifi_scanning-gated surface that now holds Cross-Comm; Cross-Comm is no longer a top-level tab.)
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    assert "Targets" not in vis and "Broadcast" not in vis and "Cross-Comm" not in vis
+    assert "Targets" not in vis and "Broadcast" not in vis and "Network" not in vis
+    assert "Cross-Comm" not in vis  # folded into the Network surface, never a top-level tab
     # add Marauder -> they appear
     lo2 = {**lo, "firmwares": ["meshtastic", "marauder"]}
     vis2 = L.visible_tabs(lo2)
-    assert "Targets" in vis2 and "Broadcast" in vis2 and "Cross-Comm" in vis2
+    assert "Targets" in vis2 and "Broadcast" in vis2 and "Network" in vis2
 
 
 def test_gps_gates_wardrive():
