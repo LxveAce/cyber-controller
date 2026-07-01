@@ -59,5 +59,5 @@ def test_runtime_chokepoint_blocks_evil_api():
 
 def test_bundled_profiles_all_pass_url_validation():
     # Every shipped profile uses allowlisted hosts -> none rejected at load; registry intact.
-    # 23 = 18 original + trex/mclite/bit_pirate + hydra32 + flipper_roguemaster (all drop-in JSON, no code).
-    assert len(flash_core.PROFILES) == 23
+    # 24 = 18 original + trex/mclite/bit_pirate + hydra32 + flipper_roguemaster + m5stick_nemo (drop-in JSON).
+    assert len(flash_core.PROFILES) == 24

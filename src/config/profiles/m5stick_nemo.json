@@ -1,0 +1,40 @@
+{
+  "name": "M5Stick NEMO",
+  "id": "m5stick_nemo",
+  "core_id": "m5stick_nemo",
+  "description": "M5Stack multi-tool firmware (n0xa) — WiFi/BLE recon, IR (TV-B-Gone), Sub-GHz, RF, BadUSB and more for M5StickC Plus2 / Cardputer / StickS3. Authorized security research.",
+  "repo": "n0xa/m5stick-nemo",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "app_offset": "0x0",
+  "support_files": null,
+  "default_baud": 115200,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["m5cardputer", "m5sticks3"]},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/n0xa/m5stick-nemo/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {
+      "strategy": "fragments",
+      "source": "name",
+      "default": "esp32s3",
+      "rules": [
+        ["m5cardputer", "esp32s3"],
+        ["m5sticks3", "esp32s3"],
+        ["m5stickcplus2", "esp32"]
+      ]
+    },
+    "emit": {"offset": "0x0", "merged": true}
+  },
+  "boards": [
+    {"name": "M5StickC Plus2", "chip": "esp32", "flash_size": "8MB", "flash_mode": "dio", "flash_freq": "80m", "has_display": true},
+    {"name": "M5Cardputer", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m", "has_keyboard": true, "has_display": true},
+    {"name": "M5Stick S3", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m", "has_display": true}
+  ],
+  "firmware_urls": {"repo": "https://github.com/n0xa/m5stick-nemo", "latest": "https://github.com/n0xa/m5stick-nemo/releases/latest"},
+  "note": "n0xa/m5stick-nemo. One merged .bin per board flashed at 0x0 (documented: esptool write_flash -z 0x0 M5Nemo-<board>.bin; the merged image embeds bootloader/partitions/app internally). Release v3.2.1 assets: M5Cardputer / M5StickCPlus2 / M5StickS3 (+ .pt-br locale builds). Cardputer & StickS3 = esp32s3, StickCPlus2 = esp32. Flash write is owner-gated until Stage-5 hardware validation."
+}

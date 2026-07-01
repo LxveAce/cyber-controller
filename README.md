@@ -13,7 +13,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS%20%7C%20ARM-blue?style=for-the-badge)](#ui-modes)
 [![ESP32](https://img.shields.io/badge/ESP32-Marauder%20%7C%20Bruce%20%7C%20Ghost__ESP-E7352C?style=for-the-badge&logo=espressif&logoColor=white)](#supported-firmwares)
 [![Flipper Zero](https://img.shields.io/badge/Flipper%20Zero-Unleashed%20%7C%20Momentum%20%7C%20RogueMaster-FF8200?style=for-the-badge)](#supported-firmwares)
-[![Firmwares](https://img.shields.io/badge/firmware%20profiles-27-success?style=for-the-badge)](#supported-firmwares)
+[![Firmwares](https://img.shields.io/badge/firmware%20profiles-28-success?style=for-the-badge)](#supported-firmwares)
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release)](https://github.com/LxveAce/cyber-controller/releases)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
 
@@ -141,7 +141,7 @@ education, and CTF use only.
 ## Three Pillars
 
 ### Flash
-- **27 firmware profiles** across **5 backends**: `esptool` (ESP32 family), `qFlipper` (Flipper Zero),
+- **28 firmware profiles** across **5 backends**: `esptool` (ESP32 family), `qFlipper` (Flipper Zero),
   `ADB` (Android / Orbic), `SD image` (Raspberry Pi), and **`rtl8720` (Realtek AmebaD)** for the
   dual-band 2.4/5 GHz **BW16 / RTL8720DN** — hardware-validated end-to-end (fetches the firmware
   bundle, drives the AmebaD ImageTool, SHA-256-verifies before flashing).
@@ -178,7 +178,7 @@ education, and CTF use only.
 
 ## Supported Firmwares
 
-27 firmware profiles ship in `src/config/profiles/`. Each tracks its **latest upstream release** at
+28 firmware profiles ship in `src/config/profiles/`. Each tracks its **latest upstream release** at
 flash time and auto-selects the correct per-board binary.
 
 > 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)** — an in-depth, per-firmware
@@ -202,6 +202,7 @@ flash time and auto-selects the correct per-board binary.
 | **T-REX** (LilyGo T-Deck pentest terminal) | [abdallahnatsheh/T-REX-FIRMWARE](https://github.com/abdallahnatsheh/T-REX-FIRMWARE) | ESP32-S3 (T-Deck / T-Deck Plus) | esptool (merged) |
 | **MCLite** (MeshCore off-grid comms) | [laserir/MCLite](https://github.com/laserir/MCLite) | ESP32-S3 (T-Deck Plus / T-Watch Ultra LoRa) | esptool (merged) |
 | **ESP32 Bit Pirate** | [geo-tp/ESP32-Bit-Pirate](https://github.com/geo-tp/ESP32-Bit-Pirate) | ESP32-S3 (Xiao / Cardputer / T-Embed) | esptool (merged) |
+| **M5Stick NEMO** | [n0xa/m5stick-nemo](https://github.com/n0xa/m5stick-nemo) | ESP32 / ESP32-S3 (M5StickC Plus2 / Cardputer / StickS3) | esptool (merged) |
 | **Hydra32 / ESP32-Deauther** ⚠ *authorized testing only* | [SameerAlSahab/ESP32-Deauther](https://github.com/SameerAlSahab/ESP32-Deauther) | ESP32 (DevKit V1) | esptool (SHA-256-pinned) |
 | **BW16 / RTL8720 Vampire Deauther** | [RTL8720dn-Deauther](https://github.com/tesa-klebeband/RTL8720dn-Deauther) | **RTL8720DN** (AmebaD, dual-band 2.4/5 GHz + BLE) | **rtl8720** |
 | **BlueJammer-V2 — ESP32 engine** ⚠ *lab-only / illegal to operate* | [EmenstaNougat/BlueJammer-V2](https://github.com/EmenstaNougat/BlueJammer-V2) | ESP32-WROOM-32U | esptool |

@@ -2149,6 +2149,10 @@ _PROFILE_FILES = (
     # RogueMaster — third Flipper CFW; identical qFlipper path to Momentum/Unleashed. Release assets
     # (.tgz/.zip) verified live against RogueMaster/flipperzero-firmware-wPlugins (2026-06-30, v0.420.0).
     "flipper_roguemaster.json",
+    # m5stick-nemo — M5Stack multi-tool (esptool merged-single-bin @0x0). Assets verified live against
+    # n0xa/m5stick-nemo v3.2.1 (README documents `write_flash -z 0x0`); mixed chips (StickCPlus2=esp32,
+    # Cardputer/StickS3=esp32s3) mapped by the fragments chip_map.
+    "m5stick_nemo.json",
     # New (2026-06-29 discovery): added via the hybrid model — drop-a-JSON, no code. Lawful, verified
     # releases; merged single-bin @ 0x0 web-flasher class; flash offset pending the Stage-5 hardware gate.
     "trex.json", "mclite.json", "bit_pirate.json",
