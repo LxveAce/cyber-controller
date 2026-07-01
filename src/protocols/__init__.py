@@ -154,6 +154,17 @@ def capabilities_for(name: str) -> "frozenset[str]":
         return frozenset()
 
 
+def driver_type_for(name: str) -> str:
+    """The transport/driver kind CC uses to talk to a firmware: "text-cli" (a line-based command shell —
+    the default), "stream" (a binary/framed link with no text command channel, e.g. Meshtastic protobuf), or
+    "controlmap" (no serial command channel at all, e.g. BlueJammer's web-UI control). Lets a node say
+    honestly whether it even has a sendable command channel. Falls back to "text-cli" for unknown firmwares."""
+    try:
+        return getattr(get_protocol(name), "driver_type", "text-cli") or "text-cli"
+    except Exception:  # noqa: BLE001
+        return "text-cli"
+
+
 def line_ending_for(name: str) -> str:
     """The per-firmware serial command terminator (LF by default, CR for Flipper). Programmatic send paths
     (AutoRouter, Broadcast, execute_action) must stamp this on the connection before writing, because the
@@ -225,4 +236,7 @@ __all__ = [
     "get_protocol_by_display",
     "get_protocol_module",
     "list_protocols",
+    "capabilities_for",
+    "driver_type_for",
+    "line_ending_for",
 ]

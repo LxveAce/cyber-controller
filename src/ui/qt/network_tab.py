@@ -42,6 +42,20 @@ _KIND_COLORS = {
 }
 _NODE_W, _NODE_H = 150.0, 46.0
 
+# Short subtitle badge for nodes with no text command channel (keyed by Device.driver_type). text-cli devices
+# get no badge (the common case — keep the graph uncluttered).
+_DRIVER_MARKERS = {
+    "stream": "stream",
+    "controlmap": "web-UI",
+}
+
+# Honest "nothing to send here" note per driver kind — a stream/control-map device has no serial command
+# channel at all, unlike a text-CLI firmware that just exposes no commands in this menu.
+_NO_COMMAND_NOTES = {
+    "stream": "(no serial commands — protobuf stream, not a text CLI)",
+    "controlmap": "(no serial commands — controlled via its web UI)",
+}
+
 
 class _Node(QGraphicsRectItem):
     """A draggable boxy node. Double-click pops its command/action menu."""
@@ -197,7 +211,13 @@ class NetworkTab(QWidget):
             port = getattr(dev, "port", "?")
             label = getattr(dev, "display_name", None) or getattr(dev, "name", None) or port
             fw = getattr(dev, "firmware", "") or ""
-            node = _Node(str(label), str(port), "device", self._device_actions(dev))
+            # Mark a node that has no text command channel (Meshtastic protobuf stream / BlueJammer web-UI)
+            # right in the subtitle, so the graph doesn't imply you can drive every connected box over serial.
+            sub = str(port)
+            marker = _DRIVER_MARKERS.get(getattr(dev, "driver_type", "text-cli"))
+            if marker:
+                sub = f"{sub} · {marker}"
+            node = _Node(str(label), sub, "device", self._device_actions(dev))
             self._scene.addItem(node)
             self._nodes["dev:" + str(port)] = node
 
@@ -256,7 +276,11 @@ class NetworkTab(QWidget):
                 continue
             out.append((name, lambda c=name, p=port, info=ci: self._run_device_cmd(p, c, info)))
         if not out:
-            out.append(("(no commands for this firmware)", lambda: None))
+            # Be honest about WHY there's nothing to send: a stream/control-map device has no text command
+            # channel at all, versus a text-CLI firmware that simply exposes no commands here.
+            note = _NO_COMMAND_NOTES.get(getattr(dev, "driver_type", "text-cli"),
+                                         "(no commands for this firmware)")
+            out.append((note, lambda: None))
         return out
 
     def _target_actions(self, t) -> "list[tuple[str, Callable[[], None]]]":

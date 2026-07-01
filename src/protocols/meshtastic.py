@@ -48,6 +48,10 @@ class MeshtasticProtocol(BaseProtocol):
 
     capabilities = frozenset({"lora", "mesh"})
 
+    # Protobuf StreamAPI, not a text shell — plain-text writes are discarded, so there is no serial command
+    # channel (see the module docstring). Marks the node honestly as "stream" rather than an empty text-CLI.
+    driver_type = "stream"
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:

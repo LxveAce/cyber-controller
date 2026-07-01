@@ -31,6 +31,23 @@ def test_line_ending_for_helper():
     assert line_ending_for("does-not-exist") == "\n"  # safe LF default
 
 
+def test_protocols_declare_driver_type():
+    from src.protocols import get_protocol
+    # Line-shell firmwares are text-cli; Meshtastic is a protobuf stream; BlueJammer is web-UI control-map.
+    assert get_protocol("marauder").driver_type == "text-cli"
+    assert get_protocol("bruce").driver_type == "text-cli"
+    assert get_protocol("meshtastic").driver_type == "stream"
+    assert get_protocol("bluejammer").driver_type == "controlmap"
+
+
+def test_driver_type_for_helper():
+    from src.protocols import driver_type_for
+    assert driver_type_for("meshtastic") == "stream"
+    assert driver_type_for("bluejammer") == "controlmap"
+    assert driver_type_for("marauder") == "text-cli"
+    assert driver_type_for("does-not-exist") == "text-cli"  # safe default
+
+
 @pytest.fixture(scope="module")
 def qapp():
     pytest.importorskip("PyQt5.QtWidgets")
@@ -45,3 +62,22 @@ def test_devices_tab_surfaces_capabilities(qapp):
     # Default firmware (Auto-detect -> Marauder) -> WiFi/BLE/GPS/Deauth chips.
     txt = tab._caps_label.text().lower()
     assert "capabilities" in txt and "wifi" in txt and "deauth" in txt
+
+
+def test_network_tab_is_honest_about_no_command_channel(qapp):
+    # The Network tab must not present a stream/control-map device as an empty text CLI: the "nothing to
+    # send" note should explain WHY (protobuf stream / web-UI control), driven off Device.driver_type.
+    from src.core.device_manager import DeviceManager
+    from src.models.device import Device
+    from src.ui.qt.network_tab import NetworkTab
+    tab = NetworkTab(DeviceManager())
+
+    mesh_note = tab._device_actions(Device(port="COM_M", firmware="meshtastic"))[0][0].lower()
+    assert "stream" in mesh_note
+
+    jam_note = tab._device_actions(Device(port="COM_J", firmware="bluejammer"))[0][0].lower()
+    assert "web ui" in jam_note
+
+    # A text-cli firmware with genuinely no commands keeps the plain note (no false "stream" claim).
+    plain = tab._device_actions(Device(port="COM_G", firmware="generic"))[0][0].lower()
+    assert "stream" not in plain and "web ui" not in plain
