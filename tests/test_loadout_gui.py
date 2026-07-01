@@ -56,8 +56,11 @@ def test_apply_loadout_hides_unused_tabs(qapp, isolated_settings):
         lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
         win.apply_loadout(lo, persist=False)
         labels = _labels(win)
-        for hidden in ("Targets", "Broadcast", "Cross-Comm", "Wardrive", "Software OS"):
+        # S4 regroup: "Network" is the wifi_scanning-gated surface now (Cross-Comm folded inside it), so it's
+        # the top-level tab that hides under a mesh-only loadout — Cross-Comm is no longer a top-level label.
+        for hidden in ("Targets", "Broadcast", "Network", "Wardrive", "Software OS"):
             assert hidden not in labels
+        assert "Cross-Comm" not in labels  # never a top-level tab post-regroup
         for core in ("Flash", "Devices", "Health", "Macros", "Settings", "How-To"):
             assert core in labels
         # Full Stack restores everything

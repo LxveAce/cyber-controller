@@ -42,8 +42,9 @@ EXPECTED_TABS = [
     ("Targets", "_targets_tab"),
     ("Wardrive", "_wardrive_tab"),
     ("Broadcast", "_broadcast_bar"),
-    ("Cross-Comm", "_cross_comm_tab"),
-    ("Network", "_network_tab"),
+    # S4 regroup (2026-07-01): Network is now a grouped *surface* holding the Graph (NetworkTab) and
+    # Cross-Comm sub-views — Cross-Comm is no longer a top-level tab. See test_network_surface_subtabs.
+    ("Network", "_network_surface"),
     ("Settings", "_settings_tab"),
     ("How-To", "_howto_tab"),
 ]
@@ -72,9 +73,24 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_tab_count_is_12(qapp, isolated_settings):
+def test_tab_count_is_11(qapp, isolated_settings):
+    # 11 top-level tabs after the S4 regroup folded Cross-Comm into the Network surface (was 12 flat tabs).
     win = _make_window()
-    assert win._tabs.count() == len(EXPECTED_TABS) == 12
+    assert win._tabs.count() == len(EXPECTED_TABS) == 11
+
+
+def test_network_surface_subtabs(qapp, isolated_settings):
+    # The Network anchor surface holds two sub-views — Graph (the NetworkTab) then Cross-Comm — and the
+    # re-parented widgets are the SAME objects the window still exposes on _network_tab / _cross_comm_tab.
+    win = _make_window()
+    surface = win._network_surface
+    titles = [surface.tabText(i) for i in range(surface.count())]
+    assert titles == ["Graph", "Cross-Comm"]
+    assert surface.widget(0) is win._network_tab, "Graph sub-tab must be the NetworkTab object"
+    assert surface.widget(1) is win._cross_comm_tab, "Cross-Comm sub-tab must be the CrossCommTab object"
+    # Cross-Comm is no longer a direct top-level tab.
+    toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
+    assert "Cross-Comm" not in toplevel and "Network" in toplevel
 
 
 def test_tab_titles_and_order(qapp, isolated_settings):

@@ -435,16 +435,18 @@ class CyberControllerWindow(QMainWindow):
         self._broadcast_bar = BroadcastBar(self._broadcast, self._dm, self._bus)
         self._tabs.addTab(self._broadcast_bar, "Broadcast")
 
-        # Cross-comm routing (event stream + auto-routing rules)
+        # Network anchor surface (S4 GUI regroup) — the node graph is the centerpiece of the cross-comm
+        # model, so it leads; Cross-Comm routing (event stream + auto-routing rules) rides alongside it as a
+        # sub-view. Both widgets are the SAME objects the rest of main_window + the tests reference: they are
+        # RE-PARENTED into an inner QTabWidget here, never recreated, so every self._cross_comm_tab /
+        # self._network_tab use keeps working. Navigate into a sub-view via _show_subtab().
         self._cross_comm_tab = CrossCommTab(self._bus, self._pool, self._router, self._dm)
-        self._tabs.addTab(self._cross_comm_tab, "Cross-Comm")
-
-        # Network graph (experimental "test" tab) — a draggable spider-web of how every device + the
-        # targets it discovered connect; double-click a node to run its commands. Reads the same
-        # DeviceManager + TargetPool + ActionResolver the rest of the cross-comm uses.
         from src.ui.qt.network_tab import NetworkTab
         self._network_tab = NetworkTab(self._dm, self._pool, self._action_resolver, self._send_to_port)
-        self._tabs.addTab(self._network_tab, "Network")
+        self._network_surface = QTabWidget()
+        self._network_surface.addTab(self._network_tab, "Graph")
+        self._network_surface.addTab(self._cross_comm_tab, "Cross-Comm")
+        self._tabs.addTab(self._network_surface, "Network")
 
         # (Mission Planner tab removed — was a non-functional "coming soon" placeholder; tracked as a
         # real future feature in command-center/projects/cc-reformed-roadmap.md. Don't ship dead tabs.)
@@ -480,6 +482,13 @@ class CyberControllerWindow(QMainWindow):
         return recommended_ui_mode(avail_h, explicit)
 
     # ── Loadout (which firmwares/hardware → which tabs are shown) ─────
+    def _show_subtab(self, surface, widget) -> None:
+        """Focus a sub-view inside a grouped surface: select the surface at top level, then the sub-tab.
+        Used for by-widget navigation into the Network surface (Graph / Cross-Comm) after the S4 regroup."""
+        if self._tabs.indexOf(surface) >= 0:
+            self._tabs.setCurrentWidget(surface)
+        surface.setCurrentWidget(widget)
+
     def _tab_registry(self) -> "list[tuple[str, object]]":
         """Canonical (label, widget) tabs in order — the source of truth for loadout show/hide."""
         return [
@@ -487,7 +496,8 @@ class CyberControllerWindow(QMainWindow):
             ("Software OS", self._software_tab), ("Health", self._health_tab),
             ("Macros", self._macro_tab), ("Targets", self._targets_tab),
             ("Wardrive", self._wardrive_tab), ("Broadcast", self._broadcast_bar),
-            ("Cross-Comm", self._cross_comm_tab), ("Network", self._network_tab),
+            # S4 regroup: the Network surface (Graph + Cross-Comm sub-views) is one loadout-toggleable unit.
+            ("Network", self._network_surface),
             ("Settings", self._settings_tab), ("How-To", self._howto_tab),
         ]
 
@@ -1073,7 +1083,9 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("View Health", lambda: self._tabs.setCurrentWidget(self._health_tab))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)
         self._palette.add_command("View Targets", lambda: self._tabs.setCurrentWidget(self._targets_tab))
-        self._palette.add_command("Cross-Comm Dashboard", lambda: self._tabs.setCurrentWidget(self._cross_comm_tab))
+        # Network surface sub-views: focus the surface, then the sub-tab (re-parented under _network_surface).
+        self._palette.add_command("Network Graph", lambda: self._show_subtab(self._network_surface, self._network_tab))
+        self._palette.add_command("Cross-Comm Dashboard", lambda: self._show_subtab(self._network_surface, self._cross_comm_tab))
         self._palette.add_command("Open Settings", lambda: self._tabs.setCurrentWidget(self._settings_tab))
         self._palette.add_command("Dead Man's Switch Setup", self._on_suicide_setup)
         self._palette.add_command("Scan Ports", self._on_sidebar_scan)

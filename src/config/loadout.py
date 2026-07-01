@@ -41,16 +41,17 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
     "Targets": {"wifi_scanning"},
     "Wardrive": {"gps"},
     "Broadcast": {"wifi_scanning"},
-    "Cross-Comm": {"wifi_scanning"},
+    # S4 regroup: "Network" is now the grouped surface (Graph + Cross-Comm sub-views); it gates as one unit.
+    # Cross-Comm is no longer a top-level tab, so it's no longer listed here.
     "Network": {"wifi_scanning"},
     "Settings": ALWAYS,
     "How-To": ALWAYS,
 }
 
-# Canonical tab order (matches main_window._build_tabs); used to re-insert tabs in order.
+# Canonical tab order (matches main_window._tab_registry); used to re-insert tabs in order.
 TAB_ORDER = (
     "Flash", "Devices", "Software OS", "Health", "Macros", "Targets",
-    "Wardrive", "Broadcast", "Cross-Comm", "Network", "Settings", "How-To",
+    "Wardrive", "Broadcast", "Network", "Settings", "How-To",
 )
 
 
