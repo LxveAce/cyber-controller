@@ -18,7 +18,13 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 
 pytest.importorskip("PyQt5.QtWidgets")
-from PyQt5.QtWidgets import QApplication  # noqa: E402
+from PyQt5.QtWidgets import (  # noqa: E402
+    QApplication,
+    QLabel,
+    QListWidget,
+    QPushButton,
+    QTableWidget,
+)
 
 
 # (tab title, the CyberControllerWindow attribute that holds that tab's widget) — in add order.
@@ -89,3 +95,37 @@ def test_network_tab_precedes_settings(qapp, isolated_settings):
     win = _make_window()
     titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
     assert titles.index("Network") < titles.index("Settings")
+
+
+# ── Per-tab widget inventory (S4 characterization) ───────────────────
+# Records the key controls each tab exposes today so the overhaul cannot silently drop one.
+# Attribute names are the source of truth from src/ui/qt/*_tab.py; a diff here is the intended signal.
+
+def test_broadcast_tab_widget_inventory(qapp, isolated_settings):
+    # BroadcastBar (main_window._broadcast_bar): a compact bar whose critical control is STOP ALL.
+    win = _make_window()
+    bar = win._broadcast_bar
+    assert isinstance(bar._stop_btn, QPushButton)
+    assert "STOP" in bar._stop_btn.text().upper()
+    assert isinstance(bar._status, QLabel)
+
+
+def test_cross_comm_tab_widget_inventory(qapp, isolated_settings):
+    # CrossCommTab: target pool table + live event stream + auto-routing rules + action history.
+    t = _make_window()._cross_comm_tab
+    assert isinstance(t._pool_table, QTableWidget) and t._pool_table.columnCount() == 6
+    assert isinstance(t._action_table, QTableWidget)
+    assert isinstance(t._rule_list, QListWidget)
+    for attr in ("_stream_card", "_rules_card", "_action_card"):
+        assert hasattr(t, attr), f"CrossCommTab missing {attr!r}"
+    for btn in ("_refresh_pool_btn", "_clear_pool_btn", "_add_rule_btn", "_remove_rule_btn"):
+        assert isinstance(getattr(t, btn), QPushButton), f"CrossCommTab.{btn} not a QPushButton"
+
+
+def test_health_tab_widget_inventory(qapp, isolated_settings):
+    # HealthTab: four ArcGauges (CPU/RAM/Disk/Battery) + a device-health table.
+    t = _make_window()._health_tab
+    for g in ("_cpu_gauge", "_ram_gauge", "_disk_gauge", "_batt_gauge"):
+        assert getattr(t, g) is not None, f"HealthTab missing gauge {g!r}"
+    assert isinstance(t._device_table, QTableWidget)
+    assert hasattr(t, "_dev_card")
