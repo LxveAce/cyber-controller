@@ -30,6 +30,16 @@ class TargetIngestor:
         discovered AP/client to the pool. *protocol* is any object with ``parse_line(line) -> ParsedEvent
         | None`` (e.g. ``src.protocols.marauder.MarauderProtocol``). Returns the callback (for detach)."""
         port = getattr(conn, "port", "?")
+        # Idempotent re-attach: a co-owned connection (the persistent terminal still holds it) survives
+        # a devices-tab disconnect, so open_connection returns the SAME object and a second attach would
+        # stack a duplicate on_line -> every serial line parsed and pooled twice. Drop any prior first.
+        prev = self._attached.get(port)
+        remover = getattr(conn, "remove_line_callback", None)
+        if prev is not None and callable(remover):
+            try:
+                remover(prev)
+            except Exception:
+                pass
 
         def on_line(line: str) -> None:
             try:
