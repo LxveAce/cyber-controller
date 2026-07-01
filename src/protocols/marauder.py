@@ -67,6 +67,33 @@ class MarauderProtocol(BaseProtocol):
         # fields of the AP currently being read across separate serial lines, or
         # None when no record is in progress.
         self._ap_record: dict[str, Any] | None = None
+        # Running AP ordinal so an ap_found carries the index that Marauder's own
+        # `list -a` / `select -a <idx>` uses. The scanall stream does NOT print an
+        # index (unlike BW16), so we assign one by discovery order, deduped by BSSID
+        # (a re-seen AP keeps its first index — matching a stable list position).
+        # reset_scan_index() lets the command layer clear this on `clearlist -a`.
+        self._ap_index = 0
+        self._ap_indices: dict[str, int] = {}
+
+    def reset_scan_index(self) -> None:
+        """Reset the AP ordinal (call when the device's AP list is cleared, e.g. `clearlist -a`).
+
+        Whether `scanall` clears or appends to the firmware's list is bench-gated, so the boundary is signalled
+        by the command layer rather than guessed from output — guessing wrong would bind `select -a {index}` to
+        the wrong AP."""
+        self._ap_index = 0
+        self._ap_indices.clear()
+
+    def _assign_index(self, bssid: str) -> int:
+        """Index for *bssid*: its existing ordinal if seen this session, else the next one. Deduping by BSSID
+        keeps a re-observed AP on its original index (its stable position in `list -a`)."""
+        existing = self._ap_indices.get(bssid)
+        if existing is not None:
+            return existing
+        idx = self._ap_index
+        self._ap_indices[bssid] = idx
+        self._ap_index += 1
+        return idx
 
     @property
     def protocol_name(self) -> str:
@@ -93,13 +120,15 @@ class MarauderProtocol(BaseProtocol):
         # AP discovered — legacy single-line form (kept for back-compat / other tools)
         m = _RE_AP.search(line)
         if m:
+            bssid = m.group(2)
             return ParsedEvent(
                 event_type="ap_found",
                 data={
                     "ssid": m.group(1).strip(),
-                    "bssid": m.group(2),
+                    "bssid": bssid,
                     "channel": int(m.group(3)),
                     "rssi": int(m.group(4)),
+                    "index": self._assign_index(bssid),
                 },
                 raw=line,
             )
@@ -237,6 +266,7 @@ class MarauderProtocol(BaseProtocol):
                 "ssid": rec["ssid"],
                 "bssid": rec["bssid"],
                 "rssi": rec["rssi"],
+                "index": self._assign_index(rec["bssid"]),
             }
             if "channel" in rec:
                 data["channel"] = rec["channel"]
