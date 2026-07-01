@@ -295,10 +295,21 @@ class AutoRouter:
             if not self._matches(rule, target_type, ssid, rssi):
                 continue
             cooldown_key = f"{rule.name}:{target_key}"
-            last = self._cooldowns.get(cooldown_key, 0.0)
-            if now - last < rule.cooldown:
-                continue
-            self._cooldowns[cooldown_key] = now
+            # Atomic check-and-stamp: _on_target runs in EACH device's serial reader thread
+            # (target.added is published synchronously from TargetPool.add), so with several radios
+            # connected two threads can see the same target at once. Doing the get/compare/set outside
+            # the lock let both observe an expired cooldown and BOTH fire the routed command.
+            with self._lock:
+                last = self._cooldowns.get(cooldown_key, 0.0)
+                if now - last < rule.cooldown:
+                    continue  # exits the with-block -> lock released
+                self._cooldowns[cooldown_key] = now
+                # Bound growth (otherwise one entry per rule x target lives forever — a slow leak over a
+                # long wardrive): drop entries older than the largest current cooldown. Such an entry is
+                # already expired for its own rule, so evicting it can never enable a blocked fire.
+                if len(self._cooldowns) > 4096:
+                    cutoff = now - max((r.cooldown for r in rules), default=60.0)
+                    self._cooldowns = {k: t for k, t in self._cooldowns.items() if t >= cutoff}
 
             # Validate the MAC shape before it is interpolated; reject anything odd outright.
             if mac and not _MAC_RE.match(str(mac)):
