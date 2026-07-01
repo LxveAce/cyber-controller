@@ -108,3 +108,23 @@ def test_remove_and_clear(pk, tmp_path):
 def test_set_policy_validates(pk):
     with pytest.raises(ValueError):
         pk.set_policy("nope")
+
+
+def test_set_policy_rejects_unsatisfiable(pk, tmp_path):
+    """An exclusive policy whose factor is missing must be rejected — otherwise the gate can never be
+    satisfied and, since every mutation runs enforce() first, the owner self-locks out (destructive
+    recovery only)."""
+    with pytest.raises(ValueError):
+        pk.set_policy("key")        # no key configured
+    with pytest.raises(ValueError):
+        pk.set_policy("password")   # no admin password configured
+    # allowed once the required factor exists
+    pk.set_admin_password("pw")
+    pk.set_policy("password")
+    usb = tmp_path / "USB"; usb.mkdir()
+    pk.create_physical_key(usb)
+    pk.set_policy("key")
+    # 'both'/'either' stay allowed even with a single factor (evaluate only requires what exists)
+    pk.clear_admin_password()
+    pk.set_policy("either")
+    pk.set_policy("both")

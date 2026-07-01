@@ -247,6 +247,14 @@ def set_policy(policy: str) -> None:
     if policy not in POLICIES:
         raise ValueError(f"policy must be one of {POLICIES}")
     cfg = load_config()
+    # Refuse an exclusive policy whose required factor is not configured — otherwise _evaluate_policy
+    # can never grant, and because every gate mutation runs enforce() first, the owner is locked out
+    # of the app AND of correcting the policy in-app (recovery = deleting the gate config + vault =
+    # data loss). 'both'/'either' stay allowed: _evaluate_policy only requires factors that exist.
+    if policy == "key" and not cfg.get("key"):
+        raise ValueError("cannot set policy 'key': no physical key is configured — create one first")
+    if policy == "password" and not cfg.get("password"):
+        raise ValueError("cannot set policy 'password': no admin password is set — set one first")
     cfg["policy"] = policy
     save_config(cfg)
 
