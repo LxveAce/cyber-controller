@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import codecs
 import logging
+import re
 import threading
 from enum import Enum
 from typing import Callable
@@ -286,11 +287,16 @@ class SerialConnection:
                 if not raw:
                     continue
                 buf += decoder.decode(raw)
-                while "\n" in buf:
-                    line, buf = buf.split("\n", 1)
-                    line = line.rstrip("\r")
-                    if line:
-                        self._emit_line(line)
+                # Frame on ANY line terminator — LF, CRLF, or CR-only. A CR-only firmware (e.g. Flipper,
+                # whose line_ending is "\r") never sends "\n", so splitting on "\n" alone would never frame
+                # a line and `buf` would grow unbounded. Splitting on runs of \r/\n handles all three; the
+                # last element is the still-incomplete tail, which stays buffered until its terminator lands.
+                if "\n" in buf or "\r" in buf:
+                    parts = re.split(r"[\r\n]+", buf)
+                    buf = parts.pop()
+                    for line in parts:
+                        if line:
+                            self._emit_line(line)
             except serial.SerialException as exc:
                 if not self._stop_event.is_set():
                     log.error("Serial read error on %s: %s", self.port, exc)

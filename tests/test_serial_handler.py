@@ -189,6 +189,48 @@ def test_reader_loop_reconstructs_split_utf8() -> None:
     assert got == ["✓ ok"]
 
 
+def test_reader_loop_frames_cr_only_lines() -> None:
+    # A CR-only firmware (Flipper: line_ending="\r") terminates lines with "\r", never "\n". Splitting on
+    # "\n" alone would frame NOTHING and buf would grow unbounded; the reader must frame on \r too.
+    conn = SerialConnection("X", line_ending="\r")
+    got: list[str] = []
+    done = threading.Event()
+
+    def cb(ln):
+        got.append(ln)
+        if len(got) >= 2:
+            done.set()
+
+    conn.on_line(cb)
+    conn._serial = _ScriptedSerial([b"one\rtwo\rthr"])  # two complete CR-lines + an incomplete tail
+    th = _run_reader(conn)
+    assert done.wait(2.0), f"CR-only lines not framed: {got}"
+    conn._stop_event.set()
+    th.join(timeout=2.0)
+    assert got[:2] == ["one", "two"]
+    assert "thr" not in got  # the unterminated tail stays buffered, not emitted
+
+
+def test_reader_loop_frames_crlf_without_empty_lines() -> None:
+    # CRLF must collapse to one terminator: no spurious empty lines between "a" and "b".
+    conn = SerialConnection("X")
+    got: list[str] = []
+    done = threading.Event()
+
+    def cb(ln):
+        got.append(ln)
+        if len(got) >= 2:
+            done.set()
+
+    conn.on_line(cb)
+    conn._serial = _ScriptedSerial([b"a\r\nb\r\n"])
+    th = _run_reader(conn)
+    assert done.wait(2.0), got
+    conn._stop_event.set()
+    th.join(timeout=2.0)
+    assert got == ["a", "b"]
+
+
 def test_reader_loop_generic_exception_sets_error_and_releases() -> None:
     # A non-SerialException (here ValueError) must STILL move the connection to ERROR (so is_connected
     # stops lying) and release the handle (so a later connect() can reopen).
