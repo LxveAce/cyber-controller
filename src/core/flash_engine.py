@@ -720,8 +720,11 @@ class FlashEngine:
         on_line = _percent_adapter(progress_callback)
         if not chip or chip == "auto":
             chip = flash_core.detect_chip(port, on_line) or "esp32"
+        # An explicit size is trusted; a detection MISS is a guessed 4 MB that must be flagged so the
+        # completion status can't read as a clean full backup when it may be truncated.
+        size_detected = True
         if not size or size in ("detect", "auto"):
-            size = self._detect_flash_size(port, chip, on_line)
+            size, size_detected = self._detect_flash_size(port, chip, on_line)
         argv = flash_core.esptool_argv(
             "--chip", chip, "--port", port, "--baud", "921600",
             "read_flash", "0x0", size, str(output_path),
@@ -729,16 +732,24 @@ class FlashEngine:
         rc = flash_core._run_stream(argv, on_line)
         ok = rc == 0
         if progress_callback:
-            progress_callback(100 if ok else 0, "Backup complete" if ok else "Backup failed")
+            if ok and not size_detected:
+                progress_callback(100, "Backup complete — ⚠ flash size not detected (assumed 4 MB, "
+                                       "may be truncated on a larger board)")
+            else:
+                progress_callback(100 if ok else 0, "Backup complete" if ok else "Backup failed")
         with self._lock:
             self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
         return ok
 
     @staticmethod
-    def _detect_flash_size(port: str, chip: str, on_line: Callable[[str], None]) -> str:
-        """Detect the chip's real flash size via ``esptool flash_id`` and return it as a hex byte
-        count. Falls back to 0x400000 (4 MB) if detection yields nothing — so an undetectable board
-        still backs up its first 4 MB rather than failing, while >4 MB boards get a FULL image."""
+    def _detect_flash_size(port: str, chip: str, on_line: Callable[[str], None]) -> tuple[str, bool]:
+        """Detect the chip's real flash size via ``esptool flash_id`` and return ``(hex_byte_count,
+        detected)``. Falls back to 0x400000 (4 MB) if detection yields nothing — so an undetectable
+        board still backs up its first 4 MB rather than failing, while >4 MB boards get a FULL image.
+
+        ``detected=False`` means the 4 MB is a GUESS, not a read value: the caller MUST surface that
+        loudly, because a silent 4 MB read of a larger board produces a truncated backup that can never
+        fully restore it — the exact data-loss hazard this backup path exists to prevent."""
         lines: list[str] = []
 
         def cap(s: str) -> None:
@@ -754,9 +765,16 @@ class FlashEngine:
                     "8MB": "0x800000", "16MB": "0x1000000", "32MB": "0x2000000"}
         for line in lines:
             if "Detected flash size:" in line:
-                return size_map.get(line.split(":")[-1].strip(), "0x400000")
-        on_line("[backup] could not detect flash size; defaulting to a 4 MB read")
-        return "0x400000"
+                key = line.split(":")[-1].strip()
+                if key in size_map:
+                    return size_map[key], True
+                on_line(f"[backup] WARNING: unrecognized flash size {key!r} from esptool — assuming 4 MB. "
+                        "A board larger than 4 MB will have a TRUNCATED backup that cannot fully restore it.")
+                return "0x400000", False
+        on_line("[backup] WARNING: could NOT detect flash size — assuming a 4 MB read. If this board is "
+                "LARGER than 4 MB, this backup will be TRUNCATED and cannot fully restore it. Re-run once "
+                "the board answers flash_id, or pass an explicit size.")
+        return "0x400000", False
 
     def erase(
         self,

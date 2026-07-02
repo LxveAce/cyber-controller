@@ -48,6 +48,20 @@ def test_engine_backup_falls_back_to_4mb_when_undetected(monkeypatch, tmp_path):
     assert a[i + 2] == "0x400000"  # no regression for undetectable / 4 MB boards
 
 
+def test_engine_backup_warns_loudly_when_size_undetected(monkeypatch, tmp_path):
+    """A detection MISS must be loud: the completion status carries a truncation caveat instead of a
+    clean "Backup complete" — a silent 4 MB read of a larger board is the data-loss this path guards."""
+    monkeypatch.setattr(flash_core, "detect_chip", lambda port, on_line: "esp32")
+    monkeypatch.setattr(flash_core, "_run_stream", lambda argv, on_line: 0)  # flash_id emits nothing
+
+    statuses: list[str] = []
+    ok = FlashEngine().backup("COM5", tmp_path / "bk.bin",
+                              progress_callback=lambda pct, msg: statuses.append(msg))
+    assert ok
+    assert any("truncated" in s.lower() for s in statuses), statuses
+    assert not any(s == "Backup complete" for s in statuses)  # must NOT read as a clean full backup
+
+
 def test_engine_backup_honors_explicit_size(monkeypatch, tmp_path):
     """An explicit size still wins (no detection call needed)."""
     monkeypatch.setattr(flash_core, "detect_chip", lambda port, on_line: "esp32")

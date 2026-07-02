@@ -54,6 +54,7 @@ def backup_flash(port: str, on_line: Line, chip: Optional[str] = None,
     filename = "_".join(name_parts) + ".bin"
     dest = os.path.join(dest_dir, filename)
 
+    size_detected = True
     if flash_size == "detect":
         on_line("[backup] Detecting flash size...")
         size_argv = esptool_argv("--chip", chip, "--port", port, "flash_id")
@@ -65,15 +66,23 @@ def backup_flash(port: str, on_line: Line, chip: Optional[str] = None,
 
         _run_stream(size_argv, cap)
         detected_size = "0x400000"
+        size_detected = False
+        size_map = {
+            "1MB": "0x100000", "2MB": "0x200000", "4MB": "0x400000",
+            "8MB": "0x800000", "16MB": "0x1000000", "32MB": "0x2000000",
+        }
         for line in size_lines:
             if "Detected flash size:" in line:
                 size_str = line.split(":")[-1].strip()
-                size_map = {
-                    "1MB": "0x100000", "2MB": "0x200000", "4MB": "0x400000",
-                    "8MB": "0x800000", "16MB": "0x1000000", "32MB": "0x2000000",
-                }
-                detected_size = size_map.get(size_str, "0x400000")
+                if size_str in size_map:
+                    detected_size = size_map[size_str]
+                    size_detected = True
+                else:
+                    on_line(f"[backup] WARNING: unrecognized flash size {size_str!r} — assuming 4 MB.")
                 break
+        if not size_detected:
+            on_line("[backup] WARNING: could NOT detect flash size — assuming a 4 MB read. If this board "
+                    "is LARGER than 4 MB, this backup will be TRUNCATED and cannot fully restore it.")
         flash_size = detected_size
 
     on_line(f"[backup] Reading {flash_size} bytes from {port} ({chip})...")
@@ -93,6 +102,9 @@ def backup_flash(port: str, on_line: Line, chip: Optional[str] = None,
         size = os.path.getsize(dest)
         sha = _sha256_file(dest)
         on_line(f"[backup] Success: {size} bytes, SHA256: {sha[:16]}...")
+        if not size_detected:
+            on_line("[backup] ⚠ NOTE: flash size was NOT detected — this backup assumed 4 MB and may be "
+                    "TRUNCATED. Do not rely on it to fully restore a board larger than 4 MB.")
         on_line(f"[backup] Saved: {dest}")
 
         meta_path = dest + ".meta"
