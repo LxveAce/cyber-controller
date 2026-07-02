@@ -61,9 +61,9 @@ def test_apply_loadout_hides_unused_tabs(qapp, isolated_settings):
         # surface and Cross-Comm into Network, so none of them are top-level labels anymore.
         for hidden in ("Network", "Software OS"):
             assert hidden not in labels
-        for subview in ("Targets", "Broadcast", "Macros", "Wardrive", "Cross-Comm"):
+        for subview in ("Devices", "Health", "Targets", "Broadcast", "Macros", "Wardrive", "Cross-Comm"):
             assert subview not in labels  # grouped into a surface, never a top-level label post-regroup
-        for core in ("Flash", "Devices", "Health", "Operate", "Settings", "How-To"):
+        for core in ("Flash", "Connect", "Operate", "Settings", "How-To"):
             assert core in labels
         # Full Stack restores everything
         win.apply_loadout(L.full_stack_loadout(), persist=False)

@@ -25,12 +25,14 @@ def test_empty_configured_fails_open():
 
 
 def test_core_tabs_always_visible():
-    # S4 regroup: Macros folded into the always-shown "Operate" surface, so the core always-visible top-level
-    # tab is now "Operate" (it anchors Macros + the action sub-views) rather than "Macros".
+    # S4 regroup: Devices+Health folded into the always-shown "Connect" surface and Macros into "Operate", so
+    # the core always-visible top-level tabs are the surfaces (Connect/Operate), not their members.
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    for core in ("Flash", "Devices", "Health", "Operate", "Settings", "How-To"):
+    for core in ("Flash", "Connect", "Operate", "Settings", "How-To"):
         assert core in vis
+    for sub in ("Devices", "Health"):
+        assert sub not in vis  # Connect sub-views now, never top-level
 
 
 def test_wifi_scanning_gates_network_surface():

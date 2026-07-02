@@ -379,8 +379,8 @@ class CyberControllerWindow(QMainWindow):
         self._build_tabs()
         # Apply the saved loadout (hide unused tabs) before choosing the default tab.
         self.apply_loadout(self._load_loadout(), persist=False)
-        # Default to the Devices tab (a core tab, always present) — most time is on device control.
-        self._tabs.setCurrentWidget(self._device_tab)
+        # Default to the Connect surface / Devices sub-tab (the landing view) — most time is on device control.
+        self._show_subtab(self._connect_surface, self._device_tab)
         self._refresh_sidebar_devices()
         self._build_command_palette()
 
@@ -400,18 +400,21 @@ class CyberControllerWindow(QMainWindow):
         self._flash_tab = FlashTab(self._dm, self._fe, self._vault)
         self._tabs.addTab(self._flash_tab, "Flash")
 
-        # Device tab (functional)
+        # Connect surface (S4 GUI regroup) — the landing surface: Devices (device control + serial terminal)
+        # leads, with Health (host + device-health gauges) alongside it. Both are RE-PARENTED into one inner
+        # QTabWidget here, never recreated, so every self._device_tab / self._health_tab reference (dual-depth
+        # fan-out, the serial-mirror path, palette, tests) keeps working. Navigate via _show_subtab().
         self._device_tab = DeviceTab(self._dm, self._pool, self._ingestor)
         self._device_tab._dms_auth = self._dms_auth
-        self._tabs.addTab(self._device_tab, "Devices")
+        self._health_tab = HealthTab(self._health)
+        self._connect_surface = QTabWidget()
+        self._connect_surface.addTab(self._device_tab, "Devices")
+        self._connect_surface.addTab(self._health_tab, "Health")
+        self._tabs.addTab(self._connect_surface, "Connect")
 
         # Software-OS tab — flash bootable PC/USB operating systems (Kali / Tails / Arch / ...)
         self._software_tab = SoftwareTab()
         self._tabs.addTab(self._software_tab, "Software OS")
-
-        # Health tab (new)
-        self._health_tab = HealthTab(self._health)
-        self._tabs.addTab(self._health_tab, "Health")
 
         # Operate surface (S4 GUI regroup) — the action surface: discover Targets, fan a verb to every radio
         # (Broadcast), record/replay Macros, and GPS-log (Wardrive). All four are RE-PARENTED into one inner
@@ -492,10 +495,10 @@ class CyberControllerWindow(QMainWindow):
     def _tab_registry(self) -> "list[tuple[str, object]]":
         """Canonical (label, widget) tabs in order — the source of truth for loadout show/hide."""
         return [
-            ("Flash", self._flash_tab), ("Devices", self._device_tab),
-            ("Software OS", self._software_tab), ("Health", self._health_tab),
-            # S4 regroup: Operate (Targets + Broadcast + Macros + Wardrive) and Network (Graph + Cross-Comm)
-            # are each ONE loadout-toggleable surface unit.
+            ("Flash", self._flash_tab), ("Connect", self._connect_surface),
+            ("Software OS", self._software_tab),
+            # S4 regroup: Connect (Devices + Health), Operate (Targets + Broadcast + Macros + Wardrive) and
+            # Network (Graph + Cross-Comm) are each ONE loadout-toggleable surface unit.
             ("Operate", self._operate_surface),
             ("Network", self._network_surface),
             ("Settings", self._settings_tab), ("How-To", self._howto_tab),
@@ -526,11 +529,11 @@ class CyberControllerWindow(QMainWindow):
             w = reg.get(label)
             if w is not None and w not in popouts and self._tabs.indexOf(w) < 0:
                 self._tabs.addTab(w, label)
-        # Restore the selection, or fall back to Devices (a core tab).
+        # Restore the selection, or fall back to the Connect surface (a core surface, always present).
         if cur is not None and self._tabs.indexOf(cur) >= 0:
             self._tabs.setCurrentWidget(cur)
-        elif self._tabs.indexOf(self._device_tab) >= 0:
-            self._tabs.setCurrentWidget(self._device_tab)
+        elif self._tabs.indexOf(self._connect_surface) >= 0:
+            self._tabs.setCurrentWidget(self._connect_surface)
         self._loadout = L.normalize(lo)
         if persist:
             try:
@@ -1079,8 +1082,8 @@ class CyberControllerWindow(QMainWindow):
         # Navigate by WIDGET, not a hardcoded index — immune to tab reordering (the old fixed indices
         # had drifted and pointed at the wrong tabs).
         self._palette.add_command("Flash Firmware", lambda: self._tabs.setCurrentWidget(self._flash_tab))
-        self._palette.add_command("Connect to Device", lambda: self._tabs.setCurrentWidget(self._device_tab))
-        self._palette.add_command("View Health", lambda: self._tabs.setCurrentWidget(self._health_tab))
+        self._palette.add_command("Connect to Device", lambda: self._show_subtab(self._connect_surface, self._device_tab))
+        self._palette.add_command("View Health", lambda: self._show_subtab(self._connect_surface, self._health_tab))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)
         # Operate surface sub-views: focus the surface, then the sub-tab (re-parented under _operate_surface).
         self._palette.add_command("View Targets", lambda: self._show_subtab(self._operate_surface, self._targets_tab))
