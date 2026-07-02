@@ -20,13 +20,16 @@ import pytest
 pytest.importorskip("PyQt5.QtWidgets")
 from PyQt5.QtWidgets import (  # noqa: E402
     QApplication,
+    QCheckBox,
     QComboBox,
     QLabel,
     QLineEdit,
     QListWidget,
+    QProgressBar,
     QPushButton,
     QTableWidget,
     QTextBrowser,
+    QTextEdit,
 )
 
 
@@ -187,3 +190,36 @@ def test_howto_tab_widget_inventory(qapp, isolated_settings):
     # HowToTab: a single rich-text documentation browser.
     t = _make_window()._howto_tab
     assert isinstance(t._view, QTextBrowser)
+
+
+def test_devices_tab_widget_inventory(qapp, isolated_settings):
+    # DeviceTab: device list + per-device firmware/protocol picker + connect/disconnect + serial terminal with a
+    # command palette/input/send + the BlueJammer control panel whose critical control is its STOP button.
+    # Characterized ahead of the S4 "Connect" surface fold so the regroup can't silently drop a control.
+    t = _make_window()._device_tab
+    assert isinstance(t._device_list, QListWidget)
+    assert isinstance(t._firmware_combo, QComboBox)
+    assert isinstance(t._terminal, QTextEdit)
+    assert isinstance(t._cmd_palette, QComboBox)
+    assert isinstance(t._cmd_input, QLineEdit)
+    for btn in ("_btn_connect", "_btn_disconnect", "_btn_send"):
+        assert isinstance(getattr(t, btn), QPushButton), f"DeviceTab.{btn} not a QPushButton"
+    # BlueJammer safety control must survive the regroup.
+    assert isinstance(t._bj_stop_btn, QPushButton)
+    assert "STOP" in t._bj_stop_btn.text().upper()
+
+
+def test_flash_tab_widget_inventory(qapp, isolated_settings):
+    # FlashTab: port + firmware-profile + board/variant pickers, Browse/Flash/Backup/Erase controls, a progress
+    # bar + log, the flash queue, the Dead Man's Switch enable, and the cached-firmware vault status.
+    # Characterized ahead of the S4 "Flash" surface fold (Flash + Software OS).
+    t = _make_window()._flash_tab
+    for combo in ("_port_combo", "_profile_combo", "_variant_combo"):
+        assert isinstance(getattr(t, combo), QComboBox), f"FlashTab.{combo} not a QComboBox"
+    for btn in ("_btn_browse", "_btn_flash", "_btn_backup", "_btn_erase"):
+        assert isinstance(getattr(t, btn), QPushButton), f"FlashTab.{btn} not a QPushButton"
+    assert isinstance(t._progress, QProgressBar)
+    assert isinstance(t._log_output, QTextEdit)
+    assert isinstance(t._queue_list, QListWidget)
+    assert isinstance(t._suicide_checkbox, QCheckBox)
+    assert isinstance(t._vault_status, QLabel)
