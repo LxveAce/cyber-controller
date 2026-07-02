@@ -597,3 +597,44 @@ def test_flash_ambd_auto_false_argv(tmp_path, monkeypatch):
     fp = _install_fake_popen(monkeypatch, out_lines=["done."], returncode=0)
     rtl.flash_ambd("COM8", _make_bundle(tmp_path), auto=False, on_line=_Collector())
     assert "--auto=0" in fp.last_argv
+
+
+def test_flash_ambd_success_with_sync_chatter_is_not_a_failure(tmp_path, monkeypatch):
+    # Ledger C-1 regression: the ImageTool prints normal "sync" chatter during a SUCCESSFUL flash. A bare
+    # "sync" substring used to flip success -> no-sync failure; now success ("done." + no "failed") wins.
+    monkeypatch.setattr(rtl, "find_ambd_tool",
+                        lambda explicit=None: "/fake/upload_image_tool_linux")
+    _install_fake_popen(monkeypatch, out_lines=[
+        "enter download flash mode.", "syncing with rom loader...", "sync ok.",
+        "app has been sent successfully.", "verifying km0 km4 and app blocks....ok.", "done.",
+    ], returncode=0)
+    out = _Collector()
+    rc = rtl.flash_ambd("COM8", _make_bundle(tmp_path), on_line=out)
+    assert rc == 0
+    assert not any("no ROM-loader sync" in l for l in out.lines)  # not annotated as a no-sync failure
+
+
+def test_looks_like_no_sync_ignores_benign_syncing():
+    # Benign "syncing"/"sync ok" chatter must NOT read as a no-sync failure (C-1)...
+    assert rtl._looks_like_no_sync("syncing with rom loader... sync ok. done.") is False
+    # ...but genuine failure phrasings still do.
+    assert rtl._looks_like_no_sync("** sync timed out") is True
+    assert rtl._looks_like_no_sync("failed to sync with target") is True
+
+
+def test_flash_ambd_missing_tool_raises_precise_ambd_type(tmp_path, monkeypatch):
+    # The ImageTool-missing error is now AmbdToolNotFound — still a RtlToolNotFound for back-compat.
+    monkeypatch.setattr(rtl, "find_ambd_tool", lambda explicit=None: None)
+    with pytest.raises(rtl.AmbdToolNotFound):
+        rtl.flash_ambd("COM8", _make_bundle(tmp_path))
+    assert issubclass(rtl.AmbdToolNotFound, rtl.RtlToolNotFound)
+
+
+def test_flash_ambd_done_plus_real_failure_is_still_failure(tmp_path, monkeypatch):
+    # The load-bearing invariant of the C-1 fix: a genuine no-sync failure must WIN even when "done." also
+    # appears (a partial step can print "done." before the flash times out) — success is never inferred.
+    monkeypatch.setattr(rtl, "find_ambd_tool",
+                        lambda explicit=None: "/fake/upload_image_tool_linux")
+    _install_fake_popen(monkeypatch, out_lines=["km0 done.", "sync timed out"], returncode=0)
+    rc = rtl.flash_ambd("COM8", _make_bundle(tmp_path), on_line=_Collector())
+    assert rc != 0

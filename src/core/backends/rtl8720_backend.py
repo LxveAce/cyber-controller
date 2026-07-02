@@ -104,10 +104,20 @@ _TOOL_NAMES = ("rtltool.py", "rtltool")
 _NO_SYNC_MARKERS = (
     "failed to connect",
     "no response",
-    "sync",
-    "timeout",
+    # These are matched as substrings, so they must be FAILURE-specific: benign ROM-loader chatter on a
+    # SUCCESSFUL flash ("syncing...", "sync ok", "handshake ok", "timeout=1000") must NOT trip them. Bare
+    # "sync"/"handshake"/"timeout" were too broad and mislabeled a success as a no-sync failure (ledger C-1).
+    "failed to sync",
+    "sync failed",
+    "no sync",
+    "sync error",
+    "sync timeout",
+    "sync timed out",
+    "unable to sync",
     "timed out",
-    "handshake",
+    "handshake failed",
+    "handshake timeout",
+    "handshake error",
     "could not open",
     "device not found",
 )
@@ -129,6 +139,19 @@ class RtlToolNotFound(FileNotFoundError):
 
     def __init__(self, message: Optional[str] = None) -> None:
         super().__init__(message or install_guidance())
+
+
+class AmbdToolNotFound(RtlToolNotFound):
+    """Raised when the AmebaD ImageTool (``upload_image_tool_*``) — NOT ``rtltool.py`` — is missing.
+
+    Subclasses :class:`RtlToolNotFound` so existing ``except RtlToolNotFound`` handlers still catch it,
+    but the type is accurate for the ImageTool path (:func:`flash_ambd`) and it defaults to the
+    ambd-specific install guidance rather than rtltool.py's.
+    """
+
+    def __init__(self, message: Optional[str] = None) -> None:
+        # Bypass RtlToolNotFound's rtltool.py default; use the ImageTool guidance instead.
+        FileNotFoundError.__init__(self, message or ambd_install_guidance())
 
 
 class DownloadModeError(RuntimeError):
@@ -616,14 +639,14 @@ def flash_ambd(port: str, bundle_dir: str, tool: Optional[str] = None,
     *auto* True the tool toggles DTR/RTS to enter download mode automatically (proven to work
     on the BW16); with *auto* False it gives a 5s countdown for a manual BOOT+RESET. Success is
     detected from the tool's output ("done." with no "failed"), since the ImageTool exits 0
-    regardless. Raises :class:`RtlToolNotFound` if the tool is missing and
-    :class:`FileNotFoundError` if the bundle/loader is incomplete (so we never start a
+    regardless. Raises :class:`AmbdToolNotFound` (a :class:`RtlToolNotFound` subclass) if the ImageTool
+    is missing and :class:`FileNotFoundError` if the bundle/loader is incomplete (so we never start a
     destructive op on a bad bundle).
     """
     on_line = on_line or (lambda _s: None)
     resolved = find_ambd_tool(tool)
     if not resolved:
-        raise RtlToolNotFound(ambd_install_guidance())
+        raise AmbdToolNotFound()
 
     missing = [f for f in AMBD_BUNDLE_FILES
                if not os.path.isfile(os.path.join(bundle_dir, f))]
@@ -661,8 +684,11 @@ def flash_ambd(port: str, bundle_dir: str, tool: Optional[str] = None,
     rc = _run_stream(argv, tee, timeout)
 
     low = tee.text.lower()
-    # The ImageTool exits 0 regardless; judge by output. "done." == success (it prints it
-    # only after a successful checksum verify); "failed" / a sync error == failure.
+    # The ImageTool exits 0 regardless; judge by output. A real "failed"/no-sync marker == failure
+    # (kept authoritative — a genuine "sync timed out" must win even if "done." also appears); otherwise
+    # "done." (printed only after a successful checksum verify) == success. Benign "sync"/"syncing"
+    # ROM-loader chatter no longer trips the failure branch now that _NO_SYNC_MARKERS is specific
+    # (ledger C-1), so a successful flash isn't misread just because its log mentions syncing.
     if "failed" in low or _looks_like_no_sync(low):
         if _looks_like_no_sync(low):
             on_line("[rtl8720/ambd] no ROM-loader sync — the board did not enter download "
