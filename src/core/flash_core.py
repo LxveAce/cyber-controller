@@ -298,13 +298,18 @@ def _run_stream(argv: List[str], on_line: Line) -> int:
         proc.wait()
     except Exception as e:
         on_line(f"[error] {e}")
-        try:
-            proc.kill()
-            proc.wait(timeout=5)
-        except Exception:
-            pass
         return -1
     finally:
+        # Guarantee the child is killed+reaped (and stdout closed) on ANY exit path — including
+        # KeyboardInterrupt / SystemExit (BaseException), which the `except Exception` above deliberately
+        # does NOT catch. A still-running esptool child would otherwise keep holding the serial port and
+        # the next flash fails with 'port busy'. No-op when the process already exited normally.
+        if proc.poll() is None:
+            try:
+                proc.kill()
+                proc.wait(timeout=5)
+            except Exception:
+                pass
         try:
             if proc.stdout:
                 proc.stdout.close()
@@ -415,11 +420,17 @@ def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str,
             and not os.path.realpath(zip_path).startswith(real_dir + os.sep)):
         raise ValueError(f"refusing zip dest that escapes the cache dir: {zip_path!r}")
     # Cache reuse: a chip-wide bundle (e.g. Meshtastic's 128 MB firmware-esp32s3-*.zip)
-    # holds many boards' images — don't re-download it for each board/member.
-    if os.path.isfile(zip_path) and os.path.getsize(zip_path) > 0:
+    # holds many boards' images — don't re-download it for each board/member. But validate the cached
+    # file is a REAL zip before trusting it: a prior download truncated mid-transfer leaves a nonzero
+    # file that isn't a valid archive, and size>0 alone would reuse it and fail every extract until the
+    # user manually clears the cache. zipfile.is_zipfile() rejects a missing/truncated EOCD → re-download.
+    if os.path.isfile(zip_path) and os.path.getsize(zip_path) > 0 and zipfile.is_zipfile(zip_path):
         on_line(f"[cache] reusing {safe_zip} ({os.path.getsize(zip_path)} bytes)")
     else:
-        on_line(f"[download] {safe_zip}")
+        if os.path.isfile(zip_path):
+            on_line(f"[cache] {safe_zip} is empty/corrupt — re-downloading")
+        else:
+            on_line(f"[download] {safe_zip}")
         data = _http_get(url)
         with open(zip_path, "wb") as f:
             f.write(data)

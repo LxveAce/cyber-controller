@@ -114,3 +114,55 @@ def test_require_allowed_url_accepts_objects_githubusercontent() -> None:
 def test_require_allowed_url_rejects(bad_url: str) -> None:
     with pytest.raises(ValueError):
         flash_core._require_allowed_url(bad_url)
+
+
+# ── _run_stream: BaseException (Ctrl-C) mid-stream still kills+reaps the child ──
+def test_run_stream_kills_child_on_keyboard_interrupt(monkeypatch) -> None:
+    """A Ctrl-C mid-stream must still kill+reap the esptool child so it can't keep holding the serial
+    port — the `except Exception` path alone would miss KeyboardInterrupt (a BaseException)."""
+    state = {"killed": 0, "stdout_closed": False}
+
+    class _Stdout:
+        def __iter__(self):
+            raise KeyboardInterrupt  # simulate Ctrl-C while streaming output
+        def close(self):
+            state["stdout_closed"] = True
+
+    class _Proc:
+        returncode = None
+        stdout = _Stdout()
+
+        def poll(self):
+            return None if state["killed"] == 0 else self.returncode
+
+        def kill(self):
+            state["killed"] += 1
+            self.returncode = -9
+
+        def wait(self, timeout=None):
+            return self.returncode
+
+    monkeypatch.setattr(flash_core.subprocess, "Popen", lambda *a, **k: _Proc())
+    with pytest.raises(KeyboardInterrupt):
+        flash_core._run_stream(["dummy", "run"], lambda _s: None)
+    assert state["killed"] == 1        # child was killed on the interrupt
+    assert state["stdout_closed"]      # and stdout closed
+
+
+# ── download_and_extract: a corrupt cached zip is re-downloaded, not blindly reused ──
+def test_download_and_extract_redownloads_corrupt_cached_zip(monkeypatch, tmp_path) -> None:
+    import io
+    import zipfile
+
+    # A prior truncated download: nonzero size but NOT a valid zip.
+    (tmp_path / "bundle.zip").write_bytes(b"partial download, not a real zip archive")
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("merged.bin", b"FIRMWARE")
+    monkeypatch.setattr(flash_core, "_http_get", lambda url: buf.getvalue())
+
+    out = flash_core.download_and_extract(
+        "https://github.com/x/y/bundle.zip", str(tmp_path), "bundle.zip", "merged.bin", lambda _s: None)
+    with open(out, "rb") as f:
+        assert f.read() == b"FIRMWARE"  # re-downloaded the valid zip and extracted from it
