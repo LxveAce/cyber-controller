@@ -37,12 +37,12 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
     "Devices": ALWAYS,
     "Software OS": {"usb_os"},
     "Health": ALWAYS,
-    "Macros": ALWAYS,
-    "Targets": {"wifi_scanning"},
-    "Wardrive": {"gps"},
-    "Broadcast": {"wifi_scanning"},
-    # S4 regroup: "Network" is now the grouped surface (Graph + Cross-Comm sub-views); it gates as one unit.
-    # Cross-Comm is no longer a top-level tab, so it's no longer listed here.
+    # S4 regroup: "Operate" is the grouped action surface (Targets + Broadcast + Macros + Wardrive sub-views).
+    # It gates as ONE unit at its most-permissive member: Macros is ALWAYS-available, so the surface is always
+    # shown. (Per-sub-tab loadout gating — e.g. hiding Targets/Broadcast/Wardrive inside Operate for a
+    # non-wifi/non-gps loadout — is a tracked follow-up; today loadout hides/shows at surface granularity.)
+    "Operate": ALWAYS,
+    # "Network" is the grouped surface (Graph + Cross-Comm sub-views); it gates as one wifi_scanning unit.
     "Network": {"wifi_scanning"},
     "Settings": ALWAYS,
     "How-To": ALWAYS,
@@ -50,8 +50,7 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
 
 # Canonical tab order (matches main_window._tab_registry); used to re-insert tabs in order.
 TAB_ORDER = (
-    "Flash", "Devices", "Software OS", "Health", "Macros", "Targets",
-    "Wardrive", "Broadcast", "Network", "Settings", "How-To",
+    "Flash", "Devices", "Software OS", "Health", "Operate", "Network", "Settings", "How-To",
 )
 
 

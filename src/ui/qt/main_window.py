@@ -413,27 +413,27 @@ class CyberControllerWindow(QMainWindow):
         self._health_tab = HealthTab(self._health)
         self._tabs.addTab(self._health_tab, "Health")
 
-        # Macro tab (new)
+        # Operate surface (S4 GUI regroup) — the action surface: discover Targets, fan a verb to every radio
+        # (Broadcast), record/replay Macros, and GPS-log (Wardrive). All four are RE-PARENTED into one inner
+        # QTabWidget here, never recreated, so every self._targets_tab / _broadcast_bar / _macro_tab /
+        # _wardrive_tab reference (dual-depth mode fan-out, macro nav, palette, tests) keeps working. Targets
+        # leads. Navigate into a sub-view via _show_subtab(self._operate_surface, <widget>).
         self._macro_tab = MacroTab(self._macro, self._dm)
-        self._tabs.addTab(self._macro_tab, "Macros")
-
-        # Target pool (shared discovered targets) — with action resolver + device manager
         self._targets_tab = TargetsTab(
             self._pool,
             self._bus,
             device_manager=self._dm,
             action_resolver=self._action_resolver,
         )
-        self._tabs.addTab(self._targets_tab, "Targets")
-
-        # Wardriving — GPS-tagged Wi-Fi capture -> WiGLE CSV (lawful, owner-authorized use)
-        self._wardrive_tab = WardriveTab()
-        self._tabs.addTab(self._wardrive_tab, "Wardrive")
-
-        # Unified Action Broadcast — big-button action row over every connected radio.
+        self._wardrive_tab = WardriveTab()  # GPS-tagged Wi-Fi capture -> WiGLE CSV (lawful, owner-authorized)
         from src.ui.qt.broadcast_tab import BroadcastBar
         self._broadcast_bar = BroadcastBar(self._broadcast, self._dm, self._bus)
-        self._tabs.addTab(self._broadcast_bar, "Broadcast")
+        self._operate_surface = QTabWidget()
+        self._operate_surface.addTab(self._targets_tab, "Targets")
+        self._operate_surface.addTab(self._broadcast_bar, "Broadcast")
+        self._operate_surface.addTab(self._macro_tab, "Macros")
+        self._operate_surface.addTab(self._wardrive_tab, "Wardrive")
+        self._tabs.addTab(self._operate_surface, "Operate")
 
         # Network anchor surface (S4 GUI regroup) — the node graph is the centerpiece of the cross-comm
         # model, so it leads; Cross-Comm routing (event stream + auto-routing rules) rides alongside it as a
@@ -494,9 +494,9 @@ class CyberControllerWindow(QMainWindow):
         return [
             ("Flash", self._flash_tab), ("Devices", self._device_tab),
             ("Software OS", self._software_tab), ("Health", self._health_tab),
-            ("Macros", self._macro_tab), ("Targets", self._targets_tab),
-            ("Wardrive", self._wardrive_tab), ("Broadcast", self._broadcast_bar),
-            # S4 regroup: the Network surface (Graph + Cross-Comm sub-views) is one loadout-toggleable unit.
+            # S4 regroup: Operate (Targets + Broadcast + Macros + Wardrive) and Network (Graph + Cross-Comm)
+            # are each ONE loadout-toggleable surface unit.
+            ("Operate", self._operate_surface),
             ("Network", self._network_surface),
             ("Settings", self._settings_tab), ("How-To", self._howto_tab),
         ]
@@ -1082,7 +1082,11 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("Connect to Device", lambda: self._tabs.setCurrentWidget(self._device_tab))
         self._palette.add_command("View Health", lambda: self._tabs.setCurrentWidget(self._health_tab))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)
-        self._palette.add_command("View Targets", lambda: self._tabs.setCurrentWidget(self._targets_tab))
+        # Operate surface sub-views: focus the surface, then the sub-tab (re-parented under _operate_surface).
+        self._palette.add_command("View Targets", lambda: self._show_subtab(self._operate_surface, self._targets_tab))
+        self._palette.add_command("Broadcast Actions", lambda: self._show_subtab(self._operate_surface, self._broadcast_bar))
+        self._palette.add_command("View Macros", lambda: self._show_subtab(self._operate_surface, self._macro_tab))
+        self._palette.add_command("Wardrive", lambda: self._show_subtab(self._operate_surface, self._wardrive_tab))
         # Network surface sub-views: focus the surface, then the sub-tab (re-parented under _network_surface).
         self._palette.add_command("Network Graph", lambda: self._show_subtab(self._network_surface, self._network_tab))
         self._palette.add_command("Cross-Comm Dashboard", lambda: self._show_subtab(self._network_surface, self._cross_comm_tab))
@@ -1132,7 +1136,7 @@ class CyberControllerWindow(QMainWindow):
 
     def _on_quick_start_macro(self) -> None:
         """Switch to the Macros tab and start recording."""
-        self._tabs.setCurrentWidget(self._macro_tab)  # navigate by widget (was a wrong fixed index)
+        self._show_subtab(self._operate_surface, self._macro_tab)  # Macros is a sub-view of the Operate surface
         if hasattr(self._macro_tab, '_on_record'):
             self._macro_tab._on_record()
 

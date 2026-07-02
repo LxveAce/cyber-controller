@@ -38,12 +38,11 @@ EXPECTED_TABS = [
     ("Devices", "_device_tab"),
     ("Software OS", "_software_tab"),
     ("Health", "_health_tab"),
-    ("Macros", "_macro_tab"),
-    ("Targets", "_targets_tab"),
-    ("Wardrive", "_wardrive_tab"),
-    ("Broadcast", "_broadcast_bar"),
-    # S4 regroup (2026-07-01): Network is now a grouped *surface* holding the Graph (NetworkTab) and
-    # Cross-Comm sub-views — Cross-Comm is no longer a top-level tab. See test_network_surface_subtabs.
+    # S4 regroup (2026-07-01): Operate is a grouped *surface* holding Targets/Broadcast/Macros/Wardrive as
+    # sub-views — none of those four are top-level tabs anymore. See test_operate_surface_subtabs.
+    ("Operate", "_operate_surface"),
+    # Network is a grouped *surface* holding the Graph (NetworkTab) and Cross-Comm sub-views — Cross-Comm is
+    # not a top-level tab. See test_network_surface_subtabs.
     ("Network", "_network_surface"),
     ("Settings", "_settings_tab"),
     ("How-To", "_howto_tab"),
@@ -73,10 +72,29 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_tab_count_is_11(qapp, isolated_settings):
-    # 11 top-level tabs after the S4 regroup folded Cross-Comm into the Network surface (was 12 flat tabs).
+def test_tab_count_is_8(qapp, isolated_settings):
+    # 8 top-level tabs after the S4 regroup folded Targets/Broadcast/Macros/Wardrive into the Operate surface
+    # and Cross-Comm into the Network surface (was 12 flat tabs originally, 11 after the Network fold).
     win = _make_window()
-    assert win._tabs.count() == len(EXPECTED_TABS) == 11
+    assert win._tabs.count() == len(EXPECTED_TABS) == 8
+
+
+def test_operate_surface_subtabs(qapp, isolated_settings):
+    # The Operate action surface holds four sub-views — Targets (leads), Broadcast, Macros, Wardrive — and the
+    # re-parented widgets are the SAME objects the window still exposes on its named attributes.
+    win = _make_window()
+    surface = win._operate_surface
+    titles = [surface.tabText(i) for i in range(surface.count())]
+    assert titles == ["Targets", "Broadcast", "Macros", "Wardrive"]
+    assert surface.widget(0) is win._targets_tab, "Targets sub-tab must be the TargetsTab object"
+    assert surface.widget(1) is win._broadcast_bar, "Broadcast sub-tab must be the BroadcastBar object"
+    assert surface.widget(2) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
+    assert surface.widget(3) is win._wardrive_tab, "Wardrive sub-tab must be the WardriveTab object"
+    # None of the four are direct top-level tabs anymore.
+    toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
+    for gone in ("Targets", "Broadcast", "Macros", "Wardrive"):
+        assert gone not in toplevel, f"{gone!r} should be an Operate sub-tab, not top-level"
+    assert "Operate" in toplevel
 
 
 def test_network_surface_subtabs(qapp, isolated_settings):

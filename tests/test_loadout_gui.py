@@ -56,12 +56,14 @@ def test_apply_loadout_hides_unused_tabs(qapp, isolated_settings):
         lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
         win.apply_loadout(lo, persist=False)
         labels = _labels(win)
-        # S4 regroup: "Network" is the wifi_scanning-gated surface now (Cross-Comm folded inside it), so it's
-        # the top-level tab that hides under a mesh-only loadout — Cross-Comm is no longer a top-level label.
-        for hidden in ("Targets", "Broadcast", "Network", "Wardrive", "Software OS"):
+        # S4 regroup: under a mesh-only loadout the hidden *top-level* tabs are "Network" (wifi_scanning surface)
+        # and "Software OS" (usb_os). Targets/Broadcast/Macros/Wardrive folded into the always-shown "Operate"
+        # surface and Cross-Comm into Network, so none of them are top-level labels anymore.
+        for hidden in ("Network", "Software OS"):
             assert hidden not in labels
-        assert "Cross-Comm" not in labels  # never a top-level tab post-regroup
-        for core in ("Flash", "Devices", "Health", "Macros", "Settings", "How-To"):
+        for subview in ("Targets", "Broadcast", "Macros", "Wardrive", "Cross-Comm"):
+            assert subview not in labels  # grouped into a surface, never a top-level label post-regroup
+        for core in ("Flash", "Devices", "Health", "Operate", "Settings", "How-To"):
             assert core in labels
         # Full Stack restores everything
         win.apply_loadout(L.full_stack_loadout(), persist=False)
@@ -77,7 +79,10 @@ def test_loadout_gps_and_usb_os_gates(qapp, isolated_settings):
               "firmwares": ["marauder"], "hardware": ["esp32", "gps", "usb_os"]}
         win.apply_loadout(lo, persist=False)
         labels = _labels(win)
-        assert "Wardrive" in labels and "Software OS" in labels and "Targets" in labels
+        # S4 regroup: Wardrive/Targets are Operate sub-views now, so at top level we assert the "Operate"
+        # surface (which holds them) plus the still-top-level "Software OS" (usb_os-gated) are shown.
+        assert "Operate" in labels and "Software OS" in labels
+        assert "Wardrive" not in labels and "Targets" not in labels  # sub-views, not top-level
     finally:
         win.close()
 
