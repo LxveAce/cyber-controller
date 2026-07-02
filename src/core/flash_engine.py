@@ -271,12 +271,18 @@ class FlashEngine:
         mode = profile.flash_mode if profile.flash_mode in ("app", "full") else "full"
         if mode == "full":
             try:
+                # Merged-image profiles legitimately return None here (no fetch, no raise). An EXCEPTION
+                # is a real failure to obtain the bootloader/partitions/boot_app0 a multi-file profile
+                # needs — and writing only the app to a blank board produces a non-booting device.
                 support = core.support_files(chip, cache, on_line)
             except Exception as exc:
-                # Merged-image profiles legitimately return None; a real failure on a
-                # multi-file profile means we can't safely do a blank-board flash.
-                on_line(f"[warn] no support files ({exc}); falling back to app-only flash")
-                mode = "app"
+                # Do NOT silently downgrade to app-only and report success (the old behavior wrote a
+                # dead board yet showed "Flash complete"). Abort loudly so the failure is visible.
+                on_line(f"[error] support files unavailable ({exc}); aborting full flash — writing the "
+                        f"app alone would leave a non-booting board. Fix the download/connection and retry.")
+                if progress:
+                    progress(0, "Flash failed")
+                return False
 
         app_offset = variant.get("offset") or core.app_offset(chip)
         rc = core.flash_assets(

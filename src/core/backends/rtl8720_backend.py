@@ -461,8 +461,10 @@ def write_flash(port: str, image: str, offset: str = FLASH_BASE_OFFSET,
         on_line("[rtl8720] no ROM-loader response — the board is probably NOT in "
                 "download mode. " + download_mode_help())
     elif _looks_like_unprotect_fail(tee.text):
-        # Surface even on rc==0: a "success" with an unprotect warning is the classic
-        # silent no-op. The caller (flash()) re-verifies via the post-write read path.
+        # Surface even on rc==0: a "success" with an unprotect warning is the classic silent no-op.
+        # NOTE: flash() does NOT currently auto re-dump to confirm the write took (a real read-back
+        # compare is bench-gated HW work) — this warning is advisory, telling the operator to verify
+        # manually. Do not claim an automatic re-verify here that the code does not perform.
         on_line("[rtl8720] WARNING: the SPI 'unprotect' step may have been skipped "
                 "(known RTL8720 gotcha). Verify with a re-dump; if the old contents "
                 "remain, retry with an rtltool build that unprotects this flash vendor.")
