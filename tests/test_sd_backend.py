@@ -91,6 +91,47 @@ def test_validate_write_target_device_not_found():
         sd._validate_write_target("/dev/sdz", cards, _noline)
 
 
+# ── write_image capacity guard (refuse an image larger than the target card) ──
+def test_write_image_refuses_image_larger_than_card(tmp_path, monkeypatch):
+    img = tmp_path / "big.img"
+    img.write_bytes(b"\x00" * 4096)
+    dev = r"\\.\PhysicalDrive9"
+    monkeypatch.setattr(sd, "detect_sd_cards",
+                        lambda on_line: [{"device": dev, "name": "TestCard", "removable": True, "size": 1024}])
+    with pytest.raises(ValueError, match="will not fit"):
+        sd.write_image(str(img), dev, _noline, confirmed=True)
+
+
+def test_write_image_allows_image_that_fits(tmp_path, monkeypatch):
+    img = tmp_path / "ok.img"
+    img.write_bytes(b"\x00" * 512)
+    dev = "/dev/sdX"
+    monkeypatch.setattr(sd, "detect_sd_cards",
+                        lambda on_line: [{"device": dev, "name": "TestCard", "removable": True, "size": 4096}])
+    monkeypatch.setattr(sd.platform, "system", lambda: "Linux")
+    monkeypatch.setattr(sd, "_write_dd", lambda *a, **k: 0)
+    assert sd.write_image(str(img), dev, _noline, confirmed=True) == 0
+
+
+# ── ctypes raw-disk HANDLE marshalling (64-bit safety) ────────────────────────
+def test_configure_kernel32_marshals_handle_without_overflow():
+    import platform
+    if platform.system() != "Windows":
+        pytest.skip("kernel32 raw-disk marshalling is Windows-only")
+    import ctypes
+    k = ctypes.windll.kernel32
+    sd._configure_kernel32(k)
+    # Opening a non-existent physical drive must return INVALID_HANDLE_VALUE cleanly — no OverflowError
+    # from a mis-marshalled pointer-sized handle (the exact bug the argtypes declaration prevents).
+    GENERIC_READ = 0x80000000
+    OPEN_EXISTING = 3
+    h = k.CreateFileW(r"\\.\PhysicalDrive999", GENERIC_READ, 0, None, OPEN_EXISTING, 0, None)
+    invalid = ctypes.c_void_p(-1).value
+    assert h in (invalid, 0, None)
+    if h not in (invalid, 0, None):
+        k.CloseHandle(h)
+
+
 # ── decompress format dispatch ────────────────────────────────────────────
 def test_decompress_img_passthrough(tmp_path):
     src = str(tmp_path / "already.img")

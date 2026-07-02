@@ -314,9 +314,11 @@ def _detect_sd_windows(on_line: Line) -> List[Dict]:
     """List removable disk drives on Windows via WMI/PowerShell."""
     cards: List[Dict] = []
     # wmic is deprecated but still universal; PowerShell Get-Disk is more reliable
+    # MSFT_Disk (Get-Disk) has NO reliable MediaType (that property lives on Get-PhysicalDisk and never
+    # reads "Fixed"), so removability must key off the real MSFT_Disk signals: BusType + IsSystem/IsBoot.
     ps_cmd = (
         "Get-Disk | Where-Object { $_.BusType -ne 'NVMe' -and $_.BusType -ne 'SATA' -and $_.BusType -ne 'RAID' } "
-        "| Select-Object Number, FriendlyName, Size, BusType, MediaType "
+        "| Select-Object Number, FriendlyName, Size, BusType, IsSystem, IsBoot, IsOffline "
         "| ConvertTo-Json -Compress"
     )
     try:
@@ -333,14 +335,21 @@ def _detect_sd_windows(on_line: Line) -> List[Dict]:
         data = json.loads(text)
         if isinstance(data, dict):
             data = [data]
+        # BusTypes that denote genuinely removable card media. A built-in card reader reports SD/MMC;
+        # an external USB reader reports USB. Anything else (SAS/SCSI/iSCSI/FC/ATA/…) is treated as a
+        # fixed internal disk and never offered as a raw-write target.
+        removable_buses = ("USB", "SD", "MMC")
         for d in data:
             num = d.get("Number")
             size = d.get("Size", 0)
             name = d.get("FriendlyName", f"Disk {num}")
             bus = d.get("BusType", "")
-            media = d.get("MediaType", "")
-            # only offer genuinely removable media (USB card readers show as USB bus)
-            if media == "Fixed" and bus not in ("USB",):
+            # NEVER offer the OS/boot disk as a write target, whatever bus it's on — a raw image write
+            # here would destroy the running system. (These booleans come straight from MSFT_Disk.)
+            if d.get("IsSystem") or d.get("IsBoot"):
+                continue
+            removable = bus in removable_buses
+            if not removable:
                 continue
             if size and size >= _MAX_SD_BYTES:
                 continue
@@ -349,7 +358,7 @@ def _detect_sd_windows(on_line: Line) -> List[Dict]:
                 "name": name,
                 "size": size,
                 "bus": bus,
-                "removable": media != "Fixed" or bus == "USB",
+                "removable": removable,
             })
     except Exception as e:
         on_line(f"[sd] Windows disk detection error: {e}")
@@ -547,6 +556,30 @@ def _write_dd(img_path: str, device: str, on_line: Line,
     return proc.returncode
 
 
+def _configure_kernel32(k) -> None:
+    """Declare argtypes/restype on the raw-disk kernel32 calls so a pointer-sized HANDLE marshals
+    correctly on 64-bit Windows. Without this, ctypes defaults each integer argument to a signed 32-bit
+    ``c_int``, so a handle value above the 2^31 range raises ``OverflowError`` on the first WriteFile/
+    ReadFile/DeviceIoControl — AFTER the device is open — leaking the locked/dismounted raw-disk handle.
+    Idempotent (the kernel32 function objects are process-cached), so it's safe to call per write."""
+    from ctypes import wintypes
+    LPDWORD = ctypes.POINTER(wintypes.DWORD)
+    HANDLE, DWORD, BOOL = wintypes.HANDLE, wintypes.DWORD, wintypes.BOOL
+    k.CreateFileW.restype = HANDLE
+    k.CreateFileW.argtypes = [wintypes.LPCWSTR, DWORD, DWORD, ctypes.c_void_p, DWORD, DWORD, HANDLE]
+    k.DeviceIoControl.restype = BOOL
+    k.DeviceIoControl.argtypes = [HANDLE, DWORD, ctypes.c_void_p, DWORD, ctypes.c_void_p, DWORD,
+                                  LPDWORD, ctypes.c_void_p]
+    k.WriteFile.restype = BOOL
+    k.WriteFile.argtypes = [HANDLE, ctypes.c_void_p, DWORD, LPDWORD, ctypes.c_void_p]
+    k.ReadFile.restype = BOOL
+    k.ReadFile.argtypes = [HANDLE, ctypes.c_void_p, DWORD, LPDWORD, ctypes.c_void_p]
+    k.FlushFileBuffers.restype = BOOL
+    k.FlushFileBuffers.argtypes = [HANDLE]
+    k.CloseHandle.restype = BOOL
+    k.CloseHandle.argtypes = [HANDLE]
+
+
 def _write_windows(img_path: str, device: str, on_line: Line,
                    on_progress: Optional[Callable[[float], None]] = None) -> int:
     """Write img to PhysicalDriveN on Windows using ctypes CreateFile + WriteFile."""
@@ -563,7 +596,7 @@ def _write_windows(img_path: str, device: str, on_line: Line,
     FSCTL_DISMOUNT_VOLUME = 0x00090020
 
     kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-    kernel32.CreateFileW.restype = ctypes.c_void_p
+    _configure_kernel32(kernel32)
 
     # open physical drive for raw write
     handle = kernel32.CreateFileW(
@@ -610,6 +643,13 @@ def _write_windows(img_path: str, device: str, on_line: Line,
                     err = ctypes.GetLastError()
                     on_line(f"[error] WriteFile failed at offset {written_total} (error {err})")
                     return 1
+                # A TRUE return with a short byte count (e.g. at end-of-media) would silently drop the
+                # tail of this chunk while the file read position has already advanced — corrupting the
+                # card yet returning success. Treat any short write as fatal.
+                if written_dword.value != len(data):
+                    on_line(f"[error] short write at offset {written_total}: wrote "
+                            f"{written_dword.value} of {len(data)} bytes — aborting to avoid a corrupt card")
+                    return 1
                 written_total += written_dword.value
                 if on_progress and img_size > 0:
                     on_progress(min(written_total / img_size, 1.0))
@@ -640,6 +680,16 @@ def write_image(img_path: str, device: str, on_line: Line,
     cards = detect_sd_cards(on_line)
     card = _validate_write_target(device, cards, on_line)
     on_line(f"[sd] target confirmed: {card['name']} ({card['device']})")
+
+    # Refuse an image that can't fit the card BEFORE opening the device — otherwise the write fails
+    # partway with a cryptic OS error, having already overwritten (and unrecoverably corrupted) the
+    # start of the card. Fail loudly and up front instead.
+    img_size = os.path.getsize(img_path)
+    if card.get("size") and img_size > card["size"]:
+        raise ValueError(
+            f"refusing to write: image is {img_size} bytes but target card {card['name']} is only "
+            f"{card['size']} bytes — it will not fit. Use a larger card or a smaller image."
+        )
 
     system = platform.system()
     if system == "Windows":
@@ -692,7 +742,7 @@ def verify_write(img_path: str, device: str, on_line: Line,
         OPEN_EXISTING = 3
         INVALID_HANDLE = ctypes.c_void_p(-1).value
         kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
-        kernel32.CreateFileW.restype = ctypes.c_void_p
+        _configure_kernel32(kernel32)
         handle = kernel32.CreateFileW(
             device, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
             None, OPEN_EXISTING, 0, None,
