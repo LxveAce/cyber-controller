@@ -57,6 +57,8 @@ def test_match_firmware_no_match():
     ("ESP32-S3 boot", "esp32s3"),   # specific variant beats the broad esp32 (checked first)
     ("ESP32-C5 rev", "esp32c5"),
     ("AmebaD ready", "rtl8720"),    # RTL family checked before the broad esp32
+    ("ESP8266EX chip", "esp8266"),  # distinct chip; the bare \bESP32\b must not shadow it
+    ("esp8266 lowercase", "esp8266"),  # esp8266 pattern IS case-insensitive (unlike bare esp32)
     ("ESP32 WROOM", "esp32"),
     ("STM32", "stm32"),
 ])

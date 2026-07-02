@@ -329,7 +329,7 @@ def _detect_chip(port: str, on_line: Line) -> Optional[str]:
     for token, chip in (("ESP32-S3", "esp32s3"), ("ESP32-S2", "esp32s2"),
                         ("ESP32-C6", "esp32c6"), ("ESP32-C5", "esp32c5"),
                         ("ESP32-C3", "esp32c3"), ("ESP32-C2", "esp32c2"),
-                        ("ESP32-H2", "esp32h2")):
+                        ("ESP32-H2", "esp32h2"), ("ESP8266", "esp8266")):
         if token in text:
             return chip
     if re.search(r"\bESP32\b", text):
@@ -2162,6 +2162,10 @@ _PROFILE_FILES = (
     # Hydra32 / ESP32-Deauther — pinned 'Hydra32' release, multi-file ESP32 offsets verified from the
     # repo partitions.csv + SHA-256-pinned (authorized testing only; deauth gated by the safety layer).
     "hydra32.json",
+    # esp8266_deauther (CC-12) — unlocks the esp8266 board class. 37 board-specific single merged .bin
+    # images flashed at 0x0 via esptool --chip esp8266; assets verified live against
+    # SpacehuhnTech/esp8266_deauther v2.6.1 (2026-07-02). Real-hardware flash pending the Stage-5 gate.
+    "esp8266_deauther.json",
 )
 
 

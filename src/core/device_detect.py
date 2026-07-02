@@ -74,6 +74,8 @@ _CHIP_PATTERNS: Dict[str, re.Pattern] = {
     "esp32h2": re.compile(r"ESP32-H2", re.IGNORECASE),
     # RTL8720DN / BW16 (Realtek AmebaD) — before the broad esp32 match.
     "rtl8720": re.compile(r"RTL8720|AmebaD|BW16|rltk_wlan|RTL_HalBleMacInit", re.IGNORECASE),
+    # esp8266 — before the broad esp32 match (distinct chip; the bare \bESP32\b must not shadow it).
+    "esp8266": re.compile(r"ESP8266", re.IGNORECASE),
     "esp32":   re.compile(r"\bESP32\b"),
     "stm32":   re.compile(r"\bSTM32\b", re.IGNORECASE),
 }

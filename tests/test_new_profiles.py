@@ -36,21 +36,38 @@ CASES = {
         ],
         "expect_bins": 3,
     },
+    # esp8266_deauther (CC-12) — the first esp8266-chip profile: a fixed chip_map onto 'esp8266',
+    # 37 board-specific merged bins @ 0x0, default variant prefers the Wemos D1 mini fragment.
+    "esp8266_deauther": {
+        "chip": "esp8266",
+        "assets": [
+            {"name": "esp8266_deauther_2.6.1_WEMOS_D1_MINI.bin", "browser_download_url": "https://x/i"},
+            {"name": "esp8266_deauther_2.6.1_NODEMCU.bin", "browser_download_url": "https://x/j"},
+            {"name": "esp8266_deauther_2.6.1_DSTIKE_DEAUTHER_V3.bin", "browser_download_url": "https://x/k"},
+        ],
+        "expect_bins": 3,
+        "default_fragment": "WEMOS_D1_MINI",  # prefer_fragment must pick the D1 mini, not just cands[0]
+    },
 }
 
 
 @pytest.mark.parametrize("pid", sorted(CASES))
 def test_new_profile_resolver(pid, monkeypatch):
     c = CASES[pid]
+    chip = c.get("chip", "esp32s3")
     prof = flash_core.get_profile(pid)
     assert prof.image_model == flash_core.IMAGE_MERGED, f"{pid}: expected merged single-bin"
-    assert prof.app_offset("esp32s3") == "0x0", f"{pid}: merged image flashes at 0x0"
+    assert prof.app_offset(chip) == "0x0", f"{pid}: merged image flashes at 0x0"
 
     monkeypatch.setattr(flash_core, "_github_latest", lambda u: ("v", [dict(a) for a in c["assets"]]))
     _tag, assets = prof.latest_release()
 
     assert len(assets) == c["expect_bins"], f"{pid}: non-.bin assets must be excluded"
-    assert all(a["chip"] == "esp32s3" for a in assets), f"{pid}: all targets esp32s3"
+    assert all(a["chip"] == chip for a in assets), f"{pid}: all targets {chip}"
     assert all(a.get("offset") == "0x0" and a.get("merged") is True for a in assets), \
         f"{pid}: merged @ 0x0"
-    assert prof.default_variant(assets, "esp32s3") in assets, f"{pid}: default_variant picks a real asset"
+    default = prof.default_variant(assets, chip)
+    assert default in assets, f"{pid}: default_variant picks a real asset"
+    if c.get("default_fragment"):
+        assert c["default_fragment"] in default["name"], \
+            f"{pid}: default_variant must honor the prefer_fragment order"

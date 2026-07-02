@@ -41,7 +41,7 @@ import pytest
 flash_core = pytest.importorskip("src.core.flash_core")
 
 GOLDEN = Path(__file__).parent / "golden" / "flash_argv_golden.json"
-CHIPS = ["esp32", "esp32s2", "esp32s3", "esp32c3", "esp32c6", "esp32c5"]
+CHIPS = ["esp32", "esp32s2", "esp32s3", "esp32c3", "esp32c6", "esp32c5", "esp8266"]
 _PORT = "PORTX"
 _APP = "APP.bin"
 _BAUD = 921600

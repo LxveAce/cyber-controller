@@ -1,0 +1,31 @@
+{
+  "name": "ESP8266 Deauther",
+  "id": "esp8266_deauther",
+  "core_id": "esp8266_deauther",
+  "description": "Spacehuhn's classic WiFi-testing tool for ESP8266 boards — scan/select APs, deauth, beacon/probe spam, via a served web UI or serial CLI. Authorized testing only.",
+  "repo": "SpacehuhnTech/esp8266_deauther",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "app_offset": "0x0",
+  "support_files": null,
+  "default_baud": 115200,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["WEMOS_D1_MINI", "NODEMCU"]},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/SpacehuhnTech/esp8266_deauther/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {"strategy": "fixed", "chip": "esp8266"},
+    "emit": {"offset": "0x0", "merged": true}
+  },
+  "boards": [
+    {"name": "Wemos D1 mini (ESP8266)", "chip": "esp8266", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "40m"},
+    {"name": "NodeMCU (ESP8266)", "chip": "esp8266", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "40m"},
+    {"name": "DSTIKE Deauther boards (ESP8266)", "chip": "esp8266", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "40m"}
+  ],
+  "firmware_urls": {"repo": "https://github.com/SpacehuhnTech/esp8266_deauther", "latest": "https://github.com/SpacehuhnTech/esp8266_deauther/releases/latest"},
+  "note": "37 board-specific single merged .bin images flashed at 0x0 via esptool --chip esp8266 (assets verified live against v2.6.1 on 2026-07-02). The board bins are user-selectable variants (default: Wemos D1 mini, else NodeMCU). Flash uses --flash_size detect so a board's exact size need not be pre-known. esp8266 flash offset/params standard; real-hardware flash pending real-hardware verification per the Stage-5 gate."
+}
