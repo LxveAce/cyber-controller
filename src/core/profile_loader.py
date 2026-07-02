@@ -100,7 +100,9 @@ def select_chip(data: dict[str, Any], requested_chip: str | None = None, board_n
 
 
 def default_baud(data: dict[str, Any]) -> int:
-    """Resolve the flash baud (rich ``default_baud`` > 921600)."""
+    """Resolve the device's serial-MONITOR baud (profile ``default_baud`` key; e.g. 115200 for
+    Marauder), defaulting to 921600. Distinct from the flash baud, which flash_engine derives
+    from ``flash_baud``/``baud``."""
     try:
         return int(data.get("default_baud") or 921600)
     except (TypeError, ValueError):

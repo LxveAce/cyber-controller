@@ -682,7 +682,7 @@ class FlashEngine:
         on_line = _percent_adapter(progress)
         on_line("[sd] SD-card imaging requires choosing a removable target device and "
                 "explicit confirmation (and Administrator/root). Use the SD flow which "
-                "calls sd_backend.flash_sd(profile_id, device, confirmed=True).")
+                "calls sd_backend.flash_sd(profile_id, asset, device, on_line, confirmed=True).")
         # The SD backend intentionally refuses to write without an explicit device +
         # confirmed=True (a safety invariant); the UI drives that flow, not a 'port'.
         return False
