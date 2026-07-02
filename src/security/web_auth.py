@@ -16,6 +16,7 @@ import hmac
 import logging
 import os
 import secrets
+import sys
 import threading
 import time
 from pathlib import Path
@@ -103,13 +104,18 @@ def resolve_web_credentials(log: logging.Logger) -> tuple[WebCredentials, bool]:
     if not pw:
         pw = secrets.token_urlsafe(18)
         generated = True
+        # Show the one-time credential on the interactive console (stderr) ONLY — never through the
+        # logging framework. A file/syslog/aggregator handler would persist a live web-remote password
+        # to disk, readable by anyone with log or backup access, defeating the "shown once" intent and
+        # outliving the session. The log keeps only a non-secret notice.
         bar = "=" * 64
-        log.warning(bar)
-        log.warning("CC_WEB_PASS not set — generated a ONE-TIME web remote password:")
-        log.warning("      username: %s", user)
-        log.warning("      password: %s", pw)
-        log.warning("Set CC_WEB_USER / CC_WEB_PASS in the environment to pick your own.")
-        log.warning(bar)
+        print(bar, file=sys.stderr)
+        print("CC_WEB_PASS not set — generated a ONE-TIME web remote password:", file=sys.stderr)
+        print(f"      username: {user}", file=sys.stderr)
+        print(f"      password: {pw}", file=sys.stderr)
+        print("Set CC_WEB_USER / CC_WEB_PASS in the environment to pick your own.", file=sys.stderr)
+        print(bar, file=sys.stderr)
+        log.warning("CC_WEB_PASS not set — generated a one-time web remote password (shown on the console).")
     return WebCredentials(user, pw), generated
 
 

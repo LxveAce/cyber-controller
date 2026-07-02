@@ -40,7 +40,8 @@ def _current_user() -> str | None:
 def _run_icacls(path: Path, grant_spec: str) -> bool:
     user = _current_user()
     if not user:
-        log.debug("win_acl: could not resolve current user; leaving %s on inherited ACL", path)
+        log.warning("win_acl: could not resolve current user — %s is left on its INHERITED ACL "
+                    "(may be readable by other local accounts)", path)
         return False
     cmd = [
         "icacls", str(path),
@@ -54,10 +55,12 @@ def _run_icacls(path: Path, grant_spec: str) -> bool:
             timeout=_ICACLS_TIMEOUT, creationflags=_NO_WINDOW,
         )
     except (OSError, subprocess.SubprocessError) as exc:
-        log.debug("win_acl: icacls failed to launch for %s: %s", path, exc)
+        log.warning("win_acl: icacls failed to launch for %s: %s — file left on its INHERITED ACL "
+                    "(may be readable by other local accounts)", path, exc)
         return False
     if proc.returncode != 0:
-        log.debug("win_acl: icacls rc=%s for %s: %s", proc.returncode, path, proc.stderr.strip())
+        log.warning("win_acl: icacls rc=%s for %s: %s — file left on its INHERITED ACL "
+                    "(may be readable by other local accounts)", proc.returncode, path, proc.stderr.strip())
         return False
     return True
 

@@ -22,6 +22,7 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from cryptography.exceptions import InvalidTag
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from src.security.win_acl import restrict_to_current_user, secure_dir
@@ -183,9 +184,18 @@ class Vault:
         if not p.exists():
             return {}
         blob = p.read_bytes()
+        # A GCM nonce (12) + auth tag (16) is the minimum valid ciphertext; anything shorter is
+        # truncated/corrupt. Wrap decrypt + JSON parse so a tampered/truncated vault surfaces as ONE
+        # clean, fail-closed error instead of a raw InvalidTag/JSONDecodeError crashing the caller
+        # (mirrors SecureStorage.decrypt). Never returns plaintext on failure.
+        if len(blob) < 12 + 16:
+            raise ValueError("vault data corrupt or tampered")
         nonce, ct = blob[:12], blob[12:]
-        pt = AESGCM(self._dek).decrypt(nonce, ct, None)
-        return json.loads(pt.decode("utf-8"))
+        try:
+            pt = AESGCM(self._dek).decrypt(nonce, ct, None)
+            return json.loads(pt.decode("utf-8"))
+        except (InvalidTag, ValueError, UnicodeDecodeError) as exc:
+            raise ValueError("vault data corrupt or tampered") from exc
 
     def save(self, data: dict) -> None:
         p = _data_path()

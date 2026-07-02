@@ -73,3 +73,31 @@ def test_cannot_remove_last_factor(v):
     v.set_factor("password", b"pw")
     v.remove_factor("password")                  # refused (would orphan the data)
     assert v.open_vault({"password": b"pw"}) is not None
+
+
+def test_vault_load_truncated_raises_clean_valueerror(tmp_path, monkeypatch):
+    """A truncated vault.enc (shorter than nonce+tag) must fail closed with ONE clean ValueError,
+    not a raw crash — and never returns plaintext."""
+    import os
+
+    import src.security.vault as vaultmod
+    bad = tmp_path / "vault.enc"
+    bad.write_bytes(b"\x00" * 8)  # < 12 (nonce) + 16 (tag)
+    monkeypatch.setattr(vaultmod, "_data_path", lambda: bad)
+    vd = vaultmod.Vault(os.urandom(32))
+    with pytest.raises(ValueError, match="corrupt or tampered"):
+        vd.load()
+
+
+def test_vault_load_tampered_raises_clean_valueerror(tmp_path, monkeypatch):
+    """A valid-length but bogus ciphertext (wrong key / bit-flip) must raise the same clean ValueError
+    (from the caught InvalidTag), never propagate a raw InvalidTag."""
+    import os
+
+    import src.security.vault as vaultmod
+    bad = tmp_path / "vault.enc"
+    bad.write_bytes(os.urandom(12 + 32))  # nonce + bogus ct/tag → InvalidTag on decrypt
+    monkeypatch.setattr(vaultmod, "_data_path", lambda: bad)
+    vd = vaultmod.Vault(os.urandom(32))
+    with pytest.raises(ValueError, match="corrupt or tampered"):
+        vd.load()

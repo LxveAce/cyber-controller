@@ -93,3 +93,35 @@ def test_secret_key_at_least_32_bytes(tmp_path, monkeypatch) -> None:
 
     # A second call returns the SAME persisted key (sessions survive restart).
     assert web_auth.load_or_create_secret_key() == key
+
+
+def test_generated_web_password_goes_to_console_not_logs(monkeypatch, capsys) -> None:
+    """A generated one-time web password must be shown on the console (stderr) but must NOT be emitted
+    through the logging framework — log handlers would persist a live credential to disk."""
+    import logging
+    import re
+
+    monkeypatch.delenv("CC_WEB_PASS", raising=False)
+    monkeypatch.delenv("CC_WEB_USER", raising=False)
+
+    records: list[str] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, r):
+            records.append(r.getMessage())
+
+    lg = logging.getLogger("test_web_auth_generated")
+    lg.setLevel(logging.DEBUG)
+    lg.addHandler(_Capture())
+
+    _creds, generated = web_auth.resolve_web_credentials(lg)
+    assert generated
+
+    err = capsys.readouterr().err
+    m = re.search(r"password:\s*(\S+)", err)
+    assert m, f"generated password not shown on the console: {err!r}"
+    shown_pw = m.group(1)
+
+    # the live password must appear ONLY on the console, never in any log record
+    assert all(shown_pw not in rec for rec in records), "generated web password leaked into logs"
+    assert any("shown on the console" in rec for rec in records)  # only a non-secret notice is logged
