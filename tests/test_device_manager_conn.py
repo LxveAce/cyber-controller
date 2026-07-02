@@ -60,6 +60,51 @@ def test_shared_connection_survives_until_last_owner_releases(monkeypatch):
     assert dm.get_device("COM7").connected is False
 
 
+def test_concurrent_open_same_port_builds_one_connection(monkeypatch):
+    """Two threads opening the SAME port at once must share ONE connection — not both build one and
+    have the second overwrite (leak) the first. A per-port build lock serializes build+connect."""
+    import threading
+    import time
+
+    import src.core.device_manager as DM
+    from src.models.device import Device
+
+    built: list[object] = []
+    gate = threading.Event()
+
+    class _SlowConn(_FakeConn):
+        def __init__(self, port, baud=115200, line_ending="\n"):
+            super().__init__(port, baud, line_ending)
+            built.append(self)
+
+        def connect(self):
+            gate.wait(2.0)  # hold the in-flight build so a second concurrent opener overlaps it
+            super().connect()
+
+    monkeypatch.setattr(DM, "SerialConnection", _SlowConn)
+    dm = DM.DeviceManager()
+    dm.add_device(Device(port="COM7"))
+
+    results: dict[str, object] = {}
+
+    def opener(name):
+        results[name] = dm.open_connection("COM7", owner=name)
+
+    t1 = threading.Thread(target=opener, args=("a",))
+    t2 = threading.Thread(target=opener, args=("b",))
+    t1.start()
+    t2.start()
+    time.sleep(0.15)  # both threads are now past the fast top-check; one holds build_lock, one waits
+    gate.set()        # let the single in-flight connect() complete
+    t1.join(3.0)
+    t2.join(3.0)
+
+    assert results["a"] is results["b"]              # one shared connection
+    assert len(built) == 1                           # only ONE SerialConnection ever built (no leak)
+    assert results["a"].disconnected == 0            # the single conn was never orphaned/disconnected
+    assert dm._conn_owners.get("COM7") == {"a", "b"}  # both owners registered on the shared conn
+
+
 def test_close_without_owner_force_closes(monkeypatch):
     dm = _dm(monkeypatch)
     c = dm.open_connection("COM7", owner="devices_tab")

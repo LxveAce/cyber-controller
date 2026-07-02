@@ -59,6 +59,10 @@ class DeviceManager:
         self._connections: dict[str, SerialConnection] = {}
         self._conn_owners: dict[str, set[str]] = {}  # port -> UI owners sharing the connection
         self._lock = threading.Lock()
+        # Per-port build locks: serialize open_connection's build+connect for a given port so two
+        # concurrent opens can't both create a SerialConnection (the second would overwrite/leak the
+        # first). Created lazily under _lock; different ports never block each other.
+        self._build_locks: dict[str, threading.Lock] = {}
 
         # Callbacks
         self._on_connected: list[DeviceCallback] = []
@@ -133,57 +137,77 @@ class DeviceManager:
                     self._conn_owners.setdefault(port, set()).add(owner)
                 self._devices[port].connected = True
                 return existing
-            stale = existing  # a dead/errored conn for this port, if any
-            fw = self._devices[port].firmware or ""
+            # Take the per-port build lock so only ONE caller builds+connects a connection for this
+            # port. A second concurrent opener blocks here, then finds the connection this caller
+            # registered (via the re-check below) and reuses it — instead of both building one and the
+            # second overwriting (leaking) the first.
+            build_lock = self._build_locks.setdefault(port, threading.Lock())
 
-        # Build + connect OUTSIDE the lock (connect() can block / join a thread). Release any stale handle
-        # first so the exclusive COM port is free, and seed the per-firmware terminator at open time.
-        if stale is not None:
-            try:
-                stale.disconnect()
-            except Exception:
-                pass
-        try:
-            from src.protocols import line_ending_for
-            terminator = line_ending_for(fw) if fw else "\n"
-        except Exception:
-            terminator = "\n"
-        conn = SerialConnection(port, baud=baud, line_ending=terminator)
-
-        def _reconcile(_state, _conn=conn, _port=port):
-            # Reflect the connection's OWN state changes back onto the Device so the indicator can't
-            # lie. A mid-session ERROR (cable brown-out / firmware reboot that drops the CDC endpoint
-            # but keeps the COM name) doesn't make the port disappear, so HotPlug never fires and
-            # Device.connected would otherwise stay True forever — the sidebar shows green while the
-            # AutoRouter silently drops every routed command to the dead port. A late callback after a
-            # remove_device finds no device and no-ops.
+        with build_lock:
+            # Re-check under the state lock: while we waited on build_lock, another opener for this port
+            # may have already built + registered a live connection — reuse it rather than build again.
             with self._lock:
-                d = self._devices.get(_port)
-                if d is not None:
-                    d.connected = _conn.is_connected
+                if port not in self._devices:
+                    raise KeyError(f"No registered device on port {port}")
+                existing = self._connections.get(port)
+                if existing is not None and existing.is_connected:
+                    if owner:
+                        self._conn_owners.setdefault(port, set()).add(owner)
+                    self._devices[port].connected = True
+                    return existing
+                stale = existing  # a dead/errored conn for this port, if any
+                fw = self._devices[port].firmware or ""
 
-        conn.on_state_change(_reconcile)
-        conn.connect()
+            # Build + connect OUTSIDE the state lock (connect() can block / join a thread, and fires a
+            # state callback that itself takes self._lock — holding it here would deadlock). The build
+            # lock (still held) guarantees only one connection is created for this port. Release any
+            # stale handle first so the exclusive COM port is free, and seed the terminator at open time.
+            if stale is not None:
+                try:
+                    stale.disconnect()
+                except Exception:
+                    pass
+            try:
+                from src.protocols import line_ending_for
+                terminator = line_ending_for(fw) if fw else "\n"
+            except Exception:
+                terminator = "\n"
+            conn = SerialConnection(port, baud=baud, line_ending=terminator)
 
-        to_close: SerialConnection | None = None
-        removed = False
-        with self._lock:
-            dev = self._devices.get(port)
-            if dev is None:
-                # Hot-unplugged during connect(): discard the new conn cleanly rather than KeyError- on a
-                # popped key (and never leak the freshly opened port).
-                to_close = conn
-                removed = True
-            else:
-                self._connections[port] = conn
-                dev.connected = True
-                if owner:
-                    self._conn_owners.setdefault(port, set()).add(owner)
-        if to_close is not None:
-            to_close.disconnect()  # outside the lock (disconnect joins the reader thread)
-        if removed:
-            raise KeyError(f"Device on port {port} was removed during connect")
-        return conn
+            def _reconcile(_state, _conn=conn, _port=port):
+                # Reflect the connection's OWN state changes back onto the Device so the indicator can't
+                # lie. A mid-session ERROR (cable brown-out / firmware reboot that drops the CDC endpoint
+                # but keeps the COM name) doesn't make the port disappear, so HotPlug never fires and
+                # Device.connected would otherwise stay True forever — the sidebar shows green while the
+                # AutoRouter silently drops every routed command to the dead port. A late callback after a
+                # remove_device finds no device and no-ops.
+                with self._lock:
+                    d = self._devices.get(_port)
+                    if d is not None:
+                        d.connected = _conn.is_connected
+
+            conn.on_state_change(_reconcile)
+            conn.connect()
+
+            to_close: SerialConnection | None = None
+            removed = False
+            with self._lock:
+                dev = self._devices.get(port)
+                if dev is None:
+                    # Hot-unplugged during connect(): discard the new conn cleanly rather than KeyError-
+                    # on a popped key (and never leak the freshly opened port).
+                    to_close = conn
+                    removed = True
+                else:
+                    self._connections[port] = conn
+                    dev.connected = True
+                    if owner:
+                        self._conn_owners.setdefault(port, set()).add(owner)
+            if to_close is not None:
+                to_close.disconnect()  # outside the lock (disconnect joins the reader thread)
+            if removed:
+                raise KeyError(f"Device on port {port} was removed during connect")
+            return conn
 
     def close_connection(self, port: str, owner: str | None = None) -> None:
         """Release the serial connection for *port*. With an *owner* tag only the LAST owner's release
