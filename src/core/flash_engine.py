@@ -150,6 +150,7 @@ class FlashEngine:
             # Phase-3 scaffolds (HW-validation pending — argv/flow unit-tested, no board yet):
             "dfu": self._flash_dfu,   # dfu-util → RP2040/Pi Pico in DFU + generic USB-DFU
             "uf2": self._flash_uf2,   # UF2 mass-storage → RP2040-family / UF2 bootloaders
+            "nrf_dfu": self._flash_nrf_dfu,  # Nordic nRF52 DFU .zip → ChameleonUltra / Nordic dongle DFU
         }
 
     @property
@@ -463,6 +464,54 @@ class FlashEngine:
         if dfu_id:
             argv += ["-d", dfu_id]
         argv += ["-D", app_path, "-R"]
+        rc = flash_core._run_stream(argv, on_line)
+        if progress:
+            progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
+        return rc == 0
+
+    def _flash_nrf_dfu(
+        self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
+    ) -> bool:
+        """Nordic nRF52 DFU flashing via ``adafruit-nrfutil`` (or legacy ``nrfutil`` 6.x).
+
+        HW-validation pending — argv/flow unit-tested only. Targets: nRF52840 Nordic-DFU ``.zip``
+        packages (ChameleonUltra, stock Nordic dongle DFU). This is NOT ``dfu-util`` (standard
+        USB-DFU, the ``dfu`` backend) — Nordic DFU is its own protocol over a serial (or BLE)
+        transport.
+
+        We resolve the ``.zip`` package (local or downloaded+verified, via ``_resolve_binary``), then
+        shell the Nordic tool through the proven ``flash_core._run_stream``. Options come from
+        ``profile.raw``: ``nrf_dfu_tool`` (``adafruit-nrfutil``|``nrfutil``; auto-detected if unset),
+        ``nrf_dfu_transport`` (``serial``|``ble`` — only serial is wired), ``nrf_dfu_baud`` (default
+        115200) and ``nrf_dfu_flow_control`` (0/1, adafruit-nrfutil only). We NEVER report success
+        when the tool is missing or nothing was flashed. Entering DFU mode + the actual write are
+        BENCH-GATED (need a real nRF52840); BLE-DFU and nrfutil v7's different CLI are out of scope.
+        """
+        on_line = _percent_adapter(progress)
+        # Prefer an explicit tool if it's actually on PATH; else auto-detect (adafruit-nrfutil first).
+        tool = profile.raw.get("nrf_dfu_tool")
+        tool = (shutil.which(tool) if tool else None) or shutil.which("adafruit-nrfutil") or shutil.which("nrfutil")
+        if not tool:
+            on_line("[nrf_dfu] no Nordic DFU tool found. Install one "
+                    "('pip install adafruit-nrfutil', or nRF Util from Nordic) and re-run.")
+            return False
+        transport = profile.raw.get("nrf_dfu_transport", "serial")
+        if transport != "serial":
+            on_line(f"[nrf_dfu] transport {transport!r} not wired — only 'serial' DFU is supported "
+                    "(BLE-DFU needs a real nRF52840 + a BLE link to validate).")
+            return False
+        pkg_path = self._resolve_binary(profile, on_line, "nrf_dfu")
+        if not pkg_path:
+            return False
+        baud = profile.raw.get("nrf_dfu_baud", 115200)
+        if "adafruit" in os.path.basename(tool).lower():
+            argv = [tool, "dfu", "serial", "-pkg", pkg_path, "-p", port, "-b", str(baud)]
+            fc = profile.raw.get("nrf_dfu_flow_control")
+            if fc is not None:
+                argv += ["-fc", str(fc)]
+        else:
+            # legacy Nordic nrfutil 6.x uses the "usb-serial" subcommand shape.
+            argv = [tool, "dfu", "usb-serial", "-pkg", pkg_path, "-p", port]
         rc = flash_core._run_stream(argv, on_line)
         if progress:
             progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")

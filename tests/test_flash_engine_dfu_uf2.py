@@ -221,6 +221,118 @@ def test_uf2_returns_false_when_release_fetch_fails(monkeypatch):
     assert FlashEngine()._flash_uf2("AUTO", prof, None) is False  # no false success
 
 
+# ── nrf_dfu (Nordic nRF52 DFU .zip) backend ──────────────────────────
+
+
+def test_nrf_dfu_adafruit_argv_and_succeeds(monkeypatch):
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FlashEngine, FirmwareProfile
+
+    rec = {}
+    # Auto-detect: adafruit-nrfutil present, legacy nrfutil absent.
+    monkeypatch.setattr(flash_engine.shutil, "which",
+                        lambda name: "/usr/bin/adafruit-nrfutil" if name == "adafruit-nrfutil" else None)
+    _wire_download(monkeypatch, flash_core, "/tmp/app.zip")
+
+    def fake_run(argv, on_line):
+        rec["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run)
+
+    prof = FirmwareProfile(backend="nrf_dfu", core_id="pico", local_path="")
+    assert FlashEngine()._flash_nrf_dfu("COM7", prof, None) is True
+    # adafruit-nrfutil serial-DFU shape; baud defaults to 115200; no -fc unless set.
+    assert rec["argv"] == ["/usr/bin/adafruit-nrfutil", "dfu", "serial",
+                           "-pkg", "/tmp/app.zip", "-p", "COM7", "-b", "115200"]
+
+
+def test_nrf_dfu_flow_control_and_baud_from_raw(monkeypatch):
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FlashEngine, FirmwareProfile
+
+    rec = {}
+    monkeypatch.setattr(flash_engine.shutil, "which", lambda name: "/usr/bin/" + name)
+    _wire_download(monkeypatch, flash_core, "/tmp/app.zip")
+
+    def fake_run(argv, on_line):
+        rec["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run)
+
+    prof = FirmwareProfile(backend="nrf_dfu", core_id="pico", local_path="",
+                           raw={"nrf_dfu_tool": "adafruit-nrfutil", "nrf_dfu_baud": 57600,
+                                "nrf_dfu_flow_control": 1})
+    assert FlashEngine()._flash_nrf_dfu("COM3", prof, None) is True
+    assert rec["argv"] == ["/usr/bin/adafruit-nrfutil", "dfu", "serial",
+                           "-pkg", "/tmp/app.zip", "-p", "COM3", "-b", "57600", "-fc", "1"]
+
+
+def test_nrf_dfu_legacy_nrfutil_uses_usb_serial(monkeypatch):
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FlashEngine, FirmwareProfile
+
+    rec = {}
+    monkeypatch.setattr(flash_engine.shutil, "which", lambda name: "/usr/bin/" + name)
+    _wire_download(monkeypatch, flash_core, "/tmp/app.zip")
+
+    def fake_run(argv, on_line):
+        rec["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run)
+
+    prof = FirmwareProfile(backend="nrf_dfu", core_id="pico", local_path="",
+                           raw={"nrf_dfu_tool": "nrfutil"})
+    assert FlashEngine()._flash_nrf_dfu("COM7", prof, None) is True
+    # legacy Nordic nrfutil 6.x uses "dfu usb-serial" (no -b/-fc in this shape).
+    assert rec["argv"] == ["/usr/bin/nrfutil", "dfu", "usb-serial", "-pkg", "/tmp/app.zip", "-p", "COM7"]
+
+
+def test_nrf_dfu_returns_false_when_tool_missing(monkeypatch):
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FlashEngine, FirmwareProfile
+
+    called = {"run": False}
+    monkeypatch.setattr(flash_engine.shutil, "which", lambda name: None)
+    monkeypatch.setattr(flash_core, "_run_stream",
+                        lambda argv, on_line: called.__setitem__("run", True) or 0)
+
+    prof = FirmwareProfile(backend="nrf_dfu", core_id="pico", local_path="")
+    # No Nordic tool on PATH -> install hint + False, and we NEVER shell out (no false success).
+    assert FlashEngine()._flash_nrf_dfu("COM7", prof, None) is False
+    assert called["run"] is False
+
+
+def test_nrf_dfu_returns_false_on_nonzero_rc(monkeypatch):
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FlashEngine, FirmwareProfile
+
+    monkeypatch.setattr(flash_engine.shutil, "which", lambda name: "/usr/bin/" + name)
+    _wire_download(monkeypatch, flash_core, "/tmp/app.zip")
+    monkeypatch.setattr(flash_core, "_run_stream", lambda argv, on_line: 1)
+
+    prof = FirmwareProfile(backend="nrf_dfu", core_id="pico", local_path="")
+    assert FlashEngine()._flash_nrf_dfu("COM7", prof, None) is False
+
+
+def test_nrf_dfu_returns_false_when_release_fetch_fails(monkeypatch):
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FlashEngine, FirmwareProfile
+
+    class _BoomCore:
+        def latest_release(self):
+            raise RuntimeError("offline")
+
+    monkeypatch.setattr(flash_engine.shutil, "which", lambda name: "/usr/bin/" + name)
+    monkeypatch.setattr(flash_core, "PROFILES", {"pico": object()})
+    monkeypatch.setattr(flash_core, "get_profile", lambda cid: _BoomCore())
+
+    prof = FirmwareProfile(backend="nrf_dfu", core_id="pico", local_path="")
+    assert FlashEngine()._flash_nrf_dfu("COM7", prof, None) is False  # no false success
+
+
 # ── registry wiring ──────────────────────────────────────────────────
 
 
@@ -230,3 +342,4 @@ def test_backends_registered():
     eng = FlashEngine()
     assert eng._backends["dfu"] == eng._flash_dfu
     assert eng._backends["uf2"] == eng._flash_uf2
+    assert eng._backends["nrf_dfu"] == eng._flash_nrf_dfu
