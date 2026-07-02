@@ -62,7 +62,7 @@ def test_apply_loadout_hides_unused_tabs(qapp, isolated_settings):
         assert "Network" not in labels
         for subview in ("Devices", "Health", "Software OS", "Targets", "Broadcast", "Macros", "Wardrive", "Cross-Comm"):
             assert subview not in labels  # grouped into a surface, never a top-level label post-regroup
-        for core in ("Flash", "Connect", "Operate", "Settings", "How-To"):
+        for core in ("Flash", "Connect", "Operate", "Settings"):
             assert core in labels
         # Full Stack restores everything
         win.apply_loadout(L.full_stack_loadout(), persist=False)

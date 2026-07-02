@@ -29,7 +29,7 @@ def test_core_tabs_always_visible():
     # the core always-visible top-level tabs are the surfaces (Connect/Operate), not their members.
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    for core in ("Flash", "Connect", "Operate", "Settings", "How-To"):
+    for core in ("Flash", "Connect", "Operate", "Settings"):
         assert core in vis
     for sub in ("Devices", "Health"):
         assert sub not in vis  # Connect sub-views now, never top-level

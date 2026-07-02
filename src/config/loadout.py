@@ -48,12 +48,11 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
     # "Network" is the grouped surface (Graph + Cross-Comm sub-views); it gates as one wifi_scanning unit.
     "Network": {"wifi_scanning"},
     "Settings": ALWAYS,
-    "How-To": ALWAYS,
 }
 
 # Canonical tab order (matches main_window._tab_registry); used to re-insert tabs in order.
 TAB_ORDER = (
-    "Flash", "Connect", "Operate", "Network", "Settings", "How-To",
+    "Flash", "Connect", "Operate", "Network", "Settings",
 )
 
 

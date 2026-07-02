@@ -235,6 +235,10 @@ class CyberControllerWindow(QMainWindow):
         act_guide.triggered.connect(self._on_user_guide)
         help_menu.addAction(act_guide)
 
+        act_howto = QAction("&How-To Guide", self)
+        act_howto.triggered.connect(self._on_howto)
+        help_menu.addAction(act_howto)
+
         act_shortcuts = QAction("&Keyboard Shortcuts", self)
         act_shortcuts.triggered.connect(self._on_keyboard_shortcuts)
         help_menu.addAction(act_shortcuts)
@@ -461,10 +465,8 @@ class CyberControllerWindow(QMainWindow):
         self._settings_tab = SettingsTab()
         self._tabs.addTab(self._settings_tab, "Settings")
 
-        # How-To — in-app usage guide (renders docs/HOWTO.md)
-        from src.ui.qt.howto_tab import HowToTab
-        self._howto_tab = HowToTab()
-        self._tabs.addTab(self._howto_tab, "How-To")
+        # How-To lives under the Help menu (see _on_howto), not the tab strip — keeps the top level at the
+        # 5 working surfaces (Flash / Connect / Operate / Network / Settings) + Help.
 
     # ── Interface mode (dual-depth Simple / Pro) ────────────────────
 
@@ -503,7 +505,7 @@ class CyberControllerWindow(QMainWindow):
             # + Macros + Wardrive) and Network (Graph + Cross-Comm) are each ONE loadout-toggleable surface unit.
             ("Operate", self._operate_surface),
             ("Network", self._network_surface),
-            ("Settings", self._settings_tab), ("How-To", self._howto_tab),
+            ("Settings", self._settings_tab),
         ]
 
     def _load_loadout(self) -> dict:
@@ -1102,6 +1104,7 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("Clear Terminal", self._on_clear_terminal)
         self._palette.add_command("Toggle Dead Man's Switch", self._on_toggle_suicide_mode)
         self._palette.add_command("User Guide", self._on_user_guide)
+        self._palette.add_command("How-To", self._on_howto)
         self._palette.add_command("Keyboard Shortcuts", self._on_keyboard_shortcuts)
         self._palette.add_command("Quit", self.close)
 
@@ -1147,6 +1150,22 @@ class CyberControllerWindow(QMainWindow):
             self._macro_tab._on_record()
 
     # ── Help dialogs ─────────────────────────────────────────────────
+
+    def _on_howto(self) -> None:
+        """Open the in-app How-To guide (renders docs/HOWTO.md) in a dialog. Lives under Help rather than a
+        top-level tab so the strip stays at the 5 working surfaces (Flash/Connect/Operate/Network/Settings)
+        + Help — the same "help content in a dialog" pattern as _on_user_guide."""
+        from src.ui.qt.howto_tab import HowToTab
+        dlg = QDialog(self)
+        dlg.setWindowTitle("Cyber Controller — How-To")
+        dlg.setMinimumSize(800, 600)
+        dlg.setStyleSheet("QDialog { background-color: #0d1117; color: #e6edf3; }")
+        layout = QVBoxLayout(dlg)
+        layout.addWidget(HowToTab())
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dlg.accept)
+        layout.addWidget(close_btn, alignment=Qt.AlignRight)
+        dlg.exec_()
 
     def _on_user_guide(self) -> None:
         """Open the User Guide dialog with feature documentation tabs."""

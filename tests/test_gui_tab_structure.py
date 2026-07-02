@@ -50,7 +50,7 @@ EXPECTED_TABS = [
     # not a top-level tab. See test_network_surface_subtabs.
     ("Network", "_network_surface"),
     ("Settings", "_settings_tab"),
-    ("How-To", "_howto_tab"),
+    # How-To moved to the Help menu (CC-6) — no longer a top-level tab. See test_howto_available_via_help.
 ]
 
 
@@ -77,11 +77,12 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_tab_count_is_6(qapp, isolated_settings):
-    # 6 top-level tabs after the S4 regroup folded Firmware+Software OS into Flash, Devices+Health into Connect,
-    # Targets/Broadcast/Macros/Wardrive into Operate, and Cross-Comm into Network (was 12 flat tabs originally).
+def test_tab_count_is_5(qapp, isolated_settings):
+    # 5 top-level surfaces after the S4 regroup + CC-6 (How-To moved to the Help menu): Flash, Connect,
+    # Operate, Network, Settings. (Was 12 flat tabs originally — Firmware+Software OS folded into Flash,
+    # Devices+Health into Connect, Targets/Broadcast/Macros/Wardrive into Operate, Cross-Comm into Network.)
     win = _make_window()
-    assert win._tabs.count() == len(EXPECTED_TABS) == 6
+    assert win._tabs.count() == len(EXPECTED_TABS) == 5
 
 
 def test_flash_surface_subtabs(qapp, isolated_settings):
@@ -218,10 +219,20 @@ def test_macro_tab_widget_inventory(qapp, isolated_settings):
         assert isinstance(getattr(t, var), QLineEdit), f"MacroTab.{var} not a QLineEdit"
 
 
-def test_howto_tab_widget_inventory(qapp, isolated_settings):
-    # HowToTab: a single rich-text documentation browser.
-    t = _make_window()._howto_tab
+def test_howto_widget_inventory(qapp, isolated_settings):
+    # HowToTab: a single rich-text documentation browser. CC-6 moved it off the tab strip into a Help-menu
+    # dialog (_on_howto), so it's constructed on demand rather than held as a window attribute.
+    from src.ui.qt.howto_tab import HowToTab
+
+    t = HowToTab()
     assert isinstance(t._view, QTextBrowser)
+
+
+def test_howto_available_via_help_not_tabstrip(qapp, isolated_settings):
+    # CC-6: How-To is reachable from the Help menu (and the command palette), not as a top-level tab.
+    win = _make_window()
+    assert hasattr(win, "_on_howto")            # the Help-menu action handler exists
+    assert not hasattr(win, "_howto_tab")       # and it is no longer mounted as a tab widget
 
 
 def test_devices_tab_widget_inventory(qapp, isolated_settings):
