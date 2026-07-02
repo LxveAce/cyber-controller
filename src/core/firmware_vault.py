@@ -216,13 +216,22 @@ class FirmwareVault:
         info = _parse_github_release_url(url)
         if info:
             owner, repo = info
-            try:
+            # Honor a pinned version: a caller asking for "v1.2.0" must NOT silently receive latest.
+            # Only "latest" resolves the /releases/latest redirect; a specific tag queries that tag (and
+            # fails loudly if it doesn't exist) rather than resolving to a different version.
+            if version and version != "latest":
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", version):
+                    log.error("Refusing unsafe version tag %r for %s", version, profile_id)
+                    return None
+                api_url = f"{_GITHUB_API}/repos/{owner}/{repo}/releases/tags/{version}"
+            else:
                 api_url = f"{_GITHUB_API}/repos/{owner}/{repo}/releases/latest"
+            try:
                 release = _safe_api_get_json(api_url)  # SSRF-allowlisted (M-2)
                 resolved_version = release.get("tag_name", version)
                 assets = release.get("assets", [])
             except (requests.RequestException, ValueError) as exc:
-                log.error("GitHub API error for %s: %s", profile_id, exc)
+                log.error("GitHub API error for %s (version=%s): %s", profile_id, version, exc)
                 return None
 
         # Find a .bin asset to download. Do NOT fall back to assets[0] — flashing an
@@ -395,10 +404,17 @@ class FirmwareVault:
                 continue
 
             with self._lock:
-                cached_versions = list(self._index.get(pid, {}).keys())
+                cached_entries = dict(self._index.get(pid, {}))
+            cached_versions = list(cached_entries)
 
             if latest_tag not in cached_versions:
-                cached_str = cached_versions[-1] if cached_versions else "none"
+                # Report the NEWEST cached version (by download time, matching get_cached), not an
+                # arbitrary dict-insertion-order key — otherwise "you have X, latest is Y" can name an
+                # older cached version that happens to sort last.
+                cached_str = (
+                    max(cached_entries, key=lambda v: cached_entries[v].get("downloaded_at", ""))
+                    if cached_entries else "none"
+                )
                 updates.append({
                     "profile_id": pid,
                     "name": prof["name"],
