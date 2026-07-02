@@ -19,11 +19,20 @@ from __future__ import annotations
 import os
 
 from PyQt5.QtCore import (
-    QEasingCurve, QPoint, QPropertyAnimation, QRectF, Qt, QTimer, pyqtProperty,
+    QEasingCurve,
+    QPoint,
+    QPropertyAnimation,
+    QRectF,
+    Qt,
+    pyqtProperty,
 )
-from PyQt5.QtGui import QColor, QFont, QLinearGradient, QPainter, QPixmap
+from PyQt5.QtGui import QColor, QLinearGradient, QPainter, QPen, QPixmap
 from PyQt5.QtWidgets import (
-    QApplication, QGraphicsOpacityEffect, QLabel, QVBoxLayout, QWidget,
+    QApplication,
+    QGraphicsOpacityEffect,
+    QLabel,
+    QVBoxLayout,
+    QWidget,
 )
 
 _BG = QColor(13, 17, 23)
@@ -137,8 +146,6 @@ class LoadingSplash(QWidget):
         p.setPen(Qt.NoPen)
         p.setBrush(_PANEL)
         p.drawRoundedRect(r, 14, 14)
-        pen = p.pen()
-        from PyQt5.QtGui import QPen
         p.setPen(QPen(_BORDER, 1))
         p.setBrush(Qt.NoBrush)
         p.drawRoundedRect(r, 14, 14)

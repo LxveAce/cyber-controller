@@ -19,10 +19,7 @@ import lzma
 import os
 import platform
 import re
-import shutil
-import struct
 import subprocess
-import sys
 import tempfile
 import urllib.parse
 import zipfile
@@ -295,7 +292,7 @@ def decompress(src: str, dest_dir: str, on_line: Line,
     elif base.endswith(".zip"):
         img_name = base[:-4] + ".img"
     elif base.endswith(".img"):
-        on_line(f"[decompress] already an .img, no decompression needed")
+        on_line("[decompress] already an .img, no decompression needed")
         return src
     else:
         raise ValueError(f"unsupported archive format: {base}")
@@ -564,7 +561,6 @@ def _write_windows(img_path: str, device: str, on_line: Line,
     INVALID_HANDLE = ctypes.c_void_p(-1).value
     FSCTL_LOCK_VOLUME = 0x00090018
     FSCTL_DISMOUNT_VOLUME = 0x00090020
-    IOCTL_DISK_GET_LENGTH_INFO = 0x0007405C
 
     kernel32 = ctypes.windll.kernel32  # type: ignore[attr-defined]
     kernel32.CreateFileW.restype = ctypes.c_void_p
@@ -681,7 +677,7 @@ def verify_write(img_path: str, device: str, on_line: Line,
                  on_progress: Optional[Callable[[float], None]] = None) -> bool:
     """Read back img_size bytes from device and compare SHA-256 against the image file."""
     img_size = os.path.getsize(img_path)
-    on_line(f"[verify] computing image hash...")
+    on_line("[verify] computing image hash...")
     img_hash = sha256_file(img_path, on_line)
 
     on_line(f"[verify] reading {img_size} bytes back from {device}...")

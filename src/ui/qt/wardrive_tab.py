@@ -15,7 +15,6 @@ from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
-    QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,

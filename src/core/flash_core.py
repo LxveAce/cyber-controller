@@ -2171,6 +2171,7 @@ _PROFILE_FILES = (
 
 def _load_profiles() -> Dict[str, FirmwareProfile]:
     import logging
+
     from src.core.resources import resource_path
     pdir = resource_path("src", "config", "profiles")
     out: Dict[str, FirmwareProfile] = {}

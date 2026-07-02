@@ -7,15 +7,15 @@ attack chain builder, or mission planner found in the full Qt interface.
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
 import tkinter as tk
 from pathlib import Path
-from src.core.resources import resource_path
 from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING, Any
+
+from src.core.resources import resource_path
 
 try:
     import psutil
@@ -25,36 +25,39 @@ except ImportError:
 
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
-from src.core.flash_engine import FlashEngine, FirmwareProfile
+from src.core.flash_engine import FirmwareProfile, FlashEngine
 from src.core.serial_handler import SerialConnection
 
+# These try/except blocks are feature-availability probes: the imported symbol may not exist in an
+# older/partial install, so a failed import flips the _HAS_* flag off. The symbols themselves are only
+# probed here (not referenced later), hence the noqa on the ones that would otherwise read as unused.
 try:
-    from src.core.cross_comm import AutoRouter
+    from src.core.cross_comm import AutoRouter  # noqa: F401  (availability probe → _HAS_AUTO_ROUTER)
     _HAS_AUTO_ROUTER = True
 except ImportError:
     _HAS_AUTO_ROUTER = False
 
 try:
-    from src.core.macro_recorder import MacroRecorder, Macro
+    from src.core.macro_recorder import MacroRecorder
     _HAS_MACROS = True
 except ImportError:
     _HAS_MACROS = False
 
 try:
-    from src.config.settings import load_settings, save_settings, DEFAULTS as _SETTINGS_DEFAULTS
+    from src.config.settings import load_settings, save_settings
     _HAS_SETTINGS = True
 except ImportError:
     _HAS_SETTINGS = False
 
 try:
-    from src.core.suicide_setup import SuicideConfig, run_cli as sm_run_cli
+    from src.core.suicide_setup import SuicideConfig  # noqa: F401  (availability probe → _HAS_DEADMAN)
+    from src.core.suicide_setup import run_cli as sm_run_cli  # noqa: F401  (availability probe)
     _HAS_DEADMAN = True
 except ImportError:
     _HAS_DEADMAN = False
 
 if TYPE_CHECKING:
-    from src.models.device import Device
-    from src.models.target import Target
+    pass
 
 log = logging.getLogger(__name__)
 
@@ -803,7 +806,10 @@ class TkLightApp:
                     variables=variables,
                 )
             except Exception as exc:
-                self._root.after(0, lambda: messagebox.showerror("Macros", f"Playback error: {exc}"))
+                # Bind the message to a plain local: `exc` is unbound when the except block
+                # exits, and this lambda runs later on the Tk main loop via after(0, ...).
+                err = str(exc)
+                self._root.after(0, lambda: messagebox.showerror("Macros", f"Playback error: {err}"))
             self._root.after(0, lambda: self._macro_status_label.configure(
                 text="Idle", foreground="#8b949e"))
 

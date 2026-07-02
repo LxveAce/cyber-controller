@@ -1,11 +1,18 @@
 """UI variant launcher dialog shown when no --ui flag is provided."""
 
 import sys
+
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
-    QApplication, QDialog, QVBoxLayout,
-    QLabel, QPushButton, QFrame, QRadioButton, QButtonGroup,
+    QApplication,
+    QButtonGroup,
+    QDialog,
+    QFrame,
+    QLabel,
+    QPushButton,
+    QRadioButton,
+    QVBoxLayout,
 )
 
 _LAUNCHER_QSS = """

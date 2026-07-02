@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import re
 
-from src.models.action import ActionCategory, TargetAction
+from src.models.action import TargetAction
 from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 

@@ -141,10 +141,10 @@ def _setup_logging(level: str, log_file: str | None = None) -> None:
 
 def _bootstrap():
     """Create shared core objects used by every UI."""
-    from src.core.device_manager import DeviceManager
-    from src.core.flash_engine import FlashEngine
     from src.core.cross_comm import EventBus, TargetPool
+    from src.core.device_manager import DeviceManager
     from src.core.firmware_vault import FirmwareVault
+    from src.core.flash_engine import FlashEngine
     from src.core.health_monitor import HealthMonitor
     from src.core.macro_recorder import MacroRecorder
     from src.security.audit_trail import AuditTrail

@@ -14,13 +14,11 @@ action system).
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
 from typing import Any
 
 from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QCursor
 from PyQt5.QtWidgets import (
-    QAction,
     QApplication,
     QHBoxLayout,
     QHeaderView,
@@ -43,7 +41,8 @@ from src.ui.qt.widgets.signal_bars import SignalBarsDelegate
 
 # Graceful import for action system (created by a parallel agent).
 try:
-    from src.core.action_resolver import ActionResolver, execute_action as _execute_action_fn
+    from src.core.action_resolver import ActionResolver
+    from src.core.action_resolver import execute_action as _execute_action_fn
     _HAS_ACTION_RESOLVER = True
 except Exception:  # noqa: BLE001
     ActionResolver = None  # type: ignore[assignment,misc]

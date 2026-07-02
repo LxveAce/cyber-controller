@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import math
-
-from PyQt5.QtCore import Qt, QRectF
+from PyQt5.QtCore import QRectF, Qt
 from PyQt5.QtGui import QColor, QFont, QPainter, QPen
 from PyQt5.QtWidgets import QWidget
 
-from src.ui.qt.theme.colors import ACCENT, BG_INPUT, WARNING, ERROR
+from src.ui.qt.theme.colors import ACCENT, BG_INPUT, ERROR, WARNING
 
 
 class ArcGauge(QWidget):
@@ -75,7 +73,6 @@ class ArcGauge(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        dpr = self.devicePixelRatioF()
         w = self.width()
         h = self.height()
         side = min(w, h - 24)  # leave room for label text

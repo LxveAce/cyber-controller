@@ -7,7 +7,7 @@ each port, and flash them all in one operation.
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 Line = Callable[[str], None]
 

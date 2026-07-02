@@ -20,7 +20,6 @@ Key facts (RayHunter on Orbic RC400L):
 import json
 import os
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -582,7 +581,7 @@ def install_rayhunter(on_line: Line, serial: Optional[str] = None,
         if admin_ip != "192.168.1.1":
             argv += ["--admin-ip", admin_ip]
 
-    on_line(f"[rayhunter] running installer...")
+    on_line("[rayhunter] running installer...")
     rc, _ = _run_adb(argv, on_line, timeout=300)
     if rc == 0:
         on_line("[rayhunter] install complete")

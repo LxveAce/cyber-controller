@@ -6,10 +6,9 @@ import logging
 import os
 import re
 import threading
-from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -29,24 +28,21 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from src.core.device_manager import DeviceManager
-from src.core.serial_handler import ConnectionState, SerialConnection
-from src.models.device import Device
-from src.protocols import (
-    PROTOCOL_DISPLAY_NAMES,
-    get_protocol,
-    get_protocol_by_display,
-)
-from src.protocols.base import CommandInfo
-from src.core import safety
 from src.config.settings import load_settings, save_settings
+from src.core import safety
 from src.core.bluejammer_control import (
     BlueJammerController,
     ControlMap,
     ControlUnavailable,
     HttpTransport,
     Mode,
-    UartTransport,
+)
+from src.core.device_manager import DeviceManager
+from src.core.serial_handler import SerialConnection
+from src.protocols import (
+    PROTOCOL_DISPLAY_NAMES,
+    get_protocol,
+    get_protocol_by_display,
 )
 
 log = logging.getLogger(__name__)
@@ -802,7 +798,12 @@ class DeviceTab(QWidget):
         labels = [a.strip() for a in (ci.args.split(",") if ci and getattr(ci, "args", "") else [])]
         use_labels = labels if len(labels) == len(tokens) else None
         from PyQt5.QtWidgets import (
-            QDialog, QDialogButtonBox, QFormLayout, QLabel, QLineEdit, QVBoxLayout,
+            QDialog,
+            QDialogButtonBox,
+            QFormLayout,
+            QLabel,
+            QLineEdit,
+            QVBoxLayout,
         )
         dlg = QDialog(self)
         dlg.setWindowTitle("Command parameters")

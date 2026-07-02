@@ -21,7 +21,7 @@ import logging
 from typing import Any
 
 from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QComboBox,
     QDialog,

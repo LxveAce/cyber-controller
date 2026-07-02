@@ -3,11 +3,8 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
-from typing import Any
 
-from PyQt5.QtCore import Qt, pyqtSignal, QObject
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtCore import QObject, Qt, pyqtSignal
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -25,13 +22,12 @@ from PyQt5.QtWidgets import (
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
-    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from src.core.macro_recorder import Macro, MacroRecorder, MacroStep
 from src.core.device_manager import DeviceManager
+from src.core.macro_recorder import Macro, MacroRecorder
 
 log = logging.getLogger(__name__)
 

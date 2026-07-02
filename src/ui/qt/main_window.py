@@ -4,16 +4,14 @@ from __future__ import annotations
 
 import logging
 import sys
-from typing import TYPE_CHECKING
 
-from PyQt5.QtCore import Qt, QByteArray, QSettings, QTimer, pyqtSignal, pyqtSlot
-from PyQt5.QtGui import QColor, QFont, QKeySequence, QPalette
+from PyQt5.QtCore import QSettings, Qt, QTimer, pyqtSignal, pyqtSlot
+from PyQt5.QtGui import QColor, QFont, QKeySequence
 from PyQt5.QtWidgets import (
     QAction,
     QActionGroup,
     QApplication,
     QCheckBox,
-    QComboBox,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -28,46 +26,47 @@ from PyQt5.QtWidgets import (
     QPushButton,
     QShortcut,
     QSplitter,
-    QTabWidget,
     QTableWidget,
     QTableWidgetItem,
+    QTabWidget,
     QTextEdit,
     QVBoxLayout,
     QWidget,
 )
 
-from src.core.device_manager import DeviceManager
-from src.core.flash_engine import FlashEngine
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.cross_comm_hub import CrossCommHub
+from src.core.deadman_auth import DeadManAuth
+from src.core.device_manager import DeviceManager
 from src.core.firmware_vault import FirmwareVault
+from src.core.flash_engine import FlashEngine
 from src.core.health_monitor import HealthMonitor
 from src.core.macro_recorder import MacroRecorder
-from src.ui.qt.flash_tab import FlashTab
-from src.ui.qt.software_tab import SoftwareTab
-from src.ui.qt.wardrive_tab import WardriveTab
+from src.ui.qt.cross_comm_tab import CrossCommTab
+from src.ui.qt.detachable_tabs import DetachableTabWidget
 from src.ui.qt.device_tab import DeviceTab
+from src.ui.qt.flash_tab import FlashTab
 from src.ui.qt.health_tab import HealthTab
 from src.ui.qt.macro_tab import MacroTab
-from src.ui.qt.targets_tab import TargetsTab
-from src.ui.qt.cross_comm_tab import CrossCommTab
-from src.ui.qt.settings_tab import SettingsTab
-from src.ui.qt.theme import apply_theme
-from src.ui.qt.detachable_tabs import DetachableTabWidget
 from src.ui.qt.screen import (
     adaptive_launch_size,
     adaptive_minimum_size,
     enable_high_dpi,
     recommended_ui_mode,
 )
-from src.ui.qt.widgets.cc_logo import CCLogo
+from src.ui.qt.settings_tab import SettingsTab
+from src.ui.qt.software_tab import SoftwareTab
+from src.ui.qt.targets_tab import TargetsTab
+from src.ui.qt.theme import apply_theme
+from src.ui.qt.wardrive_tab import WardriveTab
 from src.ui.qt.widgets.cc_icon import create_cc_icon
+from src.ui.qt.widgets.cc_logo import CCLogo
 from src.ui.qt.widgets.command_palette import CommandPalette
-from src.core.deadman_auth import DeadManAuth
 
 log = logging.getLogger(__name__)
 
 from src.version import __version__ as _VERSION
+
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
 
@@ -740,7 +739,8 @@ class CyberControllerWindow(QMainWindow):
         self._pterm_line_cbs: dict = {}
 
         # Bridge serial callbacks to the Qt thread (carries port + line)
-        from PyQt5.QtCore import QObject, pyqtSignal as _sig
+        from PyQt5.QtCore import QObject
+        from PyQt5.QtCore import pyqtSignal as _sig
 
         class _PTermLineSignal(QObject):
             line_received = _sig(str, str)  # (port, line)
@@ -1511,8 +1511,8 @@ class CyberControllerWindow(QMainWindow):
             return False
         if getattr(proto, "protocol_name", None) != self._SKIN_PROTOCOL.get(firmware, firmware):
             return False  # don't send a Marauder command to a GhostESP, etc.
-        from src.core import safety
         from src.config.settings import load_settings
+        from src.core import safety
         info = next((ci for ci in proto.cached_commands() if ci.name == cmd), None)
         danger = safety.classify(cmd, info)
         if safety.should_confirm(danger, load_settings()):
@@ -1633,8 +1633,9 @@ def launch_qt(
     # to a richer animated loading screen, build the dashboard, then cross-fade to it. The lightweight
     # UIs (Tk/TUI/web) intentionally have no such animation.
     import time as _time
-    from src.ui.qt.loading_splash import LoadingSplash, fade_in_window, reduced_motion
+
     from src.core.resources import resource_path
+    from src.ui.qt.loading_splash import LoadingSplash, fade_in_window, reduced_motion
 
     _logo = str(resource_path("assets", "cc-logo.png"))
     splash = LoadingSplash(_logo)
@@ -1655,9 +1656,10 @@ def launch_qt(
 
     def _first_run_dialogs() -> None:
         # One-time legal / authorized-use disclaimer (always seen at least once; LABELS, never blocks).
+        from PyQt5.QtWidgets import QMessageBox
+
         from src.config.settings import load_settings, save_settings
         from src.core import safety
-        from PyQt5.QtWidgets import QMessageBox
         _settings = load_settings()
         if safety.needs_first_run_disclaimer(_settings):
             box = QMessageBox(win)

@@ -15,7 +15,6 @@ from __future__ import annotations
 import math
 from typing import Callable, Optional
 
-from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QBrush, QColor, QPainter, QPen
 from PyQt5.QtWidgets import (
     QGraphicsItem,
@@ -214,6 +213,8 @@ class NetworkTab(QWidget):
             # Mark a node that has no text command channel (Meshtastic protobuf stream / BlueJammer web-UI)
             # right in the subtitle, so the graph doesn't imply you can drive every connected box over serial.
             sub = str(port)
+            if fw:
+                sub = f"{sub} · {fw}"
             marker = _DRIVER_MARKERS.get(getattr(dev, "driver_type", "text-cli"))
             if marker:
                 sub = f"{sub} · {marker}"
@@ -305,8 +306,8 @@ class NetworkTab(QWidget):
         # This is a real send surface, so dangerous commands (deauth / jam / spam) must clear the same
         # safety gate as the Devices tab (_on_send) and Device View — otherwise the experimental Network
         # tab is a silent bypass that fires attack commands with no confirmation.
-        from src.core import safety
         from src.config.settings import load_settings
+        from src.core import safety
         danger = safety.classify(cmd, ci)
         if safety.should_confirm(danger, load_settings()):
             from PyQt5.QtWidgets import QMessageBox

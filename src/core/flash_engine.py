@@ -28,7 +28,7 @@ import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from src.core import flash_core, profile_loader
 
@@ -625,6 +625,7 @@ class FlashEngine:
         self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
     ) -> bool:
         import os
+
         from src.core.backends import rtl8720_backend as rtl
 
         on_line = _percent_adapter(progress)
@@ -677,7 +678,6 @@ class FlashEngine:
     def _flash_sd(
         self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
     ) -> bool:
-        from src.core.backends import sd_backend
 
         on_line = _percent_adapter(progress)
         on_line("[sd] SD-card imaging requires choosing a removable target device and "

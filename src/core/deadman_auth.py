@@ -4,8 +4,8 @@ Detects when a connected device prompts for a DMS password and coordinates
 the auth challenge across headed/headless modes.
 """
 
-import re
 import logging
+import re
 from typing import Callable, Optional
 
 log = logging.getLogger(__name__)

@@ -9,11 +9,10 @@ import time
 from typing import Callable, Optional
 
 from src.core.flash_core import (
-    esptool_argv,
-    _run_stream,
     _detect_chip,
-    _BOOTLOADER_0,
+    _run_stream,
     _sha256_file,
+    esptool_argv,
 )
 
 Line = Callable[[str], None]

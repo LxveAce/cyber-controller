@@ -9,7 +9,6 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
     QCheckBox,
     QDialog,

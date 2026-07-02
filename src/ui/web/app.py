@@ -25,7 +25,6 @@ import logging
 import os
 import secrets
 from pathlib import Path
-from src.core.resources import resource_path
 from typing import Any
 
 from flask import Flask, Response, abort, g, jsonify, render_template, request, session
@@ -33,7 +32,8 @@ from flask_socketio import SocketIO, emit
 
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
-from src.core.flash_engine import FlashEngine, FirmwareProfile
+from src.core.flash_engine import FirmwareProfile, FlashEngine
+from src.core.resources import resource_path
 from src.security.web_auth import (
     RateLimiter,
     csrf_valid,

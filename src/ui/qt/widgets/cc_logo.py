@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from PyQt5.QtCore import Qt, QRectF, QPointF
-from PyQt5.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QRadialGradient
+from PyQt5.QtCore import QPointF, QRectF, Qt
+from PyQt5.QtGui import QColor, QFont, QPainter, QPen
 from PyQt5.QtWidgets import QWidget
-
 
 _ACCENT = "#a371f7"
 _ACCENT_GLOW = QColor(163, 113, 247, 40)

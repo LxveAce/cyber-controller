@@ -23,15 +23,15 @@ import importlib
 import types
 
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
-from src.protocols.marauder import MarauderProtocol
-from src.protocols.ghost_esp import GhostESPProtocol
-from src.protocols.bruce import BruceProtocol
-from src.protocols.flipper import FlipperProtocol
-from src.protocols.halehound import HaleHoundProtocol
-from src.protocols.meshtastic import MeshtasticProtocol
-from src.protocols.esp32_div import Esp32DivProtocol
-from src.protocols.bw16 import BW16Protocol
 from src.protocols.bluejammer import BlueJammerProtocol
+from src.protocols.bruce import BruceProtocol
+from src.protocols.bw16 import BW16Protocol
+from src.protocols.esp32_div import Esp32DivProtocol
+from src.protocols.flipper import FlipperProtocol
+from src.protocols.ghost_esp import GhostESPProtocol
+from src.protocols.halehound import HaleHoundProtocol
+from src.protocols.marauder import MarauderProtocol
+from src.protocols.meshtastic import MeshtasticProtocol
 
 
 class GenericProtocol(BaseProtocol):

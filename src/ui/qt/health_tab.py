@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,

@@ -8,8 +8,9 @@ from __future__ import annotations
 import logging
 import threading
 from pathlib import Path
-from src.core.resources import resource_path
 from typing import TYPE_CHECKING
+
+from src.core.resources import resource_path
 
 try:
     import psutil
@@ -39,12 +40,11 @@ from textual.widgets import (
 
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
-from src.core.flash_engine import FlashEngine, FirmwareProfile
+from src.core.flash_engine import FirmwareProfile, FlashEngine
 from src.core.serial_handler import SerialConnection
 
 if TYPE_CHECKING:
-    from src.models.device import Device
-    from src.models.target import Target
+    pass
 
 log = logging.getLogger(__name__)
 

@@ -12,7 +12,13 @@ import sys
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
-    QApplication, QDialog, QLabel, QLineEdit, QPushButton, QVBoxLayout, QHBoxLayout,
+    QApplication,
+    QDialog,
+    QHBoxLayout,
+    QLabel,
+    QLineEdit,
+    QPushButton,
+    QVBoxLayout,
 )
 
 from src.security import physical_key as pk

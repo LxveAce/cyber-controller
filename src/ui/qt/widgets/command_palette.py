@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Callable
 
 from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QColor, QFont
+from PyQt5.QtGui import QFont
 from PyQt5.QtWidgets import (
     QDialog,
     QHBoxLayout,

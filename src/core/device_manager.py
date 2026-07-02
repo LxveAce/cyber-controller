@@ -3,16 +3,14 @@
 from __future__ import annotations
 
 import logging
-import platform
 import threading
-import time
 from typing import Callable
 
 import serial.tools.list_ports
 from serial.tools.list_ports_common import ListPortInfo
 
 from src.core.serial_handler import SerialConnection
-from src.models.device import BoardType, Device, Protocol
+from src.models.device import BoardType, Device
 
 log = logging.getLogger(__name__)
 

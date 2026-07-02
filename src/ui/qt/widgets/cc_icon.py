@@ -4,9 +4,10 @@ Matches the sidebar CCLogo widget: two interlocking C arcs
 with glow layers and endpoint nodes.
 """
 
-from PyQt5.QtCore import Qt, QRectF, QPointF
-from PyQt5.QtGui import QColor, QIcon, QImage, QPainter, QPen, QPixmap
 import math
+
+from PyQt5.QtCore import QPointF, QRectF, Qt
+from PyQt5.QtGui import QColor, QIcon, QImage, QPainter, QPen, QPixmap
 
 _ACCENT = QColor(163, 113, 247)
 _ACCENT_GLOW = QColor(163, 113, 247, 40)

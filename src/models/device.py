@@ -89,7 +89,9 @@ class Device:
         A read-only view over the protocol capability map, so a connected device can be treated as a node with
         known abilities (network view + Broadcast/AutoRouter applicability). Empty for an unknown firmware or
         one that declares none. The firmware identifier is the lookup key; the protocol enum is the fallback."""
-        from src.protocols import capabilities_for  # lazy: keep models independent of the protocols package
+        from src.protocols import (
+            capabilities_for,  # lazy: keep models independent of the protocols package
+        )
         return capabilities_for(self.firmware or self.protocol.value)
 
     @property
@@ -99,7 +101,9 @@ class Device:
         command channel at all, e.g. BlueJammer's web UI). Read-only view over the protocol map — lets a node
         say honestly whether it even has a sendable command channel. The firmware identifier is the lookup key;
         the protocol enum is the fallback."""
-        from src.protocols import driver_type_for  # lazy: keep models independent of the protocols package
+        from src.protocols import (
+            driver_type_for,  # lazy: keep models independent of the protocols package
+        )
         return driver_type_for(self.firmware or self.protocol.value)
 
     def to_dict(self) -> dict:

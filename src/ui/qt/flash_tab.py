@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from src.core.resources import resource_path
-from typing import TYPE_CHECKING
 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QFont
@@ -28,7 +26,8 @@ from PyQt5.QtWidgets import (
 
 from src.core.device_manager import DeviceManager
 from src.core.firmware_vault import FirmwareVault
-from src.core.flash_engine import FlashEngine, FirmwareProfile
+from src.core.flash_engine import FirmwareProfile, FlashEngine
+from src.core.resources import resource_path
 
 log = logging.getLogger(__name__)
 
