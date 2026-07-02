@@ -25,30 +25,39 @@ def test_empty_configured_fails_open():
 
 
 def test_core_tabs_always_visible():
+    # S4 regroup: Macros folded into the always-shown "Operate" surface, so the core always-visible top-level
+    # tab is now "Operate" (it anchors Macros + the action sub-views) rather than "Macros".
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    for core in ("Flash", "Devices", "Health", "Macros", "Settings", "How-To"):
+    for core in ("Flash", "Devices", "Health", "Operate", "Settings", "How-To"):
         assert core in vis
 
 
-def test_wifi_scanning_gates_targets_broadcast():
-    # Meshtastic is not a wifi-scanning fw -> no Targets/Broadcast/Network. (S4 regroup: "Network" is the
-    # wifi_scanning-gated surface that now holds Cross-Comm; Cross-Comm is no longer a top-level tab.)
+def test_wifi_scanning_gates_network_surface():
+    # S4 regroup: the wifi_scanning-gated *top-level* surface is now "Network" (holds Cross-Comm). Targets and
+    # Broadcast folded into the always-shown "Operate" surface (Macros anchors it), so wifi gating for those
+    # became a documented per-sub-tab follow-up — none of Targets/Broadcast/Cross-Comm are top-level tabs.
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    assert "Targets" not in vis and "Broadcast" not in vis and "Network" not in vis
-    assert "Cross-Comm" not in vis  # folded into the Network surface, never a top-level tab
-    # add Marauder -> they appear
+    assert "Network" not in vis            # no wifi fw -> the wifi-gated Network surface is hidden
+    assert "Operate" in vis                # always shown (contains always-available Macros)
+    for sub in ("Targets", "Broadcast", "Cross-Comm"):
+        assert sub not in vis              # sub-views now, never top-level
+    # add Marauder -> the wifi-gated Network surface appears (Operate was already shown)
     lo2 = {**lo, "firmwares": ["meshtastic", "marauder"]}
     vis2 = L.visible_tabs(lo2)
-    assert "Targets" in vis2 and "Broadcast" in vis2 and "Network" in vis2
+    assert "Network" in vis2 and "Operate" in vis2
 
 
-def test_gps_gates_wardrive():
+def test_operate_surface_always_shown_holds_wardrive():
+    # S4 regroup: Wardrive (gps-gated) is now a sub-view of the always-shown "Operate" surface, so gps no
+    # longer gates a *top-level* tab. Per-sub-tab gps gating inside Operate is a tracked follow-up (loadout is
+    # surface-granularity today). Operate itself is always present because Macros (ALWAYS) anchors it.
     no_gps = {"full_stack": False, "configured": True, "firmwares": ["marauder"], "hardware": ["esp32"]}
-    assert "Wardrive" not in L.visible_tabs(no_gps)
+    assert "Operate" in L.visible_tabs(no_gps)
+    assert "Wardrive" not in L.visible_tabs(no_gps)  # not a top-level tab — it's an Operate sub-view
     with_gps = {**no_gps, "hardware": ["esp32", "gps"]}
-    assert "Wardrive" in L.visible_tabs(with_gps)
+    assert "Operate" in L.visible_tabs(with_gps)
 
 
 def test_usb_os_gates_software_tab():
