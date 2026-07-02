@@ -119,15 +119,18 @@ class SerialConnection:
             log.warning("Already connected to %s", self.port)
             return
 
-        # Idempotent re-open: release any leftover handle from a prior read error so the OS port is
-        # free. On Windows COM ports open exclusively, so a stale handle would make the re-open raise
-        # "Access is denied" — connect() must be safe to call to recover an ERROR-state connection.
-        if self._serial is not None:
-            try:
-                self._serial.close()
-            except Exception:
-                pass
-            self._serial = None
+        # Fully tear down any prior reader thread + handle before reopening. A write()/interrupt error
+        # only sets state=ERROR without stopping the reader (the port may still be readable), so a stale
+        # reader can still be blocked in read() on the old handle. If we reopened without stopping it, the
+        # moment we close the old handle that reader wakes with a SerialException, enters its error path,
+        # and calls _release_serial() — which would null out the FRESHLY-opened port and destroy the new
+        # connection (a race, since connect() doesn't hold _io_lock while reopening). Stop+join it first.
+        # This also frees the OS port so the re-open can't hit "Access is denied" on exclusive COM ports.
+        if self._read_thread is not None and self._read_thread.is_alive():
+            self._stop_event.set()
+            self._read_thread.join(timeout=3.0)
+        self._release_serial()
+        self._read_thread = None
 
         self._set_state(ConnectionState.CONNECTING)
         try:

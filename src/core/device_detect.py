@@ -163,7 +163,11 @@ def probe_firmware(port: str, baud: int = _DEFAULT_BAUD,
         return None, None, None
 
     try:
-        ser = serial.Serial(port, baud, timeout=0.3)
+        # write_timeout guards the ser.write()/flush() below: without it a device that isn't draining
+        # its input (asserted flow control / wedged firmware / USB stall) would block the write forever
+        # and hang the whole port enumeration (scan probes ports serially). A stuck write now raises
+        # SerialTimeoutException (a SerialException subclass), which the probe loop already handles.
+        ser = serial.Serial(port, baud, timeout=0.3, write_timeout=1.0)
     except (serial.SerialException, OSError):
         return None, None, None
 
