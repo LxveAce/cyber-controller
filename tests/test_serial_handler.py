@@ -99,6 +99,22 @@ def test_send_interrupt_without_serial_raises_runtime_error() -> None:
         conn.send_interrupt()
 
 
+def test_write_bytes_sends_payload_verbatim() -> None:
+    # write_bytes() is the binary transport for framed/stream protocols: exact bytes on the wire, NO line
+    # terminator appended and NO control-char rejection (a protobuf frame is full of control bytes).
+    conn, fake = _make_conn()
+    frame = b"\x94\xc3\x00\x03abc"
+    conn.write_bytes(frame)
+    assert fake.written == [frame]
+    assert fake.flushed == 1
+
+
+def test_write_bytes_without_serial_raises_runtime_error() -> None:
+    conn = SerialConnection("COM-NONE")
+    with pytest.raises(RuntimeError):
+        conn.write_bytes(b"\x00\x01")
+
+
 # ── Reader-loop / lifecycle hardening (bug-hunt fixes #1, #10, #23, #24) ───────────────────────────
 
 import threading  # noqa: E402

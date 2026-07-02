@@ -59,9 +59,31 @@ def test_controlmap_driver_is_an_honest_no_op():
     assert conn.written == []  # no serial command channel to write to
 
 
-def test_stream_raw_path_not_wired_until_s3b():
+def test_stream_raw_path_raises_without_binary_write():
+    # A connection with no binary write path (bare _FakeConn) still can't send a frame — honest boundary.
     with pytest.raises(NotImplementedError):
         StreamDriver().deliver_raw(_FakeConn(), b"\x94\xc3\x00\x01")
+
+
+class _RawConn(_FakeConn):
+    """A connection that exposes the binary write path (SerialConnection.write_bytes)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.raw: list[bytes] = []
+
+    def write_bytes(self, payload: bytes) -> None:
+        self.raw.append(bytes(payload))
+
+
+def test_stream_raw_path_sends_framed_bytes_when_binary_write_available():
+    # With a binary write path present, deliver_raw frames the payload (StreamFramer) and puts it on the wire.
+    from src.protocols.stream_framer import StreamFramer
+    conn = _RawConn()
+    payload = b"\x08\x01\x12\x03abc"
+    assert StreamDriver().deliver_raw(conn, payload) is True
+    assert conn.raw == [StreamFramer.frame(payload)]
+    assert conn.written == []  # binary path, not the text channel
 
 
 # ── hub dispatches through the seam ────────────────────────────────────

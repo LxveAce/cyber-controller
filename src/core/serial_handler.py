@@ -242,6 +242,31 @@ class SerialConnection:
                 self._emit_error(exc)
                 raise
 
+    def write_bytes(self, payload: bytes) -> None:
+        """Send a raw byte payload verbatim — no line terminator, no control-character guard.
+
+        The binary transport for framed/stream protocols (e.g. a Meshtastic Stream-API protobuf frame via
+        :class:`~src.core.drivers.StreamDriver`). :meth:`write` is text-only — it appends a line terminator and
+        rejects control bytes (command-injection guard), which would corrupt a binary frame — so a stream driver
+        needs this path instead. The caller (StreamFramer) owns framing; this just puts the exact bytes on the
+        wire. Live TX against real radios stays bench-gated.
+
+        Raises:
+            RuntimeError: If not connected.
+        """
+        with self._io_lock:
+            ser = self._serial
+            if ser is None or not ser.is_open:
+                raise RuntimeError(f"Not connected to {self.port}")
+            try:
+                ser.write(bytes(payload))
+                ser.flush()
+                log.debug("TX [%s]: <%d raw bytes>", self.port, len(payload))
+            except (serial.SerialException, OSError) as exc:
+                self._set_state(ConnectionState.ERROR)
+                self._emit_error(exc)
+                raise
+
     # ── Internal ─────────────────────────────────────────────────────
 
     def _reader_loop(self) -> None:
