@@ -14,11 +14,16 @@ flash_core = pytest.importorskip("src.core.flash_core")
 
 @pytest.mark.parametrize("ver,unsupported", [
     ("5.3.0", False),
-    ("4.7.0", False),
+    ("4.7.0", False),   # lower supported boundary
+    ("4.7", False),
     ("4.8", False),
     ("6.0.0", True),
     ("6.1.2", True),
     ("3.9", True),
+    # 4.0–4.6 predate the chips we target (e.g. C5) yet passed the old major-only guard — must be flagged.
+    ("4.6.1", True),
+    ("4.5", True),
+    ("4.0.0", True),
 ])
 def test_unsupported_reason(monkeypatch, ver, unsupported):
     monkeypatch.setattr(flash_core, "esptool_version", lambda: ver)

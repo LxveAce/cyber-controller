@@ -245,14 +245,17 @@ def esptool_unsupported_reason() -> Optional[str]:
     if not v:
         return None
     try:
-        major = int(v.split(".")[0].split("+")[0])
+        parts = v.split("+")[0].split(".")
+        major = int(parts[0])
+        minor = int(parts[1]) if len(parts) > 1 else 0
     except Exception:
         return None
     if major >= 6:
         return (f"esptool {v} is unsupported — v6 removed the write_flash/--flash_size/chip_id aliases "
                 f"this tool uses. Install a supported version:  pip install '{_SUPPORTED_ESPTOOL}'")
-    if major < 4:
-        return (f"esptool {v} is too old for the chips this tool targets. Upgrade:  "
+    # <4.7 predates chips we target (e.g. C5); the pin is >=4.7, so flag anything below it — not just <4.
+    if (major, minor) < (4, 7):
+        return (f"esptool {v} is too old for the chips this tool targets (needs >=4.7). Upgrade:  "
                 f"pip install '{_SUPPORTED_ESPTOOL}'")
     return None
 
