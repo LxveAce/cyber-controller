@@ -62,11 +62,14 @@ def test_operate_surface_always_shown_holds_wardrive():
     assert "Operate" in L.visible_tabs(with_gps)
 
 
-def test_usb_os_gates_software_tab():
+def test_software_os_is_a_flash_subview():
+    # S4 regroup: Software OS folded into the always-shown "Flash" surface, so it is no longer a usb_os-gated
+    # top-level tab. Per-sub-tab gating (hide Software OS inside Flash when no usb_os hardware) is a documented
+    # follow-up — same tradeoff as Wardrive/gps inside the Operate surface.
     no_os = {"full_stack": False, "configured": True, "firmwares": ["marauder"], "hardware": ["esp32"]}
-    assert "Software OS" not in L.visible_tabs(no_os)
-    with_os = {**no_os, "hardware": ["esp32", "usb_os"]}
-    assert "Software OS" in L.visible_tabs(with_os)
+    vis = L.visible_tabs(no_os)
+    assert "Software OS" not in vis   # not a top-level tab anymore (it's a Flash sub-view)
+    assert "Flash" in vis            # the surface that holds it is always shown
 
 
 def test_firmware_filtering():

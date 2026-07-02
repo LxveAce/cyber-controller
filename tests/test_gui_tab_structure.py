@@ -37,13 +37,14 @@ from PyQt5.QtWidgets import (  # noqa: E402
 # Source of truth: src/ui/qt/main_window.py (addTab calls). Keep this list in lockstep with the code;
 # a diff here is the intended signal that the tab IA changed.
 EXPECTED_TABS = [
-    ("Flash", "_flash_tab"),
-    # S4 regroup (2026-07-01): Connect is a grouped *surface* holding Devices/Health as sub-views — neither is
-    # a top-level tab anymore. See test_connect_surface_subtabs.
+    # S4 regroup (2026-07-01): Flash is a grouped *surface* holding Firmware (the FlashTab) + Software OS as
+    # sub-views — Software OS is not a top-level tab anymore. See test_flash_surface_subtabs.
+    ("Flash", "_flash_surface"),
+    # Connect is a grouped *surface* holding Devices/Health as sub-views — neither is a top-level tab anymore.
+    # See test_connect_surface_subtabs.
     ("Connect", "_connect_surface"),
-    ("Software OS", "_software_tab"),
-    # S4 regroup: Operate is a grouped *surface* holding Targets/Broadcast/Macros/Wardrive as sub-views — none
-    # of those four are top-level tabs anymore. See test_operate_surface_subtabs.
+    # Operate is a grouped *surface* holding Targets/Broadcast/Macros/Wardrive as sub-views — none of those four
+    # are top-level tabs anymore. See test_operate_surface_subtabs.
     ("Operate", "_operate_surface"),
     # Network is a grouped *surface* holding the Graph (NetworkTab) and Cross-Comm sub-views — Cross-Comm is
     # not a top-level tab. See test_network_surface_subtabs.
@@ -76,11 +77,25 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_tab_count_is_7(qapp, isolated_settings):
-    # 7 top-level tabs after the S4 regroup folded Devices/Health into the Connect surface,
+def test_tab_count_is_6(qapp, isolated_settings):
+    # 6 top-level tabs after the S4 regroup folded Firmware+Software OS into Flash, Devices+Health into Connect,
     # Targets/Broadcast/Macros/Wardrive into Operate, and Cross-Comm into Network (was 12 flat tabs originally).
     win = _make_window()
-    assert win._tabs.count() == len(EXPECTED_TABS) == 7
+    assert win._tabs.count() == len(EXPECTED_TABS) == 6
+
+
+def test_flash_surface_subtabs(qapp, isolated_settings):
+    # The Flash surface holds two sub-views — Firmware (the FlashTab, leads) then Software OS — and the
+    # re-parented widgets are the SAME objects the window still exposes on _flash_tab / _software_tab.
+    win = _make_window()
+    surface = win._flash_surface
+    titles = [surface.tabText(i) for i in range(surface.count())]
+    assert titles == ["Firmware", "Software OS"]
+    assert surface.widget(0) is win._flash_tab, "Firmware sub-tab must be the FlashTab object"
+    assert surface.widget(1) is win._software_tab, "Software OS sub-tab must be the SoftwareTab object"
+    # Software OS is no longer a direct top-level tab.
+    toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
+    assert "Software OS" not in toplevel and "Flash" in toplevel
 
 
 def test_connect_surface_subtabs(qapp, isolated_settings):

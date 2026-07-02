@@ -56,12 +56,11 @@ def test_apply_loadout_hides_unused_tabs(qapp, isolated_settings):
         lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
         win.apply_loadout(lo, persist=False)
         labels = _labels(win)
-        # S4 regroup: under a mesh-only loadout the hidden *top-level* tabs are "Network" (wifi_scanning surface)
-        # and "Software OS" (usb_os). Targets/Broadcast/Macros/Wardrive folded into the always-shown "Operate"
-        # surface and Cross-Comm into Network, so none of them are top-level labels anymore.
-        for hidden in ("Network", "Software OS"):
-            assert hidden not in labels
-        for subview in ("Devices", "Health", "Targets", "Broadcast", "Macros", "Wardrive", "Cross-Comm"):
+        # S4 regroup: under a mesh-only loadout the only hidden *top-level* tab is "Network" (wifi_scanning
+        # surface). Flash/Connect/Operate are always-shown surfaces; their members (incl. the once-usb_os-gated
+        # Software OS) are sub-views now, never top-level labels.
+        assert "Network" not in labels
+        for subview in ("Devices", "Health", "Software OS", "Targets", "Broadcast", "Macros", "Wardrive", "Cross-Comm"):
             assert subview not in labels  # grouped into a surface, never a top-level label post-regroup
         for core in ("Flash", "Connect", "Operate", "Settings", "How-To"):
             assert core in labels
@@ -79,10 +78,11 @@ def test_loadout_gps_and_usb_os_gates(qapp, isolated_settings):
               "firmwares": ["marauder"], "hardware": ["esp32", "gps", "usb_os"]}
         win.apply_loadout(lo, persist=False)
         labels = _labels(win)
-        # S4 regroup: Wardrive/Targets are Operate sub-views now, so at top level we assert the "Operate"
-        # surface (which holds them) plus the still-top-level "Software OS" (usb_os-gated) are shown.
-        assert "Operate" in labels and "Software OS" in labels
-        assert "Wardrive" not in labels and "Targets" not in labels  # sub-views, not top-level
+        # S4 regroup: Wardrive/Targets are Operate sub-views and Software OS is a Flash sub-view now, so at top
+        # level we assert the always-shown "Operate" + "Flash" surfaces (which hold them) are present.
+        assert "Operate" in labels and "Flash" in labels
+        for sub in ("Wardrive", "Targets", "Software OS"):
+            assert sub not in labels  # sub-views, not top-level
     finally:
         win.close()
 

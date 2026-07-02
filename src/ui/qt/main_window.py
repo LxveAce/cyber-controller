@@ -396,9 +396,16 @@ class CyberControllerWindow(QMainWindow):
     # ── Tabs ─────────────────────────────────────────────────────────
 
     def _build_tabs(self) -> None:
-        # Flash tab (functional, with vault integration)
+        # Flash surface (S4 GUI regroup) — the flashing hub: Firmware (the FlashTab: ESP32/Flipper/RTL firmware +
+        # vault) leads, with Software OS (bootable PC/USB images: Kali/Tails/Arch) alongside it. Both are
+        # RE-PARENTED into one inner QTabWidget, never recreated, so every self._flash_tab / self._software_tab
+        # reference keeps working. Navigate via _show_subtab(self._flash_surface, <widget>).
         self._flash_tab = FlashTab(self._dm, self._fe, self._vault)
-        self._tabs.addTab(self._flash_tab, "Flash")
+        self._software_tab = SoftwareTab()
+        self._flash_surface = QTabWidget()
+        self._flash_surface.addTab(self._flash_tab, "Firmware")
+        self._flash_surface.addTab(self._software_tab, "Software OS")
+        self._tabs.addTab(self._flash_surface, "Flash")
 
         # Connect surface (S4 GUI regroup) — the landing surface: Devices (device control + serial terminal)
         # leads, with Health (host + device-health gauges) alongside it. Both are RE-PARENTED into one inner
@@ -411,10 +418,6 @@ class CyberControllerWindow(QMainWindow):
         self._connect_surface.addTab(self._device_tab, "Devices")
         self._connect_surface.addTab(self._health_tab, "Health")
         self._tabs.addTab(self._connect_surface, "Connect")
-
-        # Software-OS tab — flash bootable PC/USB operating systems (Kali / Tails / Arch / ...)
-        self._software_tab = SoftwareTab()
-        self._tabs.addTab(self._software_tab, "Software OS")
 
         # Operate surface (S4 GUI regroup) — the action surface: discover Targets, fan a verb to every radio
         # (Broadcast), record/replay Macros, and GPS-log (Wardrive). All four are RE-PARENTED into one inner
@@ -495,10 +498,9 @@ class CyberControllerWindow(QMainWindow):
     def _tab_registry(self) -> "list[tuple[str, object]]":
         """Canonical (label, widget) tabs in order — the source of truth for loadout show/hide."""
         return [
-            ("Flash", self._flash_tab), ("Connect", self._connect_surface),
-            ("Software OS", self._software_tab),
-            # S4 regroup: Connect (Devices + Health), Operate (Targets + Broadcast + Macros + Wardrive) and
-            # Network (Graph + Cross-Comm) are each ONE loadout-toggleable surface unit.
+            ("Flash", self._flash_surface), ("Connect", self._connect_surface),
+            # S4 regroup: Flash (Firmware + Software OS), Connect (Devices + Health), Operate (Targets + Broadcast
+            # + Macros + Wardrive) and Network (Graph + Cross-Comm) are each ONE loadout-toggleable surface unit.
             ("Operate", self._operate_surface),
             ("Network", self._network_surface),
             ("Settings", self._settings_tab), ("How-To", self._howto_tab),
@@ -1081,7 +1083,8 @@ class CyberControllerWindow(QMainWindow):
         self._palette = CommandPalette(self)
         # Navigate by WIDGET, not a hardcoded index — immune to tab reordering (the old fixed indices
         # had drifted and pointed at the wrong tabs).
-        self._palette.add_command("Flash Firmware", lambda: self._tabs.setCurrentWidget(self._flash_tab))
+        self._palette.add_command("Flash Firmware", lambda: self._show_subtab(self._flash_surface, self._flash_tab))
+        self._palette.add_command("Flash Software OS", lambda: self._show_subtab(self._flash_surface, self._software_tab))
         self._palette.add_command("Connect to Device", lambda: self._show_subtab(self._connect_surface, self._device_tab))
         self._palette.add_command("View Health", lambda: self._show_subtab(self._connect_surface, self._health_tab))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)

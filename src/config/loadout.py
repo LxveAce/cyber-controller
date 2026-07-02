@@ -33,11 +33,13 @@ ALWAYS = "*"  # a tab that is always shown (core)
 # Tab -> the capability tokens that make it relevant (any match -> visible). ALWAYS = core, never hidden.
 # Capability tokens are firmware ids, hardware ids, or the derived groups below.
 TAB_REQUIREMENTS: "dict[str, object]" = {
+    # S4 regroup: "Flash" is the flashing surface (Firmware + Software OS sub-views); Firmware is ALWAYS-core, so
+    # the surface is always shown. (Software OS was usb_os-gated as a top-level tab; per-sub-tab gating inside a
+    # surface is a documented follow-up — same tradeoff as Wardrive/gps inside Operate.)
     "Flash": ALWAYS,
     # S4 regroup: "Connect" is the landing surface (Devices + Health sub-views). Both members are ALWAYS-core,
     # so the surface is always shown.
     "Connect": ALWAYS,
-    "Software OS": {"usb_os"},
     # S4 regroup: "Operate" is the grouped action surface (Targets + Broadcast + Macros + Wardrive sub-views).
     # It gates as ONE unit at its most-permissive member: Macros is ALWAYS-available, so the surface is always
     # shown. (Per-sub-tab loadout gating — e.g. hiding Targets/Broadcast/Wardrive inside Operate for a
@@ -51,7 +53,7 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
 
 # Canonical tab order (matches main_window._tab_registry); used to re-insert tabs in order.
 TAB_ORDER = (
-    "Flash", "Connect", "Software OS", "Operate", "Network", "Settings", "How-To",
+    "Flash", "Connect", "Operate", "Network", "Settings", "How-To",
 )
 
 
