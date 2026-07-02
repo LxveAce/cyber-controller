@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import re
+import threading
 from typing import TYPE_CHECKING
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
@@ -79,6 +80,11 @@ class _LineSignal(QObject):
     line_received = pyqtSignal(str, str)  # (source port, line) — identifies the emitting connection
 
 
+class _ProbeSignal(QObject):
+    """Bridge the background connect-time probe result back onto the Qt thread."""
+    probe_done = pyqtSignal(str)  # port whose probe just finished
+
+
 class DeviceTab(QWidget):
     """Device management tab with list, serial terminal, and command palette."""
 
@@ -99,6 +105,12 @@ class DeviceTab(QWidget):
         self._line_signal = _LineSignal()
         self._line_signal.line_received.connect(self._on_line_received)
         self._devtab_line_cbs: dict = {}  # port -> our on_line cb, so disconnect removes exactly it
+        # CC-7: connect-time probe runs off-thread; this bridges its result back to the Qt thread.
+        self._probe_signal = _ProbeSignal()
+        self._probe_signal.probe_done.connect(self._on_probe_done)
+        # Ports where a Dead-Man's-Switch auth gate has been seen — the connect-time probe skips these so it
+        # never writes an unsolicited command at a DMS unlock prompt (a failed attempt can wipe/brick).
+        self._dms_seen: set[str] = set()
 
         self._build_ui()
         self._refresh_devices()
@@ -156,6 +168,16 @@ class DeviceTab(QWidget):
         self._caps_label.setStyleSheet("color:#8b949e;font-size:11px;")
         left_layout.addWidget(self._caps_label)
         self._update_capabilities()
+
+        # Connect-time handshake result (CC-7): whether the firmware actually answers over the open link plus
+        # an identifying banner — set by the background probe kicked off on connect. Distinct from the link
+        # being open (that's the device-list color); this says the node is really talking.
+        self._health_label = QLabel("")
+        self._health_label.setObjectName("health_label")
+        self._health_label.setTextFormat(Qt.RichText)
+        self._health_label.setWordWrap(True)
+        self._health_label.setStyleSheet("font-size:11px;")
+        left_layout.addWidget(self._health_label)
 
         btn_row = QHBoxLayout()
         self._btn_connect = QPushButton("Connect")
@@ -359,6 +381,7 @@ class DeviceTab(QWidget):
             self._btn_connect.setEnabled(not connected)
             self._btn_disconnect.setEnabled(connected)
             self._btn_send.setEnabled(connected)
+        self._update_health_label()
         self._update_bj_panel()
 
     # ── Connect / Disconnect ─────────────────────────────────────────
@@ -401,6 +424,14 @@ class DeviceTab(QWidget):
             self._btn_send.setEnabled(True)
             self._refresh_devices()
             self._update_bj_panel()
+            # CC-7: activate the shipped-but-dormant S3-c handshake — run it in the background so a connected
+            # device reports whether its firmware actually answers (health) + an identifying banner. Deferred
+            # briefly so a Dead-Man's-Switch boot gate (which prompts on connect) is seen FIRST — _should_probe
+            # then skips it, so we never fire an unsolicited "help" at a DMS unlock prompt (attempt-burn /
+            # brick risk). Best-effort; stream/controlmap nodes do no write and are marked "no-cli".
+            if port == self._active_port:
+                self._set_probing_label()
+            QTimer.singleShot(1500, lambda p=port: self._start_probe(p))
         except Exception as exc:
             self._terminal.append(f"[Error: {exc}]")
 
@@ -429,8 +460,88 @@ class DeviceTab(QWidget):
         self._btn_connect.setEnabled(True)
         self._btn_disconnect.setEnabled(False)
         self._btn_send.setEnabled(False)
+        if hasattr(self, "_health_label"):
+            self._health_label.setText("")  # link closed — the last probe result is now stale
+        self._dms_seen.discard(port)  # re-evaluate afresh if something else is later connected on this port
         self._refresh_devices()
         self._update_bj_panel()
+
+    # ── Connect-time probe (CC-7) ─────────────────────────────────────
+    def _should_probe(self, port: str) -> bool:
+        """Guard the connect-time probe. Skip a device that has shown a Dead-Man's-Switch auth gate: the probe
+        writes an unsolicited command (handshake.DEFAULT_PROBE_COMMANDS = "help") which, at a DMS unlock
+        prompt, could count as a failed attempt and trip the firmware's wipe/brick. Also skip if the link
+        closed before the (deferred) probe fired."""
+        if port in self._dms_seen:
+            return False
+        dev = self._dm.get_device(port)
+        return bool(dev is not None and dev.connected)
+
+    def _start_probe(self, port: str) -> None:
+        """Run the connect-time handshake on a background daemon thread so the UI never blocks on the serial
+        round-trip. DeviceManager.probe (src/core/handshake) writes a probe command, reads the reply, and sets
+        Device.health / Device.fw_banner in place; the result is then shown on the Qt thread via a signal.
+        Best-effort: probe() never raises, and stream/controlmap nodes are marked "no-cli" with no write."""
+        if not self._should_probe(port):
+            if port == getattr(self, "_active_port", ""):
+                self._update_health_label()  # clear the transient "probing…" (e.g. DMS-gated → no probe)
+            return
+        threading.Thread(target=self._probe_worker, args=(port,), daemon=True).start()
+
+    def _probe_worker(self, port: str) -> None:
+        """Background body of the connect-time probe: side-effect-only (populates Device.health/fw_banner via
+        DeviceManager.probe), then marshals back to the Qt thread. Kept separate from _start_probe so tests can
+        drive it synchronously without a thread."""
+        try:
+            self._dm.probe(port)
+        except Exception:  # noqa: BLE001 - probe is best-effort; a failure just leaves health "unknown"
+            pass
+        finally:
+            self._probe_signal.probe_done.emit(port)
+
+    def _on_probe_done(self, port: str) -> None:
+        """Qt-thread slot: the probe for *port* finished — refresh the health label if that port is shown."""
+        if port == getattr(self, "_active_port", ""):
+            self._update_health_label()
+
+    def _set_probing_label(self) -> None:
+        if hasattr(self, "_health_label"):
+            self._health_label.setText("Health: <span style='color:#8b949e;'>&#9679; probing&hellip;</span>")
+
+    def _update_health_label(self) -> None:
+        """Show the connect-time probe result (health + identifying banner) for the selected device. Blank
+        unless the device is connected — health describes a live link's firmware, not a stale/closed one."""
+        if not hasattr(self, "_health_label"):
+            return
+        port = getattr(self, "_active_port", "")
+        dev = self._dm.get_device(port) if port else None
+        if dev is None or not dev.connected:
+            self._health_label.setText("")
+            return
+        self._health_label.setText(self._format_health(dev))
+
+    @staticmethod
+    def _format_health(dev) -> str:
+        """Render Device.health/fw_banner as a short colored chip. Health values come from handshake.py:
+        alive (firmware answered) / no-reply (open link, silence) / no-cli (stream/controlmap node — no text
+        channel, honest not a failure) / unknown (not probed yet). The banner is device output → escaped."""
+        import html
+        health = getattr(dev, "health", "unknown") or "unknown"
+        # "unknown" = not (yet) probed → show nothing. The transient "probing…" is set explicitly by
+        # _set_probing_label while a probe is in flight, so a settled unknown must not linger as "probing…".
+        if health == "unknown":
+            return ""
+        banner = html.escape((getattr(dev, "fw_banner", "") or "").strip())
+        styles = {
+            "alive": ("#3fb950", "alive"),
+            "no-reply": ("#d29922", "no reply"),
+            "no-cli": ("#8b949e", "no CLI (stream device)"),
+        }
+        color, text = styles.get(health, ("#8b949e", html.escape(health)))
+        chip = f"Health: <span style='color:{color};'>&#9679; {text}</span>"
+        if banner:
+            chip += f" &mdash; <span style='color:#8b949e;'>{banner}</span>"
+        return chip
 
     # ── Serial I/O ───────────────────────────────────────────────────
 
@@ -778,7 +889,10 @@ class DeviceTab(QWidget):
         if self._dms_auth is not None:
             conn = self._dm.get_connection(port)
             if conn is not None:
-                self._dms_auth.check_line(line, lambda pw, c=conn: c.write(pw))
+                if self._dms_auth.check_line(line, lambda pw, c=conn: c.write(pw)):
+                    # A DMS auth gate spoke on this port — mark it so the connect-time probe never writes an
+                    # unsolicited command here (see _should_probe).
+                    self._dms_seen.add(port)
         self._terminal.append(line)
 
     # ── Command palette ──────────────────────────────────────────────
