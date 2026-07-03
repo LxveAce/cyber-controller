@@ -93,6 +93,29 @@ class _UpdateCheckWorker(QThread):
         self.done.emit(result)
 
 
+class _SelfUpdateWorker(QThread):
+    """Download + verify + stage the new release binary off the UI thread. Emits the staged path on
+    success or an error string; the swap/relaunch (:func:`self_update.apply`) is left to the UI
+    thread so the re-exec happens on the main thread, not a worker."""
+
+    progress = pyqtSignal(int, int)  # bytes_done, bytes_total (total 0 == unknown)
+    ok = pyqtSignal(str)             # staged path
+    fail = pyqtSignal(str)           # error message
+
+    def __init__(self, result) -> None:
+        super().__init__()
+        self._result = result
+
+    def run(self) -> None:
+        from src.core import self_update
+        try:
+            staged = self_update.self_update(
+                self._result, progress=lambda d, t: self.progress.emit(d, t), restart=False)
+            self.ok.emit(staged)
+        except Exception as exc:  # noqa: BLE001 — any failure is surfaced, never crashes the app
+            self.fail.emit(str(exc))
+
+
 class CyberControllerWindow(QMainWindow):
     """Main application window with tabbed interface."""
 
@@ -1524,7 +1547,9 @@ class CyberControllerWindow(QMainWindow):
         """Apply the update decision flow on the UI thread once the background check returns."""
         from src.config.settings import load_settings, save_settings
         from src.core import updater
+        from src.core import self_update
         from src.ui.qt.update_dialog import (
+            ACTION_SELF_UPDATE,
             ACTION_UPDATE,
             OfflineErrorDialog,
             UpdateAvailableDialog,
@@ -1556,9 +1581,13 @@ class CyberControllerWindow(QMainWindow):
                     dlg = UpdateAvailableDialog(
                         result.latest_tag, _VERSION, updater.apply_update_url(result),
                         behind=result.behind, parent=self,
+                        can_self_update=self_update.is_frozen(),
                     )
                     dlg.exec_()
-                    if dlg.action() != ACTION_UPDATE and dlg.dont_show_again():
+                    action = dlg.action()
+                    if action == ACTION_SELF_UPDATE:
+                        self._begin_self_update(result)
+                    elif action != ACTION_UPDATE and dlg.dont_show_again():
                         upd["suppressed"] = True
                         upd["suppressed_at_behind"] = result.behind
                         upd["dismissed_version"] = result.latest_tag
@@ -1567,6 +1596,63 @@ class CyberControllerWindow(QMainWindow):
             save_settings(settings)
         except Exception:  # noqa: BLE001 — updater UI must never crash the app
             log.debug("update-check post-processing failed", exc_info=True)
+
+    def _begin_self_update(self, result) -> None:
+        """Run the in-place self-update: a modal progress dialog over a background download+verify,
+        then swap the binary and restart. Offered only on frozen builds. A failure falls back to the
+        release page so the user is never stranded."""
+        from PyQt5.QtWidgets import QProgressDialog
+
+        prog = QProgressDialog("Downloading update…", None, 0, 0, self)  # None → no cancel button
+        prog.setWindowTitle("Updating")
+        prog.setWindowModality(Qt.WindowModal)
+        prog.setAutoClose(False)
+        prog.setAutoReset(False)
+        prog.setMinimumDuration(0)
+
+        worker = _SelfUpdateWorker(result)
+        self._self_update_worker = worker  # keep a reference so the thread isn't GC'd
+
+        def on_progress(done: int, total: int) -> None:
+            if total > 0:
+                prog.setMaximum(total)
+                prog.setValue(done)
+
+        def on_ok(staged: str) -> None:
+            prog.setLabelText("Verified. Restarting…")
+            self._finish_self_update(staged)
+
+        def on_fail(msg: str) -> None:
+            from PyQt5.QtCore import QUrl
+            from PyQt5.QtGui import QDesktopServices
+            from src.core import updater
+            prog.close()
+            QMessageBox.warning(
+                self, "Update failed",
+                f"Couldn't install the update automatically:\n{msg}\n\n"
+                "Opening the release page so you can download it manually.",
+            )
+            QDesktopServices.openUrl(QUrl(updater.apply_update_url(result)))
+
+        worker.progress.connect(on_progress)
+        worker.ok.connect(on_ok)
+        worker.fail.connect(on_fail)
+        worker.finished.connect(lambda: setattr(self, "_self_update_worker", None))
+        worker.start()
+
+    def _finish_self_update(self, staged: str) -> None:
+        """Swap the verified binary in and restart. On Windows this spawns a detached helper and we
+        quit so the (now unlocked) exe can be replaced + relaunched; on Unix apply() re-execs and
+        never returns."""
+        from PyQt5.QtWidgets import QApplication
+
+        from src.core import self_update
+        try:
+            self_update.apply(self_update.current_exe(), staged, self_update.platform_key())
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.warning(self, "Update failed", f"Could not apply the update:\n{exc}")
+            return
+        QApplication.instance().quit()  # reached on Windows only (Unix apply() re-execs, no return)
 
     def _on_device_view(self, firmware: str = "marauder") -> None:
         """Open a Device View — an on-screen reconstruction of a firmware's on-board UI.
