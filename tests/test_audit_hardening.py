@@ -120,7 +120,7 @@ def test_icacls_grants_by_sid_not_env_name(tmp_path, monkeypatch):
     assert "attacker:" not in joined         # the spoofed name is never a principal
 
 
-# ── L-2: durable, tamper-evident audit trail ─────────────────────────
+# ── L-2: durable, integrity-chained audit trail ──────────────────────
 
 def test_audit_trail_persists_and_reloads_verified():
     with tempfile.TemporaryDirectory() as d:

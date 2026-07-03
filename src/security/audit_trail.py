@@ -1,4 +1,13 @@
-"""Audit trail — tamper-evident logging with SHA-256 hash chain."""
+"""Audit trail — integrity-chained logging (SHA-256 hash chain).
+
+Honest guarantee: the chain detects ACCIDENTAL corruption, truncation, and reordering, plus a naive
+partial edit that doesn't recompute the downstream hashes. It is NOT tamper-proof against a determined
+LOCAL writer — the chain is an UNKEYED, public SHA-256 over public content, so anyone who can edit the
+file can recompute every following entry_hash and forge a fully-consistent chain. Real tamper-EVIDENCE
+would need a keyed HMAC (a secret the writer can't read) plus an off-box anchor of the head hash; that
+redesign is owner-gated (SEC-C1). So a passing verify_integrity() means "not corrupted/truncated", not
+"authentic".
+"""
 
 from __future__ import annotations
 
@@ -58,11 +67,15 @@ class AuditEntry:
 
 
 class AuditTrail:
-    """Append-only, hash-chained audit log.
+    """Append-only (by API), hash-chained audit log.
 
-    Every entry includes the SHA-256 of the previous entry, forming an
-    integrity chain.  Any tampering breaks the chain and is detectable
-    via :meth:`verify_integrity`.
+    Every entry includes the SHA-256 of the previous entry, forming an integrity chain. A broken link
+    (via :meth:`verify_integrity`) reliably flags ACCIDENTAL corruption, truncation, reordering, or a
+    naive edit that didn't recompute the downstream hashes. It does NOT prove authenticity: the chain
+    is UNKEYED, so a local writer with the code can edit an entry and recompute every subsequent
+    entry_hash into a consistent chain (see the module docstring — a keyed HMAC + off-box anchor is the
+    owner-gated fix). A passing verify_integrity() means "not accidentally corrupted/truncated", not
+    "not tampered with".
 
     Durability (audit L-2): pass ``persist_path`` to make the trail survive process exit. The
     existing chain is loaded + verified on construction, and every :meth:`record` append is
@@ -93,7 +106,8 @@ class AuditTrail:
                 if not ok:
                     log.warning(
                         "Audit chain failed verification at index %d on load from %s — "
-                        "the on-disk trail may have been tampered with or truncated.",
+                        "the on-disk trail is corrupted, truncated, or was edited without "
+                        "recomputing the chain.",
                         bad, path,
                     )
                 else:
@@ -177,6 +191,11 @@ class AuditTrail:
 
     def verify_integrity(self) -> tuple[bool, int]:
         """Walk the full chain and verify every hash link.
+
+        A False result reliably flags a broken chain (accidental corruption, truncation, reordering,
+        or a naive edit that didn't recompute downstream hashes). A True result does NOT prove
+        authenticity — the chain is unkeyed, so a local writer with the code could have recomputed it
+        into a consistent chain (see the module docstring for the owner-gated keyed-HMAC redesign).
 
         Returns:
             (is_valid, first_bad_index) — if valid, index is -1.
