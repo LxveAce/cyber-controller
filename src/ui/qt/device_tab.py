@@ -149,6 +149,10 @@ class DeviceTab(QWidget):
         self._firmware_label = QLabel("Firmware:")
         fw_row.addWidget(self._firmware_label)
         self._firmware_combo = QComboBox()
+        self._firmware_combo.setToolTip(
+            "Tell Cyber Controller which firmware this board runs, so it parses the "
+            "device's replies and offers the matching command set (defaults to Marauder)."
+        )
         self._firmware_combo.addItems(_firmware_choices())
         self._firmware_combo.currentIndexChanged.connect(
             lambda _i: (self._update_bj_panel(), self._persist_firmware())
@@ -177,17 +181,20 @@ class DeviceTab(QWidget):
 
         btn_row = QHBoxLayout()
         self._btn_connect = QPushButton("Connect")
+        self._btn_connect.setToolTip("Open a serial link to the selected device.")
         self._btn_connect.clicked.connect(self._on_connect)
         btn_row.addWidget(self._btn_connect)
 
         self._btn_disconnect = QPushButton("Disconnect")
         self._btn_disconnect.setEnabled(False)
+        self._btn_disconnect.setToolTip("Close the serial link to the selected device.")
         self._btn_disconnect.clicked.connect(self._on_disconnect)
         btn_row.addWidget(self._btn_disconnect)
 
         left_layout.addLayout(btn_row)
 
         btn_refresh = QPushButton("Scan Ports")
+        btn_refresh.setToolTip("Scan serial ports for connected boards and add any new ones.")
         btn_refresh.clicked.connect(self._scan_and_add)
         left_layout.addWidget(btn_refresh)
 
@@ -313,6 +320,7 @@ class DeviceTab(QWidget):
         cmd_row.addWidget(self._cmd_input, stretch=3)
 
         self._btn_send = QPushButton("Send")
+        self._btn_send.setToolTip("Send the typed command to the selected connected device.")
         self._btn_send.clicked.connect(self._on_send)
         self._btn_send.setEnabled(False)
         cmd_row.addWidget(self._btn_send)
@@ -354,6 +362,13 @@ class DeviceTab(QWidget):
             self._device_list.addItem(item)
             if dev.port == selected_port:
                 self._device_list.setCurrentItem(item)
+        # Empty-state guidance (same shape as software_tab's empty-combo entry): a single
+        # non-selectable hint row telling the user the next step.
+        if self._device_list.count() == 0:
+            hint = QListWidgetItem("No devices yet — plug one in and press Scan Ports.")
+            hint.setFlags(Qt.NoItemFlags)
+            hint.setForeground(QColor("#8b949e"))
+            self._device_list.addItem(hint)
 
     def _scan_and_add(self) -> None:
         """Scan ports and register any new devices."""

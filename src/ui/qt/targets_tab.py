@@ -167,8 +167,10 @@ class TargetsTab(QWidget):
         toolbar.addWidget(self._count_label)
         toolbar.addStretch()
         self._refresh_btn = QPushButton("Refresh")
+        self._refresh_btn.setToolTip("Rebuild the table from the shared target pool now.")
         self._refresh_btn.clicked.connect(self._refresh)
         self._clear_btn = QPushButton("Clear All")
+        self._clear_btn.setToolTip("Remove every target from the shared pool (affects all tabs).")
         self._clear_btn.clicked.connect(self._on_clear)
         toolbar.addWidget(self._refresh_btn)
         toolbar.addWidget(self._clear_btn)
@@ -177,6 +179,20 @@ class TargetsTab(QWidget):
         # Table
         self._table = QTableWidget(0, len(self._COLUMNS))
         self._table.setHorizontalHeaderLabels(self._COLUMNS)
+        # Header tooltips — spell out the abbreviated columns.
+        for _col, _tip in enumerate((
+            "Kind of target (access point, client, or BLE device).",
+            "Wi-Fi network name (SSID), when known.",
+            "Hardware (MAC) address of the target.",
+            "Signal strength (RSSI) in dBm — closer to 0 is stronger.",
+            "Wi-Fi channel the target was seen on.",
+            "Device (port) that discovered this target.",
+            "Encryption / security of the network (e.g. WPA2, open).",
+            "When this target was last seen.",
+        )):
+            _hdr = self._table.horizontalHeaderItem(_col)
+            if _hdr is not None:
+                _hdr.setToolTip(_tip)
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self._table.setAlternatingRowColors(True)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -194,6 +210,15 @@ class TargetsTab(QWidget):
         self._table.customContextMenuRequested.connect(self._on_context_menu)
 
         root.addWidget(self._table, stretch=1)
+
+        # Empty-state guidance — shown while the pool has no targets.
+        self._empty_hint = QLabel(
+            "No targets yet — run a scan from Operate ▸ Broadcast, or send a scan command "
+            "on the Devices tab. Discovered targets land here in the shared pool."
+        )
+        self._empty_hint.setObjectName("muted")
+        self._empty_hint.setWordWrap(True)
+        root.addWidget(self._empty_hint)
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
@@ -232,6 +257,7 @@ class TargetsTab(QWidget):
         self._table.setSortingEnabled(True)
 
         self._count_label.setText(f"{len(targets)} target{'s' if len(targets) != 1 else ''}")
+        self._empty_hint.setVisible(len(targets) == 0)
 
         # Re-apply any active filter
         self._apply_filter(self._search_input.text())

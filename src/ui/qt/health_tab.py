@@ -80,20 +80,30 @@ class HealthTab(QWidget):
         gauge_row = QHBoxLayout()
         gauge_row.setSpacing(16)
 
+        # Shared band legend for the utilization gauges (green→red = low→high usage).
+        _usage_legend = (
+            "Green 0–59% healthy · Yellow 60–79% elevated · "
+            "Orange 80–89% warning · Red 90–100% critical."
+        )
+
         self._cpu_gauge = ArcGauge(value=0, label="CPU")
         self._cpu_gauge.setMinimumSize(100, 120)
+        self._cpu_gauge.setToolTip("Processor utilization.\n" + _usage_legend)
         gauge_row.addWidget(self._cpu_gauge, stretch=1)
 
         self._ram_gauge = ArcGauge(value=0, label="RAM")
         self._ram_gauge.setMinimumSize(100, 120)
+        self._ram_gauge.setToolTip("Memory (RAM) usage.\n" + _usage_legend)
         gauge_row.addWidget(self._ram_gauge, stretch=1)
 
         self._disk_gauge = ArcGauge(value=0, label="Disk")
         self._disk_gauge.setMinimumSize(100, 120)
+        self._disk_gauge.setToolTip("Disk (storage) usage.\n" + _usage_legend)
         gauge_row.addWidget(self._disk_gauge, stretch=1)
 
         self._batt_gauge = ArcGauge(value=0, label="Battery")
         self._batt_gauge.setMinimumSize(100, 120)
+        self._batt_gauge.setToolTip("Battery charge level, or N/A when no battery is present.")
         gauge_row.addWidget(self._batt_gauge, stretch=1)
 
         sys_layout.addLayout(gauge_row)
@@ -157,6 +167,13 @@ class HealthTab(QWidget):
         self._device_table.verticalHeader().setVisible(False)
         self._device_table.setMinimumHeight(100)
         dev_layout.addWidget(self._device_table)
+
+        self._dev_empty_hint = QLabel(
+            "No connected devices — connect a board on the Devices tab to see its health here."
+        )
+        self._dev_empty_hint.setObjectName("muted")
+        self._dev_empty_hint.setWordWrap(True)
+        dev_layout.addWidget(self._dev_empty_hint)
 
         root.addWidget(dev_card, stretch=1)
 
@@ -239,6 +256,7 @@ class HealthTab(QWidget):
 
     def _update_devices(self, devices: dict[str, dict[str, Any]]) -> None:
         """Update device health table."""
+        self._dev_empty_hint.setVisible(len(devices) == 0)
         self._device_table.setRowCount(len(devices))
         for row, (port, info) in enumerate(devices.items()):
             self._device_table.setItem(row, 0, QTableWidgetItem(port))

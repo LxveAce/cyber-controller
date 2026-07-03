@@ -216,6 +216,14 @@ class CrossCommTab(QWidget):
         self._pool_table.setMinimumHeight(80)
         pool_layout.addWidget(self._pool_table)
 
+        self._pool_empty_hint = QLabel(
+            "No targets in the shared pool yet — run a scan from any connected device and "
+            "results collect here for every tab to use."
+        )
+        self._pool_empty_hint.setObjectName("muted")
+        self._pool_empty_hint.setWordWrap(True)
+        pool_layout.addWidget(self._pool_empty_hint)
+
         pool_btn_row = QHBoxLayout()
         self._pool_count_label = QLabel("0 targets")
         self._pool_count_label.setObjectName("muted")
@@ -296,6 +304,14 @@ class CrossCommTab(QWidget):
         self._action_table.setMinimumHeight(80)
         self._action_table.setMaximumHeight(220)
         action_layout.addWidget(self._action_table)
+
+        self._action_empty_hint = QLabel(
+            "No actions yet — commands fired at targets (manually or by auto-routing rules) are "
+            "logged here."
+        )
+        self._action_empty_hint.setObjectName("muted")
+        self._action_empty_hint.setWordWrap(True)
+        action_layout.addWidget(self._action_empty_hint)
 
         action_btn_row = QHBoxLayout()
         self._action_count_label = QLabel("0 actions")
@@ -385,6 +401,7 @@ class CrossCommTab(QWidget):
             self._pool_table.setItem(row, 4, QTableWidgetItem(str(t.channel)))
             self._pool_table.setItem(row, 5, QTableWidgetItem(t.device_source or ""))
         self._pool_count_label.setText(f"{len(targets)} targets")
+        self._pool_empty_hint.setVisible(len(targets) == 0)
 
     def _on_clear_pool(self) -> None:
         reply = QMessageBox.question(
@@ -404,6 +421,14 @@ class CrossCommTab(QWidget):
         self._rule_list.clear()
         for rule in self._router.list_rules():
             self._rule_list.addItem(self._format_rule(rule))
+        # Empty-state guidance — a non-selectable hint row when no rules exist yet.
+        if self._rule_list.count() == 0:
+            hint = QListWidgetItem(
+                "No rules yet — click Add Rule to auto-run a command on matching targets."
+            )
+            hint.setFlags(Qt.NoItemFlags)
+            hint.setForeground(QColor("#8b949e"))
+            self._rule_list.addItem(hint)
 
     @staticmethod
     def _format_rule(rule: RoutingRule) -> QListWidgetItem:
@@ -508,11 +533,13 @@ class CrossCommTab(QWidget):
         self._action_count_label.setText(
             f"{count} action{'s' if count != 1 else ''}"
         )
+        self._action_empty_hint.setVisible(count == 0)
 
     def _on_clear_action_history(self) -> None:
         """Clear all entries from the action history table."""
         self._action_table.setRowCount(0)
         self._action_count_label.setText("0 actions")
+        self._action_empty_hint.setVisible(True)
 
     # ── Qt overrides ─────────────────────────────────────────────────
 

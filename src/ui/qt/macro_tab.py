@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 
 from PyQt5.QtCore import QObject, Qt, pyqtSignal
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -282,6 +283,14 @@ class MacroTab(QWidget):
                 item.setToolTip("Stored encrypted in the secure container")
             item.setData(Qt.UserRole, info["path"])
             self._macro_list.addItem(item)
+        # Empty-state guidance — a single non-selectable hint row when nothing is saved yet.
+        if self._macro_list.count() == 0:
+            hint = QListWidgetItem(
+                "No saved macros yet — press Record, run some commands, then Save."
+            )
+            hint.setFlags(Qt.NoItemFlags)
+            hint.setForeground(QColor("#8b949e"))
+            self._macro_list.addItem(hint)
 
     def _on_macro_selected(self, current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
         if current is None:

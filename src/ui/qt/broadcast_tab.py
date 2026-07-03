@@ -63,6 +63,15 @@ class BroadcastBar(QWidget):
         sub.setWordWrap(True)
         root.addWidget(sub)
 
+        # Empty-state guidance — shown while no device is connected (every button is greyed out).
+        self._empty_hint = QLabel(
+            "No connected devices — connect a board on the Devices tab, then these actions "
+            "light up."
+        )
+        self._empty_hint.setObjectName("muted")
+        self._empty_hint.setWordWrap(True)
+        root.addWidget(self._empty_hint)
+
         grid = QGridLayout()
         cols = 4
         i = 0
@@ -115,7 +124,9 @@ class BroadcastBar(QWidget):
                     preview = ""
                 btn.setToolTip(f"{n} device(s): {preview}")
         try:
-            self._stop_btn.setEnabled(bool(self._dm.list_connected()))
+            connected = bool(self._dm.list_connected())
+            self._stop_btn.setEnabled(connected)
+            self._empty_hint.setVisible(not connected)
         except Exception:
             pass
 

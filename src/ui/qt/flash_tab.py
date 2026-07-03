@@ -170,15 +170,24 @@ class FlashTab(QWidget):
         self._btn_flash = QPushButton("Flash")
         self._btn_flash.setObjectName("flash_btn")
         self._btn_flash.setMinimumHeight(40)
+        self._btn_flash.setToolTip(
+            "Write the selected firmware profile to the board on the chosen port."
+        )
         self._btn_flash.clicked.connect(self._on_flash)
         btn_col.addWidget(self._btn_flash)
 
         self._btn_backup = QPushButton("Backup")
+        self._btn_backup.setToolTip(
+            "Read the board's current flash contents to a file so you can restore it later."
+        )
         self._btn_backup.clicked.connect(self._on_backup)
         btn_col.addWidget(self._btn_backup)
 
         self._btn_erase = QPushButton("Erase Flash")
         self._btn_erase.setObjectName("erase_btn")
+        self._btn_erase.setToolTip(
+            "Wipe the board's entire flash. Destructive — confirms before running."
+        )
         self._btn_erase.clicked.connect(self._on_erase)
         btn_col.addWidget(self._btn_erase)
 
@@ -304,6 +313,9 @@ class FlashTab(QWidget):
         self._port_combo.clear()
         for dev in self._dm.scan_ports():
             self._port_combo.addItem(f"{dev.port} — {dev.name}", dev.port)
+        # Empty-state entry (same shape as software_tab's empty drive combo).
+        if self._port_combo.count() == 0:
+            self._port_combo.addItem("No ports found — plug in a board and press Refresh", None)
 
     def _refresh_profiles(self) -> None:
         self._profile_combo.clear()

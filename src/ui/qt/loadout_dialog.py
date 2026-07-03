@@ -35,6 +35,28 @@ _HW_LABELS = {
     "gps": "GPS module (wardriving)", "usb_os": "PC / USB OS flashing (Kali/Tails/Arch)",
 }
 
+# One-line "what is this" descriptions, shown as checkbox tooltips.
+_FW_DESC = {
+    "marauder": "ESP32 Wi-Fi/Bluetooth pentest firmware — scans, deauth, and more.",
+    "ghostesp": "Feature-rich ESP32 Wi-Fi/BLE firmware (Marauder alternative).",
+    "bruce": "Multi-tool ESP32 firmware (Wi-Fi, BLE, IR, RF, RFID).",
+    "halehound": "Wi-Fi hunting/tracking firmware for ESP32.",
+    "esp32_div": "ESP32-DIV diagnostics/scanning firmware.",
+    "flipper": "Flipper Zero multi-tool (sub-GHz, NFC, IR, GPIO).",
+    "meshtastic": "Long-range LoRa mesh messaging firmware.",
+    "bw16": "RTL8720 (BW16) dual-band Wi-Fi firmware.",
+    "bluejammer": "Lab-only RF control firmware — legal in a shielded enclosure only.",
+}
+_HW_DESC = {
+    "esp32": "ESP32-family dev boards (S2/S3/C3/C6, etc.).",
+    "bw16": "BW16 / RTL8720DN dual-band Wi-Fi module.",
+    "flipper": "Flipper Zero portable multi-tool.",
+    "raspberry_pi": "Raspberry Pi single-board computer.",
+    "android_adb": "Android phone/tablet controlled over ADB.",
+    "gps": "GPS receiver for wardriving location tags.",
+    "usb_os": "Write a bootable security OS (Kali/Tails/Arch) to a USB stick.",
+}
+
 
 class LoadoutDialog(QDialog):
     """Pick firmwares + hardware, or Full Stack. Result in :attr:`result_loadout` after exec_()."""
@@ -64,9 +86,9 @@ class LoadoutDialog(QDialog):
         cols = QHBoxLayout(inner)
 
         cols.addLayout(self._checklist("Firmwares", L.FIRMWARES, _FW_LABELS, self._fw_boxes,
-                                       set(cur["firmwares"]) or {"marauder"}))
+                                       set(cur["firmwares"]) or {"marauder"}, _FW_DESC))
         cols.addLayout(self._checklist("Hardware", L.HARDWARE, _HW_LABELS, self._hw_boxes,
-                                       set(cur["hardware"]) or {"esp32"}))
+                                       set(cur["hardware"]) or {"esp32"}, _HW_DESC))
         body.setWidget(inner)
         root.addWidget(body, 1)
 
@@ -85,14 +107,17 @@ class LoadoutDialog(QDialog):
         btns.addWidget(apply_btn)
         root.addLayout(btns)
 
-    def _checklist(self, title, ids, labels, store, checked):
+    def _checklist(self, title, ids, labels, store, checked, descriptions=None):
         lay = QVBoxLayout()
         head = QLabel(title)
         head.setObjectName("card_title")
         lay.addWidget(head)
+        descriptions = descriptions or {}
         for i in ids:
             cb = QCheckBox(labels.get(i, i))
             cb.setChecked(i in checked)
+            if descriptions.get(i):
+                cb.setToolTip(descriptions[i])
             store[i] = cb
             lay.addWidget(cb)
         lay.addStretch(1)
