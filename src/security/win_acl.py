@@ -15,7 +15,6 @@ the caller's POSIX ``chmod`` path stays the fallback.
 
 from __future__ import annotations
 
-import getpass
 import logging
 import subprocess
 import sys
@@ -30,23 +29,75 @@ _ICACLS_TIMEOUT = 15
 _NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)
 
 
-def _current_user() -> str | None:
+def _token_user_sid_ctypes() -> str | None:
+    """Resolve the process token user SID via advapi32 (ctypes), for when pywin32 isn't installed."""
+    import ctypes
+    from ctypes import wintypes
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    TOKEN_QUERY = 0x0008
+    TokenUser = 1
+
+    htok = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(kernel32.GetCurrentProcess(), TOKEN_QUERY, ctypes.byref(htok)):
+        return None
     try:
-        return getpass.getuser() or None
+        size = wintypes.DWORD(0)
+        advapi32.GetTokenInformation(htok, TokenUser, None, 0, ctypes.byref(size))  # size probe
+        if not size.value:
+            return None
+        buf = ctypes.create_string_buffer(size.value)
+        if not advapi32.GetTokenInformation(htok, TokenUser, buf, size, ctypes.byref(size)):
+            return None
+        # TOKEN_USER begins with SID_AND_ATTRIBUTES whose first member is the PSID.
+        sid_ptr = ctypes.cast(buf, ctypes.POINTER(ctypes.c_void_p))[0]
+        str_ptr = ctypes.c_wchar_p()
+        if not advapi32.ConvertSidToStringSidW(ctypes.c_void_p(sid_ptr), ctypes.byref(str_ptr)):
+            return None
+        try:
+            return str_ptr.value
+        finally:
+            kernel32.LocalFree(str_ptr)
+    finally:
+        kernel32.CloseHandle(htok)
+
+
+def _current_user_sid() -> str | None:
+    """The current process token's user SID (e.g. ``S-1-5-21-…``), locale- and env-independent.
+
+    icacls is granted this SID (as ``*<sid>``) rather than a :func:`getpass.getuser` name, which is
+    read from the ``USER``/``LOGNAME``/``USERNAME`` env vars and is therefore spoofable under Git
+    Bash/MSYS — a spoofed name could hand the file to another account or, if unresolvable, make
+    icacls fail and leave the secret on its readable inherited ACL. Mirrors how SYSTEM is already
+    granted by well-known SID."""
+    try:
+        import win32api
+        import win32security
+        token = win32security.OpenProcessToken(win32api.GetCurrentProcess(),
+                                                win32security.TOKEN_QUERY)
+        sid = win32security.GetTokenInformation(token, win32security.TokenUser)[0]
+        return win32security.ConvertSidToStringSid(sid)
+    except Exception:
+        pass
+    try:
+        return _token_user_sid_ctypes()
     except Exception:
         return None
 
 
 def _run_icacls(path: Path, grant_spec: str) -> bool:
-    user = _current_user()
-    if not user:
-        log.warning("win_acl: could not resolve current user — %s is left on its INHERITED ACL "
+    sid = _current_user_sid()
+    if not sid:
+        # Fail SAFE: never fall back to a spoofable account name. Leave the inherited ACL (the POSIX
+        # chmod / best-effort fallback the module documents) rather than risk granting a wrong user.
+        log.warning("win_acl: could not resolve current-user SID — %s is left on its INHERITED ACL "
                     "(may be readable by other local accounts)", path)
         return False
     cmd = [
         "icacls", str(path),
         "/inheritance:r",
-        "/grant:r", f"{user}:{grant_spec}",
+        "/grant:r", f"*{sid}:{grant_spec}",
         "/grant:r", f"{_SYSTEM_SID}:{grant_spec}",
     ]
     try:

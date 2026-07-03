@@ -86,6 +86,40 @@ def test_restrict_to_current_user_strips_inherited_aces():
         assert "SYSTEM" in acl
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="token SIDs are Windows-only")
+def test_current_user_sid_is_env_spoof_proof(monkeypatch):
+    """SEC-D1: the granted principal comes from the process token SID, not getpass.getuser()'s
+    env-var-driven name, so setting USER/USERNAME/LOGNAME can't redirect the grant."""
+    sid = win_acl._current_user_sid()
+    assert sid and sid.startswith("S-1-")
+    for var in ("USERNAME", "USER", "LOGNAME"):
+        monkeypatch.setenv(var, "attacker")
+    assert win_acl._current_user_sid() == sid  # token SID unaffected by env spoofing
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="NTFS ACLs are Windows-only")
+def test_icacls_grants_by_sid_not_env_name(tmp_path, monkeypatch):
+    """SEC-D1: the icacls argv grants the user by *<SID>; a spoofed account name never appears."""
+    f = tmp_path / "secret.key"
+    f.write_bytes(b"x" * 32)
+
+    captured = {}
+
+    class _Proc:
+        returncode = 0
+        stderr = ""
+
+    monkeypatch.setattr(win_acl.subprocess, "run",
+                        lambda cmd, **kw: (captured.__setitem__("cmd", cmd), _Proc())[1])
+    for var in ("USERNAME", "USER", "LOGNAME"):
+        monkeypatch.setenv(var, "attacker")
+
+    assert win_acl.restrict_to_current_user(f) is True
+    joined = " ".join(captured["cmd"])
+    assert "*S-1-" in joined                 # user granted by SID
+    assert "attacker:" not in joined         # the spoofed name is never a principal
+
+
 # ── L-2: durable, tamper-evident audit trail ─────────────────────────
 
 def test_audit_trail_persists_and_reloads_verified():
