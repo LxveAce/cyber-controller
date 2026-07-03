@@ -34,6 +34,7 @@ from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FirmwareProfile, FlashEngine
 from src.core.resources import resource_path
+from src.security import physical_key
 from src.security.web_auth import (
     RateLimiter,
     csrf_valid,
@@ -152,8 +153,20 @@ def create_app(
             if not login_limiter.allow(ip):
                 _audit("web_auth_ratelimited")
                 return Response("Too many attempts. Try again later.\n", 429)
+            # SEC-A1: the per-IP RateLimiter above is in-memory and resets on restart, so on its own
+            # it lets a "relaunch and keep guessing" brute force through. Honor the SAME persistent,
+            # restart-surviving lockout the console/Qt gate uses (physical_key), so all three UIs
+            # share one failure counter + cooldown (and the owner's opt-in duress wipe).
+            lockout = physical_key.lockout_status()
+            if lockout["locked"]:
+                _audit("web_auth_locked", remaining=lockout["remaining_secs"])
+                return Response(
+                    f"Locked: too many failed attempts. Try again in {lockout['remaining_secs']}s.\n",
+                    429,
+                )
             auth = request.authorization
             if auth and check_auth(auth.username, auth.password):
+                physical_key.record_successful_unlock()  # reset the shared persistent counter
                 # M-3: rotate the session + CSRF token at the auth boundary so any token an
                 # attacker could have observed or seeded *pre-auth* is invalidated (session
                 # fixation defense-in-depth — parity with the rest of the auth code).
@@ -163,6 +176,7 @@ def create_app(
                 session["csrf"] = new_csrf_token()
                 _audit("web_auth_ok", user=auth.username)
                 return f(*args, **kwargs)
+            physical_key.record_failed_attempt()  # count this failure toward the shared lockout
             _audit("web_auth_fail", user=(auth.username if auth else None))
             return Response(
                 "Authentication required.\n",
