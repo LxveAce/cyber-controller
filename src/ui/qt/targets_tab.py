@@ -113,6 +113,11 @@ class TargetsTab(QWidget):
         ``TargetsTab(target_pool, event_bus, device_manager=None, action_resolver=None)``
     """
 
+    # Emitted (with the selected :class:`Target`) when the user asks to reuse a target elsewhere —
+    # main_window connects this to fill the Macro tab's variable fields. Same tab-signal → window-
+    # connects pattern as SettingsTab.check_updates_requested; no global / new transport.
+    fill_macro_requested = pyqtSignal(object)
+
     _COLUMNS = ["Type", "SSID", "MAC", "RSSI", "Ch", "Source", "Enc", "Last Seen"]
 
     def __init__(
@@ -166,6 +171,12 @@ class TargetsTab(QWidget):
         self._count_label.setWordWrap(True)
         toolbar.addWidget(self._count_label)
         toolbar.addStretch()
+        self._use_macro_btn = QPushButton("Use as Macro Target")
+        self._use_macro_btn.setToolTip(
+            "Fill the Macros tab's variable fields (MAC / SSID / channel) from the selected target."
+        )
+        self._use_macro_btn.clicked.connect(self._on_use_as_macro_target)
+        toolbar.addWidget(self._use_macro_btn)
         self._refresh_btn = QPushButton("Refresh")
         self._refresh_btn.setToolTip("Rebuild the table from the shared target pool now.")
         self._refresh_btn.clicked.connect(self._refresh)
@@ -338,23 +349,51 @@ class TargetsTab(QWidget):
             log.exception("Failed to reconstruct target from row %d", row)
             return None
 
+    def _pooled_target_from_row(self, row: int) -> Target | None:
+        """Row -> the AUTHORITATIVE pooled Target, falling back to the row-reconstructed one.
+
+        The pooled object carries extra['index'] (and the live device_source), which the
+        row-reconstructed Target omits. Without this, index-gated actions (e.g. the BW16
+        'Deauth (this index)' -> AT+DEAUTHIDX=n) were silently dropped in the context menu even
+        though the Network tab offered them (it resolves against the real pool objects)."""
+        target = self._target_from_row(row)
+        if target is None:
+            return None
+        if self._pool is not None:
+            pooled = self._pool.get(target.key)
+            if pooled is not None:
+                return pooled
+        return target
+
+    def _on_use_as_macro_target(self) -> None:
+        """Toolbar affordance: push the selected row's target into the Macro tab's variable fields.
+
+        Handles the no-selection case gracefully with a status-bar hint (no emission, no dialog)."""
+        row = self._table.currentRow()
+        if row < 0:
+            self._notify("Select a target row first, then 'Use as Macro Target'.")
+            return
+        target = self._pooled_target_from_row(row)
+        if target is None:
+            self._notify("Could not read the selected target.")
+            return
+        self.fill_macro_requested.emit(target)
+
+    def _notify(self, msg: str) -> None:
+        """Show a transient hint on the main window's status bar, when there is one."""
+        window = self.window()
+        if window is not None and hasattr(window, "statusBar"):
+            window.statusBar().showMessage(msg, 4000)
+
     def _on_context_menu(self, pos) -> None:
         """Build and show the right-click context menu for a target row."""
         item = self._table.itemAt(pos)
         if item is None:
             return
         row = item.row()
-        target = self._target_from_row(row)
+        target = self._pooled_target_from_row(row)
         if target is None:
             return
-        # Resolve against the AUTHORITATIVE pooled Target: it carries extra['index'] (and the live
-        # device_source), which the row-reconstructed Target omits. Without this, index-gated actions
-        # (e.g. the BW16 'Deauth (this index)' -> AT+DEAUTHIDX=n) were silently dropped in THIS menu
-        # even though they show up in the Network tab, which resolves against the real pool objects.
-        if self._pool is not None:
-            pooled = self._pool.get(target.key)
-            if pooled is not None:
-                target = pooled
 
         menu = QMenu(self)
         menu.setStyleSheet(_MENU_QSS)
@@ -412,8 +451,11 @@ class TargetsTab(QWidget):
             no_act = menu.addAction("No actions available — connect a device first")
             no_act.setEnabled(False)
 
-        # Always-available clipboard actions
+        # Always-available cross-tab + clipboard actions
         menu.addSeparator()
+        use_macro = menu.addAction("Use as macro target")
+        use_macro.setToolTip("Fill the Macros tab's MAC / SSID / channel fields from this target.")
+        use_macro.triggered.connect(lambda: self.fill_macro_requested.emit(target))
         copy_mac = menu.addAction("Copy MAC")
         copy_mac.triggered.connect(lambda: self._copy_to_clipboard(target.mac))
         copy_ssid = menu.addAction("Copy SSID")

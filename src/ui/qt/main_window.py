@@ -494,6 +494,12 @@ class CyberControllerWindow(QMainWindow):
         self._operate_surface.addTab(self._wardrive_tab, "Wardrive")
         self._tabs.addTab(self._operate_surface, "Operate")
 
+        # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its
+        # MAC/SSID/channel into the Macro tab's variable fields, so a discovery in one surface is
+        # reusable in another without retyping. Same tab-signal → window-connects pattern as
+        # SettingsTab.check_updates_requested — no global, no new transport.
+        self._targets_tab.fill_macro_requested.connect(self._on_use_target_as_macro)
+
         # Network anchor surface (S4 GUI regroup) — the node graph is the centerpiece of the cross-comm
         # model, so it leads; Cross-Comm routing (event stream + auto-routing rules) rides alongside it as a
         # sub-view. Both widgets are the SAME objects the rest of main_window + the tests reference: they are
@@ -1201,6 +1207,19 @@ class CyberControllerWindow(QMainWindow):
         self._show_subtab(self._operate_surface, self._macro_tab)  # Macros is a sub-view of the Operate surface
         if hasattr(self._macro_tab, '_on_record'):
             self._macro_tab._on_record()
+
+    def _on_use_target_as_macro(self, target) -> None:
+        """Fill the Macro tab's variable fields from a Targets-tab selection, then surface Macros.
+
+        Presentation/wiring only — reuses the shared TargetPool's Target and the existing subtab
+        navigation; nothing is sent to any device."""
+        ch = getattr(target, "channel", 0)
+        self._macro_tab.fill_target_variables(
+            mac=getattr(target, "mac", "") or "",
+            ssid=getattr(target, "ssid", "") or "",
+            channel=str(ch) if ch else "",
+        )
+        self._show_subtab(self._operate_surface, self._macro_tab)
 
     # ── Help dialogs ─────────────────────────────────────────────────
 

@@ -271,6 +271,20 @@ class MacroTab(QWidget):
         if not pro and getattr(self, "_speed_combo", None) is not None:
             self._speed_combo.setCurrentText("1x")  # locked playback speed in Simple
 
+    # ── Cross-tab fill (Targets → Macros) ────────────────────────────
+
+    def fill_target_variables(
+        self, mac: str = "", ssid: str = "", channel: str = "",
+    ) -> None:
+        """Populate the variable-substitution fields from a discovered target.
+
+        Called when the user picks "Use as macro target" in the Targets tab (wired in main_window),
+        so a target found in one surface is usable in another without retyping the MAC/SSID/channel.
+        Empty strings are written through so a partial target clears stale values."""
+        self._var_mac.setText(mac or "")
+        self._var_ssid.setText(ssid or "")
+        self._var_channel.setText(channel or "")
+
     def _refresh_macro_list(self) -> None:
         """Reload the saved macros list."""
         self._macro_list.clear()
