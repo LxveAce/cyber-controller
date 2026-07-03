@@ -41,6 +41,8 @@ class BroadcastBar(QWidget):
         self._bus = event_bus
         self._load_settings = settings_loader
         self._buttons: dict[BroadcastVerb, QPushButton] = {}
+        # Offensive (ATTACK-category) verb buttons — hidden in Simple mode via set_ui_mode.
+        self._advanced_buttons: list[QPushButton] = []
         self._bridge = _Bridge()
         self._bridge.done.connect(self._set_status)
         self._build_ui()
@@ -83,6 +85,7 @@ class BroadcastBar(QWidget):
             btn.setMinimumHeight(64)
             if action.category == ActionCategory.ATTACK:
                 btn.setProperty("danger", "true")
+                self._advanced_buttons.append(btn)
             btn.clicked.connect(lambda _=False, v=verb: self._on_verb_clicked(v))
             self._buttons[verb] = btn
             grid.addWidget(btn, i // cols, i % cols)
@@ -101,6 +104,15 @@ class BroadcastBar(QWidget):
         self._status.setWordWrap(True)
         root.addWidget(self._status)
         root.addStretch()
+
+    # ── interface mode (dual-depth Simple / Pro) ─────────────────────
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple hides the offensive attack verbs (Deauth All / Beacon Spam / BLE Spam); the scan /
+        capture / utility verbs and the always-available STOP ALL stay visible. Pro shows the full
+        grid. Presentation only — no verb is disabled, just hidden from the Simple surface."""
+        pro = str(mode).lower() != "simple"
+        for btn in self._advanced_buttons:
+            btn.setVisible(pro)
 
     # ── live enable + preview ────────────────────────────────────────
     def _refresh_enabled(self) -> None:

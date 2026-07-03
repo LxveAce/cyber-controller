@@ -119,6 +119,8 @@ class TargetsTab(QWidget):
     fill_macro_requested = pyqtSignal(object)
 
     _COLUMNS = ["Type", "SSID", "MAC", "RSSI", "Ch", "Source", "Enc", "Last Seen"]
+    # Abbreviated / technical columns hidden in Simple mode (kept in Pro). Indices into _COLUMNS.
+    _ADVANCED_COLUMNS = (4, 5, 6)  # Ch, Source, Enc
 
     def __init__(
         self,
@@ -299,6 +301,18 @@ class TargetsTab(QWidget):
         if reply == QMessageBox.Yes:
             self._pool.clear()
             self._refresh()
+
+    # ── Interface mode (dual-depth Simple / Pro) ─────────────────────
+
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple = a lean target list: hide the abbreviated technical columns (Ch / Source / Enc)
+        and the bulk-destructive "Clear All" button. Pro restores the full table. The right-click
+        action menu (the tab's purpose) and per-row "Use as Macro Target" stay in both modes."""
+        pro = str(mode).lower() != "simple"
+        for col in self._ADVANCED_COLUMNS:
+            self._table.setColumnHidden(col, not pro)
+        if getattr(self, "_clear_btn", None) is not None:
+            self._clear_btn.setVisible(pro)
 
     # ── Context menu ────────────────────────────────────────────────
 

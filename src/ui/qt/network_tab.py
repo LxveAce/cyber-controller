@@ -156,7 +156,10 @@ class NetworkTab(QWidget):
         self._nodes: "dict[str, _Node]" = {}
 
         root = QVBoxLayout(self)
-        bar = QHBoxLayout()
+        # Toolbar lives in its own container so Simple mode can hide the whole control row at once.
+        self._controls = QWidget()
+        bar = QHBoxLayout(self._controls)
+        bar.setContentsMargins(0, 0, 0, 0)
         btn_rebuild = QPushButton("Rebuild")
         btn_rebuild.setToolTip("Re-read connected devices + discovered targets (keeps the layout you arranged)")
         btn_rebuild.clicked.connect(lambda: self.rebuild())
@@ -169,12 +172,34 @@ class NetworkTab(QWidget):
         hint = QLabel("Drag nodes to orient the web · double-click a node for its commands · scroll to zoom")
         hint.setStyleSheet("color:#8b949e;")
         bar.addWidget(hint)
-        root.addLayout(bar)
+        root.addWidget(self._controls)
 
         self._scene = QGraphicsScene(self)
         self._view = _GraphView(self._scene)
         root.addWidget(self._view, 1)
+
+        # Simple-mode stand-in for the (advanced, send-capable) graph. Hidden in Pro.
+        self._simple_notice = QLabel(
+            "The network graph is an advanced, experimental send surface — double-clicking a node "
+            "fires a command at a device. Switch to Pro mode (View ▸ Interface Mode, or Ctrl+M) to "
+            "use it."
+        )
+        self._simple_notice.setWordWrap(True)
+        self._simple_notice.setStyleSheet("color:#8b949e;")
+        self._simple_notice.hide()
+        root.addWidget(self._simple_notice, 1)
+
         self.rebuild()
+
+    # ── interface mode (dual-depth Simple / Pro) ─────────────────────
+    def set_ui_mode(self, mode: str) -> None:
+        """Simple hides the whole experimental graph — a real send surface (double-click a node to
+        fire a command at a device) that Simple deliberately keeps out of reach — and shows a short
+        notice pointing at Pro. Pro restores the graph and its Rebuild / Auto-arrange controls."""
+        pro = str(mode).lower() != "simple"
+        self._controls.setVisible(pro)
+        self._view.setVisible(pro)
+        self._simple_notice.setVisible(not pro)
 
     # ── build ────────────────────────────────────────────────────────
     def _devices(self):

@@ -290,6 +290,7 @@ class CyberControllerWindow(QMainWindow):
 
         act_palette = QAction("Command &Palette", self)
         act_palette.setShortcut("Ctrl+Shift+P")
+        act_palette.setStatusTip("Jump to any tab or action by name — press Ctrl+Shift+P anywhere.")
         act_palette.triggered.connect(self._on_command_palette)
         help_menu.addAction(act_palette)
 
@@ -632,7 +633,8 @@ class CyberControllerWindow(QMainWindow):
             getattr(self, "_software_tab", None), getattr(self, "_health_tab", None),
             getattr(self, "_macro_tab", None), getattr(self, "_cross_comm_tab", None),
             getattr(self, "_settings_tab", None), getattr(self, "_wardrive_tab", None),
-            getattr(self, "_targets_tab", None),
+            getattr(self, "_targets_tab", None), getattr(self, "_broadcast_bar", None),
+            getattr(self, "_network_tab", None),
         ):
             fn = getattr(tab, "set_ui_mode", None)
             if callable(fn):

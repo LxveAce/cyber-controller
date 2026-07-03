@@ -119,6 +119,17 @@ def test_restore_detached_bad_input_never_raises(qapp):
     assert w.count() == 3
 
 
+def test_corner_popout_button_has_tooltip(qapp):
+    """Track B UX #4 (discoverability): the '⇱' pop-out control must explain itself — the only
+    always-visible affordance for detaching a tab, so it can't be a bare unlabeled glyph."""
+    from PyQt5.QtCore import Qt
+
+    w = _tabs(qapp)
+    corner = w.cornerWidget(Qt.TopRightCorner)
+    assert corner is not None
+    assert corner.toolTip().strip(), "the pop-out corner button needs a non-empty tooltip"
+
+
 def test_real_window_uses_detachable_tabs_and_detach_roundtrips(qapp, tmp_path, monkeypatch):
     """End-to-end: the actual main window wires DetachableTabWidget, and a real tab detaches + re-docks."""
     import src.config.settings as S
