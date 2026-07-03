@@ -18,6 +18,7 @@ the container — only app-internal saves do.
 
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 import shutil
@@ -27,6 +28,8 @@ from typing import Any, Optional
 
 from src.security import access_gate
 from src.security.encrypted_storage import SecureStorage
+
+log = logging.getLogger(__name__)
 
 _KEY_ENTRY = "secure_container_key"
 _DIR = Path.home() / ".cyber-controller" / "secure"
@@ -38,12 +41,20 @@ _KEY_LOCK = threading.Lock()
 
 
 def enabled() -> bool:
-    """True if the secure-container setting is ON."""
+    """True if the secure-container setting is ON.
+
+    A genuine error reading the setting is NOT swallowed into False (SEC-B1) — that would silently
+    downgrade encryption-at-rest to plaintext on a transient glitch. It is logged and re-raised so
+    callers fail CLOSED (refuse to write plaintext) rather than leak. load_settings() is itself
+    robust (absent/corrupt file → documented defaults, no raise), so this only fires on a truly
+    unexpected fault, never on a merely-missing or off setting (which returns False normally)."""
     try:
         from src.config.settings import load_settings
-        return bool(load_settings().get("security", {}).get("secure_container", False))
+        settings = load_settings()
     except Exception:
-        return False
+        log.exception("secure_store.enabled(): failed to read settings — failing closed (raising)")
+        raise
+    return bool(settings.get("security", {}).get("secure_container", False))
 
 
 def container_dir() -> Path:

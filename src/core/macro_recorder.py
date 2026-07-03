@@ -325,17 +325,21 @@ class MacroRecorder:
         """
         if path is None:
             safe_name = re.sub(r"[^\w\-]", "_", macro.name.lower().strip())
-            # Internal save: when the secure container is enabled + unlocked, encrypt the recorded
-            # session at rest instead of writing plaintext JSON. Explicit-path saves (exports the
-            # user chose to write elsewhere) deliberately stay plaintext.
-            try:
-                from src.security import secure_store
-                if secure_store.available():
-                    p = secure_store.save("macros", safe_name, macro.to_dict())
-                    log.info("Macro saved to secure container: %s -> %s", macro.name, p)
-                    return p
-            except Exception:
-                log.exception("Secure-container macro save failed; falling back to plaintext")
+            # Internal save. When the secure container is ENABLED the recorded session MUST be
+            # encrypted at rest — we never silently fall back to a plaintext file (that would leak a
+            # session the user chose to protect, SEC-B1). If the gate is locked or the encrypted save
+            # errors, surface it. When the container is OFF, a plaintext JSON save is the intended
+            # behaviour. Explicit-path saves (exports the user chose to write elsewhere) stay plaintext.
+            from src.security import secure_store
+            if secure_store.enabled():
+                if not secure_store.available():
+                    raise RuntimeError(
+                        "Secure container is enabled but locked — unlock the access gate to save "
+                        "this macro (refusing to write it as plaintext)."
+                    )
+                p = secure_store.save("macros", safe_name, macro.to_dict())
+                log.info("Macro saved to secure container: %s -> %s", macro.name, p)
+                return p
             path = self.macros_dir / f"{safe_name}.json"
         else:
             path = Path(path)

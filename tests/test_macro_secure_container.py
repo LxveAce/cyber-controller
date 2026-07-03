@@ -76,3 +76,30 @@ def test_macro_plaintext_when_container_off(tmp_path, monkeypatch):
     assert rec.load_macro(p).steps[0].command == "hop"
     # listing has no secured entries when the container is off
     assert all(not x.get("secured") for x in rec.list_saved_macros())
+
+
+def test_macro_refuses_plaintext_when_enabled_but_locked(tmp_path, monkeypatch):
+    """SEC-B1: container ENABLED but the gate LOCKED must NOT silently write a plaintext macro — it
+    must fail closed so the recorded session isn't leaked to disk in the clear."""
+    monkeypatch.setattr(ss, "_DIR", tmp_path / "secure")
+    monkeypatch.setattr(ss, "enabled", lambda: True)
+    monkeypatch.setattr(access_gate, "get_current_vault", lambda: None)  # locked
+
+    rec = MacroRecorder(macros_dir=tmp_path / "macros")
+    with pytest.raises(RuntimeError):
+        rec.save_macro(Macro(name="Secret Sweep", steps=[MacroStep(command="scanap")]))
+    md = tmp_path / "macros"
+    assert not md.exists() or not any(md.glob("*.json"))  # nothing leaked in cleartext
+
+
+def test_enabled_fails_closed_on_settings_error(monkeypatch):
+    """SEC-B1: an unexpected settings-read error must not be swallowed into False (which would
+    silently permit a plaintext downgrade); enabled() re-raises so callers fail closed."""
+    import src.config.settings as settings_mod
+
+    def boom():
+        raise RuntimeError("settings backend exploded")
+
+    monkeypatch.setattr(settings_mod, "load_settings", boom)
+    with pytest.raises(Exception):
+        ss.enabled()
