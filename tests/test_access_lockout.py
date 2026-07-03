@@ -68,6 +68,31 @@ def test_no_wipe_when_disabled(temp_gate):
     assert temp_gate.exists()  # config NOT wiped
 
 
+def test_concurrent_failed_attempts_are_not_lost(temp_gate):
+    """SEC-A2: the failure counter must be a lost-update-safe read-modify-write. Many attempts
+    firing at once (threads here; separate relaunch-and-guess processes in the wild) previously
+    raced load→increment→save and dropped increments, so the counter never reached the lockout
+    threshold. Under the atomic update every increment must land."""
+    import threading
+
+    pk.set_admin_password("secret")
+    pk.set_policy("password")
+    n = 25
+    start = threading.Barrier(n)
+
+    def worker():
+        start.wait()  # release all threads at once to maximise interleaving
+        pk.record_failed_attempt()
+
+    threads = [threading.Thread(target=worker) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert pk.lockout_status()["failed_attempts"] == n
+
+
 def test_secure_delete_overwrites_and_removes(tmp_path):
     f = tmp_path / "secret.bin"
     f.write_bytes(b"sensitive-data" * 64)

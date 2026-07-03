@@ -22,6 +22,7 @@ owner-only (NTFS ACL on Windows via win_acl; 0600 elsewhere). Secrets are never 
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
@@ -29,6 +30,7 @@ import logging
 import os
 import secrets
 import string
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -109,6 +111,70 @@ def save_config(cfg: dict) -> None:
     restrict_to_current_user(path)
 
 
+# ── atomic read-modify-write of the gate config ──────────────────────
+# The failure counter is the backbone of the brute-force lockout, so incrementing it must be
+# atomic. A bare load_config()→mutate→save_config() is a lost-update race: two concurrent unlock
+# attempts (threads OR separate "relaunch and keep guessing" processes) both read N and both write
+# N+1, so an increment vanishes and the counter never reaches the lockout threshold. _STATE_LOCK
+# serializes threads in this process; _config_file_lock() serializes separate processes.
+_STATE_LOCK = threading.Lock()
+
+
+@contextlib.contextmanager
+def _config_file_lock():
+    """Best-effort cross-process advisory lock on the gate config. If the platform primitive is
+    unavailable, degrade to no cross-process lock (the in-process _STATE_LOCK still holds) rather
+    than break the security path. Only ever entered by one thread at a time (under _STATE_LOCK),
+    so there is no intra-process re-lock contention."""
+    lock_path = _config_path().with_suffix(".lock")
+    try:
+        secure_dir(lock_path.parent)
+    except Exception:
+        pass
+    fh = None
+    try:
+        try:
+            fh = open(lock_path, "a+b")
+            if os.name == "nt":
+                import msvcrt
+                fh.seek(0)
+                msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        except (OSError, ImportError):
+            pass  # advisory only — the in-process lock still serializes threads here
+        yield
+    finally:
+        if fh is not None:
+            try:
+                if os.name == "nt":
+                    import msvcrt
+                    fh.seek(0)
+                    msvcrt.locking(fh.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+                    fcntl.flock(fh.fileno(), fcntl.LOCK_UN)
+            except (OSError, ImportError):
+                pass
+            try:
+                fh.close()
+            except OSError:
+                pass
+
+
+def _locked_config_update(mutate):
+    """Atomically load→mutate→save the gate config under both locks. `mutate(cfg)` edits cfg in
+    place; if it returns False the write is skipped (nothing changed). Returns mutate's value."""
+    with _STATE_LOCK:
+        with _config_file_lock():
+            cfg = load_config()
+            result = mutate(cfg)
+            if result is not False:
+                save_config(cfg)
+    return result
+
+
 # ── status ───────────────────────────────────────────────────────────
 
 def _now() -> float:
@@ -144,24 +210,27 @@ def lockout_status() -> dict:
 
 
 def record_successful_unlock() -> None:
-    """Reset the persistent failure counter after a successful unlock."""
-    cfg = load_config()
-    if cfg.get("failed_attempts") or cfg.get("last_failure_ts"):
+    """Reset the persistent failure counter after a successful unlock (atomically)."""
+    def _reset(cfg):
+        if not (cfg.get("failed_attempts") or cfg.get("last_failure_ts")):
+            return False  # nothing to reset — skip the write
         cfg["failed_attempts"] = 0
         cfg["last_failure_ts"] = 0
-        save_config(cfg)
+    _locked_config_update(_reset)
 
 
 def record_failed_attempt() -> dict:
     """Increment the persistent counter, persist it, and fire the opt-in duress wipe if the
-    configured threshold is reached. Returns the new lockout status (+ 'wipe_triggered')."""
-    cfg = load_config()
-    cfg["failed_attempts"] = int(cfg.get("failed_attempts", 0) or 0) + 1
-    cfg["last_failure_ts"] = _now()
-    save_config(cfg)
+    configured threshold is reached. Returns the new lockout status (+ 'wipe_triggered').
+
+    The increment is done under _locked_config_update so concurrent attempts can't lose it."""
+    def _inc(cfg):
+        cfg["failed_attempts"] = int(cfg.get("failed_attempts", 0) or 0) + 1
+        cfg["last_failure_ts"] = _now()
+        return int(cfg.get("wipe_on_failures", 0) or 0), cfg["failed_attempts"]
+    wipe_at, fails = _locked_config_update(_inc)
     wiped = False
-    wipe_at = int(cfg.get("wipe_on_failures", 0) or 0)
-    if wipe_at > 0 and cfg["failed_attempts"] >= wipe_at:
+    if wipe_at > 0 and fails >= wipe_at:  # duress wipe outside the lock (it may be slow)
         wiped = trigger_duress_wipe()
     st = lockout_status()
     st["wipe_triggered"] = wiped
@@ -171,9 +240,9 @@ def record_failed_attempt() -> dict:
 def set_wipe_on_failures(threshold: int) -> None:
     """OPT-IN duress self-wipe: after *threshold* consecutive failed unlocks, the app's secrets are
     wiped. 0 disables (default). Owner-set knowingly; keep it well above _LOCKOUT_AFTER."""
-    cfg = load_config()
-    cfg["wipe_on_failures"] = max(0, int(threshold))
-    save_config(cfg)
+    def _set(cfg):
+        cfg["wipe_on_failures"] = max(0, int(threshold))
+    _locked_config_update(_set)
 
 
 def _secure_delete(path: Path) -> None:
