@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 
-from PyQt5.QtCore import QSettings, Qt, QTimer, pyqtSignal, pyqtSlot
+from PyQt5.QtCore import QSettings, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
 from PyQt5.QtGui import QColor, QFont, QKeySequence
 from PyQt5.QtWidgets import (
     QAction,
@@ -68,6 +68,29 @@ log = logging.getLogger(__name__)
 from src.version import __version__ as _VERSION
 
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
+
+
+class _UpdateCheckWorker(QThread):
+    """Run the in-app update check off the UI thread and emit the result object.
+
+    Never blocks or slows launch — it hits the network on its own thread with a hard timeout, and any
+    failure is folded into an OFFLINE result so the check can never crash the app.
+    """
+
+    done = pyqtSignal(object)  # updater.CheckResult
+
+    def __init__(self, installed: str, updates_state: dict) -> None:
+        super().__init__()
+        self._installed = installed
+        self._updates = updates_state
+
+    def run(self) -> None:
+        from src.core import updater
+        try:
+            result = updater.check(self._installed, self._updates)
+        except Exception:  # noqa: BLE001 — the check must never crash the app
+            result = updater.CheckResult(status=updater.OFFLINE)
+        self.done.emit(result)
 
 
 class CyberControllerWindow(QMainWindow):
@@ -248,6 +271,10 @@ class CyberControllerWindow(QMainWindow):
         help_menu.addAction(act_palette)
 
         help_menu.addSeparator()
+
+        act_updates = QAction("Check for &Updates…", self)
+        act_updates.triggered.connect(lambda: self.check_for_updates(force=True))
+        help_menu.addAction(act_updates)
 
         act_about = QAction("&About", self)
         act_about.triggered.connect(self._on_about)
@@ -462,6 +489,8 @@ class CyberControllerWindow(QMainWindow):
 
         # Settings (persisted)
         self._settings_tab = SettingsTab()
+        # The Settings tab's "Check now" button asks the window to run a manual (forced) update check.
+        self._settings_tab.check_updates_requested.connect(lambda: self.check_for_updates(force=True))
         self._tabs.addTab(self._settings_tab, "Settings")
 
         # How-To lives under the Help menu (see _on_howto), not the tab strip — keeps the top level at the
@@ -1106,6 +1135,7 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("User Guide", self._on_user_guide)
         self._palette.add_command("How-To", self._on_howto)
         self._palette.add_command("Keyboard Shortcuts", self._on_keyboard_shortcuts)
+        self._palette.add_command("Check for Updates…", lambda: self.check_for_updates(force=True))
         self._palette.add_command("Quit", self.close)
 
     def _on_command_palette(self) -> None:
@@ -1468,6 +1498,76 @@ class CyberControllerWindow(QMainWindow):
         import webbrowser
         webbrowser.open(_GITHUB_URL)
 
+    # ── In-app updates ───────────────────────────────────────────────
+    def check_for_updates(self, force: bool = False) -> None:
+        """Kick a NON-BLOCKING update check on a background thread.
+
+        ``force=True`` is a manual "Check for Updates" — it bypasses ``updates.enabled`` and the
+        suppression flags so it always reports. The automatic (force=False) check is skipped when the
+        feature is disabled, but is NEVER gated by suppression (only the resulting prompt is).
+        """
+        from src.config.settings import load_settings
+        from src.core import updater
+        updates = load_settings().get("updates", {})
+        if not updater.should_auto_check(updates, force=force):
+            return
+        worker = getattr(self, "_update_worker", None)
+        if worker is not None and worker.isRunning():
+            return  # a check is already in flight
+        worker = _UpdateCheckWorker(_VERSION, dict(updates))
+        worker.done.connect(lambda result, f=force: self._on_update_check_done(result, f))
+        worker.finished.connect(lambda: setattr(self, "_update_worker", None))
+        self._update_worker = worker  # keep a reference so the thread isn't GC'd
+        worker.start()
+
+    def _on_update_check_done(self, result, force: bool) -> None:
+        """Apply the update decision flow on the UI thread once the background check returns."""
+        from src.config.settings import load_settings, save_settings
+        from src.core import updater
+        from src.ui.qt.update_dialog import (
+            ACTION_UPDATE,
+            OfflineErrorDialog,
+            UpdateAvailableDialog,
+        )
+        try:
+            settings = load_settings()
+            upd = settings.get("updates", {})
+            # The silent check ALWAYS ran — record that it happened regardless of any suppression.
+            upd["last_check_iso"] = updater.now_iso()
+            if result.latest_tag:
+                upd["last_seen_latest"] = result.latest_tag
+
+            if result.status == updater.OFFLINE:
+                # OFFLINE handling is gated ONLY by offline_error_suppressed (never the version logic).
+                if force or not upd.get("offline_error_suppressed", False):
+                    dlg = OfflineErrorDialog(self)
+                    dlg.exec_()
+                    if dlg.dont_show_again():
+                        upd["offline_error_suppressed"] = True
+            elif result.status == updater.UP_TO_DATE:
+                if force:  # a manual check confirms; the automatic one stays silent
+                    QMessageBox.information(
+                        self, "Check for Updates",
+                        f"You're up to date — v{_VERSION} is the latest release.",
+                    )
+            elif result.status == updater.NEWER:
+                # Only the PROMPT is gated. A manual check always prompts.
+                if force or updater.should_prompt(upd, result.behind):
+                    dlg = UpdateAvailableDialog(
+                        result.latest_tag, _VERSION, updater.apply_update_url(result),
+                        behind=result.behind, parent=self,
+                    )
+                    dlg.exec_()
+                    if dlg.action() != ACTION_UPDATE and dlg.dont_show_again():
+                        upd["suppressed"] = True
+                        upd["suppressed_at_behind"] = result.behind
+                        upd["dismissed_version"] = result.latest_tag
+
+            settings["updates"] = upd
+            save_settings(settings)
+        except Exception:  # noqa: BLE001 — updater UI must never crash the app
+            log.debug("update-check post-processing failed", exc_info=True)
+
     def _on_device_view(self, firmware: str = "marauder") -> None:
         """Open a Device View — an on-screen reconstruction of a firmware's on-board UI.
 
@@ -1699,6 +1799,13 @@ def launch_qt(
             _result = LoadoutDialog.choose(win, win._load_loadout())
             # On cancel, default to Full Stack so nothing is hidden (and we don't re-ask every launch).
             win.apply_loadout(_result if _result is not None else _L.full_stack_loadout(), persist=True)
+        # After the one-time modals, kick a NON-BLOCKING background update check (off-thread, hard
+        # timeout — never blocks or slows launch). Automatic path honours updates.enabled; the prompt
+        # (if any) is applied on the UI thread when the worker returns.
+        try:
+            win.check_for_updates(force=False)
+        except Exception:
+            log.debug("startup update check kick failed", exc_info=True)
 
     def _reveal() -> None:
         win.show()

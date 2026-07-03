@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 
+from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -52,6 +53,9 @@ class SettingsTab(QWidget):
     Reloads from disk each time the tab is shown so it never displays stale
     values after another component changed the file.
     """
+
+    #: Emitted when the user clicks "Check now" — the main window runs a manual (forced) update check.
+    check_updates_requested = pyqtSignal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -122,6 +126,25 @@ class SettingsTab(QWidget):
         comm_form.addRow(self._dedup_check)
         comm_outer.addLayout(comm_form)
         root.addWidget(comm_card)
+
+        # ── Updates ──────────────────────────────────────────────────
+        self._updates_card, updates_outer = _make_card("Updates")
+        updates_card = self._updates_card
+        updates_desc = QLabel(
+            "On launch, quietly check GitHub for a newer release and offer a link to download it. "
+            "No auto-download or self-update — you stay in control of what gets installed."
+        )
+        updates_desc.setObjectName("muted")
+        updates_desc.setWordWrap(True)
+        updates_outer.addWidget(updates_desc)
+        self._updates_enabled_check = QCheckBox("Automatically check for updates")
+        updates_outer.addWidget(self._updates_enabled_check)
+        updates_btn_row = QHBoxLayout()
+        updates_btn_row.addStretch()
+        self._check_updates_btn = QPushButton("Check now")
+        updates_btn_row.addWidget(self._check_updates_btn)
+        updates_outer.addLayout(updates_btn_row)
+        root.addWidget(updates_card)
 
         # ── Safety & Disclaimers ─────────────────────────────────────
         # These LABEL and warn; they never remove or block a capability. The
@@ -234,6 +257,7 @@ class SettingsTab(QWidget):
         self._suppress_warnings_check.toggled.connect(self._on_suppress_toggled)
         self._secure_container_check.toggled.connect(self._on_secure_container_toggled)
         self._gate_setup_btn.clicked.connect(self._on_gate_setup)
+        self._check_updates_btn.clicked.connect(self.check_updates_requested)
 
     # ── Load / gather ────────────────────────────────────────────────
 
@@ -270,6 +294,9 @@ class SettingsTab(QWidget):
 
         vault = settings.get("vault", {})
         self._vault_dir_edit.setText(str(vault.get("dir", "")))
+
+        updates = settings.get("updates", {})
+        self._updates_enabled_check.setChecked(bool(updates.get("enabled", True)))
 
     def _gather(self) -> dict:
         """Read the current UI state into a settings dict."""
@@ -309,6 +336,15 @@ class SettingsTab(QWidget):
             # choice + loadout and re-arms both first-run choosers on the next launch.
             "interface": self._settings.get("interface", {}),
             "_interface_mode_ack": self._settings.get("_interface_mode_ack", False),
+            # CRITICAL carry-forward: this tab owns only the `enabled` toggle for `updates`, but _gather
+            # rebuilds the WHOLE settings dict. Without preserving the rest of the section, a plain Save
+            # would wipe the suppression bookkeeping (suppressed / suppressed_at_behind / dismissed_version
+            # / offline_error_suppressed / last_seen_latest / last_check_iso). Start from the stored block
+            # and overlay only the widget-backed `enabled`.
+            "updates": {
+                **self._settings.get("updates", {}),
+                "enabled": self._updates_enabled_check.isChecked(),
+            },
         }
 
     # ── Actions ──────────────────────────────────────────────────────

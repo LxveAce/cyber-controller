@@ -64,6 +64,29 @@ DEFAULTS: dict[str, Any] = {
     "interface": {
         "mode": "pro",
     },
+    # In-app update check (see src/core/updater.py). A non-blocking startup check asks GitHub for the
+    # latest published release and — only when the running build is behind — offers a deep-link to the
+    # release page (phase 1 is deep-link only; there is NO self-update / auto-download). The SILENT
+    # check always runs when ``enabled``; only the PROMPT is gated by the suppression fields below.
+    #   enabled                 master on/off for the automatic startup check (manual check ignores it).
+    #   suppressed              user ticked "Don't show again" on a version prompt.
+    #   suppressed_at_behind    how many releases behind we were when suppressed (so a NEWER release,
+    #                           i.e. behind grows past this, re-arms the prompt — see should_prompt()).
+    #   dismissed_version       the latest tag that was dismissed (informational).
+    #   offline_error_suppressed  user ticked "Don't show again" on the offline-error dialog. This is
+    #                           SEPARATE from the version-suppression fields — the version logic never
+    #                           touches it and it never gates the version prompt.
+    #   last_seen_latest        last latest tag observed by a check (informational).
+    #   last_check_iso          ISO timestamp of the last check that completed (informational).
+    "updates": {
+        "enabled": True,
+        "suppressed": False,
+        "suppressed_at_behind": 0,
+        "dismissed_version": "",
+        "offline_error_suppressed": False,
+        "last_seen_latest": "",
+        "last_check_iso": "",
+    },
     # One-time interface-mode choice prompt shown (so we ask Simple-vs-Pro exactly once).
     "_interface_mode_ack": False,
     # One-time legal/authorized-use disclaimer acknowledgement (top-level scalar,
