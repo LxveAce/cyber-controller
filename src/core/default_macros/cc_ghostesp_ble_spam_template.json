@@ -1,0 +1,23 @@
+{
+  "name": "[TEMPLATE — REVIEW] GhostESP — BLE spam (arm required)",
+  "description": "TEMPLATE — transmits. Broadcasts BLE spam advertisements; disruptive, lab / consenting-device use only. Confirm-gated. Only run on equipment you own or are authorized to test.",
+  "steps": [
+    {
+      "command": "stop",
+      "delay_ms": 0,
+      "expected_response": ""
+    },
+    {
+      "command": "blespam -t all",
+      "delay_ms": 500,
+      "expected_response": ""
+    },
+    {
+      "command": "blespam -stop",
+      "delay_ms": 4000,
+      "expected_response": ""
+    }
+  ],
+  "created_at": "2026-07-03T00:00:00+00:00",
+  "device_protocol": "ghostesp-attack"
+}

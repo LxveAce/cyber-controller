@@ -1,0 +1,23 @@
+{
+  "name": "GhostESP — wardrive + GPS (30 s)",
+  "description": "Check GPS fix, start a Wi-Fi wardrive to CSV for 30 s, then stop. Passive.",
+  "steps": [
+    {
+      "command": "gpsinfo",
+      "delay_ms": 0,
+      "expected_response": ""
+    },
+    {
+      "command": "startwd",
+      "delay_ms": 1500,
+      "expected_response": ""
+    },
+    {
+      "command": "startwd -s",
+      "delay_ms": 30000,
+      "expected_response": ""
+    }
+  ],
+  "created_at": "2026-07-03T00:00:00+00:00",
+  "device_protocol": "ghostesp"
+}

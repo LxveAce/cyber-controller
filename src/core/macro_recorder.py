@@ -19,6 +19,39 @@ _DEFAULT_MACROS_DIR = Path.home() / ".cyber-controller" / "macros"
 # Variable placeholders supported in macros
 _VARIABLE_PATTERN = re.compile(r"\{\{(\w+)\}\}")
 
+# Bundled starter macros: shipped as ``cc_*.json`` under ``src/core/default_macros`` and seeded into
+# the user's macros dir on first run (see ``seed_default_macros``). Resolved via ``resource_path``
+# so it works in a dev checkout and a PyInstaller build alike (bundled with a matching dest). The
+# ledger records which builtins were seeded so one the user deletes is NOT re-created.
+_SEEDED_LEDGER = ".seeded.json"
+
+# Attack verbs a step command may start with that mark a macro as transmitting/disruptive (§4.3).
+_ATTACK_VERBS = ("attack", "deauth", "blespam", "beacon", "rickroll", "spam")
+
+
+def _builtin_macros_dir() -> Path:
+    """Absolute path to the bundled ``cc_*.json`` starter macros (frozen-safe)."""
+    from src.core.resources import resource_path
+    return resource_path("src", "core", "default_macros")
+
+
+def is_offensive_macro(macro: Macro) -> bool:
+    """Return True if a macro transmits / can disrupt and therefore needs the play-time arm gate.
+
+    Heuristic (spec §4.3): the ``device_protocol`` ends with ``-attack``, OR the name starts with
+    ``[TEMPLATE``, OR any step command begins with an attack verb. Pure logic (no Qt) so it is unit
+    testable and reusable by the UI play path.
+    """
+    if macro.device_protocol.endswith("-attack"):
+        return True
+    if macro.name.startswith("[TEMPLATE"):
+        return True
+    for step in macro.steps:
+        first = step.command.strip().split(maxsplit=1)
+        if first and first[0].lower() in _ATTACK_VERBS:
+            return True
+    return False
+
 
 @dataclass
 class MacroStep:
@@ -116,6 +149,69 @@ class MacroRecorder:
         self._record_port: str = ""
         self._record_protocol: str = ""
         self._last_timestamp: float = 0.0
+
+    # ── First-run seeding of bundled starter macros ──────────────────
+
+    def seed_default_macros(self, source_dir: Path | None = None) -> list[Path]:
+        """Seed bundled starter macros into the macros dir on first run (never clobbering).
+
+        For each bundled ``cc_*.json`` builtin: write it into ``macros_dir`` ONLY if a file of that
+        name does not already exist AND it is not recorded in the ``.seeded.json`` ledger. So a user
+        macro is never overwritten, and a builtin the user deletes stays deleted (its filename stays
+        in the ledger, so it is not resurrected on the next launch). Builtins are public, non-
+        sensitive templates and are always written as plaintext to ``macros_dir`` — never into the
+        secure container. Nothing transmits: seeding only writes files.
+
+        Returns the list of files newly written this call (empty if all builtins are already present
+        or previously seeded-then-deleted).
+        """
+        src_dir = source_dir or _builtin_macros_dir()
+        if not src_dir.is_dir():
+            log.debug("No bundled default_macros dir at %s — nothing to seed", src_dir)
+            return []
+
+        self.macros_dir.mkdir(parents=True, exist_ok=True)
+        ledger_path = self.macros_dir / _SEEDED_LEDGER
+        seeded = self._load_seeded_ledger(ledger_path)
+
+        written: list[Path] = []
+        for src_file in sorted(src_dir.glob("cc_*.json")):
+            name = src_file.name
+            target = self.macros_dir / name
+            if target.exists() or name in seeded:
+                continue  # user has one there OR user deleted a builtin we already seeded
+            try:
+                target.write_text(src_file.read_text(encoding="utf-8"), encoding="utf-8")
+            except OSError:
+                log.warning("Failed to seed builtin macro %s", name, exc_info=True)
+                continue
+            seeded.add(name)
+            written.append(target)
+            log.info("Seeded builtin macro: %s", name)
+
+        if written:
+            self._save_seeded_ledger(ledger_path, seeded)
+        return written
+
+    @staticmethod
+    def _load_seeded_ledger(ledger_path: Path) -> set[str]:
+        """Return the builtin filenames already seeded once (empty set if absent/unreadable)."""
+        try:
+            data = json.loads(ledger_path.read_text(encoding="utf-8"))
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return set()
+        names = data.get("seeded", []) if isinstance(data, dict) else data
+        return {str(n) for n in names} if isinstance(names, list) else set()
+
+    @staticmethod
+    def _save_seeded_ledger(ledger_path: Path, seeded: set[str]) -> None:
+        """Persist the seeded-builtins ledger (best effort; a write error must not block start)."""
+        try:
+            ledger_path.write_text(
+                json.dumps({"seeded": sorted(seeded)}, indent=2), encoding="utf-8"
+            )
+        except OSError:
+            log.warning("Failed to write seeded-macros ledger %s", ledger_path, exc_info=True)
 
     # ── Recording ────────────────────────────────────────────────────
 
@@ -391,6 +487,8 @@ class MacroRecorder:
         macros = []
         if self.macros_dir.is_dir():
             for f in sorted(self.macros_dir.glob("*.json")):
+                if f.name.startswith("."):
+                    continue  # skip metadata dotfiles (e.g. the .seeded.json seed ledger)
                 try:
                     data = json.loads(f.read_text(encoding="utf-8"))
                     macros.append({

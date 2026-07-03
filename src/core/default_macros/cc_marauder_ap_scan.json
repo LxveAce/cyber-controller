@@ -1,0 +1,23 @@
+{
+  "name": "Marauder — AP scan + list",
+  "description": "Passive: discover nearby access points, stop, then print the list. No transmit.",
+  "steps": [
+    {
+      "command": "scanap",
+      "delay_ms": 0,
+      "expected_response": ""
+    },
+    {
+      "command": "stopscan",
+      "delay_ms": 6000,
+      "expected_response": ""
+    },
+    {
+      "command": "list -a",
+      "delay_ms": 500,
+      "expected_response": ""
+    }
+  ],
+  "created_at": "2026-07-03T00:00:00+00:00",
+  "device_protocol": "marauder"
+}

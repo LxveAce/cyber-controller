@@ -1,0 +1,13 @@
+{
+  "name": "Marauder — GPS fix check",
+  "description": "Print the current GPS fix / satellite count. Read-only.",
+  "steps": [
+    {
+      "command": "gpsdata",
+      "delay_ms": 0,
+      "expected_response": ""
+    }
+  ],
+  "created_at": "2026-07-03T00:00:00+00:00",
+  "device_protocol": "marauder"
+}

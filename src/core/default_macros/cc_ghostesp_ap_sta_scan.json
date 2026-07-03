@@ -1,0 +1,23 @@
+{
+  "name": "GhostESP — AP + station scan",
+  "description": "10 s AP scan, then a station scan, then a global stop. Passive receive only.",
+  "steps": [
+    {
+      "command": "scanap 10",
+      "delay_ms": 0,
+      "expected_response": ""
+    },
+    {
+      "command": "scansta",
+      "delay_ms": 11000,
+      "expected_response": ""
+    },
+    {
+      "command": "stop",
+      "delay_ms": 10000,
+      "expected_response": ""
+    }
+  ],
+  "created_at": "2026-07-03T00:00:00+00:00",
+  "device_protocol": "ghostesp"
+}

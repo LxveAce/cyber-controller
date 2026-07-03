@@ -156,6 +156,14 @@ def _bootstrap():
     vault = FirmwareVault()
     health = HealthMonitor()
     macro = MacroRecorder()
+    # Ship with starter macros: seed the bundled cc_*.json builtins on first run so the list is not
+    # empty. Idempotent + never clobbers a user macro; a builtin the user deletes is not re-seeded.
+    try:
+        seeded = macro.seed_default_macros()
+        if seeded:
+            log.info("Seeded %d starter macro(s) into the macros dir", len(seeded))
+    except Exception:
+        log.debug("Starter-macro seeding skipped", exc_info=True)
     # L-2: durable, owner-only hash-chained audit trail (loads + verifies any prior chain).
     from pathlib import Path
     audit = AuditTrail(persist_path=Path.home() / ".cyber-controller" / "audit-trail.jsonl")

@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
 )
 
 from src.core.device_manager import DeviceManager
-from src.core.macro_recorder import Macro, MacroRecorder
+from src.core.macro_recorder import Macro, MacroRecorder, is_offensive_macro
 
 log = logging.getLogger(__name__)
 
@@ -420,6 +420,12 @@ class MacroTab(QWidget):
             )
             return
 
+        # Arm gate: offensive/transmitting macros (attack templates) must be explicitly confirmed
+        # before playback — the engine has no per-macro arm gate, so this is the "user must arm"
+        # that keeps a template from firing on a stray Play click. Safe recon macros play ungated.
+        if is_offensive_macro(self._current_macro) and not self._confirm_offensive():
+            return
+
         # Parse speed
         speed_text = self._speed_combo.currentText().replace("x", "")
         try:
@@ -454,6 +460,19 @@ class MacroTab(QWidget):
             complete_callback=self._playback_signal.complete.emit,
             async_=True,
         )
+
+    def _confirm_offensive(self) -> bool:
+        """Ask the operator to arm a transmitting/disruptive macro; True only on explicit Yes.
+
+        Defaults to No so a stray click never fires an attack template."""
+        reply = QMessageBox.warning(
+            self, "Arm this macro?",
+            "This macro transmits and can disrupt wireless networks or devices. Only run it on "
+            "equipment you own or are explicitly authorized to test.\n\nProceed?",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        return reply == QMessageBox.Yes
 
     def _on_save(self) -> None:
         if not self._current_macro:

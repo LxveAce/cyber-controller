@@ -1,0 +1,23 @@
+{
+  "name": "Bruce — device info & uptime",
+  "description": "Query the Bruce device about itself (info, uptime, free). No RF.",
+  "steps": [
+    {
+      "command": "info",
+      "delay_ms": 0,
+      "expected_response": ""
+    },
+    {
+      "command": "uptime",
+      "delay_ms": 300,
+      "expected_response": ""
+    },
+    {
+      "command": "free",
+      "delay_ms": 300,
+      "expected_response": ""
+    }
+  ],
+  "created_at": "2026-07-03T00:00:00+00:00",
+  "device_protocol": "bruce"
+}

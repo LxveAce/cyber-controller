@@ -1,0 +1,28 @@
+{
+  "name": "esp8266 deauther — scan APs & stations",
+  "description": "Scan APs for 10 s, select all, scan their stations, then print sysinfo. Passive.",
+  "steps": [
+    {
+      "command": "scan aps -t 10s",
+      "delay_ms": 0,
+      "expected_response": ""
+    },
+    {
+      "command": "select aps",
+      "delay_ms": 12000,
+      "expected_response": ""
+    },
+    {
+      "command": "scan stations -t 10s",
+      "delay_ms": 500,
+      "expected_response": ""
+    },
+    {
+      "command": "sysinfo",
+      "delay_ms": 12000,
+      "expected_response": ""
+    }
+  ],
+  "created_at": "2026-07-03T00:00:00+00:00",
+  "device_protocol": "esp8266_deauther"
+}

@@ -1,0 +1,28 @@
+{
+  "name": "Marauder — stations on a channel",
+  "description": "Lock a channel, find associated clients, then list them. Passive receive only.",
+  "steps": [
+    {
+      "command": "channel -s {{CHANNEL}}",
+      "delay_ms": 0,
+      "expected_response": ""
+    },
+    {
+      "command": "scansta",
+      "delay_ms": 500,
+      "expected_response": ""
+    },
+    {
+      "command": "stopscan",
+      "delay_ms": 8000,
+      "expected_response": ""
+    },
+    {
+      "command": "list -c",
+      "delay_ms": 500,
+      "expected_response": ""
+    }
+  ],
+  "created_at": "2026-07-03T00:00:00+00:00",
+  "device_protocol": "marauder"
+}
