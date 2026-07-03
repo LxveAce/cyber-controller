@@ -21,6 +21,7 @@ from __future__ import annotations
 import os
 import secrets
 import shutil
+import threading
 from pathlib import Path
 from typing import Any, Optional
 
@@ -29,6 +30,11 @@ from src.security.encrypted_storage import SecureStorage
 
 _KEY_ENTRY = "secure_container_key"
 _DIR = Path.home() / ".cyber-controller" / "secure"
+
+# Serialises the mint-on-first-use of the container key. Two concurrent saves (Qt thread + a worker)
+# could otherwise each read an empty key, each mint a *different* one, and the second overwrite the
+# first in the vault — orphaning any ciphertext already written under the first key (data loss).
+_KEY_LOCK = threading.Lock()
 
 
 def enabled() -> bool:
@@ -49,22 +55,31 @@ def entry_path(category: str, name: str) -> Path:
     return _path(category, name)
 
 
-def _container_key() -> Optional[str]:
-    """The per-install container key from the unlocked vault (created on first use), or None when the
-    gate is locked / not provisioned (→ container sealed)."""
+def _container_key(create: bool = False) -> Optional[str]:
+    """The per-install container key from the unlocked vault, or None when the gate is locked / not
+    provisioned (→ container sealed).
+
+    Read paths (load/list/status) pass create=False and never mint — reading must not mutate state.
+    Only the write path (:func:`save`) passes create=True, which mints+persists the key ONCE under
+    _KEY_LOCK with a re-check, so concurrent saves converge on a single key instead of racing."""
     v = access_gate.get_current_vault()
     if v is None:
         return None
     key = v.get(_KEY_ENTRY)
-    if not key:
-        key = secrets.token_hex(32)
-        v.set(_KEY_ENTRY, key)
-    return key
+    if key or not create:
+        return key or None
+    with _KEY_LOCK:
+        key = v.get(_KEY_ENTRY)      # re-check: another thread may have minted while we waited
+        if not key:
+            key = secrets.token_hex(32)
+            v.set(_KEY_ENTRY, key)
+        return key
 
 
 def available() -> bool:
-    """True if container mode is ON *and* the vault is unlocked (a key exists)."""
-    return enabled() and _container_key() is not None
+    """True if container mode is ON *and* the vault is unlocked. Non-mutating: it does NOT mint a key
+    (the key is created lazily on the first save), so a status check never writes to the vault."""
+    return enabled() and access_gate.get_current_vault() is not None
 
 
 def _safe_cat(category: str) -> str:
@@ -93,7 +108,7 @@ def is_container_path(path: Any) -> bool:
 def save(category: str, name: str, data: dict[str, Any]) -> Path:
     """Encrypt + save a dict into the container (ciphertext only). Raises if the container is
     locked/unavailable (caller decides whether to fall back to a plaintext path when the feature is OFF)."""
-    key = _container_key()
+    key = _container_key(create=True)
     if key is None:
         raise RuntimeError("secure container is locked — unlock the access gate first")
     p = _path(category, name)

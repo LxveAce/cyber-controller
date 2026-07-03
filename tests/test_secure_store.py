@@ -65,3 +65,46 @@ def test_tamper_fails_closed(container):
 def test_disabled_is_not_available(container, monkeypatch):
     monkeypatch.setattr(ss, "enabled", lambda: False)
     assert ss.available() is False
+
+
+def test_available_and_reads_do_not_mint_a_key(container):
+    """SEC-B2: a status check / read must not create+persist a key. Only the first save mints one."""
+    vault = access_gate.get_current_vault()
+    assert vault.get(ss._KEY_ENTRY) is None            # fresh vault, no key yet
+
+    assert ss.available() is True                       # enabled + vault unlocked
+    assert vault.get(ss._KEY_ENTRY) is None             # ...and the status check did NOT mint
+    assert ss.load_text("logs", "absent") is None       # a pure read
+    assert ss.list_names("logs") == []                  # another pure read
+    assert vault.get(ss._KEY_ENTRY) is None             # still no key — reads are non-mutating
+
+    ss.save_text("logs", "s", "data")                   # first save mints exactly one
+    assert vault.get(ss._KEY_ENTRY) is not None
+
+
+def test_concurrent_first_saves_converge_on_one_key(container):
+    """SEC-B2: concurrent first-use must mint a SINGLE key, not a different one per caller (which
+    would orphan the ciphertext written under the loser's key)."""
+    import threading
+
+    vault = access_gate.get_current_vault()
+    n = 20
+    keys = []
+    guard = threading.Lock()
+    start = threading.Barrier(n)
+
+    def worker():
+        start.wait()  # all fire at once to force the mint race
+        k = ss._container_key(create=True)
+        with guard:
+            keys.append(k)
+
+    threads = [threading.Thread(target=worker) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert keys and keys[0] is not None
+    assert len(set(keys)) == 1                           # every caller got the same, single key
+    assert vault.get(ss._KEY_ENTRY) == keys[0]
