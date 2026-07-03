@@ -1,0 +1,35 @@
+name: Notify Discord on Release
+
+# Posts a message to the community Discord's #announcements when a GitHub Release is published.
+# Fail-soft: if the DISCORD_WEBHOOK secret isn't set, the job logs and exits 0 (never reds a release).
+# One-time setup: create a Discord webhook (Server Settings > Integrations > Webhooks) pointed at
+# #announcements, then add its URL as the repo secret DISCORD_WEBHOOK (Settings > Secrets and variables >
+# Actions). No third-party marketplace action — just curl + jq (both preinstalled on ubuntu-latest).
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post release to Discord (#announcements)
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          REPO: ${{ github.event.repository.name }}
+          TAG: ${{ github.event.release.tag_name }}
+          URL: ${{ github.event.release.html_url }}
+          NOTES: ${{ github.event.release.body }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "DISCORD_WEBHOOK not set — skipping Discord notification."
+            exit 0
+          fi
+          # Trim notes so the message stays well under Discord's 2000-char content limit.
+          notes=$(printf '%s' "$NOTES" | head -c 1200)
+          content=$(printf '🚀 **%s %s** is out!\n%s\n\n%s' "$REPO" "$TAG" "$URL" "$notes")
+          # Build the JSON with jq so quotes/newlines in the release body can't break it. flags:4 suppresses
+          # the link preview embeds so the post stays compact.
+          payload=$(jq -n --arg c "$content" '{content: $c, flags: 4}')
+          curl -sS -H "Content-Type: application/json" -X POST -d "$payload" "$WEBHOOK"
