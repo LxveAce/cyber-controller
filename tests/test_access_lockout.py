@@ -93,6 +93,29 @@ def test_concurrent_failed_attempts_are_not_lost(temp_gate):
     assert pk.lockout_status()["failed_attempts"] == n
 
 
+def test_corrupt_gate_config_fails_closed(temp_gate):
+    """SEC-C2: a present-but-unreadable gate config must NOT be treated as 'no gate configured'
+    (which grants access). It must fail closed — otherwise corrupting the file bypasses the gate."""
+    pk.set_admin_password("secret")
+    pk.set_policy("password")
+    temp_gate.write_text("}{ this is not json", encoding="utf-8")  # corrupt the configured gate
+
+    assert pk.config_is_corrupt() is True
+    ok, reason = pk.check_access(password="secret")
+    assert ok is False and "corrupt" in reason.lower()
+    ok, _ = pk.check_access(password="")          # no blank-grant either
+    assert ok is False
+
+
+def test_absent_gate_config_is_still_a_noop(temp_gate):
+    """A truly-absent config (fresh install) must remain a no-op that grants — only a CORRUPT
+    (present-but-unreadable) config fails closed, so a new user is never locked out."""
+    assert not temp_gate.exists()
+    assert pk.config_is_corrupt() is False
+    ok, reason = pk.check_access()
+    assert ok is True and "no gate" in reason.lower()
+
+
 def test_secure_delete_overwrites_and_removes(tmp_path):
     f = tmp_path / "secret.bin"
     f.write_bytes(b"sensitive-data" * 64)

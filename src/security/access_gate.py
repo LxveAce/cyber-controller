@@ -37,6 +37,15 @@ def get_current_vault() -> Optional["vault.Vault"]:
 def enforce(ui: str | None) -> bool:
     """Return True if access is granted (or no gate is configured); False if denied/cancelled."""
     global _CURRENT_VAULT
+    if pk.config_is_corrupt():
+        # A gate config file exists but can't be parsed. Refuse to start regardless of whether a
+        # vault is present — a corrupt config must never silently degrade to the no-gate no-op that
+        # would open the app without authentication (SEC-C2).
+        log.error("Access-gate config present but unreadable/corrupt — refusing to start "
+                  "(fail-closed).")
+        print("Locked: the access-gate configuration is unreadable/corrupt. Restore it or reset the "
+              "gate to proceed.", file=sys.stderr)
+        return False
     if not pk.is_configured():
         if vault.exists():
             # An encrypted vault is present but the gate is gone -> fail closed. This stops a

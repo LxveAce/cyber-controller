@@ -88,8 +88,13 @@ def load_config() -> dict:
     try:
         cfg = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        log.warning("Access-gate config unreadable — treating as unconfigured")
-        return {"version": 1, "policy": DEFAULT_POLICY, "password": None, "key": None}
+        # A config file EXISTS but can't be read/parsed. Do NOT collapse this to the unconfigured
+        # default (that would silently turn a gate the owner configured into a no-op that grants
+        # access — SEC-C2). Mark it corrupt so the gate fails CLOSED. An ABSENT file (above) stays a
+        # legitimate unconfigured no-op so a fresh install isn't locked out.
+        log.warning("Access-gate config present but UNREADABLE/corrupt — failing closed")
+        return {"version": 1, "policy": DEFAULT_POLICY, "password": None, "key": None,
+                "__corrupt__": True}
     cfg.setdefault("policy", DEFAULT_POLICY)
     cfg.setdefault("password", None)
     cfg.setdefault("key", None)
@@ -97,6 +102,8 @@ def load_config() -> dict:
 
 
 def save_config(cfg: dict) -> None:
+    # Never persist the transient corrupt sentinel into a fresh, valid file.
+    cfg = {k: v for k, v in cfg.items() if k != "__corrupt__"}
     path = _config_path()
     secure_dir(path.parent)
     fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -308,6 +315,12 @@ def is_configured() -> bool:
     return bool(cfg.get("password") or cfg.get("key"))
 
 
+def config_is_corrupt() -> bool:
+    """True if a gate config file exists but couldn't be parsed. Callers must fail CLOSED: a
+    configured gate that becomes unreadable must never silently degrade to the no-gate no-op."""
+    return bool(load_config().get("__corrupt__"))
+
+
 def get_policy() -> str:
     return load_config().get("policy", DEFAULT_POLICY)
 
@@ -506,6 +519,9 @@ def check_access(password: Optional[str] = None, drives: Optional[list[Path]] = 
     paths and surviving restarts.
     """
     cfg = load_config()
+    if cfg.get("__corrupt__"):
+        # Present-but-unreadable config: fail closed rather than grant as "unconfigured" (SEC-C2).
+        return False, "access denied — gate configuration is unreadable/corrupt (restore it or reset the gate)"
     if not (cfg.get("password") or cfg.get("key")):
         return True, "no gate configured"
     rem = _lockout_remaining(cfg)
