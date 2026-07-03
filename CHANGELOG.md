@@ -5,6 +5,30 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.5.1] — 2026-07-03
+
+Ships the accumulated work since 1.5.0.
+
+### Security
+- Web remote is covered by the persistent brute-force lockout (SEC-A1); the access-gate failure counter is a lost-update-safe read-modify-write (SEC-A2).
+- The access gate fails CLOSED on a corrupt config instead of open (SEC-C2); an enabled secure container is never silently downgraded to plaintext (SEC-B1); its key is minted once, not re-minted on status/read (SEC-B2).
+- The ACL is granted by the process token SID, not a spoofable env name (SEC-D1); a generated web password is kept out of logs, a tampered vault fails cleanly, and ACL-harden failures are loud. Corrected an audit-trail tamper-evidence over-claim (SEC-C1).
+
+### Added
+- **In-app auto-updater** — a silent startup check against GitHub Releases, prompt-to-update with a "don't show again" option (re-prompting when two or more versions behind), graceful offline handling, and a Help-menu / command-palette "Check for Updates".
+- **Three firmware profiles** (29 total): ESP8266 as a first-class chip + `esp8266_deauther`, M5Stick NEMO, and RogueMaster Flipper CFW.
+- **`nrf_dfu`** flash backend (Nordic nRF52 DFU `.zip`).
+- Per-device capability map, a connect-time firmware health probe (CC-7), and firmware autodetect from the handshake reply.
+
+### Changed
+- **Grouped tab UI:** the tab strip folds into six top-level surfaces — Flash (Firmware + Software-OS), Connect (Devices + Health), Operate (Targets + Broadcast + Macros + Wardrive), Network (graph + Cross-Comm), Settings — and How-To moves into the Help menu (CC-6).
+- Cross-comm hardening: a `CrossCommHub` spine with driver-type dispatch, a Meshtastic Stream-API frame codec, and a binary serial write path.
+- Release CI publishes one consolidated `SHA256SUMS.txt` and runs a VirusTotal scan on every release.
+
+### Fixed
+- Flash/serial robustness: kill the flash child on Ctrl-C and don't reuse a corrupt cached zip; serialize per-port connection builds (no concurrent-open leak); frame serial lines on CR/CRLF/LF (CR-only firmware was never framed); a loud error on an undetected flash size instead of a silent 4 MB truncation; fail loud instead of flashing a dead board or claiming an unrun verify; hardened the Windows raw-disk write path; robust reconnect + firmware probe; honor a pinned firmware version.
+- The esptool version guard now flags 4.0–4.6 (the pin is >=4.7); benign RTL8720 "sync" chatter no longer reads as a flash failure.
+
 ## [1.5.0] — 2026-07-01
 
 ### Fixed

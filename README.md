@@ -28,9 +28,12 @@
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
-**Status:** **v1.5.0** is the latest release. It's a reliability and integrity pass: 20 hardening fixes, each
-with a test guarding it, the LxveAce violet identity carried across all four UIs, and experimental dfu-util /
-UF2 flash backends (hardware validation still pending).
+**Status:** **v1.5.1** is the latest release. It ships the accumulated work since 1.5.0: a security-hardening
+pass (web brute-force lockout, fail-closed access gate, secure-container + ACL fixes), three more firmware
+profiles (ESP8266 deauther, M5Stick NEMO, RogueMaster), the grouped six-surface tab UI, an in-app auto-updater,
+a Nordic nRF52 (nrf_dfu) backend, and flash/serial robustness fixes. It builds on v1.5.0's reliability and
+integrity pass (20 hardening fixes each guarded by a test, the LxveAce violet identity across all four UIs, and
+experimental dfu-util / UF2 backends).
 
 That builds on v1.4.0, which added smart, version-aware startup. On launch the app checks its config against
 the running version. An upgrade is carried forward silently; a downgrade or overwrite prompts you to
