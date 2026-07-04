@@ -231,6 +231,12 @@ class DeviceView(QWidget):
 
     NATIVE = QSize(240, 320)
 
+    # DV2 zoom modes — how the 240x320 render is SCALED inside the (DV1 aspect-locked) window.
+    ZOOM_FIT = "fit"          # scale to fill, aspect-locked (default; smooth) — the original behavior
+    ZOOM_INTEGER = "integer"  # largest whole-pixel multiple that fits (>=1x), crisp (no smoothing)
+    ZOOM_1X = "1:1"           # exactly native 240x320, centered, crisp
+    ZOOM_MODES = (ZOOM_FIT, ZOOM_INTEGER, ZOOM_1X)
+
     def __init__(self, model: DeviceScreenModel, *, send: "Optional[Callable[[str], None]]" = None,
                  parent: Optional[QWidget] = None):
         super().__init__(parent)
@@ -249,6 +255,7 @@ class DeviceView(QWidget):
         self.setFocusPolicy(Qt.StrongFocus)
         self.setWindowTitle(f"Device View — {model.title} (reconstructed)")
         self._rows: "list[QRect]" = []  # hit rects in NATIVE coords, filled by render_native
+        self._zoom_mode = self.ZOOM_FIT
 
     # ── aspect-ratio contract (DV1: kill the resize-bandaid letterbox) ────
     def hasHeightForWidth(self) -> bool:  # noqa: N802 (Qt override)
@@ -352,6 +359,36 @@ class DeviceView(QWidget):
         return img
 
     # ── scale into the window, aspect-locked, with a bezel ───────────
+    # ── DV2 zoom (crisp integer / 1:1 / fit) ─────────────────────────
+    @property
+    def zoom_mode(self) -> str:
+        return self._zoom_mode
+
+    def set_zoom_mode(self, mode: str) -> None:
+        if mode not in self.ZOOM_MODES:
+            raise ValueError(f"unknown zoom mode {mode!r}; expected one of {self.ZOOM_MODES}")
+        self._zoom_mode = mode
+        self.update()
+
+    def cycle_zoom(self) -> str:
+        """Rotate Fit -> Integer -> 1:1 -> Fit (bound to the Z key). Returns the new mode."""
+        i = self.ZOOM_MODES.index(self._zoom_mode)
+        self._zoom_mode = self.ZOOM_MODES[(i + 1) % len(self.ZOOM_MODES)]
+        self.update()
+        return self._zoom_mode
+
+    def _compute_scale(self, w: int, h: int) -> float:
+        """Scale factor for the current zoom mode. Fit = fractional fill (original behavior); Integer =
+        largest whole-pixel multiple that fits (>=1, crisp); 1:1 = exactly native. Never <=0 (guards a
+        window dragged smaller than the bezel inset)."""
+        nw, nh = self.NATIVE.width(), self.NATIVE.height()
+        fit = min((w - 16) / nw, (h - 16) / nh)
+        if self._zoom_mode == self.ZOOM_1X:
+            return 1.0
+        if self._zoom_mode == self.ZOOM_INTEGER:
+            return float(max(1, int(fit)))       # floor to a whole multiple, at least 1x
+        return max(fit, 0.1)                       # Fit — clamped off zero
+
     def paintEvent(self, _ev) -> None:  # noqa: N802 (Qt override)
         img = self.render_native()
         p = QPainter(self)
@@ -359,8 +396,11 @@ class DeviceView(QWidget):
             p.fillRect(self.rect(), QColor("#05070a"))
             w, h = self.width(), self.height()
             nw, nh = self.NATIVE.width(), self.NATIVE.height()
-            scale = min((w - 16) / nw, (h - 16) / nh)
-            scale = max(scale, 0.1)
+            scale = self._compute_scale(w, h)
+            # Nearest-neighbor for EVERY mode: crisp integer doubling, higher fidelity to the real (pixel)
+            # TFT, and it preserves the pre-DV2 Fit rendering exactly (Qt's default was already False — a
+            # per-mode 'smooth Fit' would have silently blurred the default view).
+            p.setRenderHint(QPainter.SmoothPixmapTransform, False)
             dw, dh = int(nw * scale), int(nh * scale)
             x, y = (w - dw) // 2, (h - dh) // 2
             # bezel
@@ -369,8 +409,21 @@ class DeviceView(QWidget):
             p.drawRoundedRect(x - 7, y - 7, dw + 14, dh + 14, 8, 8)
             p.drawImage(QRect(x, y, dw, dh), img)
             self._scale, self._ox, self._oy = scale, x, y
+            self._paint_zoom_badge(p, w, h, y + dh)
         finally:
             p.end()
+
+    def _paint_zoom_badge(self, p: QPainter, w: int, h: int, img_bottom: int) -> None:
+        # Subtle discoverability hint for the Z-cycle, drawn in the dark margin BELOW the skin (never over
+        # it) and only in paintEvent — NOT render_native — so the offscreen golden renders stay byte-stable.
+        if h - 18 <= img_bottom + 2:
+            return  # no clear margin below the skin — skip rather than overpaint the device footer
+        p.setPen(QColor("#3fb950"))
+        badge = QFont("JetBrains Mono", 7)
+        badge.setStyleHint(QFont.Monospace)
+        p.setFont(badge)
+        p.drawText(QRect(6, h - 18, w - 12, 14), Qt.AlignLeft | Qt.AlignVCenter,
+                   f"{self._zoom_mode} · {self._scale:.2f}x · [Z]")
 
     # ── input ────────────────────────────────────────────────────────
     def keyPressEvent(self, ev) -> None:  # noqa: N802
@@ -383,6 +436,8 @@ class DeviceView(QWidget):
             self.model.enter(self._send)
         elif k in (Qt.Key_Backspace, Qt.Key_Left, Qt.Key_A, Qt.Key_Escape):
             self.model.back()
+        elif k == Qt.Key_Z:
+            self.cycle_zoom()          # DV2: crisp-zoom mode cycle (Fit -> Integer -> 1:1)
         else:
             return super().keyPressEvent(ev)
         self.update()

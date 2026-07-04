@@ -217,6 +217,120 @@ def test_device_view_embedded_does_not_self_resize(qapp):
         host.close()
 
 
+# ── DV2: crisp zoom modes (Fit / Integer / 1:1) ──────────────────────
+def test_device_view_zoom_modes_scale(qapp):
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    assert v.zoom_mode == v.ZOOM_FIT                       # default preserves the original Fit behavior
+    # 1:1 is exactly native regardless of window size
+    v.set_zoom_mode(v.ZOOM_1X)
+    assert v._compute_scale(800, 900) == 1.0
+    assert v._compute_scale(240, 320) == 1.0
+    # Integer is always a whole multiple >= 1, never fractional
+    v.set_zoom_mode(v.ZOOM_INTEGER)
+    assert v._compute_scale(240, 320) == 1.0               # min size -> 1x
+    assert v._compute_scale(720, 960) == 2.0               # room for 2x
+    assert v._compute_scale(1200, 1600) == 4.0
+    assert v._compute_scale(496, 660) == 2.0               # fit lands EXACTLY on 2.0 -> 2x (no float trunc to 1)
+    assert v._compute_scale(736, 976) == 3.0               # exactly 3.0 -> 3x
+    for (w, h) in [(300, 400), (517, 763), (999, 640)]:
+        s = v._compute_scale(w, h)
+        assert s == int(s) and s >= 1                      # whole number, at least 1x
+    # Fit is unchanged from the original fractional fill
+    v.set_zoom_mode(v.ZOOM_FIT)
+    assert v._compute_scale(600, 800) == max(min((600 - 16) / 240, (800 - 16) / 320), 0.1)
+
+
+def test_device_view_zoom_never_nonpositive_tiny(qapp):
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    for mode in v.ZOOM_MODES:
+        v.set_zoom_mode(mode)
+        assert v._compute_scale(10, 10) > 0                 # no zero/negative scale at absurd small sizes
+
+
+def test_device_view_cycle_and_validate(qapp):
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    assert v.zoom_mode == v.ZOOM_FIT
+    assert v.cycle_zoom() == v.ZOOM_INTEGER
+    assert v.cycle_zoom() == v.ZOOM_1X
+    assert v.cycle_zoom() == v.ZOOM_FIT                    # wraps back to Fit
+    with pytest.raises(ValueError):
+        v.set_zoom_mode("huge")
+
+
+def test_device_view_paint_honors_zoom_and_hittest(qapp):
+    """paintEvent must stash the current mode's scale so click->native hit-testing stays correct per mode."""
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    v.resize(720, 960)                                     # on-ratio (DV1 won't fight it)
+    v.show()
+    qapp.processEvents()
+    try:
+        for mode in v.ZOOM_MODES:
+            v.set_zoom_mode(mode)
+            v.repaint()
+            qapp.processEvents()
+            assert abs(v._scale - v._compute_scale(v.width(), v.height())) < 1e-9
+            assert v._scale > 0
+    finally:
+        v.close()
+
+
+def test_device_view_1x_margin_click_is_noop(qapp):
+    """A click in the dark margin OUTSIDE the drawn skin (large in 1:1) must not select a row or fire a
+    command — no bogus model.enter from clicking empty space."""
+    from PyQt5.QtCore import QEvent, QPointF, Qt as _Qt
+    from PyQt5.QtGui import QMouseEvent
+
+    fired = []
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()), send=lambda c: fired.append(c))
+    v.set_zoom_mode(v.ZOOM_1X)
+    v.resize(600, 800)
+    v.show()
+    qapp.processEvents()
+    v.repaint()
+    qapp.processEvents()               # stashes _ox/_oy/_scale
+    sel_before = v.model.sel
+    ev = QMouseEvent(QEvent.MouseButtonPress, QPointF(2, 2),
+                     _Qt.LeftButton, _Qt.LeftButton, _Qt.NoModifier)
+    try:
+        v.mousePressEvent(ev)
+        assert fired == []             # nothing sent
+        assert v.model.sel == sel_before
+    finally:
+        v.close()
+
+
+def test_render_native_invariant_across_zoom_modes(qapp):
+    """render_native() (the golden skin image) is identical regardless of zoom mode — the zoom badge lives
+    only in paintEvent, never in the native render."""
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    base = v.render_native()
+    for mode in v.ZOOM_MODES:
+        v.set_zoom_mode(mode)
+        img = v.render_native()
+        assert img.size() == base.size()
+        assert img == base             # QImage == is a pixel-wise compare
+
+
+def test_device_view_1x_is_pixel_exact_crisp(qapp):
+    """1:1 draws the skin unscaled and crisp: grabbed widget pixels equal the native render pixel-for-pixel
+    (proves no smoothing corrupts the render, and the badge doesn't cover the skin at a normal size)."""
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    v.set_zoom_mode(v.ZOOM_1X)
+    v.resize(400, 500)
+    v.show()
+    qapp.processEvents()
+    v.repaint()
+    qapp.processEvents()
+    native = v.render_native()
+    grabbed = v.grab().toImage()
+    ox, oy = v._ox, v._oy
+    try:
+        for (cx, cy) in [(10, 10), (120, 40), (200, 300), (5, 315)]:
+            assert (grabbed.pixel(ox + cx, oy + cy) & 0xFFFFFF) == (native.pixel(cx, cy) & 0xFFFFFF)
+    finally:
+        v.close()
+
+
 def test_device_view_maximized_is_not_aspect_locked(qapp):
     """A maximized/fullscreen window keeps the WM geometry — the portrait ratio must not force it taller
     than the screen. (Skips where the offscreen platform can't report a maximized state.)"""

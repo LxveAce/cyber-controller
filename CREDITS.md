@@ -157,8 +157,9 @@ and real-device field testing of its community. Named here with thanks:
   - **ESP32 Bus Pirate** and **Bruce** raised as daily-carry firmwares to keep well-supported.
   - Proposed **Cardputer-control-from-the-PC** (a qFlipper-style control surface for the Cardputer)
     and championed the **pop-out / focus-in firmware-menu** direction (blowing up the connect/operate
-    panels to focus on them) — realized in the aspect-locked Device-View pop-out (**DV1**: the window now
-    holds the firmware skin's native ratio on resize instead of letterboxing dead-space).
+    panels to focus on them) — realized in the aspect-locked Device-View pop-out (**DV1**: the window holds
+    the firmware skin's native ratio on resize instead of letterboxing dead-space) and its crisp-zoom modes
+    (**DV2**: Fit / integer 1×/2×/3× nearest-neighbor / 1:1, so blowing the skin up stays sharp).
 
   These suggestions and test reports made the firmware coverage broader and better grounded in how
   the hardware actually behaves. Thank you.
