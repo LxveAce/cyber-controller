@@ -124,6 +124,12 @@ def get_protocol(name: str) -> BaseProtocol:
         # Normalise underscores to hyphens for convenience (ghost_esp).
         cls = PROTOCOLS.get(key.replace("_", "-"))
     if cls is None:
+        # Also tolerate a MISSING separator: device_detect emits 'ghostesp' while the registry key is
+        # 'ghost-esp' (and 'esp32div' vs 'esp32-div'). Match by comparing separator-stripped forms so a
+        # detected device resolves to its real protocol instead of silently falling back to Generic.
+        squashed = key.replace("_", "").replace("-", "")
+        cls = next((c for n, c in PROTOCOLS.items() if n.replace("-", "") == squashed), None)
+    if cls is None:
         return GenericProtocol()
     return cls()
 

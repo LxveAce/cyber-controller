@@ -1,0 +1,82 @@
+{% extends "base.html" %}
+{% block title %}Remote — Cyber Controller{% endblock %}
+{% block content %}
+<section class="remote">
+  <h1>Remote</h1>
+  <p class="remote-disclaimer">
+    <strong>Authorized use only.</strong> These controls transmit from real radios and can disrupt networks
+    and devices — run them only on hardware and networks you own or are explicitly permitted to test.
+    Commands marked <span class="badge badge-lab">lab-only</span> or
+    <span class="badge badge-illegal">illegal-tx</span> ask for confirmation before sending; you remain
+    responsible for their use.
+  </p>
+
+  {% if not remotes %}
+    <p class="remote-empty">No connected device. Connect one on the <a href="/devices">Devices</a> page,
+    then return here.</p>
+  {% endif %}
+
+  {% for r in remotes %}
+  <article class="remote-device" data-port="{{ r.port }}">
+    <h2>{{ r.name }} <small>{{ r.firmware }} &middot; {{ r.port }}</small></h2>
+    {% if not r.groups %}
+      <p class="remote-empty">No one-tap commands for this firmware — use the
+      <a href="/terminal/{{ r.port }}">terminal</a>.</p>
+    {% endif %}
+    {% for category, cmds in r.groups %}
+    <div class="cmd-group">
+      <h3>{{ category }}</h3>
+      <div class="cmd-grid">
+        {% for c in cmds %}
+        <button type="button" class="cmd-btn{% if c.danger %} cmd-danger{% endif %}"
+                data-port="{{ r.port }}" data-command="{{ c.command }}" data-danger="{{ c.danger }}"
+                title="{{ c.command }}">
+          <span class="cmd-label">{{ c.label }}</span>
+          {% if c.danger %}
+          <span class="badge badge-{{ 'illegal' if c.danger == 'illegal-tx' else 'lab' }}">{{ c.danger }}</span>
+          {% endif %}
+        </button>
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </article>
+  {% endfor %}
+
+  <div id="remote-status" class="remote-status" role="status" aria-live="polite"></div>
+</section>
+
+<script nonce="{{ csp_nonce }}">
+(function () {
+  var status = document.getElementById('remote-status');
+  function send(port, command) {
+    fetch('/api/command', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN},
+      body: JSON.stringify({port: port, command: command})
+    })
+      .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+      .then(function (res) {
+        status.textContent = res.ok ? ('» sent: ' + command) : ('error: ' + (res.j.error || 'failed'));
+      })
+      .catch(function () { status.textContent = 'error: request failed'; });
+  }
+  document.querySelectorAll('.cmd-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var port = btn.getAttribute('data-port');
+      var command = btn.getAttribute('data-command');
+      var danger = btn.getAttribute('data-danger');
+      // Label, never block: a flagged command warns + requires an explicit confirm, but "OK / proceed"
+      // is always offered (mirrors the Qt/tk safety gate). A safe command sends immediately.
+      if (danger) {
+        if (!window.confirm('Controlled / authorized use only (' + danger + '):\n\n' + command +
+                            '\n\nProceed?')) {
+          return;
+        }
+      }
+      send(port, command);
+    });
+  });
+})();
+</script>
+{% endblock %}

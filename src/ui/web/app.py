@@ -318,6 +318,25 @@ def create_app(
             unlocked, rows, gateways = False, [], []
         return render_template("nodes.html", unlocked=unlocked, rows=rows, gateways=gateways)
 
+    @app.route("/remote")
+    @requires_auth
+    def remote_page():
+        # Touch-first quick-command home (MB). Buttons fire the SAME guarded /api/command path; flagged
+        # commands are LABELLED (never blocked) and confirmed client-side. Commands come from the real
+        # per-firmware protocol registries via quick_commands — no phantom commands.
+        from src.core.quick_commands import grouped_quick_commands
+        remotes = []
+        for d in device_manager.list_devices():
+            if not d.connected:
+                continue
+            remotes.append({
+                "port": d.port,
+                "name": d.name,
+                "firmware": d.firmware,
+                "groups": grouped_quick_commands(d.firmware),
+            })
+        return render_template("remote.html", remotes=remotes, active="remote")
+
     # ── PWA shell (MB cluster: installable LAN wireless remote) ─────
     # manifest + service worker are PUBLIC (carry no secrets) so the browser can read them before auth
     # completes — standard PWA practice. The SW is served from the ORIGIN ROOT (a /static/ worker could
