@@ -142,6 +142,26 @@ fetches from the upstream project.
 
 ---
 
+## Community contributions & feedback
+
+Beyond the upstream authors above, Cyber Controller grows from the ideas, feature requests,
+and real-device field testing of its community. Named here with thanks:
+
+- **RedneckNetrunner** (GOS Discord) — firmware-coverage requests and hands-on field testing
+  that directly shaped the firmware-expansion work:
+  - **M5PORKCHOP** and **M5Gotchi** profiles — from his daily-carry firmware list.
+  - **Evil-M5** family support (Evil Cardputer / EvilM5Core / EvilM5Project).
+  - **GhostESP** and **ESP32 Marauder** on **M5Cardputer / M5StickC** — including flagging that
+    Marauder-on-Cardputer had "until recently been extremely rough," and testing GhostESP on his
+    own M5StickC and reporting back that it ran fine.
+  - **ESP32 Bus Pirate** and **Bruce** raised as daily-carry firmwares to keep well-supported.
+  - Proposed **Cardputer-control-from-the-PC** (a qFlipper-style control surface for the Cardputer)
+    and championed the **pop-out / focus-in firmware-menu** direction (blowing up the connect/operate
+    panels to focus on them).
+
+  These suggestions and test reports made the firmware coverage broader and better grounded in how
+  the hardware actually behaves. Thank you.
+
 ## Notes
 
 - **No endorsement.** None of the projects, authors, or organizations above endorse,

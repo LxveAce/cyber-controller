@@ -423,6 +423,11 @@ projects, and Python library developers — none of whom endorse this project. S
 vendored or redistributed here; binaries are fetched from their official releases, pinned
 and SHA-256 verified. Trademarks and copyrights belong to their respective owners.
 
+It also grows from its community's ideas and field testing. Thanks especially to
+**RedneckNetrunner** (GOS Discord), whose firmware-coverage requests and real-device testing
+shaped the M5PORKCHOP, M5Gotchi, Evil-M5, and GhostESP / Marauder-on-Cardputer support — see
+[CREDITS.md](CREDITS.md#community-contributions--feedback).
+
 ## License
 
 MIT — Copyright © 2026 [LxveAce](https://github.com/LxveAce). See [LICENSE](LICENSE).
