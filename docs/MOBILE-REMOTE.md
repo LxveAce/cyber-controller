@@ -1,8 +1,9 @@
 # Mobile remote — drive Cyber Controller from your phone
 
 Cyber Controller already ships a hardened, mobile-first **web UI** (Flask + Socket.IO). A phone browser on
-the same LAN can drive the whole controller today — flashing, targets, terminal, nodes — with **zero native
-code**. This guide covers exposing it safely and installing it as a home-screen app (PWA).
+the same LAN can drive the whole controller today — flashing, targets, terminal, nodes, a one-tap **Remote**,
+and a navigable **Device View** — with **zero native code**. This guide covers exposing it safely and
+installing it as a home-screen app (PWA).
 
 > **Safety first.** The web UI drives real attack hardware. It binds to `127.0.0.1` by default and refuses a
 > non-local bind unless you opt in explicitly. Only expose it on a network you trust, and always with TLS.
@@ -27,14 +28,15 @@ Auth is HTTP Basic on the first request, then a **session cookie** — so you au
 ## 2. Launch it on the LAN
 
 ```bash
-# from the repo root
 export CC_WEB_USER=admin
 export CC_WEB_PASS='choose-a-strong-one'
 export CC_WEB_ALLOW_LAN=1
 export CC_WEB_CERT=$PWD/certs/cc.pem
 export CC_WEB_KEY=$PWD/certs/cc-key.pem
-python -m cyber_controller --ui web --host 0.0.0.0 --port 8443
+cyber-controller --ui web --host 0.0.0.0 --port 8443     # from a source checkout: python -m src.app --ui web …
 ```
+
+(`--host`/`--port` default to `127.0.0.1:5000`; the flags above expose it on the LAN on 8443.)
 
 Then browse to `https://<desktop-LAN-IP>:8443` from your phone and log in.
 
@@ -77,16 +79,37 @@ The app installs standalone (no browser chrome), themed LxveAce purple (`#a371f7
 > LAN IP the registration silently declines (the code swallows it), the site still works as a normal
 > responsive web page, but it won't install offline-capable. `localhost` is the only non-TLS exemption.
 
-## 5. What's deliberately deferred
+## 5. The qFlipper-on-phone experience — Remote + Device View
+
+Two touch-first surfaces turn the phone into a proper handheld controller. Both are reached from the web UI's
+**Remote** nav link, both sit behind the same auth, and both fire through the same guarded send path:
+
+- **Remote home (`/remote`)** — a one-tap quick-command grid. For every **connected** device it lists that
+  firmware's argument-free commands, grouped by category, sourced straight from the real protocol registry, so
+  a button can never fire a command the firmware doesn't have. Tap to send.
+- **Device View (`/device/<port>`)** — a navigable reconstruction of the firmware's on-screen menu (an honest
+  *skin*, not a pixel mirror). Drill through the menu; a leaf fires that firmware's real serial command.
+  Reached from each device's **Device View ›** link on the Remote page.
+
+Both fire through the existing guarded **`POST /api/command`** (auth + CSRF + rate-limit + control-char
+validation). Commands the safety classifier flags **`lab-only`** / **`illegal-tx`** are **labelled and
+confirmed before sending** — never blocked (the "proceed" path is always offered). Argument-taking commands are
+shown but not fired from a tap (they need a value — use the terminal for those).
+
+> The reconstructed menu and the quick-command catalog back the **Qt, web, and Tkinter** frontends from one
+> UI-agnostic core (`src/core/device_menus.py`, `src/core/quick_commands.py`) — the phone gets the exact same
+> command set as the desktop, with no duplicated definitions to drift out of sync.
+
+## 6. What's deliberately deferred
 
 - **Bundling `socket.io` locally** (drop the CDN for a stricter CSP + full offline). Deferred: it means
   vendoring a pinned minified blob and keeping it in lockstep with the flask-socketio server version — a
   maintenance gate, tracked separately.
-- **A touch-first "Remote" home + web Device View** (the qFlipper-on-phone experience) — shares work with the
-  DV / CP clusters; a later phase.
 
-## 6. Native app?
+## 7. Native app?
 
-**PWA-first is the recommendation:** it reuses 100% of the hardened web UI, needs no native code, and is
-cross-platform. A native app (React Native / Flutter) is only worth it if a **direct phone↔device BLE GATT**
-transport is later prioritized — a separate transport, not a reskin of this remote.
+**PWA-first remains the recommendation** — and the Remote + Device View above mean the qFlipper-on-phone
+experience is now fully realized *without* any native code: it reuses 100% of the hardened web UI and is
+cross-platform from a single codebase. A native app (React Native / Flutter) is only worth it if a **direct
+phone↔device BLE GATT** transport is later prioritized — a separate transport concern, not a reskin of this
+remote.
