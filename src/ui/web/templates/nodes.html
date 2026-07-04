@@ -1,0 +1,138 @@
+{% extends "base.html" %}
+{% set active = "nodes" %}
+
+{% block title %}Nodes - Cyber Controller{% endblock %}
+
+{% block content %}
+<h1 class="page-title">Wireless Nodes</h1>
+
+{% if not unlocked %}
+<div class="notice notice-locked">
+    <span class="status-dot disconnected"></span>
+    Vault locked &mdash; unlock the access gate to manage nodes. Node keys never leave the sealed vault.
+</div>
+{% else %}
+<div class="toolbar">
+    <form id="provision-form" class="inline-form" autocomplete="off">
+        <input type="number" id="pv-node" min="0" max="65535" placeholder="Node ID" required>
+        <select id="pv-role">
+            <option value="host">host</option>
+            <option value="node">node</option>
+        </select>
+        <input type="text" id="pv-label" maxlength="64" placeholder="Label (optional)">
+        <button type="submit" class="btn btn-sm">Provision</button>
+    </form>
+    <div class="inline-form">
+        <label for="gw-select" class="text-muted">Gateway:</label>
+        <select id="gw-select">
+            {% if gateways %}
+                {% for g in gateways %}
+                <option value="{{ g.port }}">{{ g.name }} ({{ g.port }})</option>
+                {% endfor %}
+            {% else %}
+                <option value="" disabled selected>no connected gateway</option>
+            {% endif %}
+        </select>
+    </div>
+</div>
+
+<div class="table-container">
+    <table class="data-table">
+        <thead>
+            <tr>
+                <th>Node</th>
+                <th>Label</th>
+                <th>Role</th>
+                <th>TX epoch</th>
+                <th>RX epoch</th>
+                <th>Connected</th>
+                <th>Attached</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody id="nodes-tbody">
+            {% for r in rows %}
+            <tr>
+                <td class="mono">{{ r.node_id }}</td>
+                <td>{{ r.label }}</td>
+                <td>{{ r.role }}</td>
+                <td class="mono">{{ r.tx_epoch }}</td>
+                <td class="mono">{{ r.rx_epoch if r.rx_epoch is not none else "" }}</td>
+                <td>
+                    <span class="status-dot {% if r.connected %}connected{% else %}disconnected{% endif %}"></span>
+                    {{ "yes" if r.connected else "no" }}
+                </td>
+                <td>{{ "yes" if r.attached else "no" }}</td>
+                <td>
+                    <button class="btn btn-sm" data-act="rotate" data-node="{{ r.node_id }}">Rotate</button>
+                    {% if r.attached %}
+                    <button class="btn btn-sm" data-act="detach" data-node="{{ r.node_id }}">Detach</button>
+                    {% else %}
+                    <button class="btn btn-sm" data-act="attach" data-node="{{ r.node_id }}">Attach</button>
+                    {% endif %}
+                    <button class="btn btn-sm btn-danger" data-act="deprovision" data-node="{{ r.node_id }}">Deprovision</button>
+                </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="8" class="text-muted">No nodes provisioned yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if unlocked %}
+<script nonce="{{ csp_nonce }}">
+    // All node mutations go through CSRF+auth-gated POSTs; the server delegates to the controller and never
+    // returns key bytes. No inline handlers (strict nonce CSP) — everything is wired via addEventListener.
+    async function nodePost(path, body) {
+        const resp = await fetch(path, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN},
+            body: JSON.stringify(body || {})
+        });
+        let data = {};
+        try { data = await resp.json(); } catch (e) { /* non-JSON error page */ }
+        if (!resp.ok) {
+            alert('Error: ' + (data.error || resp.status));
+            return false;
+        }
+        return true;
+    }
+
+    document.getElementById('provision-form').addEventListener('submit', async function (ev) {
+        ev.preventDefault();
+        const nid = parseInt(document.getElementById('pv-node').value, 10);
+        const role = document.getElementById('pv-role').value;
+        const label = document.getElementById('pv-label').value;
+        if (await nodePost('/api/nodes/provision', {node_id: nid, role: role, label: label})) {
+            location.reload();
+        }
+    });
+
+    document.getElementById('nodes-tbody').addEventListener('click', async function (ev) {
+        const btn = ev.target.closest('button[data-act]');
+        if (!btn) return;
+        const act = btn.getAttribute('data-act');
+        const node = parseInt(btn.getAttribute('data-node'), 10);
+        let ok = false;
+        if (act === 'rotate') {
+            if (!confirm('Rotate the key for node ' + node + '? The old key stops working — the node must be re-flashed.')) return;
+            ok = await nodePost('/api/nodes/rotate', {node_id: node});
+        } else if (act === 'deprovision') {
+            if (!confirm('Delete node ' + node + ' and its key from the vault?')) return;
+            ok = await nodePost('/api/nodes/deprovision', {node_id: node});
+        } else if (act === 'attach') {
+            const gw = document.getElementById('gw-select').value;
+            if (!gw) { alert('No connected gateway. Connect a serial dongle on the Devices tab first.'); return; }
+            ok = await nodePost('/api/nodes/attach', {node_id: node, gateway_port: gw});
+        } else if (act === 'detach') {
+            ok = await nodePost('/api/nodes/detach', {node_id: node});
+        }
+        if (ok) location.reload();
+    });
+</script>
+{% endif %}
+{% endblock %}

@@ -33,7 +33,9 @@ from flask_socketio import SocketIO, emit
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FirmwareProfile, FlashEngine
+from src.core.nodes_controller import NodesController
 from src.core.resources import resource_path
+from src.core import node_provision
 from src.security import physical_key
 from src.security.web_auth import (
     RateLimiter,
@@ -51,6 +53,7 @@ _STATIC_DIR = Path(__file__).parent / "static"
 
 _MAX_CONTENT_LENGTH = 256 * 1024  # cap request bodies (no giant uploads)
 _MAX_COMMAND_LEN = 256
+_MAX_LABEL_LEN = 64
 
 
 def _load_profiles() -> dict[str, Path]:
@@ -75,6 +78,7 @@ def create_app(
     *,
     audit: Any = None,
     allowed_origins: list[str] | None = None,
+    nodes_controller: NodesController | None = None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance."""
 
@@ -102,6 +106,11 @@ def create_app(
     creds, _generated = resolve_web_credentials(log)
     login_limiter = RateLimiter(max_events=8, window_seconds=60.0)
     cmd_limiter = RateLimiter(max_events=60, window_seconds=10.0)
+
+    # W1.1(web): the key-free wireless-node manager. Same UI-agnostic controller the Qt/tk tabs use; its
+    # default vault getter reads the gate-sealed vault, so the keys never reach this process' request path.
+    # Injectable so tests can drive locked/unlocked states without a real gate.
+    nodes = nodes_controller if nodes_controller is not None else NodesController(device_manager)
 
     # L-2: the web remote drives attack hardware; auth/flash/serial events must be auditable.
     # The normal launch path threads a durable AuditTrail through, but an embedder using the
@@ -285,6 +294,20 @@ def create_app(
         device = device_manager.get_device(port)
         return render_template("terminal.html", port=port, device=device)
 
+    @app.route("/nodes")
+    @requires_auth
+    def nodes_page():
+        # Fail CLOSED server-side: if the vault is locked (or any read error) render the notice and NEVER the
+        # table. list_rows() is already key-redacted, so no key byte can reach the response even on this path.
+        try:
+            unlocked = nodes.is_unlocked()
+            rows = nodes.list_rows() if unlocked else []
+            gateways = nodes.available_gateways() if unlocked else []
+        except Exception:
+            log.exception("nodes page read failed")
+            unlocked, rows, gateways = False, [], []
+        return render_template("nodes.html", unlocked=unlocked, rows=rows, gateways=gateways)
+
     # ── API routes ──────────────────────────────────────────────────
 
     @app.route("/api/flash", methods=["POST"])
@@ -364,6 +387,114 @@ def create_app(
             # return a generic message.
             log.exception("serial command failed on %s", port)
             return jsonify({"error": "internal error sending command"}), 500
+
+    # ── Node mutations (W1.1) — CSRF+auth-gated, delegate to the controller ──
+
+    def _json_body() -> dict:
+        # force=True parses even without a JSON content-type; coerce ANY non-object body (a bare scalar/array
+        # like `5` or `[1,2]`) to {} so the routes' `.get(...)` can't AttributeError into an ungraceful 500.
+        data = request.get_json(force=True, silent=True)
+        return data if isinstance(data, dict) else {}
+
+    def _node_id_arg(data: dict) -> int:
+        """Parse + range-check a node id (0–65535) from a request body, or raise ValueError."""
+        raw = data.get("node_id")
+        if isinstance(raw, bool) or not isinstance(raw, (int, str)):
+            raise ValueError("node_id is required")
+        try:
+            nid = int(raw)
+        except (TypeError, ValueError):
+            raise ValueError("node_id must be an integer")
+        if not (0 <= nid <= 65535):
+            raise ValueError("node_id out of range (0–65535)")
+        return nid
+
+    def _node_action(fn, expose: str | None = None):
+        """Run a controller mutation and map results to JSON. The controller's return value (a provisioning
+        dict / NodeLink) is NEVER serialized — only an explicit boolean via *expose* — so no key material can
+        leak. Known, key-free errors surface their text (api_command idiom); everything else is genericized.
+        A locked vault makes the controller raise VaultLockedError, so mutations fail CLOSED regardless of UI."""
+        try:
+            result = fn()
+        except node_provision.VaultLockedError:
+            return jsonify({"error": "vault is locked"}), 403
+        except (ValueError, node_provision.NodeProvisionError) as exc:
+            # These messages are f-strings over node_id/role/port — never key bytes. Safe to surface.
+            return jsonify({"error": str(exc)}), 400
+        except Exception:
+            log.exception("node action failed")
+            return jsonify({"error": "internal error"}), 500
+        payload = {"status": "ok"}
+        if expose is not None:
+            payload[expose] = bool(result)   # only ever a bool, never a controller object
+        return jsonify(payload)
+
+    @app.route("/api/nodes/provision", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_nodes_provision():
+        data = _json_body()
+        try:
+            nid = _node_id_arg(data)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        role = str(data.get("role", "host"))
+        label = str(data.get("label", ""))
+        if len(label) > _MAX_LABEL_LEN:   # enforce the template's 64-char intent server-side too
+            return jsonify({"error": "label too long"}), 400
+        _audit("node_provision", user=session.get("user"), node_id=nid, role=role)
+        return _node_action(lambda: nodes.provision(nid, role=role, label=label))
+
+    @app.route("/api/nodes/rotate", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_nodes_rotate():
+        data = _json_body()
+        try:
+            nid = _node_id_arg(data)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        _audit("node_rotate", user=session.get("user"), node_id=nid)
+        return _node_action(lambda: nodes.rotate(nid))
+
+    @app.route("/api/nodes/deprovision", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_nodes_deprovision():
+        data = _json_body()
+        try:
+            nid = _node_id_arg(data)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        _audit("node_deprovision", user=session.get("user"), node_id=nid)
+        return _node_action(lambda: nodes.deprovision(nid), expose="removed")
+
+    @app.route("/api/nodes/attach", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_nodes_attach():
+        data = _json_body()
+        try:
+            nid = _node_id_arg(data)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        port = str(data.get("gateway_port", ""))
+        if not port:
+            return jsonify({"error": "gateway_port is required"}), 400
+        _audit("node_attach", user=session.get("user"), node_id=nid, port=port)
+        return _node_action(lambda: nodes.attach_via_port(nid, port))
+
+    @app.route("/api/nodes/detach", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_nodes_detach():
+        data = _json_body()
+        try:
+            nid = _node_id_arg(data)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        _audit("node_detach", user=session.get("user"), node_id=nid)
+        return _node_action(lambda: nodes.detach(nid), expose="detached")
 
     @app.route("/api/devices")
     @requires_auth
