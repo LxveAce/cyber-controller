@@ -234,6 +234,7 @@ class TkLightApp:
         self._build_devices_tab()
         self._build_targets_tab()
         self._build_health_tab()
+        self._build_nodes_tab()
         self._build_settings_tab()
         self._build_macros_tab()
         self._build_crosscomm_tab()
@@ -519,6 +520,16 @@ class TkLightApp:
                 text=f"Disk: {disk:.0f}%", fg=self._health_color(disk))
 
         self._root.after(5000, self._refresh_health_metrics)
+
+    # ── Nodes Tab (W1.1 — key-free wireless-node manager) ──────────
+
+    def _build_nodes_tab(self) -> None:
+        from src.core.nodes_controller import NodesController
+        from src.ui.tk.nodes_view import NodesView
+
+        # Same UI-agnostic controller the Qt tab uses; default vault getter reads the access gate.
+        self._nodes_view = NodesView(self._notebook, NodesController(self._dm))
+        self._notebook.add(self._nodes_view, text="  Nodes  ")
 
     # ── Settings Tab ───────────────────────────────────────────────
 
