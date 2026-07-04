@@ -106,6 +106,10 @@ class NodesController:
         Reserves an epoch (via ``node_provision.open_node_link``) so a restart can't reuse a nonce. Raises
         :class:`AlreadyAttachedError` if the node already has a live link.
         """
+        # Root self-attach-loop guard — identity, not naming: a NodeLink (even one with a custom port that
+        # doesn't start with "node:") must never become another node's gateway.
+        if isinstance(gateway, NodeLink):
+            raise ValueError("a NodeLink cannot be a gateway for another node (no self-attach loop)")
         with self._lock:
             if node_id in self._links:
                 raise AlreadyAttachedError(f"node {node_id} is already attached; detach first")
@@ -125,6 +129,36 @@ class NodesController:
             self._links[node_id] = link
         log.info("attached node %s as %s", node_id, link.port)  # no key material
         return link
+
+    def available_gateways(self) -> list[dict]:
+        """Connectable gateways for the attach picker: CONNECTED DeviceManager devices with a live
+        connection that are NOT themselves node links (a node link can't gateway a node — no self-attach
+        loop). Key-free — only port/name. One dongle may gateway several nodes, so reuse is allowed."""
+        out: list[dict] = []
+        for dev in self._dm.list_devices():
+            port = getattr(dev, "port", "")
+            if not getattr(dev, "connected", False):
+                continue
+            conn = self._dm.get_connection(port)
+            if conn is None:
+                continue
+            if isinstance(conn, NodeLink) or port.startswith("node:"):
+                continue   # a node link can't gateway a node — identity check, not just the naming convention
+            out.append({"port": port, "name": getattr(dev, "name", "") or port})
+        return out
+
+    def attach_via_port(self, node_id: int, gateway_port: str, **link_kw: Any) -> NodeLink:
+        """Attach *node_id* over the live connection at *gateway_port* (looked up in DeviceManager).
+
+        Guards against using a node link as a gateway (no self-attach loop) and against a dead port before
+        delegating to :meth:`attach` (which gate-checks and reserves the epoch)."""
+        if gateway_port.startswith("node:"):
+            raise ValueError("a node link cannot be used as a gateway")
+        conn = self._dm.get_connection(gateway_port)
+        if conn is None:
+            raise ValueError(f"no live connection on {gateway_port!r}")
+        # attach() has the authoritative identity guard; this catches a custom-port node link early too.
+        return self.attach(node_id, conn, **link_kw)
 
     def detach(self, node_id: int) -> bool:
         """Persist the replay head, close the link (detach from gateway), and unregister the device.

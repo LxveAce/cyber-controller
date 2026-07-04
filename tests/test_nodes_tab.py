@@ -14,6 +14,8 @@ from PyQt5.QtWidgets import QApplication  # noqa: E402
 from src.core import node_provision  # noqa: E402
 from src.core.device_manager import DeviceManager  # noqa: E402
 from src.core.nodes_controller import NodesController  # noqa: E402
+from src.core.serial_handler import ConnectionState  # noqa: E402
+from src.models.device import Device  # noqa: E402
 
 FAKE_KEY = bytes(range(32))
 
@@ -34,8 +36,55 @@ class FakeVault:
         self._d[key] = copy.deepcopy(value)
 
 
+class MockGateway:
+    def __init__(self, port="gw"):
+        self.port = port
+        self._state = ConnectionState.DISCONNECTED
+        self._line_cbs, self._state_cbs = [], []
+        self.sent = []
+
+    @property
+    def is_connected(self):
+        return self._state == ConnectionState.CONNECTED
+
+    @property
+    def state(self):
+        return self._state
+
+    def on_line(self, cb):
+        self._line_cbs.append(cb)
+
+    def remove_line_callback(self, cb):
+        try:
+            self._line_cbs.remove(cb)
+        except ValueError:
+            pass
+
+    def on_state_change(self, cb):
+        self._state_cbs.append(cb)
+
+    def connect(self):
+        self._state = ConnectionState.CONNECTED
+        for cb in list(self._state_cbs):
+            cb(self._state)
+
+    def disconnect(self):
+        self._state = ConnectionState.DISCONNECTED
+
+    def write(self, data):
+        self.sent.append(data)
+
+
 def _locked():
     raise node_provision.VaultLockedError("locked")
+
+
+def _row_for(tab, node_id):
+    for r in range(tab._table.rowCount()):
+        it = tab._table.item(r, 0)
+        if it is not None and it.text() == str(node_id):
+            return r
+    return None
 
 
 def _tab(vault=None, *, locked=False, provision=None):
@@ -137,6 +186,35 @@ def test_refresh_fails_closed_on_read_race(qapp):
     assert tab._locked_label.isHidden() is False
     assert tab._table.rowCount() == 0
     assert all(not b.isEnabled() for b in tab._buttons)   # buttons disabled on the race path too
+
+
+def test_do_attach_detach_via_gateway(qapp):
+    from src.ui.qt.nodes_tab import NodesTab
+
+    v = FakeVault()
+    node_provision.provision_node(v, 3, key=FAKE_KEY, role="host")
+    ctrl = NodesController(DeviceManager(), vault_getter=lambda: v)
+    tab = NodesTab(controller=ctrl)
+    # a connected gateway dongle registered in DeviceManager
+    gw = MockGateway("COM7")
+    gw.connect()
+    ctrl._dm.attach_connection(Device(port="COM7", name="Marauder", connected=True), gw)
+
+    tab._do_attach(3, "COM7")
+    r = _row_for(tab, 3)
+    assert r is not None and tab._table.item(r, 6).text() == "yes"   # Attached column
+    assert FAKE_KEY.hex() not in _all_cell_text(tab)
+
+    tab._do_detach(3)
+    r = _row_for(tab, 3)
+    assert tab._table.item(r, 6).text() == "no"
+
+
+def test_attach_via_bad_gateway_raises_key_free(qapp):
+    tab, _c, v = _tab(provision={5: {"key": FAKE_KEY, "role": "host", "label": "x"}})
+    with pytest.raises(ValueError):
+        tab._do_attach(5, "node:5")       # a node link can't be a gateway
+    assert FAKE_KEY.hex() not in _all_cell_text(tab)
 
 
 def test_duplicate_provision_error_is_key_free(qapp):

@@ -199,6 +199,68 @@ def test_detach_persists_rx_and_unregisters():
     assert c.detach(8) is False                              # idempotent
 
 
+def test_available_gateways_excludes_nodes_and_disconnected():
+    from src.models.device import Device
+
+    c, v, dm = _ctrl()
+    gw = MockGateway("COM7")
+    gw.connect()
+    dm.attach_connection(Device(port="COM7", name="Marauder", connected=True), gw)   # real dongle, connected
+    dm.attach_connection(Device(port="COM8", name="Off"), MockGateway("COM8"))         # gateway not connected
+    c.provision(1, role="host")
+    c.attach(1, MockGateway("gwX"))                                                    # registers a node:1 device
+    ports = {g["port"] for g in c.available_gateways()}
+    assert "COM7" in ports          # connected non-node with a live connection
+    assert "COM8" not in ports      # disconnected
+    assert "node:1" not in ports    # a node link can't be a gateway (no self-attach loop)
+    assert all("key" not in g for g in c.available_gateways())
+
+
+def test_attach_via_port_guards_and_delegates():
+    from src.models.device import Device
+
+    c, v, dm = _ctrl()
+    gw = MockGateway("COM7")
+    gw.connect()
+    dm.attach_connection(Device(port="COM7", name="Marauder", connected=True), gw)
+    node_provision.provision_node(v, 5, key=FAKE_KEY, role="host")
+    link = c.attach_via_port(5, "COM7")
+    assert link.port == "node:5" and 5 in c.attached_ids()
+    with pytest.raises(ValueError):
+        c.attach_via_port(6, "node:5")     # a node link can't be a gateway
+    c.provision(7, role="host")
+    with pytest.raises(ValueError):
+        c.attach_via_port(7, "COM404")     # no live connection on that port
+
+
+def test_custom_port_node_link_cannot_be_a_gateway():
+    """Identity guard, not naming: a NodeLink attached under a non-'node:' custom port must NOT be offered
+    as a gateway and must be refused when passed as one — closing the self-attach-loop bypass."""
+    c, v, dm = _ctrl()
+    node_provision.provision_node(v, 1, key=FAKE_KEY, role="host")
+    gwA = MockGateway("gwA")
+    gwA.connect()
+    c.attach(1, gwA, port="custom:1")                          # node link registered under a non-node: port
+    assert all(g["port"] != "custom:1" for g in c.available_gateways())   # excluded by the isinstance check
+    node_provision.provision_node(v, 2, key=FAKE_KEY, role="host")
+    with pytest.raises(ValueError):
+        c.attach_via_port(2, "custom:1")                       # resolves to a NodeLink -> refused
+    with pytest.raises(ValueError):
+        c.attach(2, c._links[1])                               # passing the NodeLink object is refused at the root
+
+
+def test_attach_via_port_fails_closed_when_locked():
+    from src.models.device import Device
+
+    dm = DeviceManager()
+    gw = MockGateway("COM7")
+    gw.connect()
+    dm.attach_connection(Device(port="COM7", name="dongle", connected=True), gw)
+    c = NodesController(dm, vault_getter=_locked)
+    with pytest.raises(node_provision.VaultLockedError):
+        c.attach_via_port(5, "COM7")
+
+
 def test_deprovision_detaches_first():
     c, v, dm = _ctrl()
     c.provision(9, role="host")

@@ -76,9 +76,14 @@ class NodesTab(QWidget):
         self._btn_rotate.clicked.connect(self._on_rotate)
         self._btn_deprov = QPushButton("Deprovision")
         self._btn_deprov.clicked.connect(self._on_deprovision)
+        self._btn_attach = QPushButton("Attach…")
+        self._btn_attach.clicked.connect(self._on_attach)
+        self._btn_detach = QPushButton("Detach")
+        self._btn_detach.clicked.connect(self._on_detach)
         self._btn_refresh = QPushButton("Refresh")
         self._btn_refresh.clicked.connect(self._refresh)
-        self._buttons = [self._btn_provision, self._btn_rotate, self._btn_deprov, self._btn_refresh]
+        self._buttons = [self._btn_provision, self._btn_rotate, self._btn_deprov,
+                         self._btn_attach, self._btn_detach, self._btn_refresh]
         for b in self._buttons:
             btn_row.addWidget(b)
         btn_row.addStretch(1)
@@ -139,6 +144,14 @@ class NodesTab(QWidget):
         self._ctrl.deprovision(node_id)
         self._refresh()
 
+    def _do_attach(self, node_id: int, gateway_port: str) -> None:
+        self._ctrl.attach_via_port(node_id, gateway_port)
+        self._refresh()
+
+    def _do_detach(self, node_id: int) -> None:
+        self._ctrl.detach(node_id)
+        self._refresh()
+
     # ── button handlers (dialogs; delegate to _do_*) ─────────────────
     def _on_provision(self) -> None:
         node_id, ok = QInputDialog.getInt(self, "Provision node", "Node ID (0–65535):", 1, 0, 65535)
@@ -181,3 +194,35 @@ class NodesTab(QWidget):
             self._do_deprovision(node_id)
         except Exception as exc:
             QMessageBox.warning(self, "Deprovision failed", str(exc))
+
+    def _on_attach(self) -> None:
+        node_id = self._selected_node_id()
+        if node_id is None:
+            return
+        gateways = self._ctrl.available_gateways()
+        if not gateways:
+            QMessageBox.information(
+                self, "Attach node",
+                "No connected gateway device. Connect a serial dongle (Devices tab) to relay this node first.",
+            )
+            return
+        ports = [g["port"] for g in gateways]
+        labels = [f"{g['port']}  ({g['name']})" if g.get("name") and g["name"] != g["port"] else g["port"]
+                  for g in gateways]
+        choice, ok = QInputDialog.getItem(self, "Attach node", "Gateway device:", labels, 0, False)
+        if not ok:
+            return
+        gateway_port = ports[labels.index(choice)]
+        try:
+            self._do_attach(node_id, gateway_port)
+        except Exception as exc:
+            QMessageBox.warning(self, "Attach failed", str(exc))
+
+    def _on_detach(self) -> None:
+        node_id = self._selected_node_id()
+        if node_id is None:
+            return
+        try:
+            self._do_detach(node_id)
+        except Exception as exc:
+            QMessageBox.warning(self, "Detach failed", str(exc))
