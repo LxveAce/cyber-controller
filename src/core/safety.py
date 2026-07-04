@@ -122,6 +122,65 @@ def _keyword_level(cmd: str) -> str:
     return level
 
 
+# ── Metadata (description / category) scan ───────────────────────────
+#
+# ``_keyword_level`` scans only the command STRING.  Some firmware name an
+# offensive command with no danger keyword ("probe", "iot_recon", "sniffpwn",
+# "startportal") and carry the danger only in the CommandInfo's description or
+# category — those would otherwise present as safe.  The helpers below let
+# ``classify`` fold that metadata in (fail TOWARD a warning, never downgrade)
+# WITHOUT the two over-flag traps a naive scan hits:
+#   * a cease/stop command ("stopscan", "stopportal") shares the vocabulary of
+#     the attack it *ends* but is itself safe -> never escalated;
+#   * a passive listen ("sniff … beacons") legitimately mentions attack terms in
+#     its description -> the description set is a NARROW, unambiguous active-offense
+#     subset (no "beacon"/"karma"/"replay"/"airtag").
+
+#: Danger keywords unambiguous enough to match inside a free-text DESCRIPTION.
+_DESC_LAB_ONLY_KEYWORDS: tuple[str, ...] = (
+    "deauth", "brute", "spam", "flood", "mousejack", "sourapple", "sour_apple",
+)
+
+#: Categories whose commands are inherently offensive (active TX / attack / phishing).
+#: A match escalates to lab-only — but only for a command that is not a cease action.
+_OFFENSIVE_CATEGORIES: frozenset[str] = frozenset(
+    {"attack", "attacks", "portal", "evil portal", "jam", "jamming", "spam"}
+)
+
+#: Name prefixes that mark a command as a SAFE cease / stop / clear action. Stopping an
+#: attack is not itself dangerous, so metadata escalation is suppressed for these. (Kept
+#: unambiguous — a bare "off" was dropped as it would also match "offset"/"offline".)
+_CEASE_PREFIXES: tuple[str, ...] = ("stop", "disable", "clear")
+
+
+def _is_cease(name: str) -> bool:
+    """True for a stop/clear/disable command — never escalated by metadata."""
+    return (name or "").strip().lower().startswith(_CEASE_PREFIXES)
+
+
+def _description_level(desc: str) -> str:
+    """Worst danger implied by a command's free-text description (narrow, unambiguous set)."""
+    if not desc:
+        return SAFE
+    low = desc.lower()
+    level = SAFE
+    if any(kw in low for kw in _DESC_LAB_ONLY_KEYWORDS):
+        level = LAB_ONLY
+    if any(kw in low for kw in _ILLEGAL_TX_KEYWORDS):
+        level = ILLEGAL_TX
+    return level
+
+
+def _metadata_level(info: CommandInfo) -> str:
+    """Extra danger implied by a CommandInfo's description + category. Returns :data:`SAFE` for a
+    cease/stop command (which shares offensive vocabulary but is itself safe)."""
+    if info is None or _is_cease(getattr(info, "name", "")):
+        return SAFE
+    category = (getattr(info, "category", "") or "").strip().lower()
+    category_level = LAB_ONLY if category in _OFFENSIVE_CATEGORIES else SAFE
+    return worst_of(_description_level(getattr(info, "description", "") or ""), category_level)
+
+
 def classify(cmd: str, info: CommandInfo | None = None) -> str:
     """Classify the danger of a command.
 
@@ -136,15 +195,24 @@ def classify(cmd: str, info: CommandInfo | None = None) -> str:
 
     Resolution order:
         1. ``info.danger`` when ``info`` is supplied and ``info.danger`` is a
-           non-empty string -> returned verbatim (normalised/stripped).
-        2. Otherwise a conservative keyword scan of ``cmd`` (unknown -> safe).
+           non-empty string -> returned verbatim (normalised/stripped). An
+           explicit annotation is authoritative and is never widened below.
+        2. Otherwise the worst of a keyword scan of ``cmd`` AND — when ``info``
+           is supplied — the danger implied by its description + category
+           (:func:`_metadata_level`). This catches an offensive command whose
+           name carries no keyword (e.g. ``probe`` / ``iot_recon`` /
+           ``startportal``). It only ever *adds* a warning; a cease/stop command
+           and a passive listen are not escalated (see :func:`_metadata_level`).
     """
     if info is not None:
         danger = getattr(info, "danger", "") or ""
         danger = danger.strip()
         if danger:
             return danger
-    return _keyword_level(cmd)
+    level = _keyword_level(cmd)
+    if info is not None:
+        level = worst_of(level, _metadata_level(info))
+    return level
 
 
 def worst_of(*levels: str) -> str:

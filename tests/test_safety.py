@@ -318,3 +318,84 @@ def test_lab_only_warning_text_handles_empty_command() -> None:
     # Should not raise and should still produce a usable, non-empty body.
     text = lab_only_warning_text("", LAB_ONLY)
     assert text.strip()
+
+
+# ── Metadata (description / category) scan — hardening ───────────────
+#
+# classify() folds a CommandInfo's description + category into the fallback so an
+# offensive command whose NAME carries no keyword is still labelled — without
+# over-flagging cease/stop commands or passive listens.
+
+def _ci(name, category="", description="", danger=""):
+    return CommandInfo(name=name, category=category, description=description, danger=danger)
+
+
+def test_metadata_flags_offensive_named_without_keyword():
+    # Danger lives in the description/category, not the name -> must reach lab-only.
+    assert classify("probe", _ci("probe", "Attack", "Probe request flood")) == LAB_ONLY
+    assert classify("startportal", _ci("startportal", "Portal", "Start evil portal")) == LAB_ONLY
+    assert classify("iot_recon", _ci("iot_recon", "IoT", "automated LAN scan + credential brute force")) == LAB_ONLY
+    assert classify("sniffpwn", _ci("sniffpwn", "Sniffing", "Sniff-then-deauth for handshakes")) == LAB_ONLY
+
+
+def test_metadata_does_not_over_flag_cease_commands():
+    # A stop/clear command shares the vocabulary of the attack it ENDS but is itself safe.
+    assert classify("stopscan", _ci("stopscan", "Attack", "Stop current attack")) == SAFE
+    assert classify("stopportal", _ci("stopportal", "Portal", "Stop evil portal")) == SAFE
+    assert classify("stop", _ci("stop", "Attack", "Stop current attack")) == SAFE
+    assert classify("clearlist", _ci("clearlist", "Attack", "Clear the attack list")) == SAFE
+
+
+def test_metadata_does_not_over_flag_passive_listen():
+    # A passive sniff that merely MENTIONS beacons/airtags in its description must stay safe.
+    assert classify("sniffbt -t airtag", _ci("sniffbt -t airtag", "BLE",
+                    "Sniff for AirTag / tracker beacons")) == SAFE
+    assert classify("scanap", _ci("scanap", "Scanning", "Scan for access points")) == SAFE
+
+
+def test_explicit_annotation_still_authoritative():
+    # A non-empty CommandInfo.danger is authoritative and is NOT widened by the metadata scan.
+    assert classify("whatever", _ci("whatever", "Attack", "evil portal brute deauth", danger="lab-only")) == LAB_ONLY
+    assert classify("x", _ci("x", "Scanning", "harmless", danger="illegal-tx")) == ILLEGAL_TX
+
+
+def test_metadata_illegal_from_description_upgrades():
+    # An unambiguous illegal-tx keyword in the description upgrades past lab-only.
+    assert classify("wide", _ci("wide", "Jamming", "broadband RF jam sweep")) == ILLEGAL_TX
+
+
+def test_raw_command_without_info_unchanged():
+    # No CommandInfo -> pure name scan, exactly as before (a passive name stays safe).
+    assert classify("probe") == SAFE
+    assert classify("scanall") == SAFE
+    assert classify("attack -t deauth") == LAB_ONLY
+
+
+def test_hardening_never_downgrades_any_real_command():
+    """The core safety invariant: folding in description/category must only ADD warnings — for EVERY real
+    shipped command, the new level's severity is >= the old (name-only) level. Locked to the actual
+    protocol registries, not synthetic fixtures."""
+    from src.core.safety import _SEVERITY, _keyword_level
+    from src.protocols import PROTOCOLS, get_protocol
+
+    def _old(ci):  # the pre-hardening behavior: explicit danger, else name-only keyword scan
+        d = (getattr(ci, "danger", "") or "").strip()
+        return d if d else _keyword_level(ci.name)
+
+    changed = 0
+    for pname in PROTOCOLS:
+        if pname in ("generic", "raw"):
+            continue
+        for ci in get_protocol(pname).get_commands():
+            old, new = _old(ci), classify(ci.name, ci)
+            assert _SEVERITY.get(new, 0) >= _SEVERITY.get(old, 0), f"{pname}/{ci.name}: {old} -> {new} DOWNGRADE"
+            changed += old != new
+    assert changed >= 4, "expected the known metadata-only escalations to still fire"
+
+
+def test_real_cease_command_in_offensive_category_stays_safe():
+    # A genuine stop command living in an offensive category is not escalated by metadata.
+    assert classify("stopscan", _ci("stopscan", "Attack", "Stop current attack")) == SAFE
+    # ...but a dropped-"off" prefix must NOT silently exempt: an 'off'-named offensive-metadata command
+    # is now escalated (off is no longer a cease prefix).
+    assert classify("offense_probe", _ci("offense_probe", "Attack", "probe request flood")) == LAB_ONLY

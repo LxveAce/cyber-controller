@@ -25,33 +25,11 @@ class QuickCommand:
     danger: str         # safety level: "" (safe) | "lab-only" | "illegal-tx"
 
 
-# Categories whose commands are inherently offensive (active TX / attack / phishing). Used only to ESCALATE
-# toward a warning — never to downgrade — so a one-tap send is always labelled.
-_OFFENSIVE_CATEGORIES = frozenset({"attack", "attacks", "portal", "evil portal", "jam", "jamming", "spam"})
-
-
 def _is_one_tap(ci) -> bool:
     """True for an argument-free command: no ``args`` description and no inline ``<placeholder>``."""
     if (getattr(ci, "args", "") or "").strip():
         return False
     return "<" not in getattr(ci, "name", "")
-
-
-def _danger_of(ci) -> str:
-    """Danger level for a quick command, failing TOWARD a warning.
-
-    :func:`safety.classify` scans only the command NAME (plus an explicit ``ci.danger``). That misses a
-    command whose offensive nature lives in its DESCRIPTION or CATEGORY — e.g. ``probe`` ("probe request
-    flood"), ``iot_recon`` ("credential brute force"), ``sniffpwn`` ("sniff-then-deauth"), ``startportal``
-    ("evil portal") — which would otherwise present as a plain safe button and transmit on one tap with no
-    confirmation. We broaden the scan here (name + description + offensive category) and take the worst, so
-    the "label" half of label-never-block can't fail open on this surface.
-    """
-    name_level = safety.classify(getattr(ci, "name", ""), ci)
-    desc_level = safety.classify(getattr(ci, "description", "") or "")
-    cat = (getattr(ci, "category", "") or "").strip().lower()
-    cat_level = safety.LAB_ONLY if cat in _OFFENSIVE_CATEGORIES else safety.SAFE
-    return safety.worst_of(name_level, desc_level, cat_level)
 
 
 def quick_commands_for(firmware: str) -> List[QuickCommand]:
@@ -77,7 +55,9 @@ def quick_commands_for(firmware: str) -> List[QuickCommand]:
             command=name,
             label=(getattr(ci, "description", "") or name),
             category=(getattr(ci, "category", "") or "General"),
-            danger=_danger_of(ci),
+            # safety.classify now folds in the CommandInfo's description + category (see src/core/safety.py),
+            # so the offensive-but-benignly-named commands are labelled without a local workaround here.
+            danger=safety.classify(name, ci),
         ))
     return out
 
