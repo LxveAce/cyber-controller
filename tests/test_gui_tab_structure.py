@@ -100,14 +100,15 @@ def test_flash_surface_subtabs(qapp, isolated_settings):
 
 
 def test_connect_surface_subtabs(qapp, isolated_settings):
-    # The Connect landing surface holds two sub-views — Devices (leads) then Health — and the re-parented
-    # widgets are the SAME objects the window still exposes on _device_tab / _health_tab.
+    # The Connect landing surface holds three sub-views — Devices (leads), Health, then Nodes (W1.1
+    # wireless-node management) — and the re-parented widgets are the SAME objects the window exposes.
     win = _make_window()
     surface = win._connect_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Devices", "Health"]
+    assert titles == ["Devices", "Health", "Nodes"]
     assert surface.widget(0) is win._device_tab, "Devices sub-tab must be the DeviceTab object"
     assert surface.widget(1) is win._health_tab, "Health sub-tab must be the HealthTab object"
+    assert surface.widget(2) is win._nodes_tab, "Nodes sub-tab must be the NodesTab object"
     # Neither is a direct top-level tab anymore.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
     for gone in ("Devices", "Health"):

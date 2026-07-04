@@ -46,6 +46,7 @@ from src.ui.qt.cross_comm_tab import CrossCommTab
 from src.ui.qt.detachable_tabs import DetachableTabWidget
 from src.ui.qt.device_tab import DeviceTab
 from src.ui.qt.flash_tab import FlashTab
+from src.ui.qt.nodes_tab import NodesTab
 from src.ui.qt.health_tab import HealthTab
 from src.ui.qt.macro_tab import MacroTab
 from src.ui.qt.screen import (
@@ -471,6 +472,9 @@ class CyberControllerWindow(QMainWindow):
         self._connect_surface = QTabWidget()
         self._connect_surface.addTab(self._device_tab, "Devices")
         self._connect_surface.addTab(self._health_tab, "Health")
+        # Wireless nodes (W1.1): manage provisioned per-node keys — gate-locked + key-free.
+        self._nodes_tab = NodesTab(self._dm)
+        self._connect_surface.addTab(self._nodes_tab, "Nodes")
         self._tabs.addTab(self._connect_surface, "Connect")
 
         # Operate surface (S4 GUI regroup) — the action surface: discover Targets, fan a verb to every radio
