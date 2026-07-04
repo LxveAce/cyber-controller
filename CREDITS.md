@@ -164,6 +164,9 @@ and real-device field testing of its community. Named here with thanks:
     look like their real firmware instead of one shared theme — honest reconstructions, not pixel captures),
     and the **Bruce** skin he flagged as daily-carry (**DV4**: a reconstructed Bruce menu whose every leaf is
     a real Bruce serial command, with the argument-taking ones marked so they don't fire a broken command).
+  - Proposed **Cardputer control** — groundwork in per-board Device-View sizing (**CP1**: a skin can now be
+    shaped to its real board, e.g. Cardputer 240×135 landscape / M5StickC 135×240, instead of a fixed portrait
+    frame; the aspect-lock, zoom, and hit-testing all follow the board's resolution).
 
   These suggestions and test reports made the firmware coverage broader and better grounded in how
   the hardware actually behaves. Thank you.

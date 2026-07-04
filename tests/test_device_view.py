@@ -465,3 +465,129 @@ def test_device_view_maximized_is_not_aspect_locked(qapp):
         assert (v.width(), v.height()) == (w, h)            # guard held — geometry untouched
     finally:
         v.close()
+
+
+# ── CP1: per-board native_size ───────────────────────────────────────
+def test_cp1_default_native_is_240x320(qapp):
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    assert (v._native.width(), v._native.height()) == (240, 320)   # backward-compatible default
+    assert v.heightForWidth(240) == 320
+    img = v.render_native()
+    assert (img.width(), img.height()) == (240, 320)
+    assert v.minimumSizeHint() == v.NATIVE
+
+
+def test_cp1_landscape_board_shapes_everything(qapp):
+    from PyQt5.QtCore import QSize
+    v = DeviceView(DeviceScreenModel("Cardputer", marauder_menu(), native_size=QSize(240, 135)))
+    assert (v._native.width(), v._native.height()) == (240, 135)
+    img = v.render_native()
+    assert (img.width(), img.height()) == (240, 135)             # renders at the board size
+    assert v.heightForWidth(480) == 270                          # 480 * 135/240 -> board aspect
+    assert v.minimumSizeHint() == QSize(240, 135)
+    sh = v.sizeHint()
+    assert sh.height() == v.heightForWidth(sh.width())           # hint on the board ratio
+    v.set_zoom_mode(v.ZOOM_1X)
+    assert v._compute_scale(800, 600) == 1.0
+    v.set_zoom_mode(v.ZOOM_INTEGER)
+    s = v._compute_scale(760, 500)
+    assert s == int(s) and s >= 1                                # whole-pixel scale, board-aware
+
+
+def test_cp1_landscape_window_snaps_to_board_ratio(qapp):
+    from PyQt5.QtCore import QSize
+    v = DeviceView(DeviceScreenModel("Cardputer", marauder_menu(), native_size=QSize(240, 135)))
+    v.show()
+    qapp.processEvents()
+    try:
+        v.resize(600, 500)                                       # wrong aspect for a 240:135 board
+        qapp.processEvents()
+        assert v.width() == 600
+        assert abs(v.height() - v.heightForWidth(600)) <= 1      # snapped to the board ratio (~338, not 500)
+    finally:
+        v.close()
+
+
+def test_cp1_landscape_hit_test_maps_correctly(qapp):
+    from PyQt5.QtCore import QEvent, QPointF, QSize, Qt as _Qt
+    from PyQt5.QtGui import QMouseEvent
+
+    fired = []
+    model = DeviceScreenModel("Cardputer", [MenuNode("A", command="cmd_a"), MenuNode("B", command="cmd_b")],
+                              native_size=QSize(240, 135))
+    v = DeviceView(model, send=lambda c: fired.append(c) or True)
+    v.resize(480, 270)
+    v.show()
+    qapp.processEvents()
+    v.repaint()
+    qapp.processEvents()
+    try:
+        r1 = v._rows[1]                                          # native rect of the 2nd row
+        cx = v._ox + (r1.x() + r1.width() / 2) * v._scale
+        cy = v._oy + (r1.y() + r1.height() / 2) * v._scale
+        ev = QMouseEvent(QEvent.MouseButtonPress, QPointF(cx, cy),
+                         _Qt.LeftButton, _Qt.LeftButton, _Qt.NoModifier)
+        v.mousePressEvent(ev)
+        assert fired == ["cmd_b"]                                # landscape-scaled click mapped to native row 1
+    finally:
+        v.close()
+
+
+def test_cp1_degenerate_native_falls_back(qapp):
+    from PyQt5.QtCore import QSize
+    for bad in (QSize(0, 0), QSize(-5, 100), QSize(100, 0)):
+        v = DeviceView(DeviceScreenModel("x", marauder_menu(), native_size=bad))
+        assert (v._native.width(), v._native.height()) == (240, 320)   # safe fallback, no div-by-zero
+
+
+def test_cp1_board_sizes_match_real_hardware(qapp):
+    from src.ui.qt.device_view import BOARD_SIZES
+    assert (BOARD_SIZES["cardputer"].width(), BOARD_SIZES["cardputer"].height()) == (240, 135)
+    assert (BOARD_SIZES["m5stickc"].width(), BOARD_SIZES["m5stickc"].height()) == (135, 240)
+    assert (BOARD_SIZES["tft_240x320"].width(), BOARD_SIZES["tft_240x320"].height()) == (240, 320)
+
+
+def test_cp1_short_board_no_hidden_row_click(qapp):
+    """On a short board, rows that don't fit above the footer are neither drawn nor hit-registered — a click
+    in the footer band must NOT fire an off-canvas menu row (could be an attack command)."""
+    from PyQt5.QtCore import QEvent, QPointF, QSize, Qt as _Qt
+    from PyQt5.QtGui import QMouseEvent
+
+    fired = []
+    items = [MenuNode(f"item{i}", command=f"cmd{i}") for i in range(8)]   # more than fit in 135px
+    v = DeviceView(DeviceScreenModel("Cardputer", items, native_size=QSize(240, 135)),
+                   send=lambda c: fired.append(c) or True)
+    v.resize(480, 270)
+    v.show()
+    qapp.processEvents()
+    v.repaint()
+    qapp.processEvents()
+    try:
+        native_footer_top = 135 - 18
+        assert v._rows, "expected at least one visible row"
+        assert all(r.y() + r.height() <= native_footer_top for r in v._rows)   # all above the footer
+        assert len(v._rows) < len(items)                     # some items didn't fit -> not clickable
+        cx = v._ox + 120 * v._scale
+        cy = v._oy + (135 - 6) * v._scale                    # deep in the footer band
+        ev = QMouseEvent(QEvent.MouseButtonPress, QPointF(cx, cy),
+                         _Qt.LeftButton, _Qt.LeftButton, _Qt.NoModifier)
+        v.mousePressEvent(ev)
+        assert fired == []                                   # no hidden/off-canvas row fired
+    finally:
+        v.close()
+
+
+def test_cp1_portrait_stickc_end_to_end(qapp):
+    from PyQt5.QtCore import QSize
+    v = DeviceView(DeviceScreenModel("M5StickC", marauder_menu(), native_size=QSize(135, 240)))
+    assert (v._native.width(), v._native.height()) == (135, 240)
+    img = v.render_native()
+    assert (img.width(), img.height()) == (135, 240)
+    assert v.heightForWidth(270) == 480                      # 270 * 240/135 -> portrait board aspect
+    assert v.minimumSizeHint() == QSize(135, 240)
+
+
+def test_cp1_non_qsize_native_falls_back(qapp):
+    for bad in ((240, 135), "240x135", 42, [1, 2]):
+        v = DeviceView(DeviceScreenModel("x", marauder_menu(), native_size=bad))
+        assert (v._native.width(), v._native.height()) == (240, 320)   # tolerated -> default, never raises

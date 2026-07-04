@@ -105,12 +105,15 @@ class DeviceScreenModel:
     """The state a reconstructed skin renders: a firmware title + a navigable menu tree."""
 
     def __init__(self, title: str, root: "list[MenuNode]", *, status: str = "ready",
-                 battery: str = "84%", skin: str = ""):
+                 battery: str = "84%", skin: str = "", native_size: "Optional[QSize]" = None):
         self.title = title
         self.root = root
         self.status = status
         self.battery = battery
         self.skin = skin          # skin id (a SKINS key) -> selects the per-firmware SkinSpec
+        # CP1: the board's real TFT resolution (e.g. Cardputer 240x135 landscape, M5StickC 135x240). None ->
+        # the DeviceView default (240x320). The View resolves + validates this into self._native.
+        self.native_size = native_size
         self.path: "list[int]" = []   # indices into nested menus
         self.sel = 0
 
@@ -317,6 +320,15 @@ SKINS = {
     "bruce": ("Bruce", bruce_menu),
 }
 
+# CP1: real on-board TFT resolutions, for building a board-shaped DeviceScreenModel(..., native_size=...).
+# Sources: M5Cardputer LCD = 240x135 (landscape, ST7789); M5StickC/StickC-Plus = 135x240 (portrait);
+# the generic 2.4"/2.8" CYD-class TFT = 240x320 (the DeviceView default). Honest reconstructions, not mirrors.
+BOARD_SIZES = {
+    "cardputer": QSize(240, 135),
+    "m5stickc": QSize(135, 240),
+    "tft_240x320": QSize(240, 320),
+}
+
 
 class DeviceView(QWidget):
     """A scaled, bezel-framed reconstruction of a 240x320 TFT firmware UI.
@@ -338,6 +350,13 @@ class DeviceView(QWidget):
         super().__init__(parent)
         self.model = model
         self._spec = SkinSpec.load(getattr(model, "skin", ""))   # DV3: per-firmware palette (safe fallback)
+        # CP1: resolve the board's native resolution (per-model), falling back to the class default. Everything
+        # below (min size, aspect-lock, zoom scale, hit-test) reads self._native so a landscape board stays
+        # coherent. Guard against a missing/degenerate size so render/scale never divide by zero.
+        ns = getattr(model, "native_size", None)
+        # isinstance guard (matches the module's defensive style): a missing/non-QSize/degenerate size falls
+        # back to the default rather than raising, so render/scale never divide by zero.
+        self._native = ns if (isinstance(ns, QSize) and ns.width() > 0 and ns.height() > 0) else self.NATIVE
         self._send = send
         # Set the re-entrancy guard BEFORE any resize() — a synchronous resizeEvent during construction would
         # otherwise read an unset attribute. Advertise the native ratio via the size policy so a future
@@ -347,11 +366,11 @@ class DeviceView(QWidget):
         sp = self.sizePolicy()
         sp.setHeightForWidth(True)
         self.setSizePolicy(sp)
-        self.setMinimumSize(self.NATIVE)
-        self.resize(self.NATIVE.width() * 2, self.NATIVE.height() * 2)
+        self.setMinimumSize(self._native)
+        self.resize(self._native.width() * 2, self._native.height() * 2)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setWindowTitle(f"Device View — {model.title} (reconstructed)")
-        self._rows: "list[QRect]" = []  # hit rects in NATIVE coords, filled by render_native
+        self._rows: "list[QRect]" = []  # hit rects in native coords, filled by render_native
         self._zoom_mode = self.ZOOM_FIT
 
     # ── aspect-ratio contract (DV1: kill the resize-bandaid letterbox) ────
@@ -359,15 +378,15 @@ class DeviceView(QWidget):
         return True
 
     def heightForWidth(self, width: int) -> int:  # noqa: N802 (Qt override)
-        n = self.NATIVE
+        n = self._native
         return round(width * n.height() / n.width())
 
     def sizeHint(self) -> QSize:  # noqa: N802 (Qt override)
-        w = self.NATIVE.width() * 2
+        w = self._native.width() * 2
         return QSize(w, self.heightForWidth(w))
 
     def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt override)
-        return QSize(self.NATIVE.width(), self.NATIVE.height())
+        return QSize(self._native.width(), self._native.height())
 
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
@@ -383,8 +402,8 @@ class DeviceView(QWidget):
         if self._aspect_locking or not self.isWindow():
             return  # inside a layout, the size policy's heightForWidth handles it
         if self.isMaximized() or self.isFullScreen():
-            # The native ratio is portrait (height > width always), so snapping a maximized/fullscreen window
-            # to it would force it taller than the screen and thrash with the WM — never fight that state.
+            # Never fight the WM's maximize/fullscreen geometry: snapping to the fixed board aspect would force
+            # an off-screen dimension (a portrait board too tall, a landscape board too narrow) and thrash.
             return
         w = self.width()
         target_h = self.heightForWidth(w)
@@ -398,7 +417,7 @@ class DeviceView(QWidget):
 
     # ── pure native draw (offscreen-testable) ────────────────────────
     def render_native(self) -> QImage:
-        w, h = self.NATIVE.width(), self.NATIVE.height()
+        w, h = self._native.width(), self._native.height()
         spec = self._spec   # DV3: per-firmware palette (see skins/*.json)
         img = QImage(w, h, QImage.Format_ARGB32)
         img.fill(spec.bg)
@@ -432,7 +451,10 @@ class DeviceView(QWidget):
             items = self.model.items()
             row_h = 26
             y = 44
-            for i, node in enumerate(items):
+            footer_top = h - 18   # CP1: on a short board (e.g. Cardputer 240x135) stop before the footer so
+            for i, node in enumerate(items):        # we never DRAW or register a hit-rect for a row hidden
+                if y + row_h > footer_top:          # under it — a click there must not fire an off-canvas row.
+                    break
                 r = QRect(0, y, w, row_h)
                 self._rows.append(r)
                 if i == self.model.sel:
@@ -479,7 +501,7 @@ class DeviceView(QWidget):
         """Scale factor for the current zoom mode. Fit = fractional fill (original behavior); Integer =
         largest whole-pixel multiple that fits (>=1, crisp); 1:1 = exactly native. Never <=0 (guards a
         window dragged smaller than the bezel inset)."""
-        nw, nh = self.NATIVE.width(), self.NATIVE.height()
+        nw, nh = self._native.width(), self._native.height()
         fit = min((w - 16) / nw, (h - 16) / nh)
         if self._zoom_mode == self.ZOOM_1X:
             return 1.0
@@ -493,7 +515,7 @@ class DeviceView(QWidget):
         try:
             p.fillRect(self.rect(), QColor("#05070a"))
             w, h = self.width(), self.height()
-            nw, nh = self.NATIVE.width(), self.NATIVE.height()
+            nw, nh = self._native.width(), self._native.height()
             scale = self._compute_scale(w, h)
             # Nearest-neighbor for EVERY mode: crisp integer doubling, higher fidelity to the real (pixel)
             # TFT, and it preserves the pre-DV2 Fit rendering exactly (Qt's default was already False — a
