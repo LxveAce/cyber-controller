@@ -67,4 +67,7 @@ firmware_vault/
 
 # Secure storage vaults
 *.vault
+vault.enc
+vault.hdr.json
+.cyber-controller/
 suicide-marauder/
