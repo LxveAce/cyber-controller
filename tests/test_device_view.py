@@ -132,3 +132,102 @@ def test_widget_constructs_and_grabs_offscreen(qapp):
 def test_custom_menu_node():
     n = MenuNode("X", children=[MenuNode("Y", command="info")])
     assert n.is_menu and not n.children[0].is_menu
+
+
+# ── DV1: aspect-lock the pop-out (kill the resize bandaid) ────────────
+def test_device_view_aspect_contract(qapp):
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    assert v.hasHeightForWidth() is True
+    assert v.sizePolicy().hasHeightForWidth() is True       # layouts will honor the ratio too
+    # 240x320 native => height follows width at exactly 4:3
+    assert v.heightForWidth(240) == 320
+    assert v.heightForWidth(480) == 640
+    assert v.heightForWidth(300) == round(300 * 320 / 240)
+    assert v.minimumSizeHint() == v.NATIVE
+    sh = v.sizeHint()
+    assert sh.height() == v.heightForWidth(sh.width())      # the hint is itself on-ratio
+
+
+def test_device_view_window_snaps_to_aspect(qapp):
+    """A standalone Device-View window must not letterbox: a wrong-aspect resize snaps back to the native
+    ratio (the fix for the owner's 'resize bandaid'). heightForWidth alone can't do this for a top-level
+    widget, so _lock_aspect() (called from resizeEvent) enforces it."""
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    v.show()
+    qapp.processEvents()
+    try:
+        assert v.isWindow()
+        v.resize(600, 400)                                  # deliberately letterboxed (requested 3:2)
+        qapp.processEvents()
+        # the resizeEvent path snapped it back to the native ratio on its own — height followed width
+        assert v.width() == 600
+        assert abs(v.height() - v.heightForWidth(600)) <= 1   # 800, not the requested 400 -> no dead-space
+        h = v.height()
+        v._lock_aspect()                                    # idempotent when already on-ratio
+        assert v.height() == h
+    finally:
+        v.close()
+
+
+def test_device_view_window_snaps_non_multiple_width(qapp):
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    v.show()
+    qapp.processEvents()
+    try:
+        v.resize(601, 400)                                  # 601 isn't a clean multiple of 3
+        qapp.processEvents()
+        assert v.width() == 601
+        assert abs(v.height() - v.heightForWidth(601)) <= 1   # 801, within the 1px tolerance
+    finally:
+        v.close()
+
+
+def test_device_view_window_snap_respects_minimum(qapp):
+    """Snapping never drives the window below its native minimum: a sub-minimum width clamps to 240×320
+    (itself exactly on-ratio) rather than colliding with the height floor."""
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    v.show()
+    qapp.processEvents()
+    try:
+        v.resize(100, 900)                                  # width below the 240 minimum
+        qapp.processEvents()
+        assert v.width() == v.NATIVE.width()                # clamped to 240
+        assert abs(v.height() - v.heightForWidth(v.width())) <= 1   # and on-ratio (320)
+    finally:
+        v.close()
+
+
+def test_device_view_embedded_does_not_self_resize(qapp):
+    """When embedded in a layout (not a top-level window), _lock_aspect is a no-op (the isWindow() guard) so
+    it never fights the parent — the self-snap is a standalone-window fix only."""
+    from PyQt5.QtWidgets import QVBoxLayout, QWidget
+
+    host = QWidget()
+    QVBoxLayout(host).addWidget(DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu())))
+    v = host.findChild(DeviceView)
+    host.resize(500, 500)
+    host.show()
+    qapp.processEvents()
+    try:
+        assert v.isWindow() is False
+        before = (v.width(), v.height())
+        v._lock_aspect()                                    # must NOT self-resize an embedded instance
+        assert (v.width(), v.height()) == before
+    finally:
+        host.close()
+
+
+def test_device_view_maximized_is_not_aspect_locked(qapp):
+    """A maximized/fullscreen window keeps the WM geometry — the portrait ratio must not force it taller
+    than the screen. (Skips where the offscreen platform can't report a maximized state.)"""
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    v.showMaximized()
+    qapp.processEvents()
+    if not (v.isMaximized() or v.isFullScreen()):
+        pytest.skip("offscreen platform does not report a maximized state")
+    try:
+        w, h = v.width(), v.height()
+        v._lock_aspect()
+        assert (v.width(), v.height()) == (w, h)            # guard held — geometry untouched
+    finally:
+        v.close()

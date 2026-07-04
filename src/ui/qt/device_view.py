@@ -236,11 +236,61 @@ class DeviceView(QWidget):
         super().__init__(parent)
         self.model = model
         self._send = send
+        # Set the re-entrancy guard BEFORE any resize() — a synchronous resizeEvent during construction would
+        # otherwise read an unset attribute. Advertise the native ratio via the size policy so a future
+        # aspect-ENFORCING container (DV6) can use it; note a plain box layout treats heightForWidth as a
+        # preferred height only, not a hard constraint, so the self-snap below is what kills the bandaid today.
+        self._aspect_locking = False
+        sp = self.sizePolicy()
+        sp.setHeightForWidth(True)
+        self.setSizePolicy(sp)
         self.setMinimumSize(self.NATIVE)
         self.resize(self.NATIVE.width() * 2, self.NATIVE.height() * 2)
         self.setFocusPolicy(Qt.StrongFocus)
         self.setWindowTitle(f"Device View — {model.title} (reconstructed)")
         self._rows: "list[QRect]" = []  # hit rects in NATIVE coords, filled by render_native
+
+    # ── aspect-ratio contract (DV1: kill the resize-bandaid letterbox) ────
+    def hasHeightForWidth(self) -> bool:  # noqa: N802 (Qt override)
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802 (Qt override)
+        n = self.NATIVE
+        return round(width * n.height() / n.width())
+
+    def sizeHint(self) -> QSize:  # noqa: N802 (Qt override)
+        w = self.NATIVE.width() * 2
+        return QSize(w, self.heightForWidth(w))
+
+    def minimumSizeHint(self) -> QSize:  # noqa: N802 (Qt override)
+        return QSize(self.NATIVE.width(), self.NATIVE.height())
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._lock_aspect()
+
+    def _lock_aspect(self) -> None:
+        """Snap our own geometry to the native aspect when we ARE a top-level window.
+
+        Qt honors ``heightForWidth`` only for widgets INSIDE a layout, never for a bare top-level window —
+        and the Device View is shown as its own window — so a free drag would letterbox dead-space around the
+        bezel (the "resize bandaid"). We anchor to width and follow height. Guarded against the resize()->
+        resizeEvent recursion; a no-op (<=1px) when already on-ratio so it converges in one snap."""
+        if self._aspect_locking or not self.isWindow():
+            return  # inside a layout, the size policy's heightForWidth handles it
+        if self.isMaximized() or self.isFullScreen():
+            # The native ratio is portrait (height > width always), so snapping a maximized/fullscreen window
+            # to it would force it taller than the screen and thrash with the WM — never fight that state.
+            return
+        w = self.width()
+        target_h = self.heightForWidth(w)
+        if abs(self.height() - target_h) <= 1:
+            return
+        self._aspect_locking = True
+        try:
+            self.resize(w, target_h)
+        finally:
+            self._aspect_locking = False
 
     # ── pure native draw (offscreen-testable) ────────────────────────
     def render_native(self) -> QImage:
