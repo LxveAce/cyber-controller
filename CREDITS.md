@@ -158,8 +158,10 @@ and real-device field testing of its community. Named here with thanks:
   - Proposed **Cardputer-control-from-the-PC** (a qFlipper-style control surface for the Cardputer)
     and championed the **pop-out / focus-in firmware-menu** direction (blowing up the connect/operate
     panels to focus on them) — realized in the aspect-locked Device-View pop-out (**DV1**: the window holds
-    the firmware skin's native ratio on resize instead of letterboxing dead-space) and its crisp-zoom modes
-    (**DV2**: Fit / integer 1×/2×/3× nearest-neighbor / 1:1, so blowing the skin up stays sharp).
+    the firmware skin's native ratio on resize instead of letterboxing dead-space), its crisp-zoom modes
+    (**DV2**: Fit / integer 1×/2×/3× nearest-neighbor / 1:1, so blowing the skin up stays sharp), and
+    per-firmware palettes (**DV3**: each skin reads its own colour scheme so Marauder / GhostESP / ESP32-DIV
+    look like their real firmware instead of one shared theme — honest reconstructions, not pixel captures).
 
   These suggestions and test reports made the firmware coverage broader and better grounded in how
   the hardware actually behaves. Thank you.

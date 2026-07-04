@@ -1,0 +1,10 @@
+{
+  "_note": "Reconstructed SKIN palette for ESP32-DIV (amber-on-dark) — an honest approximation, NOT a pixel-accurate capture.",
+  "bg": "#0c0803",
+  "header": "#1a1004",
+  "accent": "#f0a824",
+  "text": "#ffe9c8",
+  "muted": "#a08048",
+  "line": "#3a2a0e",
+  "sel_text": "#1a1000"
+}

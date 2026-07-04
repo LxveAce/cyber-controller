@@ -1693,7 +1693,8 @@ class CyberControllerWindow(QMainWindow):
             QMessageBox.critical(self, "Device View", f"Could not open the Device View: {exc}")
             return
         title, factory = SKINS.get(firmware, SKINS["marauder"])
-        model = DeviceScreenModel(title, factory())
+        skin_id = firmware if firmware in SKINS else "marauder"
+        model = DeviceScreenModel(title, factory(), skin=skin_id)   # DV3: selects the per-firmware SkinSpec
         # Keep a reference so the top-level window isn't garbage-collected. Wire it to actually drive the
         # connected device when its firmware matches the skin (else it stays a preview).
         self._device_view = DeviceView(model, send=lambda c, fw=firmware: self._device_view_send(fw, c))

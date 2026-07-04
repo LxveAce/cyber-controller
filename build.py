@@ -72,6 +72,12 @@ def _build() -> int:
     if profiles_dir.is_dir():
         cmd.extend(["--add-data", f"{profiles_dir}{sep}src/config/profiles"])
 
+    # Device-View per-firmware skin palettes (DV3) — resource_path("src","ui","qt","skins") reads these in
+    # the frozen build, so they must be bundled or every skin silently falls back to the default palette.
+    skins_dir = _ROOT / "src" / "ui" / "qt" / "skins"
+    if skins_dir.is_dir():
+        cmd.extend(["--add-data", f"{skins_dir}{sep}src/ui/qt/skins"])
+
     # Software-OS flashing catalog (Kali / Tails / Arch / ...): bundle so the Software tab + --flash-os
     # work fully offline (resource_path resolves src/config/os_catalog.json in the frozen build).
     os_catalog = _ROOT / "src" / "config" / "os_catalog.json"

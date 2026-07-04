@@ -22,6 +22,7 @@ from src.ui.qt.device_view import (  # noqa: E402
     DeviceScreenModel,
     DeviceView,
     MenuNode,
+    SkinSpec,
     esp32div_menu,
     ghostesp_menu,
     marauder_menu,
@@ -132,6 +133,82 @@ def test_widget_constructs_and_grabs_offscreen(qapp):
 def test_custom_menu_node():
     n = MenuNode("X", children=[MenuNode("Y", command="info")])
     assert n.is_menu and not n.children[0].is_menu
+
+
+# ── DV3: per-firmware SkinSpec (palette JSON) ────────────────────────
+def test_dv3_skins_have_distinct_specs(qapp):
+    specs = {sid: SkinSpec.load(sid) for sid in SKINS}
+    assert len({s.bg.name() for s in specs.values()}) == 3       # each firmware's bg differs
+    assert len({s.accent.name() for s in specs.values()}) == 3   # each firmware's accent differs
+    default = SkinSpec()
+    assert all(s.accent.name() != default.accent.name() for s in specs.values())  # actually customized
+
+
+def test_dv3_render_differs_per_skin(qapp):
+    def render(sid):
+        title, factory = SKINS[sid]
+        return DeviceView(DeviceScreenModel(title, factory(), skin=sid)).render_native()
+
+    a, b, c = render("marauder"), render("ghostesp"), render("esp32div")
+    assert a != b and b != c and a != c          # QImage != is a pixel-wise compare -> palettes truly differ
+
+
+def test_dv3_default_skin_unchanged_violet(qapp):
+    # No skin id -> the built-in default palette, so pre-DV3 renders are byte-identical.
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu()))
+    assert v._spec.accent.name() == "#a371f7"
+    assert v._spec.bg.name() == "#0d1117"
+    assert v._spec.sel_text.name() == "#000000"   # same as the old hardcoded selected-row pen
+
+
+def test_dv3_non_str_skin_id_falls_back(qapp):
+    default = SkinSpec()
+    for weird in (None, 123, 12.5, True, ["a"], {"x": 1}):
+        assert SkinSpec.load(weird).accent.name() == default.accent.name()   # coerces/rejects, never raises
+
+
+def test_dv3_hostile_spec_still_renders(qapp, tmp_path, monkeypatch):
+    """A wrong-type/corrupt skin file must not crash render_native — it falls back to valid colours."""
+    from src.ui.qt import device_view as dv
+
+    monkeypatch.setattr(dv, "_SKINS_DIR", tmp_path)
+    (tmp_path / "hostile.json").write_text(
+        '{"accent": 123, "bg": ["x"], "text": null, "line": "notacolor", "header": {}}', encoding="utf-8")
+    v = DeviceView(DeviceScreenModel("ESP32 Marauder", marauder_menu(), skin="hostile"))
+    img = v.render_native()                        # must not raise
+    assert img.size().width() == 240 and img.size().height() == 320
+    assert v._spec.accent.name() == SkinSpec().accent.name()   # per-field fallback held
+
+
+def test_dv3_load_fallbacks_and_hardening(qapp, tmp_path, monkeypatch):
+    from src.ui.qt import device_view as dv
+
+    default = SkinSpec()
+    # unknown id + path-traversal / bad ids -> default (never touches the filesystem outside skins/)
+    for bad in ("does_not_exist", "../../etc/passwd", "a/b", "..", "", "UPPER", "has space", "x" * 33):
+        assert SkinSpec.load(bad).accent.name() == default.accent.name()
+
+    # Point the loader at a temp dir for the malformed-content cases.
+    monkeypatch.setattr(dv, "_SKINS_DIR", tmp_path)
+    (tmp_path / "badjson.json").write_text("{ not valid json ", encoding="utf-8")
+    assert SkinSpec.load("badjson").accent.name() == default.accent.name()
+
+    (tmp_path / "arr.json").write_text("[1, 2, 3]", encoding="utf-8")          # non-object
+    assert SkinSpec.load("arr").accent.name() == default.accent.name()
+
+    (tmp_path / "partial.json").write_text('{"accent": "#ff0000"}', encoding="utf-8")
+    sp = SkinSpec.load("partial")
+    assert sp.accent.name() == "#ff0000"                                       # honored
+    assert sp.bg.name() == default.bg.name()                                   # missing key -> per-field default
+
+    (tmp_path / "wrongtype.json").write_text('{"accent": 123, "bg": ["x"], "text": null}', encoding="utf-8")
+    sp2 = SkinSpec.load("wrongtype")
+    assert sp2.accent.name() == default.accent.name()                          # non-str -> default
+    assert sp2.bg.name() == default.bg.name()
+    assert sp2.text.name() == default.text.name()
+
+    (tmp_path / "badcolor.json").write_text('{"accent": "notacolor"}', encoding="utf-8")
+    assert SkinSpec.load("badcolor").accent.name() == default.accent.name()    # invalid color string -> default
 
 
 # ── DV1: aspect-lock the pop-out (kill the resize bandaid) ────────────

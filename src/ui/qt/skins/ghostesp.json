@@ -1,0 +1,10 @@
+{
+  "_note": "Reconstructed SKIN palette for GhostESP (cyan-on-deep-blue) — an honest approximation, NOT a pixel-accurate capture.",
+  "bg": "#04070e",
+  "header": "#04121c",
+  "accent": "#25d8e8",
+  "text": "#dff6ff",
+  "muted": "#5f8aa0",
+  "line": "#0e2e3a",
+  "sel_text": "#001318"
+}

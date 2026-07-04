@@ -12,19 +12,78 @@ shared ``paintEvent`` scales that image to whatever window size it's given, aspe
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Callable, Optional
 
 from PyQt5.QtCore import QRect, QSize, Qt
 from PyQt5.QtGui import QColor, QFont, QImage, QPainter
 from PyQt5.QtWidgets import QWidget
 
-# ── palette (mirrors cyber_dark.qss) ─────────────────────────────────
+from src.core.resources import resource_path
+
+# ── palette (the built-in DEFAULT; a per-firmware SkinSpec overrides it — see skins/*.json) ──────────
 _BG = QColor("#0d1117")
 _HEAD_BG = QColor("#001a00")
 _ACCENT = QColor("#a371f7")
 _TEXT = QColor("#e6edf3")
 _MUTED = QColor("#8b949e")
 _LINE = QColor("#16321a")
+
+# Resolve via resource_path (NOT __file__) so the JSON is found in a frozen build's _MEIPASS too — see
+# src/core/resources.py; build.py must --add-data this dir (mirrors the profiles/theme bundling).
+_SKINS_DIR = resource_path("src", "ui", "qt", "skins")
+
+# The colour ROLES a skin defines; the values here are the built-in default (the original violet palette),
+# used as a whole-spec AND per-field fallback so a missing/partial/corrupt JSON can never break rendering.
+_DEFAULT_PALETTE = {
+    "bg": _BG.name(),
+    "header": _HEAD_BG.name(),
+    "accent": _ACCENT.name(),
+    "text": _TEXT.name(),
+    "muted": _MUTED.name(),
+    "line": _LINE.name(),
+    "sel_text": "#000000",   # text drawn ON the accent-filled selected row
+}
+
+
+class SkinSpec:
+    """A per-firmware colour palette for the reconstructed Device-View skin (DV3).
+
+    Loaded from ``skins/<skin_id>.json``; every field falls back to the built-in default, and load() is
+    hardened against a bad skin id (path traversal) and malformed/partial JSON — it NEVER raises, so a
+    broken skin file degrades to the default look instead of crashing the view.
+    """
+
+    _FIELDS = tuple(_DEFAULT_PALETTE)
+
+    def __init__(self, **colors: object) -> None:
+        for name in self._FIELDS:
+            val = colors.get(name)
+            c = QColor(val) if isinstance(val, str) else QColor()
+            if not c.isValid():
+                c = QColor(_DEFAULT_PALETTE[name])   # per-field fallback for a missing/invalid colour
+            setattr(self, name, c)
+
+    @classmethod
+    def from_dict(cls, data: object) -> "SkinSpec":
+        if not isinstance(data, dict):
+            return cls()
+        return cls(**{k: data.get(k) for k in cls._FIELDS})
+
+    @classmethod
+    def load(cls, skin_id: str) -> "SkinSpec":
+        # Only a bare, lowercase id is allowed — this both namespaces the file and blocks path traversal
+        # (no '/', '\\', '.', '..'). Anything else -> the default spec.
+        if not skin_id or not re.fullmatch(r"[a-z0-9_]{1,32}", str(skin_id)):
+            return cls()
+        path = _SKINS_DIR / f"{skin_id}.json"
+        if not path.is_file():
+            return cls()
+        try:
+            return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:  # noqa: BLE001 — a corrupt skin file must never break the view
+            return cls()
 
 
 class MenuNode:
@@ -45,11 +104,12 @@ class DeviceScreenModel:
     """The state a reconstructed skin renders: a firmware title + a navigable menu tree."""
 
     def __init__(self, title: str, root: "list[MenuNode]", *, status: str = "ready",
-                 battery: str = "84%"):
+                 battery: str = "84%", skin: str = ""):
         self.title = title
         self.root = root
         self.status = status
         self.battery = battery
+        self.skin = skin          # skin id (a SKINS key) -> selects the per-firmware SkinSpec
         self.path: "list[int]" = []   # indices into nested menus
         self.sel = 0
 
@@ -241,6 +301,7 @@ class DeviceView(QWidget):
                  parent: Optional[QWidget] = None):
         super().__init__(parent)
         self.model = model
+        self._spec = SkinSpec.load(getattr(model, "skin", ""))   # DV3: per-firmware palette (safe fallback)
         self._send = send
         # Set the re-entrancy guard BEFORE any resize() — a synchronous resizeEvent during construction would
         # otherwise read an unset attribute. Advertise the native ratio via the size policy so a future
@@ -302,8 +363,9 @@ class DeviceView(QWidget):
     # ── pure native draw (offscreen-testable) ────────────────────────
     def render_native(self) -> QImage:
         w, h = self.NATIVE.width(), self.NATIVE.height()
+        spec = self._spec   # DV3: per-firmware palette (see skins/*.json)
         img = QImage(w, h, QImage.Format_ARGB32)
-        img.fill(_BG)
+        img.fill(spec.bg)
         p = QPainter(img)
         try:
             mono = QFont("JetBrains Mono", 9)
@@ -311,21 +373,21 @@ class DeviceView(QWidget):
             p.setFont(mono)
 
             # header
-            p.fillRect(0, 0, w, 24, _HEAD_BG)
-            p.setPen(_ACCENT)
+            p.fillRect(0, 0, w, 24, spec.header)
+            p.setPen(spec.accent)
             p.drawLine(0, 24, w, 24)
             p.drawText(QRect(6, 0, w - 70, 24), Qt.AlignVCenter | Qt.AlignLeft, self.model.title)
             p.setFont(QFont("JetBrains Mono", 7))
             p.drawText(QRect(w - 80, 0, 56, 24), Qt.AlignVCenter | Qt.AlignRight, self.model.battery)
             # "SKIN" honesty tag
-            p.setPen(_MUTED)
+            p.setPen(spec.muted)
             p.drawText(QRect(w - 24, 0, 22, 24), Qt.AlignVCenter | Qt.AlignRight, "SK")
 
             # breadcrumb
             p.setFont(QFont("JetBrains Mono", 7))
-            p.setPen(_MUTED)
+            p.setPen(spec.muted)
             p.drawText(QRect(6, 26, w - 12, 14), Qt.AlignVCenter | Qt.AlignLeft, self.model.crumb())
-            p.setPen(_LINE)
+            p.setPen(spec.line)
             p.drawLine(0, 40, w, 40)
 
             # menu list
@@ -338,18 +400,18 @@ class DeviceView(QWidget):
                 r = QRect(0, y, w, row_h)
                 self._rows.append(r)
                 if i == self.model.sel:
-                    p.fillRect(r, _ACCENT)
-                    p.setPen(QColor("#000000"))
+                    p.fillRect(r, spec.accent)
+                    p.setPen(spec.sel_text)
                 else:
-                    p.setPen(_TEXT)
+                    p.setPen(spec.text)
                 p.drawText(QRect(12, y, w - 24, row_h), Qt.AlignVCenter | Qt.AlignLeft, node.label)
                 if node.is_menu:
                     p.drawText(QRect(0, y, w - 12, row_h), Qt.AlignVCenter | Qt.AlignRight, "›")
                 y += row_h
 
             # footer (status)
-            p.fillRect(0, h - 18, w, 18, _HEAD_BG)
-            p.setPen(_ACCENT)
+            p.fillRect(0, h - 18, w, 18, spec.header)
+            p.setPen(spec.accent)
             p.drawLine(0, h - 18, w, h - 18)
             p.setFont(QFont("JetBrains Mono", 7))
             p.drawText(QRect(6, h - 18, w - 60, 18), Qt.AlignVCenter | Qt.AlignLeft, self.model.status[:34])
