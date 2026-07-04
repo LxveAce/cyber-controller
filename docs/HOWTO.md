@@ -65,7 +65,7 @@ Manage it from the command line: `--gate-status`, `--set-admin-password`, `--cre
 --key-drive <dev>`, `--gate-policy {both|either|password|key}`, `--clear-gate`.
 
 ## Command-line quick reference
-- `--list-os` / `--flash-os <id>` — list/flash OSes to USB (`--os-image`, `--os-target`, `--offline`, `--yes`).
+- `--list-os` / `--flash-os <id>` — list/flash OSes to USB (`--os-image`, `--os-sig`, `--target`, `--offline`, `--yes`).
 - `--flash-tails` — flash Tails specifically (`--tails-image`, `--tails-sha256`, `--tails-sig`).
 - `--deadman-setup` — Dead Man's Switch setup.
 - Gate flags above.
