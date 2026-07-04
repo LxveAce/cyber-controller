@@ -5,9 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Cyber Controller{% endblock %}</title>
     <meta name="csrf-token" content="{{ csrf_token }}">
+    <!-- PWA: installable LAN wireless remote (MB cluster). Icons are owner-supplied (see static/icons/README.md). -->
+    <link rel="manifest" href="/manifest.webmanifest">
+    <meta name="theme-color" content="#a371f7">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Cyber Controller">
+    <link rel="apple-touch-icon" href="/static/icons/ace-192.png">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
     <script nonce="{{ csp_nonce }}" src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
     <script nonce="{{ csp_nonce }}">window.CSRF_TOKEN = {{ csrf_token|tojson }};</script>
+    <script nonce="{{ csp_nonce }}">
+        // Register the PWA service worker. Only fires in a secure context (TLS or localhost); on a bare
+        // LAN IP without TLS the browser silently declines — expected, see docs/MOBILE-REMOTE.md.
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', function () {
+                navigator.serviceWorker.register('/sw.js').catch(function () { /* non-secure context */ });
+            });
+        }
+    </script>
 </head>
 <body>
     <nav class="navbar">

@@ -27,7 +27,17 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, Response, abort, g, jsonify, render_template, request, session
+from flask import (
+    Flask,
+    Response,
+    abort,
+    g,
+    jsonify,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+)
 from flask_socketio import SocketIO, emit
 
 from src.core.cross_comm import EventBus, TargetPool
@@ -307,6 +317,27 @@ def create_app(
             log.exception("nodes page read failed")
             unlocked, rows, gateways = False, [], []
         return render_template("nodes.html", unlocked=unlocked, rows=rows, gateways=gateways)
+
+    # ── PWA shell (MB cluster: installable LAN wireless remote) ─────
+    # manifest + service worker are PUBLIC (carry no secrets) so the browser can read them before auth
+    # completes — standard PWA practice. The SW is served from the ORIGIN ROOT (a /static/ worker could
+    # only control /static/) with Service-Worker-Allowed so its scope is the whole app, and it is
+    # structurally forbidden from caching authenticated data (see static/sw.js).
+
+    @app.route("/manifest.webmanifest")
+    def web_manifest():
+        resp = send_from_directory(_STATIC_DIR, "manifest.webmanifest")
+        resp.headers["Content-Type"] = "application/manifest+json"
+        resp.headers["Cache-Control"] = "no-cache"
+        return resp
+
+    @app.route("/sw.js")
+    def service_worker():
+        resp = send_from_directory(_STATIC_DIR, "sw.js")
+        resp.headers["Content-Type"] = "text/javascript"
+        resp.headers["Service-Worker-Allowed"] = "/"   # allow root scope despite the /sw.js path
+        resp.headers["Cache-Control"] = "no-cache"      # always revalidate so SW updates land
+        return resp
 
     # ── API routes ──────────────────────────────────────────────────
 
