@@ -90,10 +90,11 @@ class MenuNode:
     """A single menu entry: a submenu (children) or a leaf bound to a serial command."""
 
     def __init__(self, label: str, *, command: Optional[str] = None,
-                 children: "Optional[list[MenuNode]]" = None):
+                 needs_arg: bool = False, children: "Optional[list[MenuNode]]" = None):
         self.label = label
         self.command = command
-        self.children = children or []
+        self.needs_arg = needs_arg   # leaf whose real command REQUIRES an argument (e.g. a file/app name);
+        self.children = children or []   # the skin must not fire it as a bare button (would send broken input)
 
     @property
     def is_menu(self) -> bool:
@@ -146,6 +147,10 @@ class DeviceScreenModel:
         if node.is_menu:
             self.path.append(self.sel)
             self.sel = 0
+        elif node.needs_arg:
+            # Honest: this real command needs an argument we can't supply from a bare menu button, so we
+            # surface that instead of firing a broken command (no arg-entry affordance yet — DV4 follow-up).
+            self.status = "needs arg: " + (node.command or node.label)
         elif node.command is not None:
             sent = False
             if send is not None:
@@ -274,11 +279,42 @@ def esp32div_menu() -> "list[MenuNode]":
     ]
 
 
+# ── a faithful Bruce menu (leaves are real Bruce serial commands — see src/protocols/bruce.py) ──
+def bruce_menu() -> "list[MenuNode]":
+    # Every leaf's command is a REAL Bruce command from BruceProtocol().get_commands(); the three that take
+    # an argument (a file/app the menu can't supply) are marked needs_arg so they don't fire a broken line.
+    M = MenuNode
+    return [
+        M("System", children=[
+            M("Info", command="info"),
+            M("Free Heap", command="free"),
+            M("Uptime", command="uptime"),
+            M("Reboot", command="reboot"),
+        ]),
+        M("Infrared", children=[
+            M("IR Receive", command="ir rx"),
+            M("IR Transmit", command="ir tx"),
+        ]),
+        M("Sub-GHz", children=[
+            M("SubGHz Receive", command="subghz rx"),
+            M("SubGHz Transmit", command="subghz tx"),
+            M("Replay from File…", command="subghz tx_from_file", needs_arg=True),
+        ]),
+        M("BadUSB", children=[
+            M("Run Ducky Script…", command="badusb run_from_file <script>", needs_arg=True),
+        ]),
+        M("Apps", children=[
+            M("Open App…", command="loader open <app>", needs_arg=True),
+        ]),
+    ]
+
+
 # firmware -> (display title, menu factory) for the Device View chooser
 SKINS = {
     "marauder": ("ESP32 Marauder", marauder_menu),
     "ghostesp": ("GhostESP", ghostesp_menu),
     "esp32div": ("ESP32-DIV", esp32div_menu),
+    "bruce": ("Bruce", bruce_menu),
 }
 
 

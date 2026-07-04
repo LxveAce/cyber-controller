@@ -1704,7 +1704,8 @@ class CyberControllerWindow(QMainWindow):
         self._device_view.activateWindow()
 
     # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
-    _SKIN_PROTOCOL = {"marauder": "marauder", "ghostesp": "ghostesp", "esp32div": "esp32_div"}
+    _SKIN_PROTOCOL = {"marauder": "marauder", "ghostesp": "ghostesp", "esp32div": "esp32_div",
+                      "bruce": "bruce"}
 
     def _device_view_send(self, firmware: str, cmd: str) -> bool:
         """Send a Device-View command to the active device IFF its selected firmware matches the skin.

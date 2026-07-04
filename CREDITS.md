@@ -161,7 +161,9 @@ and real-device field testing of its community. Named here with thanks:
     the firmware skin's native ratio on resize instead of letterboxing dead-space), its crisp-zoom modes
     (**DV2**: Fit / integer 1×/2×/3× nearest-neighbor / 1:1, so blowing the skin up stays sharp), and
     per-firmware palettes (**DV3**: each skin reads its own colour scheme so Marauder / GhostESP / ESP32-DIV
-    look like their real firmware instead of one shared theme — honest reconstructions, not pixel captures).
+    look like their real firmware instead of one shared theme — honest reconstructions, not pixel captures),
+    and the **Bruce** skin he flagged as daily-carry (**DV4**: a reconstructed Bruce menu whose every leaf is
+    a real Bruce serial command, with the argument-taking ones marked so they don't fire a broken command).
 
   These suggestions and test reports made the firmware coverage broader and better grounded in how
   the hardware actually behaves. Thank you.

@@ -23,6 +23,7 @@ from src.ui.qt.device_view import (  # noqa: E402
     DeviceView,
     MenuNode,
     SkinSpec,
+    bruce_menu,
     esp32div_menu,
     ghostesp_menu,
     marauder_menu,
@@ -64,6 +65,48 @@ def test_every_esp32div_leaf_is_a_real_command():
     real = {c.name for c in Esp32DivProtocol().get_commands()}
     for cmd in _leaf_commands(esp32div_menu()):
         assert cmd in real, f"skin leaf {cmd!r} is not a real ESP32-DIV command"
+
+
+def test_every_bruce_leaf_is_a_real_command():
+    from src.protocols.bruce import BruceProtocol
+    real = {c.name for c in BruceProtocol().get_commands()}
+    leaves = _leaf_commands(bruce_menu())
+    assert leaves, "bruce_menu produced no leaves"
+    for cmd in leaves:
+        assert cmd in real, f"skin leaf {cmd!r} is not a real Bruce command"
+
+
+def _leaves(nodes):
+    for n in nodes:
+        if n.is_menu:
+            yield from _leaves(n.children)
+        else:
+            yield n
+
+
+def test_bruce_arg_leaves_are_marked_and_do_not_fire(qapp):
+    """The 3 Bruce commands that need an argument (subghz tx_from_file, badusb run_from_file <script>,
+    loader open <app>) must be needs_arg AND must NOT send a (broken) bare command when entered."""
+    arg_cmds = {"subghz tx_from_file", "badusb run_from_file <script>", "loader open <app>"}
+    leaves = {n.command: n for n in _leaves(bruce_menu())}
+    for c in arg_cmds:
+        assert c in leaves and leaves[c].needs_arg, f"{c!r} should be marked needs_arg"
+    # entering EACH needs_arg leaf surfaces 'needs arg' and sends nothing (no broken bare command)
+    for c in arg_cmds:
+        sent = []
+        mm = DeviceScreenModel("Bruce", [MenuNode("x", command=c, needs_arg=True)])
+        mm.sel = 0
+        mm.enter(lambda cmd: sent.append(cmd) or True)
+        assert sent == [], f"{c!r} must not fire a bare command"
+        assert mm.status.startswith("needs arg:")
+
+    # a normal Bruce leaf DOES send its real command
+    sent.clear()
+    m2 = DeviceScreenModel("Bruce", bruce_menu(), skin="bruce")
+    m2.path = [0]           # System
+    m2.sel = 0              # Info
+    m2.enter(lambda cmd: sent.append(cmd) or True)
+    assert sent == ["info"] and m2.status.startswith("» sent:")
 
 
 def test_skins_registry_builds_and_renders(qapp):
@@ -138,8 +181,8 @@ def test_custom_menu_node():
 # ── DV3: per-firmware SkinSpec (palette JSON) ────────────────────────
 def test_dv3_skins_have_distinct_specs(qapp):
     specs = {sid: SkinSpec.load(sid) for sid in SKINS}
-    assert len({s.bg.name() for s in specs.values()}) == 3       # each firmware's bg differs
-    assert len({s.accent.name() for s in specs.values()}) == 3   # each firmware's accent differs
+    assert len({s.bg.name() for s in specs.values()}) == len(SKINS)       # every firmware's bg differs
+    assert len({s.accent.name() for s in specs.values()}) == len(SKINS)   # every firmware's accent differs
     default = SkinSpec()
     assert all(s.accent.name() != default.accent.name() for s in specs.values())  # actually customized
 
