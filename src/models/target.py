@@ -16,6 +16,7 @@ class TargetType(Enum):
     SUBGHZ = "subghz"
     NFC = "nfc"
     RFID = "rfid"  # 125 kHz tags (Flipper) — distinct from 13.56 MHz NFC; different emulate command
+    ALPR = "alpr"  # Flock-style ALPR surveillance camera (Flock-You detection) — awareness only, no actions
 
 
 @dataclass

@@ -28,6 +28,7 @@ from src.protocols.bruce import BruceProtocol
 from src.protocols.bw16 import BW16Protocol
 from src.protocols.esp32_div import Esp32DivProtocol
 from src.protocols.flipper import FlipperProtocol
+from src.protocols.flock_you import FlockYouProtocol
 from src.protocols.ghost_esp import GhostESPProtocol
 from src.protocols.halehound import HaleHoundProtocol
 from src.protocols.marauder import MarauderProtocol
@@ -79,6 +80,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "esp32-div": Esp32DivProtocol,
     "bw16": BW16Protocol,
     "bluejammer": BlueJammerProtocol,
+    "flock-you": FlockYouProtocol,
     # Fallbacks (both names map to the same passthrough class).
     "generic": GenericProtocol,
     "raw": GenericProtocol,
@@ -96,6 +98,7 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "esp32-div": "ESP32-DIV",
     "bw16": "BW16 (RTL8720DN)",
     "bluejammer": "BlueJammer-V2 (lab-only)",
+    "flock-you": "Flock-You (ALPR detector)",
     "generic": "Generic / Raw",
     "raw": "Generic / Raw",
 }
@@ -191,6 +194,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "esp32-div": "src.protocols.esp32_div",
     "bw16": "src.protocols.bw16",
     "bluejammer": "src.protocols.bluejammer",
+    "flock-you": "src.protocols.flock_you",
     "generic": "src.protocols",  # GenericProtocol lives in __init__
     "raw": "src.protocols",
 }
@@ -229,6 +233,7 @@ __all__ = [
     "Esp32DivProtocol",
     "BW16Protocol",
     "BlueJammerProtocol",
+    "FlockYouProtocol",
     "GenericProtocol",
     "PROTOCOLS",
     "PROTOCOL_DISPLAY_NAMES",

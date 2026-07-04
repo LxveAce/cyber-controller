@@ -5,7 +5,7 @@
   "core_id": "flock-you",
   "description": "Passive Flock Safety ALPR (automated license-plate reader) camera detector — sniffs the WiFi/BLE beacons Flock cameras emit. Source-first build (PlatformIO); formal releases may 404, which the flash core tolerates.",
   "backend": "esptool",
-  "protocol": null,
+  "protocol": "flock_you",
   "boards": [
     {
       "name": "ESP32-S3 Generic",

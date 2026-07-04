@@ -174,4 +174,27 @@ class TargetIngestor:
                 extra={"data": d.get("data", "")},
             )
 
+        if et == "alpr_found":
+            # Flock-style ALPR surveillance camera, detected by Flock-You (WiFi OUI + probe-request IE
+            # fingerprint). Keyed by the camera's MAC. Awareness-first: NO protocol declares TARGET_ACTIONS
+            # for TargetType.ALPR, so the right-click / graph-node action MENUS offer zero actions on it — it
+            # is a node you *see*, not a preset attack surface. (A user's own explicit AutoRouter wildcard
+            # rule can still match any target type; consistent with the project's "label, never block" stance
+            # it is unrouted by default rather than hard-blocked.)
+            mac = str(d.get("mac") or d.get("mac_address") or "").strip()
+            if not mac:
+                return None
+            t = Target(
+                mac=mac, target_type=TargetType.ALPR,
+                # Prefer the camera's SSID; fall back to the detection method so the row is never blank.
+                ssid=str(d.get("ssid") or d.get("detection_method") or ""),
+                rssi=int(d.get("rssi", 0) or 0), channel=int(d.get("channel", 0) or 0),
+                device_source=port,
+                vendor="Flock Safety (OUI/IE match)",
+            )
+            for extra_key in ("oui", "detection_method", "frequency"):
+                if d.get(extra_key):
+                    t.extra[extra_key] = d[extra_key]
+            return t
+
         return None

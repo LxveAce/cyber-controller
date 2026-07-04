@@ -37,6 +37,7 @@ _KIND_COLORS = {
     "ap": ("#10243d", "#58a6ff"),        # discovered access points — blue
     "client": ("#3a2410", "#f0883e"),    # client stations — orange
     "ble": ("#2a1a3d", "#d2a8ff"),       # BLE devices — purple
+    "alpr": ("#3d1a1a", "#f85149"),      # Flock-style ALPR surveillance cameras — crimson (watching you)
     "node": ("#0d1117", "#8b949e"),      # generic / future remote nodes — grey
 }
 _NODE_W, _NODE_H = 150.0, 46.0
@@ -276,6 +277,8 @@ class NetworkTab(QWidget):
     def _target_kind(t) -> str:
         tt = getattr(getattr(t, "target_type", None), "value", "") or str(getattr(t, "target_type", ""))
         tt = tt.lower()
+        if "alpr" in tt:
+            return "alpr"
         if "client" in tt:
             return "client"
         if "ble" in tt:
