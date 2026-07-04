@@ -124,7 +124,7 @@
     "repo": "https://github.com/justcallmekoko/ESP32Marauder",
     "latest": "https://github.com/justcallmekoko/ESP32Marauder/releases/latest"
   },
-  "note": "justcallmekoko/ESP32Marauder. Release ships app .bin only; bootloader/partitions/boot_app0 pulled from the repo FlashFiles/ tree per chip family.",
+  "note": "justcallmekoko/ESP32Marauder. Release ships app .bin only; bootloader/partitions/boot_app0 pulled from the repo FlashFiles/ tree per chip family. Cardputer support-file audit (2026-07-03): upstream FlashFiles/ has only FlipperZeroDevBoard, FlipperZeroMultiBoardS3, MarauderV4 (NO Cardputer-specific dir), so M5Cardputer/ADV correctly use the esp32s3 FlipperZeroMultiBoardS3 support set — the known Marauder-on-Cardputer roughness is upstream (generic S3 support files), not a profile bug. Real-hardware flash pending the Stage-5 gate.",
   "repo": "justcallmekoko/ESP32Marauder",
   "core_id": "marauder",
   "supports_suicide": true,
