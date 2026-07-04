@@ -281,6 +281,11 @@ class CyberControllerWindow(QMainWindow):
             _act.triggered.connect(lambda _checked=False, k=_key: self._on_cardputer_remote(k))
             cr_menu.addAction(_act)
 
+        act_flock_map = QAction("Flock &Heatmap…", self)
+        act_flock_map.setStatusTip("Map located ALPR-camera detections from a saved Flock scan (cameras.geojson).")
+        act_flock_map.triggered.connect(self._on_flock_heatmap)
+        tools_menu.addAction(act_flock_map)
+
         # Help
         help_menu = mb.addMenu("&Help")
 
@@ -1728,6 +1733,20 @@ class CyberControllerWindow(QMainWindow):
         self._cardputer_remote.show()
         self._cardputer_remote.raise_()
         self._cardputer_remote.activateWindow()
+
+    def _on_flock_heatmap(self) -> None:
+        """Open the Flock heatmap (FL F4) — a map of located ALPR-camera detections from a scan's GeoJSON."""
+        try:
+            from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Flock Heatmap", f"Could not open the Flock Heatmap: {exc}")
+            return
+        self._flock_heatmap = FlockHeatmapTab()
+        self._flock_heatmap.setWindowTitle("Flock Heatmap — located ALPR cameras")
+        self._flock_heatmap.resize(860, 680)
+        self._flock_heatmap.show()
+        self._flock_heatmap.raise_()
+        self._flock_heatmap.activateWindow()
 
     # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
     _SKIN_PROTOCOL = {"marauder": "marauder", "ghostesp": "ghostesp", "esp32div": "esp32_div",
