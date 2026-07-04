@@ -66,7 +66,10 @@ A few minor engines flagging an unsigned PyInstaller exe while every major one p
 false-positive pattern — not a real detection. Open the VirusTotal link on any release and read which
 engines flagged it: generic/heuristic labels from a small minority is the expected noise.
 
-### Latest release (v1.4.0) — actual results
+### Example results (v1.4.0 release)
+
+These are the actual VirusTotal results for one representative release; the pattern is the same on every
+build. For the **current release's** live numbers, open its GitHub release notes (each links its per-file report).
 
 | File | Detections | Flagged by |
 |------|-----------|------------|
