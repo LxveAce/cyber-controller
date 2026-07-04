@@ -274,6 +274,13 @@ class CyberControllerWindow(QMainWindow):
             _act.triggered.connect(lambda _checked=False, k=_key: self._on_device_view(k))
             dv_menu.addAction(_act)
 
+        cr_menu = tools_menu.addMenu("Cardputer &Remote")
+        cr_menu.setStatusTip("A Cardputer-shaped Device View + a raw CLI console — two lanes, one guarded send.")
+        for _key, (_title, _factory) in SKINS.items():
+            _act = QAction(f"{_title}…", self)
+            _act.triggered.connect(lambda _checked=False, k=_key: self._on_cardputer_remote(k))
+            cr_menu.addAction(_act)
+
         # Help
         help_menu = mb.addMenu("&Help")
 
@@ -1702,6 +1709,25 @@ class CyberControllerWindow(QMainWindow):
         self._device_view.show()
         self._device_view.raise_()
         self._device_view.activateWindow()
+
+    def _on_cardputer_remote(self, firmware: str = "marauder") -> None:
+        """Open a Cardputer Remote (CP2) — the same skin shaped to the Cardputer's 240x135 PLUS a raw CLI
+        console, both driving the connected device through the identical guarded send as the Device View."""
+        try:
+            from src.ui.qt.cardputer_remote import CardputerRemote
+        except Exception as exc:  # noqa: BLE001
+            QMessageBox.critical(self, "Cardputer Remote", f"Could not open the Cardputer Remote: {exc}")
+            return
+        from src.ui.qt.device_view import SKINS
+        title = SKINS.get(firmware, SKINS["marauder"])[0]
+        # Same send lambda the Device View uses -> same firmware-match + safety + write validation.
+        self._cardputer_remote = CardputerRemote(
+            firmware, send=lambda c, fw=firmware: self._device_view_send(fw, c))
+        self._cardputer_remote.setWindowTitle(f"Cardputer Remote — {title} (reconstructed skin · preview)")
+        self._cardputer_remote.resize(320, 520)
+        self._cardputer_remote.show()
+        self._cardputer_remote.raise_()
+        self._cardputer_remote.activateWindow()
 
     # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
     _SKIN_PROTOCOL = {"marauder": "marauder", "ghostesp": "ghostesp", "esp32div": "esp32_div",

@@ -166,7 +166,10 @@ and real-device field testing of its community. Named here with thanks:
     a real Bruce serial command, with the argument-taking ones marked so they don't fire a broken command).
   - Proposed **Cardputer control** — groundwork in per-board Device-View sizing (**CP1**: a skin can now be
     shaped to its real board, e.g. Cardputer 240×135 landscape / M5StickC 135×240, instead of a fixed portrait
-    frame; the aspect-lock, zoom, and hit-testing all follow the board's resolution).
+    frame; the aspect-lock, zoom, and hit-testing all follow the board's resolution), then the **Cardputer
+    Remote** itself (**CP2**: that Cardputer-shaped skin plus a raw CLI console — two input lanes that both drive
+    the device through the one guarded send path, so a raw line gets the same firmware-match, safety-confirm, and
+    write validation as a menu tap).
 
   These suggestions and test reports made the firmware coverage broader and better grounded in how
   the hardware actually behaves. Thank you.
