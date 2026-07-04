@@ -652,3 +652,25 @@ select.form-control {
 .badge-lab { background: #6b4a1a; color: #f0d9b5; }
 .badge-illegal { background: #7d1a1a; color: #ffd7d7; }
 .remote-status { margin-top: 1rem; color: #8b949e; min-height: 1.2em; font-family: monospace; }
+
+/* ── Device View (MB P3: reconstructed on-screen menu) ──────────────── */
+.devview h1 small { color:#8b949e; font-weight:400; font-size:.65em; }
+.dv-skintag { display:inline-block; font-size:.8em; letter-spacing:.05em; background:#30363d; color:#a371f7; padding:.02rem .3rem; border-radius:3px; }
+.dv-screen { max-width:440px; margin:1rem 0; border:1px solid #30363d; border-radius:12px; overflow:hidden; background:#0d1117; }
+.dv-head { display:flex; justify-content:space-between; align-items:center; gap:.5rem; padding:.6rem .9rem; background:#001a00; border-bottom:1px solid #30363d; }
+.dv-title { font-weight:700; color:#a371f7; }
+.dv-crumb { color:#8b949e; font-size:.82rem; font-family:monospace; text-align:right; }
+.dv-list { list-style:none; margin:0; padding:0; }
+.dv-item { display:flex; align-items:center; justify-content:space-between; gap:.5rem; min-height:44px; padding:.55rem .9rem; border-bottom:1px solid #161b22; color:#e6edf3; cursor:pointer; }
+.dv-item:last-child { border-bottom:none; }
+.dv-item:hover { background:#161b22; }
+.dv-item:focus-visible { outline:2px solid #a371f7; outline-offset:-2px; }
+.dv-menu .dv-caret { color:#8b949e; font-size:1.1em; }
+.dv-back { color:#8b949e; font-weight:600; }
+.dv-needs { font-size:.7rem; color:#8b949e; }
+.dv-status { padding:.5rem .9rem; color:#8b949e; font-family:monospace; min-height:1.2em; border-top:1px solid #30363d; }
+.dv-open { font-size:.85rem; color:var(--accent, #a371f7); text-decoration:none; }
+.dv-open:hover { text-decoration:underline; }
+.dv-conn { font-size:.6em; font-weight:600; text-transform:uppercase; letter-spacing:.04em; padding:.1rem .4rem; border-radius:4px; vertical-align:middle; }
+.dv-on { background:#16391c; color:#3fb950; }
+.dv-off { background:#3d1a1a; color:#f0883e; }

@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Device View — {{ port }}{% endblock %}
+{% block content %}
+<section class="devview">
+  <h1>Device View <small>{{ port }}{% if device %} &middot; {{ device.firmware }}{% endif %}</small>
+    {% if device %}<span class="dv-conn {{ 'dv-on' if device.connected else 'dv-off' }}">{{ 'connected' if device.connected else 'disconnected — preview only' }}</span>{% endif %}
+  </h1>
+
+  {% if not tree %}
+    <p class="remote-empty">No reconstructed on-screen menu for this firmware{% if device %}
+      (<code>{{ device.firmware }}</code>){% endif %}. Use the <a href="/terminal/{{ port }}">terminal</a>
+      or the <a href="/remote">Remote</a> quick commands.</p>
+  {% else %}
+  <p class="remote-disclaimer">
+    <strong>Authorized use only.</strong> This is an honest reconstruction of the firmware's on-screen menu
+    (a <span class="dv-skintag">SKIN</span>, not a pixel mirror); each item fires the firmware's real serial
+    command over the same guarded path. Commands marked <span class="badge badge-lab">lab-only</span> /
+    <span class="badge badge-illegal">illegal-tx</span> confirm before sending.
+  </p>
+
+  <div class="dv-screen" data-port="{{ port }}">
+    <div class="dv-head">
+      <span class="dv-title">{{ tree.title }}</span>
+      <span class="dv-crumb" id="dv-crumb">Main Menu</span>
+    </div>
+    <ul class="dv-list" id="dv-list"></ul>
+    <div class="dv-status" id="dv-status" role="status" aria-live="polite"></div>
+  </div>
+
+  <script nonce="{{ csp_nonce }}" id="dv-tree" type="application/json">{{ tree_json | safe }}</script>
+  <script nonce="{{ csp_nonce }}">
+  (function () {
+    var tree = JSON.parse(document.getElementById('dv-tree').textContent);
+    var port = document.querySelector('.dv-screen').getAttribute('data-port');
+    var path = [];                       // indices into nested menus (mirrors the Qt model's path)
+    var listEl = document.getElementById('dv-list');
+    var crumbEl = document.getElementById('dv-crumb');
+    var statusEl = document.getElementById('dv-status');
+
+    function curItems() {
+      var items = tree.root;
+      for (var k = 0; k < path.length; k++) { items = items[path[k]].children; }
+      return items;
+    }
+    function crumb() {
+      var node = tree.root, parts = [];
+      for (var k = 0; k < path.length; k++) { parts.push(node[path[k]].label); node = node[path[k]].children; }
+      return parts.length ? parts.join(' › ') : 'Main Menu';
+    }
+    function send(cmd) {
+      fetch('/api/command', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN},
+        body: JSON.stringify({port: port, command: cmd})
+      })
+        .then(function (r) { return r.json().then(function (j) { return {ok: r.ok, j: j}; }); })
+        .then(function (res) { statusEl.textContent = res.ok ? ('» sent: ' + cmd) : ('error: ' + (res.j.error || 'failed')); })
+        .catch(function () { statusEl.textContent = 'error: request failed'; });
+    }
+    function activate(idx) {
+      var node = curItems()[idx];
+      if (node.children) { path.push(idx); render(); return; }
+      if (node.needs_arg) { statusEl.textContent = 'needs arg: ' + node.command + ' — use the terminal'; return; }
+      if (!node.command) { return; }
+      // Label, never block: a flagged command warns + requires confirm, but "proceed" is always offered.
+      if (node.danger) {
+        if (!window.confirm('Controlled / authorized use only (' + node.danger + '):\n\n' + node.command + '\n\nProceed?')) { return; }
+      }
+      send(node.command);
+    }
+    function render() {
+      crumbEl.textContent = crumb();
+      listEl.innerHTML = '';
+      function keyActivate(el, fn) {
+        el.tabIndex = 0;
+        el.setAttribute('role', 'button');
+        el.addEventListener('click', fn);
+        el.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fn(); }
+        });
+      }
+      if (path.length) {
+        var back = document.createElement('li');
+        back.className = 'dv-item dv-back';
+        back.textContent = '‹ Back';
+        keyActivate(back, function () { path.pop(); render(); });
+        listEl.appendChild(back);
+      }
+      curItems().forEach(function (node, idx) {
+        var li = document.createElement('li');
+        li.className = 'dv-item' + (node.children ? ' dv-menu' : '') + (node.danger ? ' dv-danger' : '') +
+                       (node.needs_arg ? ' dv-needarg' : '');
+        var lbl = document.createElement('span');
+        lbl.className = 'dv-label';
+        lbl.textContent = node.label;                 // textContent (never innerHTML) — no injection sink
+        li.appendChild(lbl);
+        if (node.children) {
+          var caret = document.createElement('span'); caret.className = 'dv-caret'; caret.textContent = '›';
+          li.appendChild(caret);
+        } else if (node.danger) {
+          var b = document.createElement('span');
+          b.className = 'badge badge-' + (node.danger === 'illegal-tx' ? 'illegal' : 'lab');
+          b.textContent = node.danger; li.appendChild(b);
+        } else if (node.needs_arg) {
+          var n = document.createElement('span'); n.className = 'dv-needs'; n.textContent = 'needs arg';
+          li.appendChild(n);
+        }
+        keyActivate(li, function () { activate(idx); });
+        listEl.appendChild(li);
+      });
+    }
+    render();
+  })();
+  </script>
+  {% endif %}
+</section>
+{% endblock %}

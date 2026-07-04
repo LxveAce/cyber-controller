@@ -337,6 +337,25 @@ def create_app(
             })
         return render_template("remote.html", remotes=remotes, active="remote")
 
+    @app.route("/device/<port>")
+    @requires_auth
+    def device_view_page(port: str):
+        # Web Device View (MB P3): render the firmware's reconstructed on-screen menu (the SAME MenuNode tree
+        # the Qt Device View uses, via src.core.device_menus) as a navigable screen. Leaves fire the EXISTING
+        # guarded /api/command; flagged commands are labelled + confirmed client-side (label-never-block).
+        import json as _json
+        from src.core.device_menus import menu_tree
+        device = device_manager.get_device(port)
+        tree = menu_tree(device.firmware) if device else None
+        # Escape <,>,& so the JSON embedded in a <script> tag can never break out (defense-in-depth; the menu
+        # data is developer-authored, but never trust a serialized blob inside markup).
+        tree_json = "null"
+        if tree is not None:
+            tree_json = (_json.dumps(tree).replace("<", "\\u003c").replace(">", "\\u003e")
+                         .replace("&", "\\u0026"))
+        return render_template("device.html", port=port, device=device, tree=tree,
+                               tree_json=tree_json, active="device")
+
     # ── PWA shell (MB cluster: installable LAN wireless remote) ─────
     # manifest + service worker are PUBLIC (carry no secrets) so the browser can read them before auth
     # completes — standard PWA practice. The SW is served from the ORIGIN ROOT (a /static/ worker could

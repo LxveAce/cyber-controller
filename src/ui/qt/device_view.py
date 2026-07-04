@@ -21,6 +21,16 @@ from PyQt5.QtGui import QColor, QFont, QImage, QPainter
 from PyQt5.QtWidgets import QWidget
 
 from src.core.resources import resource_path
+# The menu model was extracted to a pure (Qt-free) module so the web Device View reuses the exact same
+# reconstruction. Re-exported here so existing importers (cardputer_remote, main_window, tests) are unchanged.
+from src.core.device_menus import (  # noqa: F401
+    SKINS,
+    MenuNode,
+    bruce_menu,
+    esp32div_menu,
+    ghostesp_menu,
+    marauder_menu,
+)
 
 # ── palette (the built-in DEFAULT; a per-firmware SkinSpec overrides it — see skins/*.json) ──────────
 _BG = QColor("#0d1117")
@@ -84,21 +94,6 @@ class SkinSpec:
             return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
         except Exception:  # noqa: BLE001 — a corrupt skin file must never break the view
             return cls()
-
-
-class MenuNode:
-    """A single menu entry: a submenu (children) or a leaf bound to a serial command."""
-
-    def __init__(self, label: str, *, command: Optional[str] = None,
-                 needs_arg: bool = False, children: "Optional[list[MenuNode]]" = None):
-        self.label = label
-        self.command = command
-        self.needs_arg = needs_arg   # leaf whose real command REQUIRES an argument (e.g. a file/app name);
-        self.children = children or []   # the skin must not fire it as a bare button (would send broken input)
-
-    @property
-    def is_menu(self) -> bool:
-        return bool(self.children)
 
 
 class DeviceScreenModel:
@@ -169,156 +164,6 @@ class DeviceScreenModel:
             self.path.pop()
             self.sel = 0
 
-
-# ── a faithful ESP32 Marauder menu (leaves are real Marauder serial commands) ──
-def marauder_menu() -> "list[MenuNode]":
-    M = MenuNode
-    return [
-        M("WiFi", children=[
-            M("Scan APs", command="scanall"),
-            M("Scan Stations", command="scanall"),
-            M("Attacks", children=[
-                M("Beacon Spam", command="attack -t beacon -r"),
-                M("Rick Roll", command="attack -t rickroll"),
-                M("Deauth", command="attack -t deauth"),
-                M("Probe Flood", command="attack -t probe"),
-            ]),
-            M("Sniffers", children=[
-                M("Beacon Sniff", command="sniffbeacon"),
-                M("Deauth Sniff", command="sniffdeauth"),
-                M("PMKID", command="sniffpmkid"),
-                M("Raw", command="sniffraw"),
-            ]),
-            M("Channel", command="channel"),
-        ]),
-        M("Bluetooth", children=[
-            M("BLE Scan", command="sniffbt"),
-            M("BLE Spam", command="blespam -t all"),
-            M("BLE Track", command="sniffbt -t airtag"),
-        ]),
-        M("Device", children=[
-            M("Info", command="info"),
-            M("Settings", command="settings"),
-            M("Reboot", command="reboot"),
-        ]),
-    ]
-
-
-# ── a faithful GhostESP menu (leaves are real GhostESP serial commands) ──
-def ghostesp_menu() -> "list[MenuNode]":
-    M = MenuNode
-    return [
-        M("WiFi", children=[
-            M("Scan APs", command="scanap"),
-            M("Scan Stations", command="scansta"),
-            M("Attacks", children=[
-                M("Deauth", command="attack -d"),
-                M("Beacon Spam", command="beaconspam -r"),
-                M("Probe Flood", command="probe"),
-                M("Rick Roll", command="beaconspam -rr"),
-            ]),
-            M("Capture", children=[
-                M("Start", command="capture -eapol"),
-                M("Stop", command="capture -stop"),
-            ]),
-            M("Evil Portal", children=[
-                M("Start", command="startportal"),
-                M("Stop", command="stopportal"),
-            ]),
-        ]),
-        M("Bluetooth", children=[
-            M("BLE Scan", command="blescan"),
-            M("BLE Track", command="bletrack"),
-        ]),
-        M("Wardrive", children=[
-            M("Start", command="startwd"),
-            M("Stop", command="startwd -s"),
-        ]),
-        M("Device", children=[
-            M("Info", command="chipinfo"),
-            M("GPS Info", command="gps info"),
-            M("SD Info", command="sd info"),
-            M("Settings", command="settings"),
-            M("Reboot", command="reboot"),
-        ]),
-    ]
-
-
-# ── a faithful ESP32-DIV menu (leaves are real ESP32-DIV serial commands) ──
-def esp32div_menu() -> "list[MenuNode]":
-    M = MenuNode
-    return [
-        M("WiFi", children=[
-            M("Scan APs", command="scanwifi"),
-            M("Scan Stations", command="scansta"),
-            M("Capture", children=[
-                M("Sniff", command="sniff"),
-                M("PMKID", command="pmkid"),
-                M("Handshake", command="handshake"),
-            ]),
-            M("Attacks", children=[
-                M("Deauth", command="deauth"),
-                M("Deauth All", command="deauth all"),
-                M("Beacon", command="beacon"),
-                M("Rick Roll", command="rickroll"),
-            ]),
-            M("Channel", command="getch"),
-        ]),
-        M("Bluetooth", children=[
-            M("BLE Scan", command="scanble"),
-            M("BLE Spam", command="blespam"),
-        ]),
-        M("2.4GHz", children=[
-            M("NRF Scan", command="nrf scan"),
-            M("NRF Sniff", command="nrf sniff"),
-            M("NRF Jam", command="nrf jam"),
-        ]),
-        M("Device", children=[
-            M("Info", command="info"),
-            M("SD Info", command="sd info"),
-            M("Settings", command="settings"),
-            M("Reboot", command="reboot"),
-        ]),
-    ]
-
-
-# ── a faithful Bruce menu (leaves are real Bruce serial commands — see src/protocols/bruce.py) ──
-def bruce_menu() -> "list[MenuNode]":
-    # Every leaf's command is a REAL Bruce command from BruceProtocol().get_commands(); the three that take
-    # an argument (a file/app the menu can't supply) are marked needs_arg so they don't fire a broken line.
-    M = MenuNode
-    return [
-        M("System", children=[
-            M("Info", command="info"),
-            M("Free Heap", command="free"),
-            M("Uptime", command="uptime"),
-            M("Reboot", command="reboot"),
-        ]),
-        M("Infrared", children=[
-            M("IR Receive", command="ir rx"),
-            M("IR Transmit", command="ir tx"),
-        ]),
-        M("Sub-GHz", children=[
-            M("SubGHz Receive", command="subghz rx"),
-            M("SubGHz Transmit", command="subghz tx"),
-            M("Replay from File…", command="subghz tx_from_file", needs_arg=True),
-        ]),
-        M("BadUSB", children=[
-            M("Run Ducky Script…", command="badusb run_from_file <script>", needs_arg=True),
-        ]),
-        M("Apps", children=[
-            M("Open App…", command="loader open <app>", needs_arg=True),
-        ]),
-    ]
-
-
-# firmware -> (display title, menu factory) for the Device View chooser
-SKINS = {
-    "marauder": ("ESP32 Marauder", marauder_menu),
-    "ghostesp": ("GhostESP", ghostesp_menu),
-    "esp32div": ("ESP32-DIV", esp32div_menu),
-    "bruce": ("Bruce", bruce_menu),
-}
 
 # CP1: real on-board TFT resolutions, for building a board-shaped DeviceScreenModel(..., native_size=...).
 # Sources: M5Cardputer LCD = 240x135 (landscape, ST7789); M5StickC/StickC-Plus = 135x240 (portrait);

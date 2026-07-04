@@ -18,7 +18,8 @@
 
   {% for r in remotes %}
   <article class="remote-device" data-port="{{ r.port }}">
-    <h2>{{ r.name }} <small>{{ r.firmware }} &middot; {{ r.port }}</small></h2>
+    <h2>{{ r.name }} <small>{{ r.firmware }} &middot; {{ r.port }}</small>
+      <a class="dv-open" href="/device/{{ r.port }}">Device View &rsaquo;</a></h2>
     {% if not r.groups %}
       <p class="remote-empty">No one-tap commands for this firmware — use the
       <a href="/terminal/{{ r.port }}">terminal</a>.</p>
