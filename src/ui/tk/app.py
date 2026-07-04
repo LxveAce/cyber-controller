@@ -232,6 +232,7 @@ class TkLightApp:
 
         self._build_flash_tab()
         self._build_devices_tab()
+        self._build_device_view_tab()
         self._build_targets_tab()
         self._build_health_tab()
         self._build_nodes_tab()
@@ -522,6 +523,22 @@ class TkLightApp:
         self._root.after(5000, self._refresh_health_metrics)
 
     # ── Nodes Tab (W1.1 — key-free wireless-node manager) ──────────
+
+    def _build_device_view_tab(self) -> None:
+        # tk mirror of the Qt Device View / web /device: a navigable firmware skin whose leaves fire the real
+        # serial command through the SAME guarded write the Devices tab uses. Reuses the UI-agnostic menu model.
+        from src.ui.tk.device_view import DeviceView
+
+        self._device_view = DeviceView(self._notebook, send=self._device_view_send)
+        self._notebook.add(self._device_view, text="  Device View  ")
+
+    def _device_view_send(self, command: str) -> None:
+        """Send bridge for the Device View — writes through the active connection's guarded write, or raises
+        so the view can show an honest 'no connection' notice."""
+        if not self._active_conn:
+            raise ConnectionError("no active connection — connect a device on the Devices tab")
+        self._active_conn.write(command)          # SerialConnection.write rejects control chars
+        self._append_serial(f"> {command}")
 
     def _build_nodes_tab(self) -> None:
         from src.core.nodes_controller import NodesController

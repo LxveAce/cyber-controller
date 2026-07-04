@@ -170,6 +170,10 @@ and real-device field testing of its community. Named here with thanks:
     Remote** itself (**CP2**: that Cardputer-shaped skin plus a raw CLI console — two input lanes that both drive
     the device through the one guarded send path, so a raw line gets the same firmware-match, safety-confirm, and
     write validation as a menu tap).
+  - His firmware-menu direction now reaches every frontend equally (**DV-tk**: the reconstructed skins that
+    started as the Qt pop-out are now a navigable Device View on the plain-Tkinter build too, driven by the same
+    UI-agnostic menu model — leaves fire the real serial command through the same guarded write + safety-confirm,
+    so the lightweight GUI has full parity with the Qt/web views).
 
   These suggestions and test reports made the firmware coverage broader and better grounded in how
   the hardware actually behaves. Thank you.
