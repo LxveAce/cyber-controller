@@ -171,7 +171,8 @@
         ["_flipper", "esp32s2"],
         ["rev_feather", "esp32s2"],
         ["mini_v3", "esp32c5"],
-        ["esp32c5devkitc1", "esp32c5"]
+        ["esp32c5devkitc1", "esp32c5"],
+        ["m5nanoc6", "esp32c6"]
       ]
     },
     "emit": {
@@ -198,7 +199,8 @@
         "cyd_2432S028_2usb": "CYD 2.8\" (2-USB)",
         "cyd_2432S024_guition": "CYD 2.4\" Guition",
         "cyd_3_5_inch": "CYD 3.5\"",
-        "esp32c5devkitc1": "ESP32-C5 DevKitC-1"
+        "esp32c5devkitc1": "ESP32-C5 DevKitC-1",
+        "m5nanoc6": "M5NanoC6 (ESP32-C6)"
       }
     }
   }
