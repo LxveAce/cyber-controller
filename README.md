@@ -160,9 +160,9 @@ education, and CTF use only.
 
 ### Control
 - **Protocol-aware serial monitor** with a **per-device firmware selector** and per-firmware command
-  palettes. Nine native serial parsers ship: **Marauder, GhostESP, Bruce, Flipper, HaleHound,
-  Meshtastic, ESP32-DIV, BW16 (RTL8720DN `AT+` CLI), and BlueJammer (telemetry-only)** — with a generic
-  raw passthrough as a fallback.
+  palettes. Ten native serial parsers ship: **Marauder, GhostESP, Bruce, Flipper, HaleHound,
+  Meshtastic, ESP32-DIV, BW16 (RTL8720DN `AT+` CLI), BlueJammer (telemetry-only), and Flock-You (passive
+  ALPR-camera detector)** — with a generic raw passthrough as a fallback (12 registry entries incl. generic + raw).
 - **Safety / disclaimer layer** — dangerous transmit commands (deauth / jam / beacon spam) are
   **labeled and confirmed, never blocked**; a one-time legal disclaimer on first launch plus a
   Settings "suppress all warnings" master toggle. Full capability is always retained.
@@ -356,7 +356,7 @@ download yourself (SHA-256, VirusTotal, build from source).
 - [x] Real ADB / SD-image / AmebaD backends, backup + restore, batch flash
 
 ### Phase 2 — Intelligence ✅
-- [x] Protocol parsers (Marauder, GhostESP, Bruce, Flipper, HaleHound, Meshtastic, ESP32-DIV, BW16, BlueJammer) + registry
+- [x] Protocol parsers (Marauder, GhostESP, Bruce, Flipper, HaleHound, Meshtastic, ESP32-DIV, BW16, BlueJammer, Flock-You) + registry
 - [x] Shared target pool (APs + BLE / SubGHz / NFC / rogue-AP) + cross-comm UI
 - [x] Per-device firmware selector (any firmware feeds the AutoRouter, not just Marauder)
 - [x] BW16 / RTL8720DN AmebaD flash backend — HW-validated end-to-end
