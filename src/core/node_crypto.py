@@ -237,7 +237,13 @@ class ReplayWindow:
     rejected as too-old. Not thread-safe — one window per sender link.
     """
 
-    def __init__(self, window_size: int = 1024) -> None:
+    def __init__(
+        self,
+        window_size: int = 1024,
+        *,
+        initial_epoch: int | None = None,
+        initial_highest: int = -1,
+    ) -> None:
         if not isinstance(window_size, int) or window_size < 1:
             raise ValueError("window_size must be a positive int")
         self._size = window_size
@@ -245,6 +251,18 @@ class ReplayWindow:
         self._epoch: int | None = None
         self._highest = -1
         self._bitmap = 0  # bit i set == counter (highest - i) has been seen
+        if initial_epoch is not None:
+            # Restore persisted anti-replay state after a receiver restart. We can't know WHICH
+            # in-window counters were already seen, so take the conservative posture: mark the whole
+            # window as seen (bitmap = all ones) so ONLY a strictly-newer counter is accepted. This
+            # prevents a captured old frame from replaying across a restart (closes the restart gap).
+            if not isinstance(initial_epoch, int) or isinstance(initial_epoch, bool) or initial_epoch < 0:
+                raise ValueError("initial_epoch must be a non-negative int")
+            if not isinstance(initial_highest, int) or initial_highest < -1:
+                raise ValueError("initial_highest must be an int >= -1")
+            self._epoch = initial_epoch
+            self._highest = initial_highest
+            self._bitmap = self._mask if initial_highest >= 0 else 0
 
     @property
     def epoch(self) -> int | None:

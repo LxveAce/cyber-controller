@@ -287,6 +287,17 @@ def test_sealer_persist_restore_does_not_reuse_nonce():
     assert len(used) == 20
 
 
+def test_replay_window_restore_seed_rejects_old_accepts_new():
+    """A window restored from persisted (epoch, highest) blocks a captured frame from replaying across
+    a receiver restart: everything at/below the persisted head is treated as seen; only newer passes."""
+    w = ReplayWindow(window_size=16, initial_epoch=5, initial_highest=100)
+    assert w.check_and_update(5, 100) is False   # the persisted head -> already seen
+    assert w.check_and_update(5, 95) is False     # inside the window -> conservatively seen
+    assert w.check_and_update(5, 80) is False      # older than the window -> too old
+    assert w.check_and_update(5, 101) is True       # strictly newer -> accepted
+    assert w.check_and_update(6, 0) is True         # a newer epoch resets the window
+
+
 def test_unseal_surfaces_version_for_caller_gating():
     """unseal returns the authenticated version; it does not itself reject an unknown one."""
     wire = seal(KEY, node_id=1, epoch=0, counter=0, plaintext=b"x", version=2)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from typing import Callable
+from typing import Any, Callable
 
 import serial.tools.list_ports
 from serial.tools.list_ports_common import ListPortInfo
@@ -231,6 +231,40 @@ class DeviceManager:
         """Return the active SerialConnection for *port*, if any."""
         with self._lock:
             return self._connections.get(port)
+
+    def attach_connection(self, device: Device, conn: Any, *, owner: str | None = None) -> Any:
+        """Register an already-built, connection-shaped object as a managed device.
+
+        This is the seam for connections CC does not open itself over a serial port — chiefly a
+        :class:`~src.core.node_link.NodeLink` wireless link riding a gateway. *conn* only has to
+        duck-type :class:`SerialConnection` (``port``/``is_connected``/``connect``/``disconnect``/
+        ``write``/``on_line``/``remove_line_callback``/``on_state_change``); it is then stored and
+        reconciled exactly like a wired connection, so ``TargetIngestor`` / ``AutoRouter`` /
+        ``Broadcast`` / the graph treat the node identically to a serial device.
+
+        The connection is NOT opened here — the caller owns its lifecycle (``conn.connect()``). Its
+        state changes are mirrored onto *device* so the indicator can't lie. Returns *conn*.
+        """
+        port = device.port
+
+        def _reconcile(_state, _conn=conn, _port=port):
+            # Mirror the link's own connected-state back onto the Device (same guard as a wired conn).
+            with self._lock:
+                d = self._devices.get(_port)
+                if d is not None:
+                    d.connected = bool(getattr(_conn, "is_connected", False))
+
+        on_state = getattr(conn, "on_state_change", None)
+        if callable(on_state):
+            on_state(_reconcile)
+        with self._lock:
+            self._devices[port] = device
+            self._connections[port] = conn
+            device.connected = bool(getattr(conn, "is_connected", False))
+            if owner:
+                self._conn_owners.setdefault(port, set()).add(owner)
+        self._fire_connected(device)
+        return conn
 
     def probe(self, port: str, *, timeout: float = 0.8):
         """Run the connect-time handshake probe on *port* and set the device's ``health``/``fw_banner``.
