@@ -2177,6 +2177,10 @@ _PROFILE_FILES = (
     # images flashed at 0x0 via esptool --chip esp8266; assets verified live against
     # SpacehuhnTech/esp8266_deauther v2.6.1 (2026-07-02). Real-hardware flash pending the Stage-5 gate.
     "esp8266_deauther.json",
+    # M5 pwn/pentest firmwares (Discord community asks). Both esptool merged-single-bin @0x0 (ESP32-S3).
+    # Assets verified live 2026-07-03: Devsur11/M5Gotchi v0.7 (cardputer.bin + m5stick.bin, both S3) and
+    # 0ct0sec/M5PORKCHOP v0.1.8b-PSTH (the *_m5burner.bin merged image). Flash offset pending Stage-5 HW gate.
+    "m5gotchi.json", "porkchop.json",
 )
 
 

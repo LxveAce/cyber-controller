@@ -1,0 +1,47 @@
+{
+  "name": "M5PORKCHOP",
+  "id": "porkchop",
+  "description": "M5Cardputer (ESP32-S3) packet-sniffer / pentest-game firmware. Includes offensive WiFi/BLE features (beacon + BLE notification spam) — LABELLED for authorized/lawful testing only; capability retained, never operated by this app.",
+  "backend": "esptool",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "M5Cardputer (ESP32-S3, 8MB)",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_keyboard": true
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/0ct0sec/M5PORKCHOP",
+    "latest": "https://github.com/0ct0sec/M5PORKCHOP/releases/latest"
+  },
+  "note": "Assets verified live against 0ct0sec/M5PORKCHOP v0.1.8b-PSTH (2026-07-03): releases ship a plain app image plus a *_m5burner.bin MERGED image — this profile matches the m5burner merged bin (bootloader+partitions+app), flashed at 0x0 for a single-file esptool write. Board = M5Cardputer / ESP32-S3FN8 (8MB). Upstream is a PRE-RELEASE beta; pinned to releases/latest. Note: M5Burner flashing nukes NVS (game XP/progress); M5 Launcher preserves it. Real-hardware flash offset pending the Stage-5 hardware gate.",
+  "core_id": "porkchop",
+  "label": "M5PORKCHOP (0ct0sec)",
+  "repo": "0ct0sec/M5PORKCHOP",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip_else_all",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/0ct0sec/M5PORKCHOP/releases/latest",
+    "on_error": "source_only_empty",
+    "asset_match": {"include_suffixes": ["_m5burner.bin"]},
+    "chip_map": {
+      "strategy": "fragments", "source": "name", "default": "esp32s3",
+      "rules": [
+        ["cardputer", "esp32s3"], ["m5cardputer", "esp32s3"], ["porkchop", "esp32s3"], ["s3", "esp32s3"]
+      ]
+    },
+    "emit": {
+      "offset": "0x0", "merged": true, "label_template": "M5PORKCHOP {name}"
+    }
+  }
+}

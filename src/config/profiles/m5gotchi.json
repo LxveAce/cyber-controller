@@ -1,0 +1,54 @@
+{
+  "name": "M5Gotchi",
+  "id": "m5gotchi",
+  "description": "Pwnagotchi-style passive WiFi handshake collector for M5Stack devices (M5Cardputer and M5Stick-S3, both ESP32-S3). Passive capture only — authorized/lawful testing on networks you own.",
+  "backend": "esptool",
+  "protocol": null,
+  "boards": [
+    {
+      "name": "M5Cardputer (ESP32-S3)",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_keyboard": true
+    },
+    {
+      "name": "M5Stick-S3 (ESP32-S3)",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/Devsur11/M5Gotchi",
+    "latest": "https://github.com/Devsur11/M5Gotchi/releases/latest"
+  },
+  "note": "Assets verified live against Devsur11/M5Gotchi v0.7 (2026-07-03): releases ship two prebuilt merged images, cardputer.bin + m5stick.bin — both ESP32-S3 (upstream README lists M5Cardputer, M5Stick-S3, M5Cardputer-adv, all S3; the 'm5stick' build is the S3 Stick, NOT the ESP32 StickC Plus2). Merged single-bin flashed at 0x0 (M5 web-flasher class). A microSD card is required for the firmware to run on Cardputer. Real-hardware flash offset pending the Stage-5 hardware gate.",
+  "core_id": "m5gotchi",
+  "label": "M5Gotchi (Devsur11)",
+  "repo": "Devsur11/M5Gotchi",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip_else_all",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/Devsur11/M5Gotchi/releases/latest",
+    "on_error": "source_only_empty",
+    "asset_match": {"include_suffixes": [".bin"]},
+    "chip_map": {
+      "strategy": "fragments", "source": "name", "default": "esp32s3",
+      "rules": [
+        ["cardputer", "esp32s3"], ["m5stick", "esp32s3"], ["stick", "esp32s3"], ["s3", "esp32s3"]
+      ]
+    },
+    "emit": {
+      "offset": "0x0", "merged": true, "label_template": "M5Gotchi {name}"
+    }
+  }
+}
