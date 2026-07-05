@@ -143,6 +143,15 @@ def test_widget_load_geojson_file_roundtrip(qapp, tmp_path):
     assert n == 2 and w.camera_count == 2
 
 
+def test_widget_loads_a_session_checkpoint(qapp, tmp_path):
+    # A live-drive checkpoint (FlockSession.checkpoint, atomic, written after each add) must load
+    # straight into the map — locks the persist->map contract so the offline map can resume a drive.
+    p = tmp_path / "drive" / "flock.geojson"  # checkpoint creates the parent dir
+    assert _session_two_cameras().checkpoint(p) == 2
+    w = FlockHeatmapTab()
+    assert w.load_geojson_file(str(p)) == 2 and w.camera_count == 2
+
+
 def test_widget_load_bad_file_is_safe(qapp, tmp_path):
     bad = tmp_path / "nope.geojson"
     bad.write_text("{ not json", encoding="utf-8")
