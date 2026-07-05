@@ -10,8 +10,9 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QObject, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
     QComboBox,
     QFileDialog,
@@ -119,12 +120,138 @@ class _WardriveWorker(QThread):
             self.stopped.emit()
 
 
+class _WardriveCapture(QObject):
+    """GPS-tagged capture routed through the shared DeviceManager instead of a raw serial handle (F1).
+
+    ``_WardriveWorker`` opened its OWN ``serial.Serial()``, which on Windows (COM ports are exclusive)
+    throws Access Denied the moment the same board is also open in the Devices tab. This borrows both the
+    device and the GPS port from the DeviceManager with an owner tag, so a board already connected elsewhere
+    is shared through ref-counting rather than fought over — the fix for a real double-open bug. The DM's
+    per-port reader threads push lines in via ``on_line`` (so no QThread of our own); a lock guards the
+    session because the two ports fire on different threads. Same signal interface as ``_WardriveWorker``.
+    """
+
+    status = pyqtSignal(str, int)   # gps-fix text, ap count
+    line = pyqtSignal(str)
+    stopped = pyqtSignal()
+
+    OWNER = "wardrive"
+
+    def __init__(self, device_manager, gps_port: str, gps_baud: int,
+                 dev_port: str, dev_baud: int, out_path: str) -> None:
+        super().__init__()
+        self._dm = device_manager
+        self._gps_port, self._gps_baud = gps_port, gps_baud
+        self._dev_port, self._dev_baud = dev_port, dev_baud
+        self._out_path = out_path
+        self._lock = threading.Lock()
+        self._sess: wd.WardriveSession | None = None
+        self._fh = None
+        self._dev_conn = None
+        self._gps_conn = None
+        self._running = False
+        self._last_status: tuple[str, int] = ("", -1)
+
+    def start(self) -> None:
+        try:
+            self._fh = open(self._out_path, "w", newline="", encoding="utf-8")
+        except OSError as exc:
+            self.line.emit(f"cannot open output {self._out_path}: {exc}")
+            self.stopped.emit()
+            return
+        self._sess = wd.WardriveSession(self._fh, app_version="1.0")
+        self._sess.start()
+        self._running = True
+        try:
+            self._dev_conn = self._dm.open_connection(self._dev_port, self._dev_baud, owner=self.OWNER)
+            self._dev_conn.on_line(self._on_dev_line)
+            if self._gps_port:
+                self._gps_conn = self._dm.open_connection(self._gps_port, self._gps_baud, owner=self.OWNER)
+                self._gps_conn.on_line(self._on_gps_line)
+            try:
+                self._dev_conn.write("scanap\n")
+            except Exception:  # noqa: BLE001
+                pass
+            self.line.emit(f"Wardrive started — logging to {self._out_path}")
+        except Exception as exc:  # noqa: BLE001
+            self.line.emit(f"wardrive start error: {exc}")
+            self.stop()
+
+    def stop(self) -> None:
+        if not self._running and self._dev_conn is None and self._gps_conn is None:
+            return
+        self._running = False
+        # Tear the ports down FIRST (this drains their reader threads) so no callback can still be writing
+        # when we close the file below. remove_line_callback stops new lines; close_connection releases our
+        # owner ref (the board stays alive for any other owner).
+        if self._dev_conn is not None:
+            for step in (lambda: self._dev_conn.write("stopscan\n"),
+                         lambda: self._dev_conn.remove_line_callback(self._on_dev_line),
+                         lambda: self._dm.close_connection(self._dev_port, owner=self.OWNER)):
+                try:
+                    step()
+                except Exception:  # noqa: BLE001
+                    pass
+            self._dev_conn = None
+        if self._gps_conn is not None:
+            for step in (lambda: self._gps_conn.remove_line_callback(self._on_gps_line),
+                         lambda: self._dm.close_connection(self._gps_port, owner=self.OWNER)):
+                try:
+                    step()
+                except Exception:  # noqa: BLE001
+                    pass
+            self._gps_conn = None
+        with self._lock:                       # readers are released; safe to finalize the file
+            count = self._sess.ap_count if self._sess else 0
+            if self._fh is not None:
+                try:
+                    self._fh.close()
+                except Exception:  # noqa: BLE001
+                    pass
+                self._fh = None
+        self.line.emit(f"Wardrive stopped — {count} APs logged to {self._out_path}")
+        self.stopped.emit()
+
+    # -- line callbacks (fire on the DeviceManager reader threads) --
+    def _on_gps_line(self, ln: str) -> None:
+        if not ln:
+            return
+        with self._lock:
+            if not self._running or self._sess is None or self._fh is None:
+                return
+            self._sess.update_gps(ln)
+        self._emit_status()
+
+    def _on_dev_line(self, ln: str) -> None:
+        if not ln:
+            return
+        with self._lock:
+            if not self._running or self._sess is None or self._fh is None:
+                return
+            wrote = self._sess.observe(ln)
+        if wrote:
+            self.line.emit(f"+ {ln[:80]}")
+        self._emit_status()
+
+    def _emit_status(self) -> None:
+        sess = self._sess
+        if sess is None:
+            return
+        fix = sess.fix
+        ftxt = f"{fix.lat:.5f}, {fix.lon:.5f}" if (fix and fix.has_fix) else "No Fix"
+        cur = (ftxt, sess.ap_count)
+        if cur != self._last_status:
+            self._last_status = cur
+            self.status.emit(ftxt, sess.ap_count)
+
+
 class WardriveTab(QWidget):
     """Live GPS-tagged Wi-Fi capture -> WiGLE CSV."""
 
-    def __init__(self) -> None:
+    def __init__(self, device_manager=None) -> None:
         super().__init__()
-        self._worker: _WardriveWorker | None = None
+        self._dm = device_manager                       # when present, capture routes through it (no COM clash)
+        self._worker = None
         self._build_ui()
         self._refresh_ports()
 
@@ -243,7 +370,13 @@ class WardriveTab(QWidget):
             return
         self._btn_start.setEnabled(False)
         self._btn_stop.setEnabled(True)
-        self._worker = _WardriveWorker(self._gps_combo.currentData(), gbaud, dev, dbaud, out)
+        gps = self._gps_combo.currentData()
+        if self._dm is not None:
+            # Route through the shared DeviceManager so a board also open in the Devices tab is shared,
+            # not double-opened (Windows COM ports are exclusive — the raw-serial path throws Access Denied).
+            self._worker = _WardriveCapture(self._dm, gps, gbaud, dev, dbaud, out)
+        else:
+            self._worker = _WardriveWorker(gps, gbaud, dev, dbaud, out)
         self._worker.status.connect(self._on_status)
         self._worker.line.connect(self._logmsg)
         self._worker.stopped.connect(self._on_stopped)

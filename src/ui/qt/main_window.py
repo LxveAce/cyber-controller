@@ -502,7 +502,7 @@ class CyberControllerWindow(QMainWindow):
             device_manager=self._dm,
             action_resolver=self._action_resolver,
         )
-        self._wardrive_tab = WardriveTab()  # GPS-tagged Wi-Fi capture -> WiGLE CSV (lawful, owner-authorized)
+        self._wardrive_tab = WardriveTab(device_manager=self._dm)  # GPS-tagged Wi-Fi capture -> WiGLE CSV (lawful, owner-authorized); routes through the DM so it can't double-open a board
         from src.ui.qt.broadcast_tab import BroadcastBar
         self._broadcast_bar = BroadcastBar(self._broadcast, self._dm, self._bus)
         self._operate_surface = QTabWidget()
