@@ -42,7 +42,7 @@ all.
 ### Desktop / laptop — the recommended experience
 Windows, Linux, or macOS with the PyQt5 GUI. This is what the prebuilt binaries give you and it's the
 smoothest way to flash and operate boards. Prebuilt downloads are published for **Windows x64**, **Linux
-x64**, and **macOS arm64** on each release — no Python install required.
+x64**, **Linux arm64**, and **macOS arm64** on each release — no Python install required.
 
 ### Light / older hardware
 If the full GUI is too heavy, or PyQt5 won't install cleanly, use `--ui tk`. The Tkinter frontend carries
@@ -50,8 +50,9 @@ the core flash/connect/operate features at a lower resource cost and leans only 
 library for its UI.
 
 ### Headless cyberdeck (Raspberry Pi and friends)
-There's no prebuilt ARM binary — run from source. A Pi-class board handles the terminal or web frontends
-comfortably:
+Each release ships a **Linux arm64** binary built for exactly this case — it bundles a prebuilt aarch64
+PyQt5, so a 64-bit Raspberry Pi OS board can run the full app with no Python install (or run from source if
+you prefer). A Pi-class board also handles the terminal and web frontends comfortably:
 
 - **Over SSH:** `cyber-controller --ui tui`
 - **From a browser or phone on your LAN:**
