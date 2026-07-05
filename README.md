@@ -6,7 +6,7 @@
 
 ### The all-in-one security hardware controller for cyberdecks & field deployments.
 
-**Flash. Control. Coordinate.** — every piece of your security hardware, from one dashboard.
+**Flash. Control. Coordinate.** Every piece of your security hardware, from one dashboard.
 
 [![License](https://img.shields.io/github/license/LxveAce/cyber-controller?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/python-3.12+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
@@ -23,7 +23,7 @@
 
 ---
 
-> ⚠️ **Authorized, lawful use only.** A security-research tool — use it only on systems you own or have explicit permission to test. Provided as-is, no warranty; you assume all risk. See [DISCLAIMER.md](DISCLAIMER.md).
+> ⚠️ **Authorized, lawful use only.** This is a security-research tool. Use it only on systems you own or have explicit permission to test. Provided as-is, no warranty; you assume all risk. See [DISCLAIMER.md](DISCLAIMER.md).
 
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
@@ -62,11 +62,11 @@ and four more firmwares.
   profile fix.
 
 **Shipped in v1.3.0:**
-- **Secure container (opt-in)** — app-internal saves (e.g. recorded command sessions) encrypted at rest
-  (AES-256-GCM) in a gate-keyed container that is **sealed/unreadable while the access gate is locked**;
-  ciphertext-only writes (no transient plaintext), tamper fails closed. Toggle in **Settings ▸ Secure Container**.
-- **Brute-force lockout** on the access gate — a persistent failed-attempt counter (survives restart)
-  with exponential-backoff cooldown, constant-time password compare.
+- **Secure container (opt-in)** — app-internal saves such as recorded command sessions, encrypted at rest
+  with AES-256-GCM in a gate-keyed container that stays **sealed/unreadable while the access gate is locked**.
+  Writes are ciphertext-only, with no transient plaintext, and tampering fails closed. Toggle in **Settings ▸ Secure Container**.
+- **Brute-force lockout** on the access gate: a persistent failed-attempt counter that survives restart,
+  with exponential-backoff cooldown and constant-time password compare.
 - **Duress self-wipe (opt-in, off by default)** — after N consecutive failed unlocks the app securely
   wipes its own footprint (vault, keys, config, container). Honest scope: defeats casual/seizure access,
   not a forensic lab on wear-leveled SSDs.
@@ -134,10 +134,10 @@ Cyber Controller pulls the Lxve ESP32 security toolchain into one place. It merg
 [Universal Flasher](https://github.com/LxveAce/universal-flasher), and
 [Universal Flasher & UI](https://github.com/LxveAce/universal-flasher-ui) into a single tool, with
 [Dead Man's Switch](https://github.com/LxveAce/deadmans-switch) anti-forensic provisioning built in.
-It's meant for cyberdecks, field deployments, and security research, so it runs on ARM and x64 — on a
+It's meant for cyberdecks, field deployments, and security research. It runs on ARM and x64, on a
 7" touchscreen, headless over SSH, or from a phone.
 
-> Built to drive a multi-device cyberdeck, but just as happy flashing a single $12 CYD on your desk.
+> Built to drive a multi-device cyberdeck, but it works just as well flashing a single $12 CYD on your desk.
 
 It's a self-taught hobby project, hardened and tested as it grows. Authorized security testing,
 education, and CTF use only.
@@ -149,7 +149,7 @@ education, and CTF use only.
   `ADB` (Android / Orbic), `SD image` (Raspberry Pi), and **`rtl8720` (Realtek AmebaD)** for the
   dual-band 2.4/5 GHz **BW16 / RTL8720DN** — hardware-validated end-to-end (fetches the firmware
   bundle, drives the AmebaD ImageTool, SHA-256-verifies before flashing).
-- **Hardware-validated flash core** ported from the field-proven `headless-marauder-gui` /
+- **Hardware-validated flash core** ported from the `headless-marauder-gui` /
   `universal-flasher` lineage: chip auto-detection (`esptool chip_id` is run first — the chip is never
   hardcoded), the critical `--flash_size detect` anti-brick patch, correct per-chip bootloader offsets
   (including the **ESP32-C5 `0x2000`** gotcha), and child-process kill-on-error so a failed flash never
@@ -167,8 +167,8 @@ education, and CTF use only.
   **labeled and confirmed, never blocked**; a one-time legal disclaimer on first launch plus a
   Settings "suppress all warnings" master toggle. Full capability is always retained.
 - **Macro recorder & playback** with timing capture and variable substitution.
-- **Tamper-evident audit trail** — a SHA-256 hash chain over flashes and serial commands, durable
-  (append-only, owner-only on disk), loaded and verified on startup.
+- **Tamper-evident audit trail** — a SHA-256 hash chain over flashes and serial commands. It's durable:
+  append-only and owner-only on disk, loaded and verified on startup.
 
 ### Coordinate
 - **Unified Action Broadcast** — one intent verb (*Find APs*, *Deauth All*, *BLE Scan*, *SubGHz Scan*,
