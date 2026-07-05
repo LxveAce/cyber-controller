@@ -234,3 +234,69 @@ class WardriveSession:
         self.out.write(to_wigle_row(obs, self.fix, now or _now()) + "\n")
         self.out.flush()
         return True
+
+
+@dataclass
+class MultiWardriveSession:
+    """One wardrive run across MANY boards that share a single GPS feed and one merged WiGLE CSV (F1).
+
+    Most decks have one GPS receiver feeding several capture boards, so this owns ONE :class:`GpsFix` and
+    fans it out to every board's AP stream. Observations are de-duplicated into one shared BSSID set
+    (strongest RSSI wins), producing a single combined map/CSV. Per-board counts track each board's
+    first-seen contribution and ``ap_count`` is the number of unique APs. The output stays standard WiGLE
+    (uploadable) — source-port attribution lives in :attr:`per_board`, not in the CSV. Pure: no Qt, no serial.
+    """
+    out: TextIO
+    app_version: str = "1.0"
+    fix: Optional[GpsFix] = None
+    seen: Dict[str, int] = field(default_factory=dict)          # bssid -> best RSSI (shared across boards)
+    per_board: Dict[str, int] = field(default_factory=dict)     # port -> unique APs first seen by that board
+    _header_written: bool = False
+
+    def start(self) -> None:
+        self.out.write(wigle_preheader(self.app_version) + "\n")
+        self.out.write(WIGLE_HEADER + "\n")
+        self.out.flush()
+        self._header_written = True
+
+    def add_board(self, port: str) -> None:
+        """Register a board so it appears in :attr:`per_board` even before it contributes an AP."""
+        self.per_board.setdefault(port, 0)
+
+    def update_gps(self, line: str) -> Optional[GpsFix]:
+        """Feed one NMEA line from the SHARED GPS; the resulting fix gates every board's rows."""
+        f = parse_nmea(line)
+        if f is not None:
+            self.fix = f
+        return f
+
+    @property
+    def has_fix(self) -> bool:
+        return bool(self.fix and self.fix.has_fix)
+
+    @property
+    def ap_count(self) -> int:
+        return len(self.seen)                                   # unique APs across every board
+
+    def observe(self, port: str, line: str, now: Optional[str] = None) -> bool:
+        """Feed one scan line from *port*. On a valid shared fix, write/refresh a merged WiGLE row.
+
+        Returns True iff a row was written. De-duplicates by BSSID across ALL boards, keeping the strongest
+        RSSI; the board that first sees a BSSID gets the per-board credit (a stronger re-sighting by another
+        board refreshes the row but is not double-counted).
+        """
+        if not self._header_written:
+            self.start()
+        self.per_board.setdefault(port, 0)
+        obs = parse_marauder_ap(line)
+        if obs is None or not self.has_fix:
+            return False
+        prev = self.seen.get(obs.bssid)
+        if prev is not None and obs.rssi <= prev:
+            return False
+        if prev is None:
+            self.per_board[port] += 1
+        self.seen[obs.bssid] = obs.rssi
+        self.out.write(to_wigle_row(obs, self.fix, now or _now()) + "\n")
+        self.out.flush()
+        return True
