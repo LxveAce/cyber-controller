@@ -56,6 +56,18 @@ class NodesTab(QWidget):
     def _build_ui(self) -> None:
         root = QVBoxLayout(self)
 
+        banner = QLabel(
+            "⚠  Demo / placeholder — wireless nodes are host-side groundwork only. There is no relay or "
+            "node firmware yet, so nothing here reaches real hardware over the air. Full functionality is "
+            "coming in a later release."
+        )
+        banner.setWordWrap(True)
+        banner.setStyleSheet(
+            "background:#3d2c00;color:#f0c000;border:1px solid #7a5c00;border-radius:6px;"
+            "padding:8px 10px;font-weight:600;"
+        )
+        root.addWidget(banner)
+
         self._locked_label = QLabel("🔒  Unlock the access gate to manage nodes.")
         self._locked_label.setAlignment(Qt.AlignCenter)
         self._locked_label.setStyleSheet("color:#8b949e;padding:24px;")

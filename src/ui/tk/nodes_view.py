@@ -23,6 +23,15 @@ class NodesView(ttk.Frame):
         self._ctrl = controller
         self._after_id = None
 
+        self._banner = ttk.Label(
+            self,
+            text=("⚠  Demo / placeholder — wireless nodes are host-side groundwork only. No relay or "
+                  "node firmware exists yet, so nothing here reaches real hardware over the air. Full "
+                  "functionality is coming in a later release."),
+            wraplength=560, foreground="#8a6d00", padding=(8, 6),
+        )
+        self._banner.pack(fill=tk.X, padx=4, pady=(4, 0))
+
         self._locked_label = ttk.Label(
             self, text="\N{LOCK}  Vault locked — unlock the access gate to manage nodes.")
 
