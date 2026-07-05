@@ -510,6 +510,9 @@ class CyberControllerWindow(QMainWindow):
         self._operate_surface.addTab(self._broadcast_bar, "Broadcast")
         self._operate_surface.addTab(self._macro_tab, "Macros")
         self._operate_surface.addTab(self._wardrive_tab, "Wardrive")
+        from src.ui.qt.wardrive_multi_tab import WardriveMultiTab
+        self._wardrive_multi_tab = WardriveMultiTab(device_manager=self._dm)  # F1: concurrent multi-board capture
+        self._operate_surface.addTab(self._wardrive_multi_tab, "Multi-Wardrive")
         # FL F5: the located-ALPR-camera map is a real sub-tab now (it was a standalone Tools window with no
         # tab lifecycle). It sits next to Wardrive since both are GPS-tagged field-survey views.
         self._flock_heatmap = FlockHeatmapTab()
