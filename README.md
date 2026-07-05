@@ -272,7 +272,9 @@ hardcodes the chip — it runs `esptool chip_id` first.
 | TUI | Textual | SSH / headless |
 | Web Remote | Flask + SocketIO | Phone control of a headless Pi |
 
-When launched without `--ui`, a picker dialog lets you choose the interface.
+When launched without `--ui`, a picker dialog lets you choose the interface. For which frontend suits which
+machine — desktop vs. older hardware vs. a headless Pi cyberdeck — see
+[**docs/RECOMMENDED-SPECS.md**](docs/RECOMMENDED-SPECS.md).
 
 **Dual-depth (Simple / Pro):** within the Qt dashboard, an interface mode toggles between a streamlined
 **Simple** view (fewer controls per tab — great to start) and the full **Pro** view (default, every
