@@ -17,7 +17,7 @@ Write firmware to a connected board (ESP32 Marauder, GhostESP, Bruce, etc.).
 
 ## Software OS (flash an OS to USB)
 Write a verified bootable operating system to a **USB stick** (separate from board firmware).
-1. Pick an OS — **Tails** (amnesiac/Tor), **Kali** (pentest), **Arch** (general).
+1. Pick an OS — **Tails** (amnesiac/Tor), **Kali** (pentest), **Parrot** (security), or **Arch** (general).
 2. **Check latest** resolves the current version from the official source (or tick **Use bundled
    version (offline)** to use the version shipped with the app).
 3. Pick the **target USB** (only removable drives are listed; the whole drive is erased) — or **Use

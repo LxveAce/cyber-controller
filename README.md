@@ -82,7 +82,7 @@ and four more firmwares.
 
 **Previously shipped (v1.2.1):**
 - **Unified flashing in one app, two clearly separate tabs** — a **Firmware tab** for hardware (ESP32 Marauder / GhostESP / Bruce / etc. plus Raspberry Pi SD images) and a **Software (OS) tab** for PC/USB operating systems.
-- **Software (OS) tab** — flash verified **Kali Linux, Tails OS, Arch** to USB, with the latest version auto-resolved (and an offline bundled fallback), **SHA-256 + OpenPGP verified** before writing.
+- **Software (OS) tab** — flash verified **Kali Linux, Tails OS, Parrot OS, Arch** to USB, with the latest version auto-resolved (and an offline bundled fallback), **SHA-256 + OpenPGP verified** before writing.
 - **Auto-updating firmware/OS catalog** so versions are always current, **plus full offline use** — a cached catalog and already-downloaded images flash with no internet; a weekly CI job keeps the bundled OS catalog current.
 - **In-app tooltips on every control** and a thorough **How-To / tutorial tab**.
 - **Wardriving** (Cyber Controller only — the all-in-one controller is also the main GUI for cyberdecks): GPS-tagged Wi-Fi capture exported to **WiGLE CSV**, for **lawful, owner-authorized** use. (The companion **universal-flasher** stays strictly a flasher — firmware + software tabs only, no controller / logger / wardriving.)
