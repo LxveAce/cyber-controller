@@ -138,12 +138,14 @@ class _WardriveCapture(QObject):
     OWNER = "wardrive"
 
     def __init__(self, device_manager, gps_port: str, gps_baud: int,
-                 dev_port: str, dev_baud: int, out_path: str) -> None:
+                 dev_port: str, dev_baud: int, out_path: str, firmware: str = "") -> None:
         super().__init__()
         self._dm = device_manager
         self._gps_port, self._gps_baud = gps_port, gps_baud
         self._dev_port, self._dev_baud = dev_port, dev_baud
         self._out_path = out_path
+        self._firmware = firmware
+        self._stop_cmd = "stopscan"                     # resolved from the firmware at start()
         self._lock = threading.Lock()
         self._sess: wd.WardriveSession | None = None
         self._fh = None
@@ -168,11 +170,21 @@ class _WardriveCapture(QObject):
             if self._gps_port:
                 self._gps_conn = self._dm.open_connection(self._gps_port, self._gps_baud, owner=self.OWNER)
                 self._gps_conn.on_line(self._on_gps_line)
+            # Send the firmware's OWN scan verb (Marauder scanall, GhostESP/Flock-You/… their own), not a
+            # hardcoded scanap. write() appends exactly one terminator, so set the firmware's line ending.
+            cmds = wd.scan_commands_for(self._firmware)
+            self._stop_cmd = cmds.stop
             try:
-                self._dev_conn.write("scanap\n")
+                self._dev_conn.line_ending = cmds.line_ending
             except Exception:  # noqa: BLE001
                 pass
-            self.line.emit(f"Wardrive started — logging to {self._out_path}")
+            for start_cmd in cmds.start:
+                try:
+                    self._dev_conn.write(start_cmd)
+                except Exception:  # noqa: BLE001
+                    pass
+            fw_txt = self._firmware or "default"
+            self.line.emit(f"Wardrive started ({fw_txt}) — logging to {self._out_path}")
         except Exception as exc:  # noqa: BLE001
             self.line.emit(f"wardrive start error: {exc}")
             self.stop()
@@ -185,7 +197,7 @@ class _WardriveCapture(QObject):
         # when we close the file below. remove_line_callback stops new lines; close_connection releases our
         # owner ref (the board stays alive for any other owner).
         if self._dev_conn is not None:
-            for step in (lambda: self._dev_conn.write("stopscan\n"),
+            for step in (lambda: self._dev_conn.write(self._stop_cmd),
                          lambda: self._dev_conn.remove_line_callback(self._on_dev_line),
                          lambda: self._dm.close_connection(self._dev_port, owner=self.OWNER)):
                 try:
@@ -374,7 +386,14 @@ class WardriveTab(QWidget):
         if self._dm is not None:
             # Route through the shared DeviceManager so a board also open in the Devices tab is shared,
             # not double-opened (Windows COM ports are exclusive — the raw-serial path throws Access Denied).
-            self._worker = _WardriveCapture(self._dm, gps, gbaud, dev, dbaud, out)
+            # If the board was already identified in the Devices tab, use its firmware for native scan cmds.
+            fw = ""
+            try:
+                fw = next((getattr(d, "firmware", "") for d in self._dm.list_connected()
+                           if getattr(d, "port", None) == dev), "") or ""
+            except Exception:  # noqa: BLE001
+                fw = ""
+            self._worker = _WardriveCapture(self._dm, gps, gbaud, dev, dbaud, out, firmware=fw)
         else:
             self._worker = _WardriveWorker(gps, gbaud, dev, dbaud, out)
         self._worker.status.connect(self._on_status)

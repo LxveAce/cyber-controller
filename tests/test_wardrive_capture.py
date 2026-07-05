@@ -73,7 +73,7 @@ def test_capture_opens_both_ports_via_dm_with_owner_tag(qapp, tmp_path):
     cap.start()
     assert ("COM_DEV", "wardrive") in dm.opened
     assert ("COM_GPS", "wardrive") in dm.opened          # never a raw serial.Serial() -> no COM clash
-    assert "scanap\n" in dm.conns["COM_DEV"].written      # scan kicked off on the device port
+    assert "scanap" in dm.conns["COM_DEV"].written        # scan kicked off (bare verb; write() adds the terminator)
     cap.stop()
 
 
@@ -106,7 +106,7 @@ def test_capture_stop_releases_owner_and_stops_scan(qapp, tmp_path):
     cap.stopped.connect(lambda: stopped.append(True))
     cap.start()
     cap.stop()
-    assert "stopscan\n" in dm.conns["COM_DEV"].written
+    assert "stopscan" in dm.conns["COM_DEV"].written
     assert ("COM_DEV", "wardrive") in dm.closed
     assert ("COM_GPS", "wardrive") in dm.closed           # our owner ref released on both ports
     assert stopped == [True]

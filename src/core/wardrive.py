@@ -300,3 +300,52 @@ class MultiWardriveSession:
         self.out.write(to_wigle_row(obs, self.fix, now or _now()) + "\n")
         self.out.flush()
         return True
+
+
+# ── per-firmware scan commands (F1 slice 3) ──────────────────────────
+
+@dataclass(frozen=True)
+class ScanCommands:
+    """The native wardrive scan commands + line terminator for one firmware."""
+    start: tuple                # commands to send, in order, to begin an AP scan (pre-commands + the verb)
+    stop: str                   # command that halts the scan
+    line_ending: str            # terminator the firmware's shell expects (LF for most, CR for Flipper, …)
+
+
+# Legacy Marauder-style fallback, used when the firmware is unknown (Device.firmware often isn't set until a
+# board is identified in the Devices tab). "scanap" logs AP beacons only — exactly what a WiGLE run wants.
+_DEFAULT_SCAN = ScanCommands(("scanap",), "stopscan", "\n")
+
+
+def scan_commands_for(firmware: str) -> ScanCommands:
+    """Resolve the scan start/stop commands + line terminator for *firmware*.
+
+    Reuses the per-firmware ``BROADCAST_CAPABILITIES`` table (FIND_APS / STOP_ALL) so a mixed deck
+    (Marauder, GhostESP, Flock-You, HaleHound, …) each gets its OWN native verb instead of a hardcoded
+    ``scanap`` that only Marauder understands — that mismatch is the bug this fixes. Unknown or
+    capability-less firmware falls back to the Marauder default. Pure: the protocol/broadcast imports are
+    lazy so this module stays importable on its own.
+    """
+    fw = (firmware or "").strip()
+    if not fw:
+        return _DEFAULT_SCAN
+    try:
+        from src.core.broadcast import BroadcastVerb
+        from src.protocols import get_protocol_module, line_ending_for
+    except Exception:  # noqa: BLE001 — resolver deps unavailable -> safe default
+        return _DEFAULT_SCAN
+    mod = get_protocol_module(fw)
+    caps = getattr(mod, "BROADCAST_CAPABILITIES", {}) if mod else {}
+    try:
+        line_ending = line_ending_for(fw) or "\n"
+    except Exception:  # noqa: BLE001
+        line_ending = "\n"
+    start, stop = _DEFAULT_SCAN.start, _DEFAULT_SCAN.stop
+    find = caps.get(BroadcastVerb.FIND_APS)
+    if find is not None:
+        pre, cmd = find
+        start = tuple(pre) + (cmd,)
+    stop_cap = caps.get(BroadcastVerb.STOP_ALL)
+    if stop_cap is not None:
+        stop = stop_cap[1]
+    return ScanCommands(start, stop, line_ending)
