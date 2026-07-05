@@ -16,7 +16,7 @@ import json
 import os
 import tempfile
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Dict, Optional, TextIO, Union
 
@@ -78,6 +78,30 @@ class CameraDetection:
                 "count": self.count,
             },
         }
+
+
+def _merge_camera(a: CameraDetection, b: CameraDetection) -> CameraDetection:
+    """Merge two observations of the SAME camera (same MAC) into one, using the exact dedup rule
+    ``FlockSession.observe`` uses: the location + rssi + channel/frequency come from the STRONGER real
+    RSSI reading (a missing-rssi 0 sentinel loses — see :func:`_signal_key`), the counts add up, and the
+    seen-window widens (earliest ``first_seen``, latest ``last_seen``). Identity fields (ssid/oui/method)
+    prefer the stronger reading, then any non-empty value. Symmetric except an exact RSSI tie, which keeps
+    *a*'s location.
+    """
+    strong, weak = (a, b) if _signal_key(a.rssi) >= _signal_key(b.rssi) else (b, a)
+    firsts = [s for s in (a.first_seen, b.first_seen) if s]
+    lasts = [s for s in (a.last_seen, b.last_seen) if s]
+    return CameraDetection(
+        mac=strong.mac,
+        lat=strong.lat, lon=strong.lon, utc=strong.utc,
+        rssi=strong.rssi, channel=strong.channel, frequency=strong.frequency,
+        ssid=strong.ssid or weak.ssid,
+        oui=strong.oui or weak.oui,
+        detection_method=strong.detection_method or weak.detection_method,
+        first_seen=min(firsts) if firsts else "",
+        last_seen=max(lasts) if lasts else "",
+        count=a.count + b.count,
+    )
 
 
 @dataclass
@@ -242,3 +266,23 @@ class FlockSession:
             except (KeyError, TypeError, ValueError, IndexError):
                 continue
         return session
+
+    def merge(self, other: "Union[FlockSession, Dict[str, CameraDetection]]") -> int:
+        """Fold another session's cameras (or a ``{mac: CameraDetection}`` dict) into this one,
+        de-duplicating by MAC with the strongest-RSSI rule (see :func:`_merge_camera`). Use it to
+        combine two saved drives, or to reconcile a server/peer set on wifi sync. New cameras are
+        copied in (no aliasing to *other*). Returns the number of cameras added or changed.
+        """
+        cams = other.cameras if isinstance(other, FlockSession) else dict(other)
+        changed = 0
+        for mac, cam in cams.items():
+            prev = self.cameras.get(mac)
+            if prev is None:
+                self.cameras[mac] = replace(cam)
+                changed += 1
+            else:
+                merged = _merge_camera(prev, cam)
+                if merged != prev:
+                    self.cameras[mac] = merged
+                    changed += 1
+        return changed
