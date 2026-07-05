@@ -13,9 +13,12 @@ seen and never emits any attack/action. GPS is host-side (the firmware is a rece
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional, TextIO
+from pathlib import Path
+from typing import Dict, Optional, TextIO, Union
 
 from src.core.wardrive import GpsFix, parse_nmea
 from src.protocols.flock_you import FlockYouProtocol
@@ -172,3 +175,70 @@ class FlockSession:
         json.dump(self.to_geojson(), out, indent=2)
         out.flush()
         return len(self.cameras)
+
+    def checkpoint(self, path: Union[str, Path]) -> int:
+        """Atomically persist the current cameras as GeoJSON to *path*.
+
+        Call it after each add (``observe()`` returned True) so a crash mid-drive can't
+        lose the run — this replaces the one-shot :meth:`write_geojson` for live recording.
+        Writes a temp file in the same directory then ``os.replace``s it into place, so a
+        reader (or a resume after a crash) never sees a half-written file. Returns the
+        camera count written.
+        """
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        data = json.dumps(self.to_geojson(), indent=2)
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(data)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
+        return len(self.cameras)
+
+    @classmethod
+    def from_checkpoint(cls, path: Union[str, Path]) -> "FlockSession":
+        """Rebuild a session's cameras from a GeoJSON checkpoint written by :meth:`checkpoint`.
+
+        Use it to resume a drive after a restart, or to reload a saved scan. A missing or
+        malformed file yields an empty session (never raises), and any individual feature
+        that can't be parsed is skipped rather than sinking the whole load. The GPS ``fix``
+        is intentionally NOT restored — a resumed drive re-acquires its own fix.
+        """
+        session = cls()
+        try:
+            raw = json.loads(Path(path).read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return session
+        for feat in (raw.get("features") if isinstance(raw, dict) else None) or []:
+            try:
+                lon, lat = feat["geometry"]["coordinates"][:2]
+                props = feat.get("properties") or {}
+                mac = str(props.get("mac") or "").strip()
+                if not mac:
+                    continue
+                session.cameras[mac] = CameraDetection(
+                    mac=mac,
+                    lat=float(lat),
+                    lon=float(lon),
+                    ssid=str(props.get("ssid") or ""),
+                    oui=str(props.get("oui") or ""),
+                    detection_method=str(props.get("detection_method") or ""),
+                    rssi=_as_int(props.get("rssi")),
+                    channel=_as_int(props.get("channel")),
+                    frequency=_as_int(props.get("frequency")),
+                    utc=str(props.get("utc") or ""),
+                    first_seen=str(props.get("first_seen") or ""),
+                    last_seen=str(props.get("last_seen") or ""),
+                    count=_as_int(props.get("count")),
+                )
+            except (KeyError, TypeError, ValueError, IndexError):
+                continue
+        return session
