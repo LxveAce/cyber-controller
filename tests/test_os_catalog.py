@@ -27,9 +27,11 @@ def img(tmp_path):
 
 # ── catalog + allowlist ──────────────────────────────────────────────
 
-def test_load_catalog_has_three_oses():
+def test_load_catalog_lists_exactly_the_known_oses():
+    # Drift-lock: the OS flasher's catalog is exactly these four. Adding or removing an OS has
+    # to be a conscious change here (and in the README / how-to OS list), not a silent drift.
     ids = {i.id for i in oc.load_catalog()}
-    assert {"tails", "kali", "arch"} <= ids
+    assert ids == {"tails", "kali", "arch", "parrot"}
     arch = oc.get_image("arch")
     assert arch.verify_model == "image_sig" and arch.image_type == "iso"
     kali = oc.get_image("kali")
