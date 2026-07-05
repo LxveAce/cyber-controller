@@ -5,6 +5,32 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.0-beta.1] — 2026-07-05
+
+First public preview of the 1.6.0 line. More is landing before the full 1.6.0 — a live Flock driving
+map, multi-device wardriving, recommended-hardware guidance, and the wireless relay/node firmware. This
+beta ships the pieces that are done and tested.
+
+### Added
+- **Parrot OS** in the Software-OS flasher — the version is auto-resolved from the official ISO index with
+  SHA-256 + OpenPGP verification and a pinned offline fallback. The OS flasher now covers Kali, Tails, Parrot, and Arch.
+- **Supported-boards tooltip** on the Firmware tab — hover a firmware to see the boards and chips it targets.
+- **Board-compatibility hint** — a firmware is tinted green or red against the connected board's chip. It's
+  advisory only: it never blocks a flash and never shows a false red on a guessed chip.
+- **Flock Map tab** — the located-ALPR-camera map is a tab in the Operate surface now, next to Wardrive
+  (it used to open as a separate Tools window).
+- **Crash-safe Flock drives** — a scan checkpoints its located cameras to disk as it runs and can resume from
+  that file after a restart. Two drives (or a synced set) merge by the strongest-signal rule.
+- **Companion mobile app** is now its own project (Bluetooth + WiFi now, cellular later).
+
+### Changed
+- The wireless **Nodes** view is labeled a demo/placeholder — the host-side groundwork is in; the relay/node
+  firmware is still to come.
+- Tightened the README voice. No facts, versions, flags, or commands changed.
+
+### Fixed
+- `from_checkpoint` no longer raises on a malformed checkpoint file — it returns an empty session, as documented.
+
 ## [1.5.1] — 2026-07-03
 
 Ships the accumulated work since 1.5.0.
