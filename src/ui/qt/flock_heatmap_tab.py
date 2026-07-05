@@ -15,6 +15,8 @@ import json
 import math
 from typing import Any, List, Optional, Tuple
 
+from src.core import flock
+
 # ── pure projection core (no Qt — unit-testable) ─────────────────────
 
 _MERC_LAT_CLAMP = 85.05112878   # the latitude where the mercator y-extent is ±1 (poles are unrepresentable)
@@ -111,10 +113,28 @@ def _as_count(props: Any) -> int:
         return 1
 
 
+def _flock_pump(session: Any, gps_line: str, dev_line: str, checkpoint_path: str = "") -> bool:
+    """One live-capture step — shared by the driving worker and unit-testable with no Qt or serial.
+
+    Feed an optional GPS NMEA line (updates the session's sticky fix), then an optional Flock-You device
+    line, into *session*. If the device line records a new or relocated camera, checkpoint the run to
+    *checkpoint_path* (best-effort) and return True; otherwise return False.
+    """
+    if gps_line:
+        session.update_gps(gps_line)
+    added = bool(dev_line) and session.observe(dev_line)
+    if added and checkpoint_path:
+        try:
+            session.checkpoint(checkpoint_path)
+        except OSError:
+            pass
+    return added
+
+
 # ── Qt widget (the pure core above stays Qt-free; the widget is optional) ──
 
 try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even without PyQt5
-    from PyQt5.QtCore import Qt
+    from PyQt5.QtCore import Qt, QThread, pyqtSignal
     from PyQt5.QtGui import QBrush, QColor, QImage, QPainter, QPen
     from PyQt5.QtWidgets import (
         QGraphicsScene,
@@ -127,6 +147,75 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
     _BG = QColor("#0d1117")
     _CANVAS_W, _CANVAS_H = 800, 600
+
+    class _FlockWorker(QThread):
+        """Drive a live Flock scan on its own thread: read GPS + the Flock-You device serial, feed them
+        through a FlockSession, checkpoint on each new/relocated camera, and emit the updated cameras GeoJSON
+        so the map can redraw. Mirrors wardrive_tab._WardriveWorker's lifecycle (a stop flag + finally-close
+        of both ports). The Flock-You firmware is a passive receiver, so nothing is ever written to it.
+        """
+        status = pyqtSignal(str, int)     # gps-fix text, camera count
+        updated = pyqtSignal(dict)        # cameras GeoJSON, emitted on each new/relocated camera
+        line = pyqtSignal(str)
+        stopped = pyqtSignal()
+
+        def __init__(self, gps_port: str, gps_baud: int, dev_port: str, dev_baud: int,
+                     checkpoint_path: str = "") -> None:
+            super().__init__()
+            self._gps_port, self._gps_baud = gps_port, gps_baud
+            self._dev_port, self._dev_baud = dev_port, dev_baud
+            self._checkpoint_path = checkpoint_path
+            self._stop = False
+            self.session = flock.FlockSession()
+
+        def stop(self) -> None:
+            self._stop = True
+
+        def run(self) -> None:
+            try:
+                import serial
+            except Exception as exc:  # noqa: BLE001
+                self.line.emit(f"pyserial unavailable: {exc}")
+                self.stopped.emit()
+                return
+            gps = dev = None
+            last = ("", -1)
+            try:
+                if self._gps_port:
+                    gps = serial.Serial(self._gps_port, self._gps_baud, timeout=0.5)
+                dev = serial.Serial(self._dev_port, self._dev_baud, timeout=0.5)
+                self.line.emit("Flock scan started — waiting for a GPS fix and detections")
+                while not self._stop:
+                    gl = ""
+                    if gps is not None:
+                        try:
+                            gl = gps.readline().decode("ascii", "replace").strip()
+                        except Exception:  # noqa: BLE001
+                            gl = ""
+                    try:
+                        dl = dev.readline().decode("utf-8", "replace").strip()
+                    except Exception:  # noqa: BLE001
+                        dl = ""
+                    if _flock_pump(self.session, gl, dl, self._checkpoint_path):
+                        self.updated.emit(self.session.to_geojson())
+                        self.line.emit(f"+ camera ({self.session.camera_count} located)")
+                    fix = self.session.fix
+                    ftxt = f"{fix.lat:.5f}, {fix.lon:.5f}" if (fix and fix.has_fix) else "No Fix"
+                    cur = (ftxt, self.session.camera_count)
+                    if cur != last:
+                        self.status.emit(ftxt, self.session.camera_count)
+                        last = cur
+            except Exception as exc:  # noqa: BLE001
+                self.line.emit(f"flock scan error: {exc}")
+            finally:
+                for port in (dev, gps):
+                    try:
+                        if port is not None:
+                            port.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                self.line.emit(f"Flock scan stopped — {self.session.camera_count} camera(s) located")
+                self.stopped.emit()
 
     class FlockHeatmapTab(QWidget):
         """A heatmap of located ALPR cameras from a Flock scan's GeoJSON. Offscreen-renderable."""
