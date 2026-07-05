@@ -46,6 +46,7 @@ from src.ui.qt.cross_comm_tab import CrossCommTab
 from src.ui.qt.detachable_tabs import DetachableTabWidget
 from src.ui.qt.device_tab import DeviceTab
 from src.ui.qt.flash_tab import FlashTab
+from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
 from src.ui.qt.nodes_tab import NodesTab
 from src.ui.qt.health_tab import HealthTab
 from src.ui.qt.macro_tab import MacroTab
@@ -509,6 +510,10 @@ class CyberControllerWindow(QMainWindow):
         self._operate_surface.addTab(self._broadcast_bar, "Broadcast")
         self._operate_surface.addTab(self._macro_tab, "Macros")
         self._operate_surface.addTab(self._wardrive_tab, "Wardrive")
+        # FL F5: the located-ALPR-camera map is a real sub-tab now (it was a standalone Tools window with no
+        # tab lifecycle). It sits next to Wardrive since both are GPS-tagged field-survey views.
+        self._flock_heatmap = FlockHeatmapTab()
+        self._operate_surface.addTab(self._flock_heatmap, "Flock Map")
         self._tabs.addTab(self._operate_surface, "Operate")
 
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its
@@ -1735,18 +1740,11 @@ class CyberControllerWindow(QMainWindow):
         self._cardputer_remote.activateWindow()
 
     def _on_flock_heatmap(self) -> None:
-        """Open the Flock heatmap (FL F4) — a map of located ALPR-camera detections from a scan's GeoJSON."""
-        try:
-            from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Flock Heatmap", f"Could not open the Flock Heatmap: {exc}")
-            return
-        self._flock_heatmap = FlockHeatmapTab()
-        self._flock_heatmap.setWindowTitle("Flock Heatmap — located ALPR cameras")
-        self._flock_heatmap.resize(860, 680)
-        self._flock_heatmap.show()
-        self._flock_heatmap.raise_()
-        self._flock_heatmap.activateWindow()
+        """Focus the Flock Map tab (FL F5) — located ALPR-camera detections from a scan's GeoJSON.
+
+        The map used to open as a standalone Tools window; it's a sub-tab of the Operate surface now, so this
+        menu / palette action just navigates to it."""
+        self._show_subtab(self._operate_surface, self._flock_heatmap)
 
     # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
     _SKIN_PROTOCOL = {"marauder": "marauder", "ghostesp": "ghostesp", "esp32div": "esp32_div",

@@ -117,19 +117,20 @@ def test_connect_surface_subtabs(qapp, isolated_settings):
 
 
 def test_operate_surface_subtabs(qapp, isolated_settings):
-    # The Operate action surface holds four sub-views — Targets (leads), Broadcast, Macros, Wardrive — and the
-    # re-parented widgets are the SAME objects the window still exposes on its named attributes.
+    # The Operate action surface holds five sub-views — Targets (leads), Broadcast, Macros, Wardrive, Flock Map
+    # (FL F5) — and the re-parented widgets are the SAME objects the window still exposes on named attributes.
     win = _make_window()
     surface = win._operate_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Targets", "Broadcast", "Macros", "Wardrive"]
+    assert titles == ["Targets", "Broadcast", "Macros", "Wardrive", "Flock Map"]
     assert surface.widget(0) is win._targets_tab, "Targets sub-tab must be the TargetsTab object"
     assert surface.widget(1) is win._broadcast_bar, "Broadcast sub-tab must be the BroadcastBar object"
     assert surface.widget(2) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
     assert surface.widget(3) is win._wardrive_tab, "Wardrive sub-tab must be the WardriveTab object"
-    # None of the four are direct top-level tabs anymore.
+    assert surface.widget(4) is win._flock_heatmap, "Flock Map sub-tab must be the FlockHeatmapTab object"
+    # None of the sub-views are direct top-level tabs anymore.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Targets", "Broadcast", "Macros", "Wardrive"):
+    for gone in ("Targets", "Broadcast", "Macros", "Wardrive", "Flock Map"):
         assert gone not in toplevel, f"{gone!r} should be an Operate sub-tab, not top-level"
     assert "Operate" in toplevel
 
