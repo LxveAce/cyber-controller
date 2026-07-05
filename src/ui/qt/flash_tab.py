@@ -6,7 +6,7 @@ import logging
 from pathlib import Path
 
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
-from PyQt5.QtGui import QFont
+from PyQt5.QtGui import QBrush, QColor, QFont
 from PyQt5.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -26,8 +26,23 @@ from PyQt5.QtWidgets import (
 
 from src.core.device_manager import DeviceManager
 from src.core.firmware_vault import FirmwareVault
-from src.core.flash_engine import FirmwareProfile, FlashEngine, supported_boards_text
+from src.core.flash_engine import (
+    FirmwareProfile,
+    FlashEngine,
+    chip_match,
+    supported_boards_text,
+)
 from src.core.resources import resource_path
+from src.models.device import BoardType
+
+# Chips we can trust from USB enumeration ALONE (no port probe). Only these native-USB
+# sub-variants are unambiguous; the plain ESP32 bucket collapses classic ESP32 / S2 /
+# ESP8266 / BW16 behind a shared UART bridge, so it stays unknown (neutral, never red).
+_BOARDTYPE_CHIP = {
+    BoardType.ESP32_S3: "esp32s3",
+    BoardType.ESP32_S2: "esp32s2",
+    BoardType.ESP32_C3: "esp32c3",
+}
 
 log = logging.getLogger(__name__)
 
@@ -106,6 +121,7 @@ class FlashTab(QWidget):
         self._worker: _FlashWorker | None = None
         self._variant_loader: _VariantLoader | None = None
         self._profiles: dict[str, Path] = {}  # display name -> path
+        self._profile_objs: dict[str, FirmwareProfile] = {}  # display name -> loaded profile
 
         self._build_ui()
         self._refresh_ports()
@@ -113,6 +129,8 @@ class FlashTab(QWidget):
         # Populate variants for the initial profile, then react to profile changes.
         self._profile_combo.currentIndexChanged.connect(self._reload_variants)
         self._reload_variants()
+        # Re-hint firmware compatibility whenever the selected port changes.
+        self._port_combo.currentIndexChanged.connect(self._recolor_profiles)
 
     # ── Layout ───────────────────────────────────────────────────────
 
@@ -316,10 +334,12 @@ class FlashTab(QWidget):
         # Empty-state entry (same shape as software_tab's empty drive combo).
         if self._port_combo.count() == 0:
             self._port_combo.addItem("No ports found — plug in a board and press Refresh", None)
+        self._recolor_profiles()
 
     def _refresh_profiles(self) -> None:
         self._profile_combo.clear()
         self._profiles.clear()
+        self._profile_objs.clear()
         if _PROFILES_DIR.is_dir():
             for f in sorted(_PROFILES_DIR.glob("*.json")):
                 p = None
@@ -334,10 +354,42 @@ class FlashTab(QWidget):
                 # TEXT stays the profile name because everything looks the profile up by
                 # _profile_combo.currentText(); changing the label would break that.
                 if p is not None:
+                    self._profile_objs[name] = p
                     tip = supported_boards_text(p)
                     if tip:
                         self._profile_combo.setItemData(
                             self._profile_combo.count() - 1, tip, Qt.ToolTipRole)
+        self._recolor_profiles()
+
+    def _recolor_profiles(self) -> None:
+        """Advisory green/red hint on the firmware list for the connected board's chip.
+
+        Foreground colour ONLY — it never disables an item, so any firmware stays
+        selectable (this is a hint, not a gate). Colours only when the chip is known
+        confidently from USB enumeration; otherwise the item keeps its default colour.
+        Never RED on a guess — a shared UART bridge can't tell classic ESP32 / S2 /
+        ESP8266 / BW16 apart, so those stay neutral.
+        """
+        chip = None
+        port = self._port_combo.currentData()
+        if port:
+            for dev in self._dm.scan_ports():
+                if dev.port == port:
+                    chip = _BOARDTYPE_CHIP.get(dev.board_type)
+                    break
+        model = self._profile_combo.model()
+        green = QBrush(QColor("#3fb950"))
+        red = QBrush(QColor("#f85149"))
+        for i in range(self._profile_combo.count()):
+            item = model.item(i)
+            prof = self._profile_objs.get(self._profile_combo.itemText(i))
+            verdict = chip_match(chip, prof) if (prof is not None and chip) else "neutral"
+            if verdict == "match":
+                item.setForeground(green)
+            elif verdict == "mismatch":
+                item.setForeground(red)
+            else:
+                item.setData(None, Qt.ForegroundRole)  # reset to the default colour
 
     def _reload_variants(self) -> None:
         """Load the selected profile's board variants in the background and repopulate the picker."""

@@ -139,6 +139,32 @@ def supported_boards_text(profile: FirmwareProfile) -> str:
     return "Supported boards:\n" + "\n".join(f"• {s}" for s in seen)
 
 
+def _norm_chip(chip: str) -> str:
+    """Normalize an esptool chip id for comparison: lowercase, alphanumerics only, so
+    ``esp32-s3`` / ``ESP32_S3`` / ``esp32s3`` all compare equal."""
+    return "".join(c for c in str(chip).lower() if c.isalnum())
+
+
+def chip_match(connected_chip: str | None, profile: FirmwareProfile) -> str:
+    """Advisory compatibility of a firmware profile with the connected board's chip.
+
+    Returns ``'match'`` (the profile supports this chip), ``'mismatch'`` (the profile
+    lists boards but none use this chip), or ``'neutral'`` (can't say — the chip is
+    unknown, or the profile lists no chips / a non-ESP target). Purely advisory: the UI
+    colours a hint from this and must NEVER block on it, because chip detection over a
+    shared USB-serial adapter is often ambiguous.
+    """
+    norm = _norm_chip(connected_chip or "")
+    if not norm or norm == "unknown":
+        return "neutral"
+    chips = {_norm_chip(b.get("chip")) for b in profile.boards
+             if isinstance(b, dict) and b.get("chip")}
+    chips.discard("")
+    if not chips:
+        return "neutral"
+    return "match" if norm in chips else "mismatch"
+
+
 def _percent_adapter(progress: ProgressCallback | None) -> Callable[[str], None]:
     """Wrap a (percent, message) callback as flash_core's on_line(str) callback,
     parsing esptool progress percentages out of the streamed lines."""
