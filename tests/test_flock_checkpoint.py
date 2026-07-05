@@ -53,6 +53,15 @@ def test_from_checkpoint_missing_or_corrupt_is_empty(tmp_path):
     assert FlockSession.from_checkpoint(bad).camera_count == 0
 
 
+def test_from_checkpoint_non_list_features_is_empty(tmp_path):
+    # A garbage-written file whose "features" is a truthy non-iterable scalar (a stray number/bool)
+    # must NOT raise — the resume-after-crash contract says a malformed file yields an empty session.
+    for bad in ('{"type":"FeatureCollection","features":1}', '{"features":true}', '{"features":3.14}'):
+        p = tmp_path / "x.geojson"
+        p.write_text(bad, encoding="utf-8")
+        assert FlockSession.from_checkpoint(p).camera_count == 0
+
+
 def test_from_checkpoint_skips_malformed_features(tmp_path):
     p = tmp_path / "mixed.geojson"
     p.write_text(json.dumps({"type": "FeatureCollection", "features": [

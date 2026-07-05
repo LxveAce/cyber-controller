@@ -241,7 +241,10 @@ class FlockSession:
             raw = json.loads(Path(path).read_text(encoding="utf-8"))
         except (OSError, ValueError):
             return session
-        for feat in (raw.get("features") if isinstance(raw, dict) else None) or []:
+        # `features` must be a list; a truthy non-iterable (a stray number/bool from a garbage-written
+        # file) would otherwise raise here and break the "never raises" resume contract.
+        feats = raw.get("features") if isinstance(raw, dict) else None
+        for feat in feats if isinstance(feats, list) else []:
             try:
                 lon, lat = feat["geometry"]["coordinates"][:2]
                 props = feat.get("properties") or {}
