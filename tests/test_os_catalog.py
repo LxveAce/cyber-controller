@@ -36,6 +36,19 @@ def test_load_catalog_has_three_oses():
     assert kali.verify_model == "checksums_sig" and kali.extra.get("kali_variant") == "live-amd64"
 
 
+def test_load_catalog_includes_parrot():
+    ids = {i.id for i in oc.load_catalog()}
+    assert "parrot" in ids
+    p = oc.get_image("parrot")
+    assert p.resolver == "parrot"
+    assert p.image_type == "iso"
+    assert p.verify_model == "image_sig"
+    assert p.gpg_fingerprint == "B711822346552E4D92DA02DF7A8286AF0E81EE4A"
+    assert p.extra.get("parrot_edition") == "security"  # unknown JSON key -> .extra
+    assert p.pinned.get("sha256") == \
+        "fe8ec64f92d8d629b1fcae85d9fab81c87e3ff30584201e82b7c453a740cefbc"
+
+
 def test_host_allowlist():
     assert oc._host_allowed("cdimage.kali.org") is True
     assert oc._host_allowed("geo.mirror.pkgbuild.com") is True
@@ -81,6 +94,33 @@ def test_resolve_arch(monkeypatch):
     assert r.image_url == "https://geo.mirror.pkgbuild.com/iso/2026.06.01/archlinux-2026.06.01-x86_64.iso"
     assert r.sig_url == r.image_url + ".sig"
     assert r.gpg_fingerprint == "ABCD1234"  # read per-release from the feed
+
+
+def test_resolve_parrot(monkeypatch):
+    index = ('<a href="6.4/">6.4/</a>\n<a href="7.2/">7.2/</a>\n'
+             '<a href="7.3/">7.3/</a>\n<a href="latest/">latest/</a>\n')
+    sums = ("md5\n" + "0" * 32 + "  Parrot-security-7.3_amd64.iso\n\n"
+            "sha256\n" + "a" * 64 + "  Parrot-security-7.3_amd64.iso\n"
+            + "b" * 64 + "  Parrot-home-7.3_amd64.iso\n\n"
+            "sha512\n" + "c" * 128 + "  Parrot-security-7.3_amd64.iso\n")
+
+    def fake_get_text(url, timeout=30):
+        return sums if url.endswith("signed-hashes.txt") else index
+
+    monkeypatch.setattr(oc, "_http_get_text", fake_get_text)
+    r = oc.resolve(oc.get_image("parrot"), _silent, online=True)
+    assert r.source == "online" and r.version == "7.3"  # highest semver dir, not "latest"
+    assert r.image_url == "https://deb.parrot.sh/parrot/iso/7.3/Parrot-security-7.3_amd64.iso"
+    assert r.sha256 == "a" * 64 and r.verify_model == "image_sig"
+    assert r.sig_url is None  # no detached per-ISO sig for Parrot
+    assert r.gpg_fingerprint == "B711822346552E4D92DA02DF7A8286AF0E81EE4A"
+
+
+def test_resolve_parrot_offline_uses_pinned():
+    r = oc.resolve(oc.get_image("parrot"), _silent, online=False)
+    assert r.source == "pinned" and r.version == "7.3"
+    assert r.verify_model == "image_sig"
+    assert r.sha256 == "fe8ec64f92d8d629b1fcae85d9fab81c87e3ff30584201e82b7c453a740cefbc"
 
 
 def test_resolve_tails(monkeypatch):

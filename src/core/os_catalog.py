@@ -49,8 +49,10 @@ _OS_HOSTS = frozenset((
     "tails.net", "download.tails.net", "tails.boum.org", "dl.amnesia.boum.org",
     "cdimage.kali.org", "kali.download",
     "archlinux.org", "www.archlinux.org", "geo.mirror.pkgbuild.com",
+    "deb.parrot.sh",
 ))
-_OS_HOST_SUFFIXES = (".tails.net", ".boum.org", ".kali.org", ".archlinux.org", ".mirror.pkgbuild.com")
+_OS_HOST_SUFFIXES = (".tails.net", ".boum.org", ".kali.org", ".archlinux.org",
+                     ".mirror.pkgbuild.com", ".parrot.sh")
 
 
 def _host_allowed(host: Optional[str]) -> bool:
@@ -225,8 +227,40 @@ def _resolve_arch(entry: OSImage, on_line: Line) -> Resolved:
                     gpg_fingerprint=rel.get("pgp_fingerprint") or entry.gpg_fingerprint)
 
 
+def _resolve_parrot(entry: OSImage, on_line: Line) -> Resolved:
+    """Resolve Parrot's latest release by scanning the versioned ISO directory index.
+
+    Parrot has no stable ``current``/``latest`` ISO path, so we GET the parent index
+    (``deb.parrot.sh/parrot/iso/``), pick the highest-semver version subdir, and build the ISO URL.
+    Integrity is the SHA-256 published in that version's ``signed-hashes.txt`` — a single PGP
+    *inline-clearsigned* document (md5/sha256/sha512 sections; NO detached per-ISO ``.sig``). The
+    existing detached-sig verifier can't check a clearsigned file, so we resolve as ``image_sig``
+    with the SHA-256 (from the signed file) as the anchor and no ``sig_url``; on any failure we fall
+    back to the pinned release. See the entry's ``verify_note`` in os_catalog.json for the full
+    manual PGP-verification path against the pinned fingerprint.
+    """
+    index_url = entry.extra.get("parrot_index_url", "https://deb.parrot.sh/parrot/iso/")
+    edition = entry.extra.get("parrot_edition", "security")
+    index = _http_get_text(index_url)
+    vers = re.findall(r'href="(\d+\.\d+(?:\.\d+)?)/"', index)
+    if not vers:
+        raise RuntimeError("no Parrot version directories found in index")
+    latest = max(vers, key=lambda v: tuple(int(x) for x in v.split(".")))
+    base = index_url.rstrip("/") + "/" + latest + "/"
+    fname = f"Parrot-{edition}-{latest}_amd64.iso"
+    img_url = _require_os_url(base + fname)
+    sums_url = _require_os_url(base + "signed-hashes.txt")
+    sha = parse_sha256sums(_http_get_text(sums_url), fname)
+    if not sha:
+        raise RuntimeError(f"no sha256 for {fname} in Parrot signed-hashes.txt")
+    return Resolved(image_id=entry.id, version=latest, image_url=img_url,
+                    image_type=entry.image_type, verify_model="image_sig",
+                    checksums_url=sums_url, sha256=sha, gpg_fingerprint=entry.gpg_fingerprint)
+
+
 _RESOLVERS: Dict[str, Callable[[OSImage, Line], Resolved]] = {
     "tails": _resolve_tails, "kali": _resolve_kali, "arch": _resolve_arch,
+    "parrot": _resolve_parrot,
 }
 
 

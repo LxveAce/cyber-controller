@@ -57,6 +57,26 @@
         "sig_url": "https://geo.mirror.pkgbuild.com/iso/2026.06.01/archlinux-2026.06.01-x86_64.iso.sig",
         "sha256": "ec7a9c89aed7a59a76266ccf723c5e88480e47d7088c4482436f882fa37c3989"
       }
+    },
+    {
+      "id": "parrot",
+      "name": "Parrot OS Security",
+      "category": "Pentest / Security",
+      "description": "Debian-based security distribution (Security Edition) with the full offensive/wardriving toolset. Live amd64 ISO; boots from USB without installing.",
+      "homepage": "https://parrotsec.org",
+      "image_type": "iso",
+      "resolver": "parrot",
+      "verify_model": "image_sig",
+      "gpg_fingerprint": "B711822346552E4D92DA02DF7A8286AF0E81EE4A",
+      "parrot_index_url": "https://deb.parrot.sh/parrot/iso/",
+      "parrot_edition": "security",
+      "verify_note": "Parrot ships ONE PGP inline-clearsigned 'signed-hashes.txt' per version directory (md5/sha256/sha512 sections) — there is NO detached per-ISO .sig, so the resolver anchors integrity on the ISO's SHA-256 from that (PGP-signed) file and resolves as image_sig with no sig_url. For full PGP assurance verify the clearsigned signed-hashes.txt against fingerprint B711822346552E4D92DA02DF7A8286AF0E81EE4A (key: https://deb.parrot.sh/parrot/misc/parrotsec.gpg). 7.3 sha256 confirmed live against signed-hashes.txt (md5 also matched).",
+      "pinned": {
+        "version": "7.3",
+        "image_url": "https://deb.parrot.sh/parrot/iso/7.3/Parrot-security-7.3_amd64.iso",
+        "checksums_url": "https://deb.parrot.sh/parrot/iso/7.3/signed-hashes.txt",
+        "sha256": "fe8ec64f92d8d629b1fcae85d9fab81c87e3ff30584201e82b7c453a740cefbc"
+      }
     }
   ]
 }
