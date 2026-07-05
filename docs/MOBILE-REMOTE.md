@@ -108,8 +108,10 @@ shown but not fired from a tap (they need a value — use the terminal for those
 
 ## 7. Native app?
 
-**PWA-first remains the recommendation** — and the Remote + Device View above mean the qFlipper-on-phone
-experience is now fully realized *without* any native code: it reuses 100% of the hardened web UI and is
-cross-platform from a single codebase. A native app (React Native / Flutter) is only worth it if a **direct
-phone↔device BLE GATT** transport is later prioritized — a separate transport concern, not a reskin of this
-remote.
+The PWA remote here is the supported way to drive Cyber Controller from a phone today, and it covers a lot:
+the Remote grid and Device View reuse 100% of the hardened web UI, cross-platform, with no native code.
+
+A dedicated native companion app is a **separate project in its own repo** — aimed at direct phone↔device
+transports a browser can't reach (Bluetooth now, cellular later). It is **not part of this release and isn't
+usable yet**; when it's ready it ships on its own, not bundled here. Until then, the PWA remote above is the
+way to use CC from a phone.
