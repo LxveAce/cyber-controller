@@ -137,8 +137,10 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
     from PyQt5.QtCore import Qt, QThread, pyqtSignal
     from PyQt5.QtGui import QBrush, QColor, QImage, QPainter, QPen
     from PyQt5.QtWidgets import (
+        QComboBox,
         QGraphicsScene,
         QGraphicsView,
+        QHBoxLayout,
         QLabel,
         QPushButton,
         QVBoxLayout,
@@ -224,12 +226,36 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             super().__init__(parent)
             self._features: "List[dict]" = []
             self._camera_items: list = []
+            self._live_worker = None
+            self._latest_gj: "Optional[dict]" = None
+            self._visible = False
 
             root = QVBoxLayout(self)
             self._btn_load = QPushButton("Load cameras.geojson…")
             self._btn_load.setToolTip("Open a saved Flock scan (the cameras.geojson a FlockSession writes).")
             self._btn_load.clicked.connect(self._on_load)
             root.addWidget(self._btn_load)
+
+            # ── Live scan controls (F5 live driving loop) ──
+            live_row = QHBoxLayout()
+            self._gps_combo = QComboBox()
+            self._gps_combo.setToolTip("GPS (NMEA) serial port — optional; without a fix the map stays empty.")
+            self._dev_combo = QComboBox()
+            self._dev_combo.setToolTip("Flock-You device serial port (the passive 2.4 GHz sniffer).")
+            self._btn_ports = QPushButton("⟳")
+            self._btn_ports.setToolTip("Rescan serial ports.")
+            self._btn_ports.clicked.connect(self._refresh_ports)
+            self._btn_live = QPushButton("Start scan")
+            self._btn_live.setToolTip("Drive a live Flock scan — cameras drop onto the map as they're located.")
+            self._btn_live.clicked.connect(self._toggle_live)
+            self._live_status = QLabel("Idle")
+            self._live_status.setStyleSheet("color:#8b949e;")
+            for w in (QLabel("GPS:"), self._gps_combo, QLabel("Device:"), self._dev_combo,
+                      self._btn_ports, self._btn_live):
+                live_row.addWidget(w)
+            live_row.addWidget(self._live_status, 1)
+            root.addLayout(live_row)
+            self._refresh_ports()
 
             self._scene = QGraphicsScene(self)
             self._view = QGraphicsView(self._scene)
@@ -307,6 +333,74 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._scene.render(p)
             p.end()
             return img
+
+        # ── live scan (F5 live driving loop) ──────────────────────────
+        def _refresh_ports(self) -> None:
+            try:
+                from serial.tools import list_ports
+                ports = [p.device for p in list_ports.comports()]
+            except Exception:  # noqa: BLE001 — pyserial missing or enumeration failure
+                ports = []
+            for combo in (self._gps_combo, self._dev_combo):
+                cur = combo.currentText()
+                combo.clear()
+                combo.addItem("")                      # blank option (the GPS port is optional)
+                combo.addItems(ports)
+                i = combo.findText(cur)
+                if i >= 0:
+                    combo.setCurrentIndex(i)
+
+        def _default_checkpoint_path(self) -> str:
+            from pathlib import Path
+            return str(Path.home() / ".cyber-controller" / "flock" / "live-drive.geojson")
+
+        def _toggle_live(self) -> None:
+            if self._live_worker is not None:            # running -> ask it to stop
+                self._live_worker.stop()
+                self._btn_live.setEnabled(False)
+                self._btn_live.setText("Stopping…")
+                return
+            dev = self._dev_combo.currentText().strip()
+            if not dev:
+                self._live_status.setText("Pick the Flock device port first.")
+                return
+            gps = self._gps_combo.currentText().strip()
+            self._live_worker = _FlockWorker(gps, 9600, dev, 115200, self._default_checkpoint_path())
+            self._live_worker.updated.connect(self._on_live_update)
+            self._live_worker.status.connect(self._on_live_status)
+            self._live_worker.stopped.connect(self._on_live_stopped)
+            self._live_worker.start()
+            self._btn_live.setText("Stop scan")
+            self._live_status.setText("Scanning — waiting for a fix…")
+
+        def _on_live_update(self, gj: dict) -> None:
+            # Record/render split: keep the newest data always (the worker + its checkpoint keep running even
+            # while this tab is hidden), but only repaint the scene while visible — showEvent replays the latest.
+            self._latest_gj = gj
+            if self._visible:
+                self.set_geojson(gj)
+
+        def _on_live_status(self, fix_text: str, count: int) -> None:
+            self._live_status.setText(f"Fix: {fix_text} · {count} camera(s)")
+
+        def _on_live_stopped(self) -> None:
+            self._live_worker = None
+            self._btn_live.setEnabled(True)
+            self._btn_live.setText("Start scan")
+            self._live_status.setText("Idle")
+
+        # ── wake/sleep: keep recording while hidden, catch the map up on show ──
+        def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+            self._visible = True
+            if self._latest_gj is not None:
+                self.set_geojson(self._latest_gj)
+            super().showEvent(ev)
+
+        def hideEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+            # Deliberately do NOT stop the worker: detections must keep accumulating and checkpointing while the
+            # tab is backgrounded. Only the expensive scene repaint pauses (see _on_live_update).
+            self._visible = False
+            super().hideEvent(ev)
 
         # ── load button (dialog; not unit-tested) ─────────────────────
         def _on_load(self) -> None:

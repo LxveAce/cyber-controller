@@ -65,3 +65,37 @@ def test_worker_constructs_and_stops(qapp):
         assert hasattr(w, sig), f"missing signal {sig}"
     w.stop()
     assert w._stop is True
+
+
+def _gj(n):
+    return {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [float(i), float(i)]},
+         "properties": {"mac": f"AA:{i:02d}", "count": 1}} for i in range(n)]}
+
+
+def test_tab_live_controls_and_port_guard(qapp):
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    tab = FlockHeatmapTab()
+    for attr in ("_gps_combo", "_dev_combo", "_btn_live", "_live_status"):
+        assert hasattr(tab, attr), f"missing control {attr}"
+    assert tab._live_worker is None
+    tab._toggle_live()                                   # no device port picked -> guarded, no worker started
+    assert tab._live_worker is None
+    assert "device port" in tab._live_status.text().lower()
+
+
+def test_tab_record_render_split(qapp):
+    # While hidden, live updates must be RECORDED (latest kept) but NOT rendered; showEvent catches up.
+    from PyQt5.QtGui import QHideEvent, QShowEvent
+
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    tab = FlockHeatmapTab()
+    tab.showEvent(QShowEvent())                          # visible
+    tab._on_live_update(_gj(1))
+    assert tab.camera_count == 1                         # rendered live
+    tab.hideEvent(QHideEvent())                          # backgrounded
+    tab._on_live_update(_gj(2))
+    assert tab.camera_count == 1                         # not repainted while hidden...
+    assert tab._latest_gj is not None                   # ...but the newest data is retained
+    tab.showEvent(QShowEvent())                          # wake -> replay the latest
+    assert tab.camera_count == 2
