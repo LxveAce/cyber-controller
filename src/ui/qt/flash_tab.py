@@ -26,7 +26,7 @@ from PyQt5.QtWidgets import (
 
 from src.core.device_manager import DeviceManager
 from src.core.firmware_vault import FirmwareVault
-from src.core.flash_engine import FirmwareProfile, FlashEngine
+from src.core.flash_engine import FirmwareProfile, FlashEngine, supported_boards_text
 from src.core.resources import resource_path
 
 log = logging.getLogger(__name__)
@@ -322,6 +322,7 @@ class FlashTab(QWidget):
         self._profiles.clear()
         if _PROFILES_DIR.is_dir():
             for f in sorted(_PROFILES_DIR.glob("*.json")):
+                p = None
                 try:
                     p = FirmwareProfile.from_file(f)
                     name = p.name or f.stem
@@ -329,6 +330,14 @@ class FlashTab(QWidget):
                     name = f.stem
                 self._profiles[name] = f
                 self._profile_combo.addItem(name)
+                # Show the profile's supported boards on hover. Tooltip only — the item
+                # TEXT stays the profile name because everything looks the profile up by
+                # _profile_combo.currentText(); changing the label would break that.
+                if p is not None:
+                    tip = supported_boards_text(p)
+                    if tip:
+                        self._profile_combo.setItemData(
+                            self._profile_combo.count() - 1, tip, Qt.ToolTipRole)
 
     def _reload_variants(self) -> None:
         """Load the selected profile's board variants in the background and repopulate the picker."""

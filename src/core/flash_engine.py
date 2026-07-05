@@ -110,6 +110,35 @@ class FirmwareProfile:
         )
 
 
+def supported_boards_text(profile: FirmwareProfile) -> str:
+    """Human-readable list of the boards a firmware profile supports, for a UI tooltip.
+
+    Reads the profile's rich ``boards`` list (each entry carries a ``name`` and the
+    esptool ``chip`` id). Returns an empty string when the profile lists no boards — a
+    bare ``custom`` profile or a non-ESP OS image — so the caller can skip the tooltip
+    instead of showing a blank one. Pure / UI-free so it can be unit-tested directly.
+    """
+    seen: list[str] = []
+    for b in profile.boards:
+        if not isinstance(b, dict):
+            continue
+        name = str(b.get("name") or "").strip()
+        chip = str(b.get("chip") or "").strip()
+        if name and chip:
+            label = f"{name} ({chip})"
+        elif name:
+            label = name
+        elif chip:
+            label = chip
+        else:
+            continue
+        if label not in seen:
+            seen.append(label)
+    if not seen:
+        return ""
+    return "Supported boards:\n" + "\n".join(f"• {s}" for s in seen)
+
+
 def _percent_adapter(progress: ProgressCallback | None) -> Callable[[str], None]:
     """Wrap a (percent, message) callback as flash_core's on_line(str) callback,
     parsing esptool progress percentages out of the streamed lines."""
