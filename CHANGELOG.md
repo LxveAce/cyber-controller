@@ -5,6 +5,41 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.0] — 2026-07-05
+
+The 1.6.0 line, complete. Everything the beta pointed at has landed: a live Flock driving map, concurrent
+multi-device wardriving, recommended-hardware guidance, and real relay/node wireless firmware.
+
+### Added
+- **Multi-device wardriving** — a new Multi-Wardrive tab drives several boards at once from one shared GPS
+  into a single merged WiGLE CSV, with per-board AP counts and a running total. Each board is sent its own
+  firmware's native scan command (Marauder, GhostESP, Flock-You, and so on), and captures route through the
+  shared DeviceManager, so a board already open in the Devices tab is shared rather than double-opened
+  (which on Windows would fail with Access Denied).
+- **Live Flock driving map** — the Flock Map tab now records a live drive: located ALPR cameras drop onto the
+  map as they're found, each checkpointed to disk for crash-safety. The recorder keeps running while the tab
+  is hidden; only the repaint pauses, and the map catches up when you return to it.
+- **Wireless relay + node firmware** — real ESP32 sketches for both roles: a crypto-free USB↔ESP-NOW relay
+  and an AES-256-GCM sensor node, with a byte-exact wire spec in `firmware/PROTOCOL.md`. The node's on-device
+  crypto and anti-replay are contract-tested against the host (the sketches are source-only for now; compile
+  and flash them yourself).
+- **Parrot OS** in the Software-OS flasher — the version is auto-resolved from the official ISO index with
+  SHA-256 + OpenPGP verification and a pinned offline fallback. The OS flasher now covers Kali, Tails, Parrot,
+  and Arch.
+- **Recommended-specs guide** (`docs/RECOMMENDED-SPECS.md`) — which of the four frontends fits which host,
+  from a desktop GUI down to a headless Raspberry Pi.
+- **Supported-boards tooltip** on the Firmware tab, and a **board-compatibility hint** that tints a firmware
+  green or red against the connected board's chip (advisory only — it never blocks a flash).
+- **Companion mobile app** is now its own project (Bluetooth + WiFi now, cellular later).
+
+### Changed
+- The wireless **Nodes** feature is real now: the relay/node firmware the host-side groundwork was waiting on
+  ships in `firmware/`.
+- Tightened the README voice. No facts, versions, flags, or commands changed.
+
+### Fixed
+- `from_checkpoint` no longer raises on a malformed checkpoint file — it returns an empty session, as documented.
+
 ## [1.6.0-beta.1] — 2026-07-05
 
 First public preview of the 1.6.0 line. More is landing before the full 1.6.0 — a live Flock driving
