@@ -310,6 +310,11 @@ class CyberControllerWindow(QMainWindow):
 
         help_menu.addSeparator()
 
+        act_bug = QAction("&Report a Bug…", self)
+        act_bug.setStatusTip("Collect recent logs + system info (auto-redacted) to save or send back for fixing.")
+        act_bug.triggered.connect(self._on_report_bug)
+        help_menu.addAction(act_bug)
+
         act_updates = QAction("Check for &Updates…", self)
         act_updates.triggered.connect(lambda: self.check_for_updates(force=True))
         help_menu.addAction(act_updates)
@@ -1248,6 +1253,19 @@ class CyberControllerWindow(QMainWindow):
         self._show_subtab(self._operate_surface, self._macro_tab)
 
     # ── Help dialogs ─────────────────────────────────────────────────
+
+    def _on_report_bug(self) -> None:
+        """Open Help ▸ Report a Bug with a little live context (connected-device count) attached."""
+        from src.ui.qt.bug_report_dialog import BugReportDialog
+
+        extra: dict = {}
+        dm = getattr(self, "_dm", None) or getattr(self, "_device_manager", None)
+        if dm is not None:
+            try:
+                extra["connected_devices"] = len(dm.list_connected())
+            except Exception:  # noqa: BLE001
+                pass
+        BugReportDialog(self, extra=extra).exec_()
 
     def _on_howto(self) -> None:
         """Open the in-app How-To guide (renders docs/HOWTO.md) in a dialog. Lives under Help rather than a

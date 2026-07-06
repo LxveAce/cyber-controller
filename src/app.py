@@ -128,6 +128,14 @@ def _setup_logging(level: str, log_file: str | None = None) -> None:
     console.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATE))
     root.addHandler(console)
 
+    # In-memory ring buffer so Help ▸ Report a Bug can attach recent logs (redacted). Session-only.
+    try:
+        from src.core.diagnostics import install_ring_handler
+
+        install_ring_handler()
+    except Exception:  # noqa: BLE001 — diagnostics capture must never block startup
+        pass
+
     # Optional file handler
     if log_file:
         path = Path(log_file)
