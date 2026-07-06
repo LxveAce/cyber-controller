@@ -131,6 +131,57 @@ class _DetectWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class _VaultWorker(QThread):
+    """Download a profile's firmware into the vault off the UI thread (network I/O).
+
+    The vault download used to run on a raw ``threading.Thread`` and call QWidget methods
+    (progress bar, log, status label) directly from that thread — undefined behavior in Qt that
+    can corrupt state or segfault, most visibly in the frozen build. Everything now flows back to
+    the GUI thread via signals.
+    """
+
+    progress = pyqtSignal(int)     # percent
+    log = pyqtSignal(str)
+    done = pyqtSignal(object)      # the downloaded path, or None on failure
+
+    def __init__(self, vault, profile_id: str) -> None:
+        super().__init__()
+        self._vault = vault
+        self._profile_id = profile_id
+
+    def run(self) -> None:
+        def _cb(downloaded, total, _msg=""):
+            if total and total > 0:
+                self.progress.emit(int((downloaded / total) * 100))
+        try:
+            result = self._vault.download_firmware(self._profile_id, progress_callback=_cb)
+        except Exception as exc:  # noqa: BLE001 — surface, never crash the UI
+            self.log.emit(f"Vault: download error: {exc}")
+            result = None
+        self.done.emit(result)
+
+
+class _OpWorker(QThread):
+    """Run a blocking serial op (backup / erase) off the UI thread so the window can't freeze.
+
+    ``fn`` takes a ``(pct, msg)`` progress callback and returns a truthy success flag.
+    """
+
+    progress = pyqtSignal(int, str)
+    done = pyqtSignal(bool)
+
+    def __init__(self, fn) -> None:
+        super().__init__()
+        self._fn = fn
+
+    def run(self) -> None:
+        try:
+            ok = bool(self._fn(lambda pct, msg: self.progress.emit(pct, msg)))
+        except Exception:  # noqa: BLE001 — a failed op reports False, never crashes the UI
+            ok = False
+        self.done.emit(ok)
+
+
 class FlashTab(QWidget):
     """Firmware flashing tab with port/profile selectors, progress bar, and batch queue."""
 
@@ -142,6 +193,11 @@ class FlashTab(QWidget):
         self._worker: _FlashWorker | None = None
         self._variant_loader: _VariantLoader | None = None
         self._detect_worker: _DetectWorker | None = None
+        # Strong refs to in-flight background QThreads so CPython can't GC one mid-run (which
+        # aborts with "QThread: Destroyed while thread is still running"). Each worker removes
+        # itself on its finished signal.
+        self._bg_workers: "set[QThread]" = set()
+        self._op_worker: _OpWorker | None = None
         self._pending_variant: str | None = None  # variant to select once the async list lands
         self._profiles: dict[str, Path] = {}  # display name -> path
         self._profile_objs: dict[str, FirmwareProfile] = {}  # display name -> loaded profile
@@ -440,8 +496,14 @@ class FlashTab(QWidget):
         self._variant_combo.addItem("Loading variants…", "")
         self._variant_combo.model().item(1).setEnabled(False)
         self._variant_loader = _VariantLoader(self._fe, profile)
-        self._variant_loader.loaded.connect(self._on_variants_loaded)
-        self._variant_loader.start()
+        # Hold a strong ref until it finishes so rapid profile switching can't drop the last
+        # reference to a still-running loader (which would abort the process). _on_variants_loaded
+        # still uses `sender() is self._variant_loader` to keep latest-wins semantics.
+        loader = self._variant_loader
+        self._bg_workers.add(loader)
+        loader.finished.connect(lambda w=loader: self._bg_workers.discard(w))
+        loader.loaded.connect(self._on_variants_loaded)
+        loader.start()
 
     def _on_variants_loaded(self, variants: list) -> None:
         # Ignore results from a superseded loader (rapid profile switching) so a late-arriving
@@ -469,9 +531,12 @@ class FlashTab(QWidget):
             p = Path(path)
             try:
                 prof = FirmwareProfile.from_file(p)
-                name = prof.name or p.stem
-            except Exception:
-                name = p.stem
+            except Exception as exc:  # noqa: BLE001
+                # Don't register a file we couldn't parse — it would become the current, "flashable"
+                # selection and then crash the flash path. Reject it here with a clear message.
+                self._log(f"Not a valid firmware profile ({p.name}): {exc}")
+                return
+            name = prof.name or p.stem
             self._profiles[name] = p
             self._profile_combo.addItem(name)
             self._profile_combo.setCurrentText(name)
@@ -580,6 +645,15 @@ class FlashTab(QWidget):
             self._log("No firmware profile selected.")
             return
 
+        # Parse the profile ONCE, up front, guarded — a malformed/browsed file (truncated JSON, a 404
+        # HTML page saved as .json, wrong schema) would otherwise raise inside this slot and, with no
+        # sys.excepthook installed, PyQt aborts the whole app instead of logging the error.
+        try:
+            profile = self._fe.load_profile(profile_path)
+        except Exception as exc:  # noqa: BLE001
+            self._log(f"Invalid firmware profile ({Path(profile_path).name}): {exc}")
+            return
+
         # If Dead Man's Switch is enabled, open setup dialog before flashing
         if self._suicide_checkbox.isChecked():
             try:
@@ -590,7 +664,6 @@ class FlashTab(QWidget):
 
             dlg = SuicideSetupDialog(self)
             # Pre-populate with current port and profile info
-            profile = self._fe.load_profile(profile_path)
             variant = self._variant_combo.currentData() or ""
             # Set chip from profile if available
             if hasattr(profile, "chip") and profile.chip:
@@ -610,7 +683,6 @@ class FlashTab(QWidget):
                 return
             self._log("Dead Man's Switch setup complete — proceeding to flash.")
 
-        profile = self._fe.load_profile(profile_path)
         variant = self._variant_combo.currentData() or ""
         profile.variant = variant
         if variant:
@@ -625,6 +697,23 @@ class FlashTab(QWidget):
         self._worker.finished.connect(self._on_flash_done)
         self._worker.start()
 
+    def _run_op(self, fn, ok_msg: str, fail_msg: str, buttons) -> None:
+        """Run a blocking serial op (backup/erase) on a worker thread so the window stays responsive.
+        Re-enables ``buttons`` and logs the outcome on the GUI thread when it finishes."""
+        worker = _OpWorker(fn)
+        self._op_worker = worker
+        self._bg_workers.add(worker)
+        worker.progress.connect(self._on_progress)
+
+        def _finish(ok: bool) -> None:
+            self._log(ok_msg if ok else fail_msg)
+            for b in buttons:
+                b.setEnabled(True)
+
+        worker.done.connect(_finish)
+        worker.finished.connect(lambda w=worker: self._bg_workers.discard(w))
+        worker.start()
+
     def _on_backup(self) -> None:
         port = self._port_combo.currentData()
         if not port:
@@ -633,10 +722,14 @@ class FlashTab(QWidget):
         path, _ = QFileDialog.getSaveFileName(
             self, "Save backup", f"backup_{port.replace('/', '_')}.bin", "Binary (*.bin)"
         )
-        if path:
-            self._log(f"Backing up flash from {port} to {path}...")
-            ok = self._fe.backup(port, path, progress_callback=self._on_progress_sync)
-            self._log("Backup complete." if ok else "Backup failed.")
+        if not path:
+            return
+        self._log(f"Backing up flash from {port} to {path}...")
+        self._btn_backup.setEnabled(False)
+        self._run_op(
+            lambda cb: self._fe.backup(port, path, progress_callback=cb),
+            "Backup complete.", "Backup failed.", (self._btn_backup,),
+        )
 
     def _on_erase(self) -> None:
         port = self._port_combo.currentData()
@@ -655,11 +748,10 @@ class FlashTab(QWidget):
             return
         self._log(f"Erasing flash on {port}...")
         self._btn_erase.setEnabled(False)
-        try:
-            ok = self._fe.erase(port, progress_callback=self._on_progress_sync)
-            self._log("Erase complete." if ok else "Erase failed.")
-        finally:
-            self._btn_erase.setEnabled(True)
+        self._run_op(
+            lambda cb: self._fe.erase(port, progress_callback=cb),
+            "Erase complete.", "Erase failed.", (self._btn_erase,),
+        )
 
     def _add_to_queue(self) -> None:
         port = self._port_combo.currentData()
@@ -672,10 +764,6 @@ class FlashTab(QWidget):
     # ── Progress / completion ────────────────────────────────────────
 
     def _on_progress(self, pct: int, msg: str) -> None:
-        self._progress.setValue(pct)
-        self._log(msg)
-
-    def _on_progress_sync(self, pct: int, msg: str) -> None:
         self._progress.setValue(pct)
         self._log(msg)
 
@@ -729,25 +817,24 @@ class FlashTab(QWidget):
 
         self._log(f"Downloading {profile_name} to vault...")
 
-        def progress_cb(downloaded, total, msg):
-            if total > 0:
-                pct = int((downloaded / total) * 100)
-                self._progress.setValue(pct)
+        # Run the download on a QThread and marshal every UI update back to the GUI thread via signals.
+        # (This used to run on a raw threading.Thread that touched the progress bar / log / status label
+        # directly off-thread — undefined behavior in Qt that can corrupt state or segfault the frozen build.)
+        worker = _VaultWorker(self._vault, profile_id)
+        self._bg_workers.add(worker)
+        worker.progress.connect(self._progress.setValue)
+        worker.log.connect(self._log)
 
-        # Run download in background thread
-        import threading
-
-        def _do_download():
-            result = self._vault.download_firmware(
-                profile_id, progress_callback=progress_cb
-            )
+        def _done(result, name=profile_name) -> None:
             if result:
-                self._log(f"Vault: downloaded {profile_name} -> {result}")
+                self._log(f"Vault: downloaded {name} -> {result}")
             else:
-                self._log(f"Vault: download failed for {profile_name}")
+                self._log(f"Vault: download failed for {name}")
             self._refresh_vault_status()
 
-        threading.Thread(target=_do_download, daemon=True).start()
+        worker.done.connect(_done)
+        worker.finished.connect(lambda w=worker: self._bg_workers.discard(w))
+        worker.start()
 
     def _on_vault_clear(self) -> None:
         """Clear the firmware vault cache."""
