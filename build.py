@@ -79,6 +79,12 @@ def _build() -> int:
     if probes_dir.is_dir():
         cmd.extend(["--add-data", f"{probes_dir}{sep}src/config/probes"])
 
+    # Cyber-Controller-bundled Dead Man's Switch partition tables (e.g. the 8 MB guardian layout the
+    # pinned submodule lacks). suicide_setup.partitions_csv resolves these before the submodule's copy.
+    dms_parts_dir = _ROOT / "src" / "config" / "dms_partitions"
+    if dms_parts_dir.is_dir():
+        cmd.extend(["--add-data", f"{dms_parts_dir}{sep}src/config/dms_partitions"])
+
     # Device-View per-firmware skin palettes (DV3) — resource_path("src","ui","qt","skins") reads these in
     # the frozen build, so they must be bundled or every skin silently falls back to the default palette.
     skins_dir = _ROOT / "src" / "ui" / "qt" / "skins"

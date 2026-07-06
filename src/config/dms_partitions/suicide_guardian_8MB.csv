@@ -1,0 +1,35 @@
+# suicide_guardian_8MB.csv - GUARDIAN variant, 8 MB flash (0x800000)
+#
+# The SPEC's stated MINIMUM for Guardian ("8 MB minimum, 16 MB preferred" - see
+# suicide_guardian_16MB.csv). Cyber-Controller ships this table because the pinned deadmans-switch
+# submodule only carries the 16 MB guardian layout; without it, picking Guardian + 8 MB fell back to
+# the fork table (which has no `factory` partition) and crashed the provisioner.
+#
+# Same two-app model as the 16 MB table: a tiny `factory` Guardian gate runs first on cold boot (blank
+# otadata => bootloader runs factory), then hands off to an UNMODIFIED firmware in `ota_0`. Identical
+# nvs/otadata/factory/ota_0/guardcfg offsets as the 16 MB table (so the gate + ota_0 firmware fit
+# byte-for-byte); only `spiffs` is smaller to fit 8 MB. Bootloader @0x1000 (classic) / @0x0 (S3/C3);
+# partition table @0x8000. App offsets 64 KB (0x10000) aligned; data 4 KB aligned.
+#
+# Layout math:
+#   0x009000 +0x005000 -> 0x00E000  nvs
+#   0x00E000 +0x002000 -> 0x010000  otadata
+#   0x010000 +0x100000 -> 0x110000  factory (Guardian)   1 MB
+#   0x110000 +0x200000 -> 0x310000  ota_0   (firmware)   2 MB
+#   0x310000 +0x010000 -> 0x320000  guardcfg             64 KB
+#   0x320000 +0x4C0000 -> 0x7E0000  spiffs               ~4.75 MB (shrunk 64 KB for scratch)
+#   0x7E0000 +0x010000 -> 0x7F0000  scratch              64 KB  (SAFE_MODE dry-run target, 0x40)
+#   0x7F0000 +0x010000 -> 0x800000  coredump             64 KB  (end of 8 MB)
+#
+# `guardcfg` is 0x10000 (>= the 0x3000 read/write NVS minimum). `scratch` (data 0x40) is REQUIRED for
+# SUICIDE_SAFE_MODE. Fills 8 MB exactly.
+#
+# Name,    Type, SubType, Offset,   Size,     Flags
+nvs,       data, nvs,     0x9000,   0x5000,
+otadata,   data, ota,     0xe000,   0x2000,
+factory,   app,  factory, 0x10000,  0x100000,
+ota_0,     app,  ota_0,   0x110000, 0x200000,
+guardcfg,  data, nvs,     0x310000, 0x10000,
+spiffs,    data, spiffs,  0x320000, 0x4C0000,
+scratch,   data, 0x40,    0x7E0000, 0x10000,
+coredump,  data, coredump,0x7F0000, 0x10000,

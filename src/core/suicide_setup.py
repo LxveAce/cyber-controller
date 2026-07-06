@@ -25,6 +25,9 @@ from src.core.resources import resource_path
 _SUBMODULE = resource_path("deadmans-switch")
 _HOST = _SUBMODULE / "host"
 _PARTS = _SUBMODULE / "firmware" / "partitions"
+# Cyber-Controller-bundled partition tables, checked BEFORE the submodule's — lets us ship a layout the
+# pinned submodule doesn't carry (e.g. the 8 MB guardian table) without editing the public submodule.
+_LOCAL_PARTS = resource_path("src", "config", "dms_partitions")
 
 # (flash_size, variant) -> partition CSV. guardcfg/otadata offsets are READ from the CSV by the
 # provisioner, never hardcoded here.
@@ -32,6 +35,7 @@ _CSV_BY_SIZE = {
     ("4MB", "fork"): "suicide_4MB.csv",
     ("8MB", "fork"): "suicide_8MB.csv",
     ("16MB", "fork"): "suicide_16MB.csv",
+    ("8MB", "guardian"): "suicide_guardian_8MB.csv",
     ("16MB", "guardian"): "suicide_guardian_16MB.csv",
 }
 
@@ -78,13 +82,25 @@ def partitions_csv(cfg: SuicideConfig) -> Path:
     password gate at all, while the owner believes the boot password is set. Fail loud instead.
     """
     flash = _canon_flash_size(cfg.flash_size)
-    name = _CSV_BY_SIZE.get((flash, cfg.variant)) or _CSV_BY_SIZE.get((flash, "fork"))
+    # NO silent fork fallback: guardian on a fork table lacks the `factory` partition the guardian gate
+    # needs, which used to crash the provisioner with a cryptic "partition 'factory' not found". Require
+    # an exact table and fail with an actionable message instead (this is the fail-loud the docstring means).
+    name = _CSV_BY_SIZE.get((flash, cfg.variant))
     if name is None:
+        if cfg.variant == "guardian":
+            sizes = sorted(k[0] for k in _CSV_BY_SIZE if k[1] == "guardian")
+            raise ValueError(
+                f"Guardian needs two app slots — a ~1 MB gate plus the full firmware in ota_0 — plus "
+                f"filesystems, which don't fit in {cfg.flash_size}. Guardian supports {sizes}; pick "
+                f"8MB or 16MB, or use the Fork variant for 4 MB flash."
+            )
         raise ValueError(
             f"no partition table for flash_size={cfg.flash_size!r} variant={cfg.variant!r}; "
             f"known combos: {sorted(_CSV_BY_SIZE)}"
         )
-    return _PARTS / name
+    # Prefer a Cyber-Controller-bundled table over the submodule's, so a locally-shipped layout wins.
+    local = _LOCAL_PARTS / name
+    return local if local.is_file() else _PARTS / name
 
 
 def _load_provision():

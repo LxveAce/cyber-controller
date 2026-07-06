@@ -80,6 +80,7 @@ class SuicideSetupDialog(QDialog):
         self.flash.addItems(["4MB", "8MB", "16MB"])
         self.variant = QComboBox()
         self.variant.addItems(["fork", "guardian"])
+        self.variant.currentTextChanged.connect(self._on_variant_changed)
         hwf.addRow("Chip:", self.chip)
         hwf.addRow("Flash size:", self.flash)
         hwf.addRow("Variant:", self.variant)
@@ -142,6 +143,18 @@ class SuicideSetupDialog(QDialog):
         root.addLayout(btn_row)
 
     # ── Slots ────────────────────────────────────────────────────────
+
+    def _on_variant_changed(self, variant: str) -> None:
+        """Guardian needs two app slots (gate + firmware), which only fit at >=8 MB — restrict the flash
+        choices to the tables that exist so the user can't pick a combo the provisioner would reject."""
+        cur = self.flash.currentText()
+        sizes = ["8MB", "16MB"] if variant == "guardian" else ["4MB", "8MB", "16MB"]
+        self.flash.blockSignals(True)
+        self.flash.clear()
+        self.flash.addItems(sizes)
+        i = self.flash.findText(cur)
+        self.flash.setCurrentIndex(i if i >= 0 else 0)
+        self.flash.blockSignals(False)
 
     def _toggle_echo(self, show: bool) -> None:
         mode = QLineEdit.Normal if show else QLineEdit.Password
