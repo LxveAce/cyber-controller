@@ -213,3 +213,81 @@ def test_flash_checksums_sig_bad_sig_refuses(img, monkeypatch):
     with pytest.raises(ValueError, match="SHA256SUMS signature"):
         oc.flash_os_image(oc.get_image("kali"), r, path, r"\\.\PhysicalDrive9", _silent,
                           checksums_path=path, checksums_sig_path=path + ".gpg", confirmed=True)
+
+
+# ── OS-integrity hardening (deep review round 2): unpinned-key rubber-stamp + Parrot clearsign ──
+
+_PARROT_FPR = "B711822346552E4D92DA02DF7A8286AF0E81EE4A"
+
+
+def _mock_gpg_status(monkeypatch, status):
+    monkeypatch.setattr(oc, "_gpg", lambda: "gpg")
+
+    class _P:
+        def __init__(self):
+            self.stdout, self.stderr = status, ""
+
+    monkeypatch.setattr(oc.subprocess, "run", lambda *a, **k: _P())
+
+
+def test_verify_gpg_detached_no_fingerprint_defers_not_trusts(monkeypatch):
+    # A perfectly good signature but NO pinned fingerprint must return None (defer to SHA), never True —
+    # otherwise ANY key in the keyring (incl. an attacker's) would pass as "trusted".
+    _mock_gpg_status(monkeypatch, "[GNUPG:] VALIDSIG DEADBEEF\n[GNUPG:] GOODSIG\n")
+    assert oc.verify_gpg_detached("img", "sig", None, _silent) is None
+
+
+def test_verify_clearsigned_good_matching_fingerprint(monkeypatch):
+    _mock_gpg_status(monkeypatch, f"[GNUPG:] VALIDSIG {_PARROT_FPR}\n[GNUPG:] GOODSIG\n")
+    assert oc.verify_gpg_clearsigned("hashes.txt", _PARROT_FPR, _silent) is True
+
+
+def test_verify_clearsigned_wrong_fingerprint_is_false(monkeypatch):
+    _mock_gpg_status(monkeypatch, "[GNUPG:] VALIDSIG " + "0" * 40 + "\n[GNUPG:] GOODSIG\n")
+    assert oc.verify_gpg_clearsigned("hashes.txt", _PARROT_FPR, _silent) is False
+
+
+def test_verify_clearsigned_no_fingerprint_or_no_gpg_is_none(monkeypatch):
+    _mock_gpg_status(monkeypatch, f"[GNUPG:] VALIDSIG {_PARROT_FPR}\n")
+    assert oc.verify_gpg_clearsigned("hashes.txt", None, _silent) is None  # no pinned key
+    monkeypatch.setattr(oc, "_gpg", lambda: None)
+    assert oc.verify_gpg_clearsigned("hashes.txt", _PARROT_FPR, _silent) is None  # no gpg
+
+
+def _resolved_parrot(sha):
+    return oc.Resolved(image_id="parrot", version="7.3", image_url="https://x", image_type="iso",
+                       verify_model="image_sig", checksums_url="https://x/signed-hashes.txt",
+                       sha256=sha, gpg_fingerprint=_PARROT_FPR)
+
+
+def test_flash_parrot_good_clearsign_writes(img, monkeypatch):
+    path, sha = img
+    monkeypatch.setattr(oc, "verify_gpg_clearsigned", lambda *a, **k: True)
+    monkeypatch.setattr(oc.sd, "write_image", lambda *a, **k: 0)
+    monkeypatch.setattr(oc.sd, "verify_write", lambda *a, **k: True)
+    rc = oc.flash_os_image(oc.get_image("parrot"), _resolved_parrot(sha), path,
+                           r"\\.\PhysicalDrive9", _silent, checksums_path=path, confirmed=True)
+    assert rc == 0
+
+
+def test_flash_parrot_bad_clearsign_refuses_without_writing(img, monkeypatch):
+    path, sha = img
+    wrote = {"x": False}
+    monkeypatch.setattr(oc, "verify_gpg_clearsigned", lambda *a, **k: False)
+    monkeypatch.setattr(oc.sd, "write_image", lambda *a, **k: wrote.__setitem__("x", True) or 0)
+    with pytest.raises(ValueError, match="Clearsigned hashes are NOT valid"):
+        oc.flash_os_image(oc.get_image("parrot"), _resolved_parrot(sha), path,
+                          r"\\.\PhysicalDrive9", _silent, checksums_path=path, confirmed=True)
+    assert wrote["x"] is False
+
+
+def test_flash_parrot_no_gpg_falls_to_sha_with_note(img, monkeypatch):
+    path, sha = img
+    monkeypatch.setattr(oc, "verify_gpg_clearsigned", lambda *a, **k: None)  # gpg unavailable
+    monkeypatch.setattr(oc.sd, "write_image", lambda *a, **k: 0)
+    monkeypatch.setattr(oc.sd, "verify_write", lambda *a, **k: True)
+    msgs: list[str] = []
+    rc = oc.flash_os_image(oc.get_image("parrot"), _resolved_parrot(sha), path,
+                           r"\\.\PhysicalDrive9", msgs.append, checksums_path=path, confirmed=True)
+    assert rc == 0
+    assert any("was not verified" in m for m in msgs), msgs  # honest: not full PGP assurance

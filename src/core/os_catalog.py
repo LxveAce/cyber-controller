@@ -318,9 +318,46 @@ def verify_gpg_detached(target_path: str, sig_path: str, fingerprint: Optional[s
     status = proc.stdout + proc.stderr
     flat = status.replace(" ", "")
     good = ("VALIDSIG" in status or "GOODSIG" in status)
-    if fingerprint:
-        good = good and fingerprint.replace(" ", "") in flat
+    if not fingerprint:
+        # A good signature from an UNPINNED key proves nothing about authenticity — ANY key in the local
+        # keyring (including one an attacker planted) satisfies VALIDSIG. Don't rubber-stamp it as trusted:
+        # report "can't establish" (None) so the caller falls through to the SHA-256 anchor instead of
+        # writing an image on the strength of a meaningless signature.
+        on_line("[os] no pinned key fingerprint for this image — a GPG signature alone can't prove "
+                "authenticity; deferring to the SHA-256 check.")
+        return None
+    good = good and fingerprint.replace(" ", "") in flat
     on_line("[os] GPG signature " + ("VALID" if good else "NOT valid for the expected key"))
+    return good
+
+
+def verify_gpg_clearsigned(clearsigned_path: str, fingerprint: Optional[str],
+                           on_line: Line) -> Optional[bool]:
+    """Verify an INLINE-clearsigned OpenPGP document (e.g. Parrot's ``signed-hashes.txt``) against
+    *fingerprint*.
+
+    Returns True (good clearsign from the pinned key), False (bad/foreign), or None if it can't be
+    established (gpg missing, or no pinned fingerprint — an unpinned clearsign proves nothing). Parrot
+    ships one clearsigned hashes file instead of a detached per-ISO sig, so this is the ONLY way its
+    PGP assurance actually gets checked before the SHA-256 it carries is trusted.
+    """
+    gpg = _gpg()
+    if not gpg:
+        on_line("[os] gpg not found — cannot verify the clearsigned hashes (SHA-256 alone will be used).")
+        return None
+    if not fingerprint:
+        on_line("[os] no pinned key fingerprint — a clearsigned hashes file can't establish authenticity.")
+        return None
+    try:
+        proc = subprocess.run([gpg, "--status-fd", "1", "--verify", clearsigned_path],
+                              capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError) as exc:
+        on_line(f"[os] gpg clearsign verify error: {exc}")
+        return None
+    status = proc.stdout + proc.stderr
+    flat = status.replace(" ", "")
+    good = ("VALIDSIG" in status or "GOODSIG" in status) and fingerprint.replace(" ", "") in flat
+    on_line("[os] clearsigned hashes " + ("VALID" if good else "NOT valid for the expected key"))
     return good
 
 
@@ -394,17 +431,33 @@ def flash_os_image(entry: OSImage, resolved: Resolved, image_path: str, device: 
             on_line("[os] NOTE: checksum matched but the SHA256SUMS GPG signature was not verified "
                     "(gpg missing or signature file absent). Verify the signature for full assurance.")
     else:
-        # image_sig: Tails, Arch — detached sig over the image; else SHA-256.
+        # image_sig: a detached sig over the image (Tails, Arch), OR an inline-clearsigned hashes file
+        # whose SHA-256 is only trustworthy if that clearsign checks out (Parrot).
         if sig_path:
             result = verify_gpg_detached(image_path, sig_path, fpr, on_line)
             if result is True:
                 verified = True
             elif result is False:
                 raise ValueError("GPG signature is NOT valid for the expected key — refusing to write.")
+        # Parrot-style: the SHA-256 came out of a CLEARSIGNED hashes file. That hash is worthless against a
+        # MITM unless the clearsign itself is verified — a swapped image + swapped hashes would match. So
+        # verify the clearsign, and only then treat the SHA as authenticated.
+        if not verified and checksums_path and os.path.isfile(checksums_path):
+            clearsig_ok = verify_gpg_clearsigned(checksums_path, fpr, on_line)
+            if clearsig_ok is False:
+                raise ValueError("Clearsigned hashes are NOT valid for the expected key — refusing to write.")
+            if clearsig_ok is True and resolved.sha256:
+                if not verify_sha256(image_path, resolved.sha256, on_line, on_progress):
+                    raise ValueError("SHA-256 does not match the PGP-signed hashes — refusing to write.")
+                verified = True
         if not verified and resolved.sha256:
             if not verify_sha256(image_path, resolved.sha256, on_line, on_progress):
                 raise ValueError("SHA-256 does not match — refusing to write an unverified image.")
             verified = True
+            if checksums_path:  # the SHA came from a hashes file we could NOT PGP-verify (gpg/key missing)
+                on_line("[os] NOTE: SHA-256 matched but the hashes file's PGP signature was not verified "
+                        "(gpg missing or no pinned key). Verify signed-hashes.txt against the pinned key "
+                        "for full assurance.")
 
     if not verified:
         on_line(f"[os] WARNING: {entry.name} image is UNVERIFIED (no valid signature/checksum). "
@@ -467,6 +520,13 @@ def run_os_flash_cli(image_id: str, target: Optional[str] = None, image: Optiona
                     sig_path = download(resolved.sig_url, cache, on)
                 except (requests.RequestException, ValueError, OSError) as exc:
                     on(f"[os] could not fetch signature ({exc}); will fall back to SHA-256.")
+            # Parrot-style image_sig entries anchor integrity on a CLEARSIGNED hashes file (no detached
+            # per-ISO .sig). Fetch it so flash_os_image can verify the clearsign before trusting its SHA.
+            if resolved.verify_model == "image_sig" and resolved.checksums_url and not checksums_path:
+                try:
+                    checksums_path = download(resolved.checksums_url, cache, on)
+                except (requests.RequestException, ValueError, OSError) as exc:
+                    on(f"[os] could not fetch the signed hashes file ({exc}).")
             if resolved.verify_model == "checksums_sig":
                 if resolved.checksums_url:
                     checksums_path = download(resolved.checksums_url, cache, on)

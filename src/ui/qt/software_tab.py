@@ -90,6 +90,13 @@ class _OSFlashWorker(QThread):
                         sig = oc.download(r.sig_url, cache, on)
                     except Exception as exc:  # noqa: BLE001
                         on(f"[os] signature fetch failed ({exc}); will fall back to SHA-256.")
+                # Parrot-style image_sig: fetch the clearsigned hashes file so its signature is verified
+                # before the SHA it carries is trusted.
+                if r.verify_model == "image_sig" and r.checksums_url and not sums:
+                    try:
+                        sums = oc.download(r.checksums_url, cache, on)
+                    except Exception as exc:  # noqa: BLE001
+                        on(f"[os] signed hashes fetch failed ({exc}).")
                 if r.verify_model == "checksums_sig":
                     if r.checksums_url:
                         sums = oc.download(r.checksums_url, cache, on)
