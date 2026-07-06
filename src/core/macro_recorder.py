@@ -25,8 +25,17 @@ _VARIABLE_PATTERN = re.compile(r"\{\{(\w+)\}\}")
 # ledger records which builtins were seeded so one the user deletes is NOT re-created.
 _SEEDED_LEDGER = ".seeded.json"
 
-# Attack verbs a step command may start with that mark a macro as transmitting/disruptive (§4.3).
-_ATTACK_VERBS = ("attack", "deauth", "blespam", "beacon", "rickroll", "spam")
+# Command PREFIXES that mark a macro step as transmitting/disruptive and therefore needing the play-time
+# arm gate (§4.3). Grounded in the ATTACK-category TargetAction templates across src/protocols/*.py
+# (attack -d/-t …, beaconspam -r, blespam …, karma -s …, probe, AT+DEAUTHIDX…, subghz tx, nfc/rfid emulate,
+# startportal). Matched as case-insensitive PREFIXES on the whole step command — NOT exact first-token
+# equality, which let 'beaconspam -r', 'karma -s <ssid>', 'AT+DEAUTHIDX=ALL' and 'probe' bypass the gate
+# because their first token wasn't literally in the old verb list. This is a WARN/arm gate (always offers
+# "Yes, proceed"), so over-flagging a benign command is acceptable — MISSING a real attack is not.
+_ATTACK_PREFIXES = (
+    "attack", "deauth", "at+deauth", "beacon", "blespam", "spam", "rickroll", "karma", "probe",
+    "startportal", "evilportal", "sourapple", "jam", "subghz tx", "nfc emulate", "rfid emulate",
+)
 
 
 def _builtin_macros_dir() -> Path:
@@ -39,16 +48,16 @@ def is_offensive_macro(macro: Macro) -> bool:
     """Return True if a macro transmits / can disrupt and therefore needs the play-time arm gate.
 
     Heuristic (spec §4.3): the ``device_protocol`` ends with ``-attack``, OR the name starts with
-    ``[TEMPLATE``, OR any step command begins with an attack verb. Pure logic (no Qt) so it is unit
-    testable and reusable by the UI play path.
+    ``[TEMPLATE``, OR any step command starts with a known attack-command prefix. Pure logic (no Qt) so
+    it is unit testable and reusable by the UI play path.
     """
     if macro.device_protocol.endswith("-attack"):
         return True
     if macro.name.startswith("[TEMPLATE"):
         return True
     for step in macro.steps:
-        first = step.command.strip().split(maxsplit=1)
-        if first and first[0].lower() in _ATTACK_VERBS:
+        cmd = step.command.strip().lower()
+        if any(cmd.startswith(prefix) for prefix in _ATTACK_PREFIXES):
             return True
     return False
 

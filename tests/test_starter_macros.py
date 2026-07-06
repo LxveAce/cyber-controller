@@ -137,6 +137,21 @@ def test_is_offensive_flags_attack_verb_step():
     assert is_offensive_macro(m) is True
 
 
+def test_is_offensive_flags_real_attack_commands_that_bypassed_exact_match():
+    # Real transmitting commands whose FIRST token wasn't literally in the old verb list, so the
+    # exact-match gate skipped the arm confirmation and they played silently. Prefix matching catches them.
+    for cmd in ("beaconspam -r", "karma -s HomeNet", "AT+DEAUTHIDX=ALL", "probe",
+                "blespam apple", "startportal", "subghz tx_from_file /x.sub"):
+        m = Macro(name="plain", steps=[MacroStep(command=cmd)])
+        assert is_offensive_macro(m) is True, cmd
+
+
+def test_benign_recon_commands_are_not_flagged():
+    for cmd in ("scanap", "stopscan", "list -a", "select -a 3", "channel 6", "clearlist"):
+        m = Macro(name="plain", steps=[MacroStep(command=cmd)])
+        assert is_offensive_macro(m) is False, cmd
+
+
 def test_safe_recon_macro_is_not_offensive():
     m = Macro(
         name="Marauder — AP scan + list",
