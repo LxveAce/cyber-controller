@@ -147,6 +147,7 @@ class NodeLink:
         self._line_callbacks: list[Callable[[str], None]] = []
         self._state_callbacks: list[Callable[[ConnectionState], None]] = []
         self._error_callbacks: list[Callable[[Exception], None]] = []
+        self._rx_advance_cb: Callable[[], None] | None = None
 
         # Wire onto the gateway ONCE for our lifetime: inbound frames -> our decode path, and the
         # gateway's state transitions -> our subscribers. Both survive connect/disconnect cycles.
@@ -206,6 +207,13 @@ class NodeLink:
 
     def on_error(self, cb: Callable[[Exception], None]) -> None:
         self._error_callbacks.append(cb)
+
+    def on_rx_advance(self, cb: Callable[[], None] | None) -> None:
+        """Register a callback fired whenever an inbound frame is ACCEPTED (the anti-replay window head
+        advanced). Lets the owner persist rx_epoch/rx_highest as the session runs so a crash can't roll the
+        head back and re-open captured frames to replay. Keep it cheap + non-raising — it runs on the RX
+        path; throttle any actual persistence inside it."""
+        self._rx_advance_cb = cb
 
     def _detach_from_gateway(self) -> None:
         """Unhook OUR line + state callbacks from the (borrowed) gateway. Fully symmetric so a closed
@@ -288,6 +296,16 @@ class NodeLink:
         except Exception:  # noqa: BLE001 — any malformed frame is dropped, never surfaced/raised
             log.debug("NodeLink %s: dropped malformed frame", self.port)
             return
+
+        # Frame accepted -> the replay-window head just advanced. Signal the owner so it can persist the
+        # new head (throttled); a crash then rolls anti-replay back by at most a bounded window rather than
+        # to the last clean detach (which would let every frame captured since then replay).
+        cb = self._rx_advance_cb
+        if cb is not None:
+            try:
+                cb()
+            except Exception:  # noqa: BLE001 — persistence must never break the RX path
+                log.exception("NodeLink %s: rx-advance callback error", self.port)
 
         decoded = plaintext.decode(self.encoding, errors="replace")
         # The node relays the firmware's own line(s); frame on any terminator, emit each non-empty line.

@@ -87,6 +87,26 @@ def _ctrl(vault=None):
     return NodesController(dm, vault_getter=lambda: v), v, dm
 
 
+def test_rx_persister_throttles_to_every_n(monkeypatch):
+    # The on_rx_advance callback must persist the replay head only every _RX_PERSIST_EVERY accepted
+    # frames — a vault write per frame would be far too chatty on the RX thread.
+    from src.core import node_provision
+    ctrl, _v, _dm = _ctrl()
+    calls: list[int] = []
+    monkeypatch.setattr(node_provision, "persist_rx_state", lambda vault, nid, link: calls.append(nid))
+    persist = ctrl._make_rx_persister(7, object())
+    n = NodesController._RX_PERSIST_EVERY
+
+    for _ in range(n - 1):
+        persist()
+    assert calls == [], "must not persist before the throttle threshold"
+    persist()  # the Nth accepted frame
+    assert calls == [7], "must persist on the Nth accepted frame"
+    for _ in range(n):
+        persist()
+    assert calls == [7, 7], "must persist once per N frames thereafter"
+
+
 # ── gate gating ──────────────────────────────────────────────────────
 def test_is_unlocked_reflects_gate():
     ok, _, dm = _ctrl()

@@ -144,6 +144,26 @@ def test_close_spares_shared_gateway_and_removes_both_callbacks():
     assert b._on_gateway_line in gw._line_cbs and b._emit_state in gw._state_cbs, "node B stays wired"
 
 
+def test_on_rx_advance_fires_only_on_accepted_frames():
+    # The anti-replay head advances only when a frame is ACCEPTED, so the persistence hook must fire then
+    # — and never for a dropped (garbage/forged/replayed) frame.
+    host, host_gw, node, node_gw = _pair()
+    advances = {"n": 0}
+    host.on_rx_advance(lambda: advances.__setitem__("n", advances["n"] + 1))
+
+    node.write("targetline")
+    pump(node_gw, host_gw)
+    assert advances["n"] == 1, "an accepted frame must fire on_rx_advance"
+
+    host_gw.deliver("!!!not-base64!!!")          # garbage — dropped, no advance
+    host_gw.deliver("aGVsbG8=")                   # valid base64 but not a sealed frame — dropped
+    assert advances["n"] == 1, "a dropped frame must NOT fire on_rx_advance"
+
+    node.write("another")
+    pump(node_gw, host_gw)
+    assert advances["n"] == 2
+
+
 # ── Round-trip over the mock gateway ─────────────────────────────────
 def test_round_trip_host_to_node():
     host, host_gw, node, node_gw = _pair()
