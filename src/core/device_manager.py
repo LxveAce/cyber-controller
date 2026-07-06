@@ -247,6 +247,18 @@ class DeviceManager:
         with self._lock:
             return self._connections.get(port)
 
+    def add_connection_owner(self, port: str, owner: str) -> bool:
+        """Register an ADDITIONAL owner on an already-open *port* — a borrow, e.g. a NodeLink riding a
+        gateway dongle. This keeps the port alive on the refcount until this owner ALSO releases it (via
+        :meth:`close_connection` with the same tag), so the gateway's direct owner disconnecting can't
+        physically close the port out from under an attached node. No-op (False) if the port has no live
+        connection; the connection itself is not touched."""
+        with self._lock:
+            if port not in self._connections:
+                return False
+            self._conn_owners.setdefault(port, set()).add(owner)
+            return True
+
     def attach_connection(self, device: Device, conn: Any, *, owner: str | None = None) -> Any:
         """Register an already-built, connection-shaped object as a managed device.
 

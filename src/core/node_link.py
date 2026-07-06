@@ -165,6 +165,13 @@ class NodeLink:
     def is_connected(self) -> bool:
         return bool(getattr(self._gateway, "is_connected", False))
 
+    @property
+    def gateway_port(self) -> str:
+        """The REAL port of the gateway this link borrows (distinct from this link's own ``node:<id>``
+        port). Lets the owner register the borrow against the gateway's refcount so the shared dongle
+        isn't closed out from under an attached node."""
+        return getattr(self._gateway, "port", "")
+
     # ── Persistence state (save these before teardown; pass them back on re-create) ──
     @property
     def tx_epoch(self) -> int:

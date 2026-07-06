@@ -131,12 +131,25 @@ class NodesController:
             )
             self._dm.attach_connection(device, link, owner=self._owner)
             self._links[node_id] = link
+            # Register this node as an owner of the GATEWAY's real port so the gateway refcount keeps the
+            # dongle alive until the last node detaches. Without this the node's ownership lives only under
+            # its synthetic "node:<id>" key, so the gateway's DIRECT owner (e.g. the Devices tab)
+            # disconnecting would physically close the shared dongle out from under this attached node.
+            gw_port = link.gateway_port
+            if gw_port and gw_port != link.port:
+                self._dm.add_connection_owner(gw_port, self._gateway_owner_tag(node_id))
             # Persist the anti-replay head AS the session runs (throttled), not only at clean detach — a
             # crash between attach and detach would otherwise roll the head back to its last saved value and
             # let every node->host frame captured since then replay. Bounded exposure = _RX_PERSIST_EVERY.
             link.on_rx_advance(self._make_rx_persister(node_id, link))
         log.info("attached node %s as %s", node_id, link.port)  # no key material
         return link
+
+    @staticmethod
+    def _gateway_owner_tag(node_id: int) -> str:
+        """The owner tag a node uses when borrowing its gateway's refcount (distinct from any panel owner
+        like 'devices_tab', so releasing one never drops the other)."""
+        return f"node:{node_id}"
 
     def _make_rx_persister(self, node_id: int, link: NodeLink) -> Callable[[], None]:
         """Build the throttled on_rx_advance callback for a link: persist the replay head every
@@ -197,6 +210,14 @@ class NodesController:
         if link is None:
             return False
         link.on_rx_advance(None)  # stop the periodic persister firing during/after teardown
+        # Release this node's borrow-ownership of the gateway port (may close the dongle if it was the last
+        # owner; keeps it open while its direct owner or another node still holds it). Never blocks teardown.
+        gw_port = link.gateway_port
+        if gw_port and gw_port != link.port:
+            try:
+                self._dm.close_connection(gw_port, owner=self._gateway_owner_tag(node_id))
+            except Exception:  # noqa: BLE001 — teardown must always continue
+                log.debug("could not release gateway ownership for node %s", node_id, exc_info=True)
         # Best-effort persist of the replay head — must never block teardown.
         try:
             node_provision.persist_rx_state(self._vault(), node_id, link)

@@ -174,6 +174,26 @@ def test_attach_registers_device_and_tracks_state():
     assert c.list_rows()[0]["connected"] is True
 
 
+def test_gateway_survives_direct_owner_release_until_node_detaches():
+    # A node BORROWS the gateway dongle. The gateway's DIRECT owner (e.g. the Devices tab) disconnecting
+    # must not physically close the dongle while a node still rides it — the refcount must count the borrow.
+    from src.models.device import Device
+    c, _v, dm = _ctrl()
+    c.provision(7, role="host", label="pager")
+    gw = MockGateway("COM_DONGLE")
+    gw.connect()
+    dm.attach_connection(Device(port=gw.port, name="dongle"), gw, owner="devices_tab")  # Devices tab opens it
+    c.attach(7, gw)
+
+    dm.close_connection(gw.port, owner="devices_tab")        # Devices tab disconnects...
+    assert dm.get_connection(gw.port) is gw, "gateway must stay open while a node still rides it"
+    assert gw.is_connected is True
+
+    assert c.detach(7) is True                               # ...the last node detaching finally closes it
+    assert dm.get_connection(gw.port) is None
+    assert gw.is_connected is False
+
+
 def test_attach_reserves_epoch_crash_safe():
     c, v, dm = _ctrl()
     c.provision(3, role="host")
