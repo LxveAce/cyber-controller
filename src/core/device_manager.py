@@ -117,6 +117,19 @@ class DeviceManager:
 
     # ── Serial connections ───────────────────────────────────────────
 
+    @staticmethod
+    def _warn_baud_mismatch(port: str, existing: SerialConnection, requested_baud: int) -> None:
+        """A shared connection can't be re-bauded, so reusing one at a different baud silently runs the
+        caller at the wrong speed (e.g. a GPS opened at 115200 elsewhere then reused at 9600 -> garbage
+        NMEA -> a silent 'No Fix' with no GPS tags in the wardrive CSV). Make it visible in the log."""
+        existing_baud = getattr(existing, "baud", None)
+        if existing_baud is not None and requested_baud and existing_baud != requested_baud:
+            log.warning(
+                "Port %s is already open at %d baud; requested %d ignored (shared connection). Close the "
+                "other user of this port first if this device needs a different baud.",
+                port, existing_baud, requested_baud,
+            )
+
     def open_connection(self, port: str, baud: int = 115200, owner: str | None = None) -> SerialConnection:
         """Open (or return the existing) SerialConnection for *port*.
 
@@ -133,6 +146,7 @@ class DeviceManager:
                 raise KeyError(f"No registered device on port {port}")
             existing = self._connections.get(port)
             if existing is not None and existing.is_connected:
+                self._warn_baud_mismatch(port, existing, baud)
                 if owner:
                     self._conn_owners.setdefault(port, set()).add(owner)
                 self._devices[port].connected = True
@@ -151,6 +165,7 @@ class DeviceManager:
                     raise KeyError(f"No registered device on port {port}")
                 existing = self._connections.get(port)
                 if existing is not None and existing.is_connected:
+                    self._warn_baud_mismatch(port, existing, baud)
                     if owner:
                         self._conn_owners.setdefault(port, set()).add(owner)
                     self._devices[port].connected = True
