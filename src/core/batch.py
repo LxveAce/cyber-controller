@@ -143,9 +143,19 @@ class BatchFlasher:
                 )
 
             cache = flasher_module.cache_dir()
-            app_path = flasher_module.download_to(
-                variant["url"], cache, variant["name"], capture
-            )
+            # Parity with FlashEngine._flash_esptool: a firmware that ships a per-board ZIP bundle (e.g.
+            # GhostESP) carries a "zip_member" — download the archive and EXTRACT the flashable merged
+            # image. Writing the raw .zip to 0x0 (as the old unconditional download_to did) leaves a
+            # non-booting board while esptool returns 0, so the job is wrongly recorded as a success.
+            if variant.get("zip_member"):
+                app_path = flasher_module.download_and_extract(
+                    variant["url"], cache, variant.get("zip_name") or variant["name"],
+                    variant["zip_member"], capture,
+                )
+            else:
+                app_path = flasher_module.download_to(
+                    variant["url"], cache, variant["name"], capture
+                )
             # Pinned-firmware integrity gate (parity with FlashEngine._flash_esptool): reject a
             # tampered / changed pinned app image (bluejammer-esp32, hydra32, …) BEFORE esptool writes
             # it. Non-pinned profiles carry no "sha256" so this is a no-op; a mismatch raises

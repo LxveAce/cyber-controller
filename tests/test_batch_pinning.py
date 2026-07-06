@@ -56,3 +56,50 @@ def test_batch_flashes_when_pinned_hash_matches(monkeypatch, tmp_path):
     bf = batch.BatchFlasher(on_line=lambda s: None)
     res = bf.flash_sequential([batch.FlashJob(port="COM5", profile_id="bluejammer-esp32")])
     assert seen and res[0].success is True
+
+
+def test_batch_extracts_zip_member_instead_of_flashing_raw_zip(monkeypatch, tmp_path):
+    # Parity with FlashEngine: a per-board ZIP bundle (GhostESP) must be EXTRACTED to its merged image, not
+    # written raw to 0x0 (which esptool accepts with a warning -> a dead board recorded as success).
+    variant = {"name": "GhostESP-board.zip", "url": "https://github.com/x/GhostESP-board.zip",
+               "chip": "esp32", "zip_member": "merged.bin"}
+    flashed = {}
+    calls = {"extract": 0, "download_to": 0}
+
+    class FakeProfile:
+        def latest_release(self):
+            return ("v1", [variant])
+
+        def default_variant(self, assets, chip):
+            return variant
+
+        def support_files(self, chip, cache, on_line):
+            return None
+
+        def flash_assets(self, port, chip, app_path, on_line, **k):
+            flashed["path"] = app_path
+            return 0
+
+    extracted = tmp_path / "merged.bin"
+    extracted.write_bytes(b"IMG")
+    def _extract(url, cache, asset, member, cap):
+        assert member == "merged.bin", f"must extract the declared member, got {member!r}"
+        calls["extract"] += 1
+        return str(extracted)
+
+    def _download_to(u, c, n, cap):
+        calls["download_to"] += 1
+        return str(tmp_path / "x")
+
+    monkeypatch.setattr(flash_core, "get_profile", lambda pid: FakeProfile())
+    monkeypatch.setattr(flash_core, "_detect_chip", lambda port, cap: "esp32")
+    monkeypatch.setattr(flash_core, "cache_dir", lambda: str(tmp_path))
+    monkeypatch.setattr(flash_core, "download_and_extract", _extract)
+    monkeypatch.setattr(flash_core, "download_to", _download_to)
+
+    bf = batch.BatchFlasher(on_line=lambda s: None)
+    res = bf.flash_sequential([batch.FlashJob(port="COM5", profile_id="ghostesp")])
+    assert calls["extract"] == 1, "a zip_member variant must be extracted"
+    assert calls["download_to"] == 0, "must NOT download the raw .zip as the app image"
+    assert flashed.get("path") == str(extracted), "must flash the extracted member, not the archive"
+    assert res[0].success is True
