@@ -5,6 +5,52 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.2] — 2026-07-06
+
+A security-hardening release from a second, deeper adversarial review. It removes a class of *false
+security* on the tool itself (the GUI Dead Man's Switch flow claimed protection it never applied), closes
+several remote/supply-chain and OS-verification holes, and adds a per-port guard that stops a
+double-flash from bricking a board. No firmware changes; no breaking changes to profiles or the CLI.
+
+### Security
+- **Dead Man's Switch GUI flow now fails safe.** The Qt and Tk "Enable Dead Man's Switch" flows opened
+setup, provisioned a host-side guardcfg bundle, then flashed **plain** firmware and reported success —
+the board ran vanilla firmware with no boot gate while the user believed it was gated. Both GUIs now
+abort with clear next steps (use `cyber-controller --deadman-setup`) instead of flashing an unprotected
+board that looks protected. (Actually wiring the gate flash into the GUI touches the eFuse/brick path and
+remains CLI-only for now.)
+- **Web remote can't lock the owner out or trigger a wipe.** A request with no credentials no longer
+counts toward the shared brute-force lockout (an unauthenticated cross-site GET could previously lock the
+local gate), and the network surface can never fire the physical duress wipe.
+- **Socket.IO client is vendored, not loaded from a CDN.** It was pulled from cdnjs with no SRI; a
+compromised CDN could run arbitrary JS in the authenticated remote. It's now served same-origin (tighter
+CSP, works offline).
+- **OS image verification hardened.** An unpinned GPG key no longer rubber-stamps any signature (Arch),
+and Parrot's inline-clearsigned hashes file is now actually verified against the pinned key before its
+SHA-256 is trusted (closes a MITM/compromised-mirror gap).
+- **Bounded anti-replay after a crash.** The node receive-window head is now persisted as the session
+runs (not only at clean detach), so a crash can't roll it back and re-open captured frames to replay.
+
+### Fixed
+- **Double-flash brick guard.** A second flash/backup/erase on a port already mid-operation is refused
+(two esptool processes on one UART can brick a board); different ports still run in parallel. The web API
+returns 409.
+- **Packaged TUI no longer crashes on launch** — its stylesheet is bundled + resolved frozen-safe (third
+instance of the frozen-resource class; the AST bundle-manifest guard now covers it).
+- **Node gateway sharing.** Detaching/closing one wireless node no longer force-closes the shared dongle
+(which killed every other node + the Devices tab); a NodeLink now detaches cleanly and leaks no callbacks.
+- **Wildcard web bind** (`--host 0.0.0.0`) now adds the machine's real LAN origin, so LAN Socket.IO
+handshakes aren't silently rejected.
+- **Malformed profile handling** in the TUI and Tk flash paths (parity with the Qt guard) — a bad profile
+is reported, not a crash or a silent no-op.
+
+### Known issue
+- **Windows per-user file hardening (`win_acl`) is a no-op when the current-user SID can't be resolved**,
+leaving secrets (web session key, vault, settings) on their inherited ACL — potentially readable by other
+local accounts on a shared machine. Flagged for an owner decision before changing that fenced-off code;
+tracked with runtime evidence. Not a regression (present in prior releases). Single-user machines are
+unaffected in practice.
+
 ## [1.6.1] — 2026-07-06
 
 A stability, correctness, and privacy release. Real flashing bugs surfaced by hardware testing and a full
