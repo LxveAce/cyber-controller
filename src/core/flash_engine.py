@@ -25,6 +25,7 @@ import re
 import shutil
 import string
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -33,6 +34,10 @@ from typing import Callable
 from src.core import flash_core, profile_loader
 
 log = logging.getLogger(__name__)
+
+
+class _PortBusy(Exception):
+    """Raised internally when a serial port is already mid flash/backup/erase (see the busy-guard)."""
 
 ProgressCallback = Callable[[int, str], None]  # (percent, message)
 
@@ -192,6 +197,11 @@ class FlashEngine:
         self._status = FlashStatus.IDLE
         self._lock = threading.Lock()
         self._current_thread: threading.Thread | None = None
+        # Ports currently mid flash/backup/erase. A SECOND esptool on the same UART while one is writing
+        # is a known way to brick a board, and nothing serialized the ops before: the Qt buttons weren't
+        # cross-disabled, and every UI (+ the scriptable web API) shares one engine. Guard at THIS layer so
+        # all surfaces are protected at once; different ports still run in parallel (multi-board flashing).
+        self._busy_ports: set[str] = set()
         # Backend registry: profile.backend -> flash handler. Adding a new flash tool / hardware is now
         # "write a _flash_<x>(port, profile, progress) method + register it here" (Stage 2 of the
         # flasher-consolidation — ease-of-growth for backends, mirroring the data-driven profile model).
@@ -215,6 +225,30 @@ class FlashEngine:
     def load_profile(self, path: str | Path) -> FirmwareProfile:
         """Load and return a firmware profile from a JSON file."""
         return FirmwareProfile.from_file(path)
+
+    # ── Per-port concurrency guard ───────────────────────────────────
+    def is_port_busy(self, port: str) -> bool:
+        """True if *port* is currently mid flash/backup/erase on any surface. Lets a UI pre-disable or a
+        web endpoint return 409 rather than launch a second, board-bricking esptool on the same port."""
+        with self._lock:
+            return bool(port) and port in self._busy_ports
+
+    @contextmanager
+    def _port_guard(self, port: str):
+        """Reserve *port* for a single serial operation. Raises :class:`_PortBusy` if it's already in use.
+        A falsy port (SD/UF2/DFU paths, blank) is not reserved — only real serial ports need the guard."""
+        if not port:
+            yield
+            return
+        with self._lock:
+            if port in self._busy_ports:
+                raise _PortBusy(port)
+            self._busy_ports.add(port)
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._busy_ports.discard(port)
 
     # ── Flash ────────────────────────────────────────────────────────
 
@@ -242,25 +276,32 @@ class FlashEngine:
     def _do_flash(
         self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
     ) -> bool:
-        with self._lock:
-            self._status = FlashStatus.FLASHING
         try:
-            backend = (profile.backend or "esptool").lower()
-            handler = self._backends.get(backend)
-            if handler is None:
-                if progress:
-                    progress(0, f"Unknown backend: {profile.backend}")
-                ok = False
-            else:
-                ok = handler(port, profile, progress)
-        except Exception as exc:  # never let a backend exception leak unlabelled
-            log.exception("flash failed")
+            with self._port_guard(port):
+                with self._lock:
+                    self._status = FlashStatus.FLASHING
+                try:
+                    backend = (profile.backend or "esptool").lower()
+                    handler = self._backends.get(backend)
+                    if handler is None:
+                        if progress:
+                            progress(0, f"Unknown backend: {profile.backend}")
+                        ok = False
+                    else:
+                        ok = handler(port, profile, progress)
+                except Exception as exc:  # never let a backend exception leak unlabelled
+                    log.exception("flash failed")
+                    if progress:
+                        progress(0, f"Error: {exc}")
+                    ok = False
+                with self._lock:
+                    self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
+                return ok
+        except _PortBusy:
             if progress:
-                progress(0, f"Error: {exc}")
-            ok = False
-        with self._lock:
-            self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
-        return ok
+                progress(0, f"Port {port} is busy with another flash/backup/erase — aborted so a second "
+                            f"esptool can't fight the first over the same port (a known way to brick it).")
+            return False
 
     # ── esptool (the bulk of firmwares) ──────────────────────────────
 
@@ -808,31 +849,37 @@ class FlashEngine:
         (For a richer backup-with-restore + .meta sidecar + listing, see
         :mod:`src.core.backup`, surfaced through a dedicated backup flow.)
         """
-        with self._lock:
-            self._status = FlashStatus.BACKING_UP
-        on_line = _percent_adapter(progress_callback)
-        if not chip or chip == "auto":
-            chip = flash_core.detect_chip(port, on_line) or "esp32"
-        # An explicit size is trusted; a detection MISS is a guessed 4 MB that must be flagged so the
-        # completion status can't read as a clean full backup when it may be truncated.
-        size_detected = True
-        if not size or size in ("detect", "auto"):
-            size, size_detected = self._detect_flash_size(port, chip, on_line)
-        argv = flash_core.esptool_argv(
-            "--chip", chip, "--port", port, "--baud", "921600",
-            "read_flash", "0x0", size, str(output_path),
-        )
-        rc = flash_core._run_stream(argv, on_line)
-        ok = rc == 0
-        if progress_callback:
-            if ok and not size_detected:
-                progress_callback(100, "Backup complete — ⚠ flash size not detected (assumed 4 MB, "
-                                       "may be truncated on a larger board)")
-            else:
-                progress_callback(100 if ok else 0, "Backup complete" if ok else "Backup failed")
-        with self._lock:
-            self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
-        return ok
+        try:
+            with self._port_guard(port):
+                with self._lock:
+                    self._status = FlashStatus.BACKING_UP
+                on_line = _percent_adapter(progress_callback)
+                if not chip or chip == "auto":
+                    chip = flash_core.detect_chip(port, on_line) or "esp32"
+                # An explicit size is trusted; a detection MISS is a guessed 4 MB that must be flagged so
+                # the completion status can't read as a clean full backup when it may be truncated.
+                size_detected = True
+                if not size or size in ("detect", "auto"):
+                    size, size_detected = self._detect_flash_size(port, chip, on_line)
+                argv = flash_core.esptool_argv(
+                    "--chip", chip, "--port", port, "--baud", "921600",
+                    "read_flash", "0x0", size, str(output_path),
+                )
+                rc = flash_core._run_stream(argv, on_line)
+                ok = rc == 0
+                if progress_callback:
+                    if ok and not size_detected:
+                        progress_callback(100, "Backup complete — ⚠ flash size not detected (assumed 4 MB, "
+                                               "may be truncated on a larger board)")
+                    else:
+                        progress_callback(100 if ok else 0, "Backup complete" if ok else "Backup failed")
+                with self._lock:
+                    self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
+                return ok
+        except _PortBusy:
+            if progress_callback:
+                progress_callback(0, f"Port {port} is busy with another flash/backup/erase — backup aborted.")
+            return False
 
     @staticmethod
     def _detect_flash_size(port: str, chip: str, on_line: Callable[[str], None]) -> tuple[str, bool]:
@@ -878,15 +925,21 @@ class FlashEngine:
     ) -> bool:
         """Erase the entire flash via the proven esptool plumbing, auto-detecting the chip when
         ``chip='auto'``. Destructive — callers should confirm with the user first."""
-        with self._lock:
-            self._status = FlashStatus.FLASHING
-        on_line = _percent_adapter(progress_callback)
-        if not chip or chip == "auto":
-            chip = flash_core.detect_chip(port, on_line) or "esp32"
-        rc = flash_core.erase(port, chip, on_line)
-        ok = rc == 0
-        if progress_callback:
-            progress_callback(100 if ok else 0, "Erase complete" if ok else "Erase failed")
-        with self._lock:
-            self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
-        return ok
+        try:
+            with self._port_guard(port):
+                with self._lock:
+                    self._status = FlashStatus.FLASHING
+                on_line = _percent_adapter(progress_callback)
+                if not chip or chip == "auto":
+                    chip = flash_core.detect_chip(port, on_line) or "esp32"
+                rc = flash_core.erase(port, chip, on_line)
+                ok = rc == 0
+                if progress_callback:
+                    progress_callback(100 if ok else 0, "Erase complete" if ok else "Erase failed")
+                with self._lock:
+                    self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
+                return ok
+        except _PortBusy:
+            if progress_callback:
+                progress_callback(0, f"Port {port} is busy with another flash/backup/erase — erase aborted.")
+            return False

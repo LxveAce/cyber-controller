@@ -408,6 +408,11 @@ def create_app(
             return jsonify({"error": f"Unknown profile: {profile_name}"}), 404
 
         profile = flash_engine.load_profile(profile_path)
+        # Reject fast if the port is already mid flash/backup/erase — a second esptool on the same UART
+        # can brick the board. (The engine's per-port guard is the hard backstop against the TOCTOU
+        # window; this 409 is the clean API answer so a scripted caller doesn't kick off a doomed thread.)
+        if flash_engine.is_port_busy(port):
+            return jsonify({"error": f"Port {port} is busy with another operation"}), 409
         _audit("flash", user=session.get("user"), port=port, profile=profile_name)
 
         def progress_cb(pct: int, msg: str) -> None:
