@@ -194,6 +194,22 @@ def test_gateway_survives_direct_owner_release_until_node_detaches():
     assert gw.is_connected is False
 
 
+def test_untagged_gateway_is_left_untouched_on_node_detach():
+    # If the gateway was opened UNTAGGED (owner=None — e.g. the Tk device view), it isn't refcounted, so a
+    # borrowing node must NOT take over its lifecycle. Detaching the node must leave the dongle open, or we
+    # invert the fix and close the port out from under its real (untagged) holder.
+    from src.models.device import Device
+    c, _v, dm = _ctrl()
+    c.provision(9, role="host", label="pager")
+    gw = MockGateway("COM_UNTAGGED")
+    gw.connect()
+    dm.attach_connection(Device(port=gw.port, name="dongle"), gw)  # NO owner -> untagged / unrefcounted
+    c.attach(9, gw)
+    assert c.detach(9) is True
+    assert dm.get_connection(gw.port) is gw, "an untagged gateway must survive a node detach"
+    assert gw.is_connected is True
+
+
 def test_attach_reserves_epoch_crash_safe():
     c, v, dm = _ctrl()
     c.provision(3, role="host")

@@ -56,6 +56,10 @@ class NodesController:
         self._owner = owner
         self._vault_getter = vault_getter or node_provision.current_vault
         self._links: dict[int, NodeLink] = {}
+        # node_id -> gateway port, ONLY for nodes that successfully registered as a gateway-refcount owner
+        # (i.e. the gateway was itself refcounted). Untagged gateways aren't tracked here, so detach leaves
+        # their lifecycle untouched instead of closing them out from under their real holder.
+        self._gateway_owned: dict[int, str] = {}
         self._lock = threading.RLock()   # guards the attach/detach check-and-set on _links
 
     # ── gate state ───────────────────────────────────────────────────
@@ -135,9 +139,13 @@ class NodesController:
             # dongle alive until the last node detaches. Without this the node's ownership lives only under
             # its synthetic "node:<id>" key, so the gateway's DIRECT owner (e.g. the Devices tab)
             # disconnecting would physically close the shared dongle out from under this attached node.
+            # Only track (and later release) the borrow if it actually registered — a gateway opened
+            # UNTAGGED isn't refcounted, and we must NOT close it on detach (that would be the inverse bug).
+            self._gateway_owned.pop(node_id, None)
             gw_port = link.gateway_port
-            if gw_port and gw_port != link.port:
-                self._dm.add_connection_owner(gw_port, self._gateway_owner_tag(node_id))
+            if gw_port and gw_port != link.port and \
+                    self._dm.add_connection_owner(gw_port, self._gateway_owner_tag(node_id)):
+                self._gateway_owned[node_id] = gw_port
             # Persist the anti-replay head AS the session runs (throttled), not only at clean detach — a
             # crash between attach and detach would otherwise roll the head back to its last saved value and
             # let every node->host frame captured since then replay. Bounded exposure = _RX_PERSIST_EVERY.
@@ -210,10 +218,11 @@ class NodesController:
         if link is None:
             return False
         link.on_rx_advance(None)  # stop the periodic persister firing during/after teardown
-        # Release this node's borrow-ownership of the gateway port (may close the dongle if it was the last
-        # owner; keeps it open while its direct owner or another node still holds it). Never blocks teardown.
-        gw_port = link.gateway_port
-        if gw_port and gw_port != link.port:
+        # Release this node's borrow-ownership of the gateway port ONLY if we registered it (refcounted
+        # gateway). May close the dongle if it was the last owner; keeps it open while its direct owner or
+        # another node still holds it. An untagged gateway was never tracked, so it's left untouched.
+        gw_port = self._gateway_owned.pop(node_id, None)
+        if gw_port:
             try:
                 self._dm.close_connection(gw_port, owner=self._gateway_owner_tag(node_id))
             except Exception:  # noqa: BLE001 — teardown must always continue

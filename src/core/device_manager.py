@@ -251,12 +251,20 @@ class DeviceManager:
         """Register an ADDITIONAL owner on an already-open *port* — a borrow, e.g. a NodeLink riding a
         gateway dongle. This keeps the port alive on the refcount until this owner ALSO releases it (via
         :meth:`close_connection` with the same tag), so the gateway's direct owner disconnecting can't
-        physically close the port out from under an attached node. No-op (False) if the port has no live
-        connection; the connection itself is not touched."""
+        physically close the port out from under an attached node.
+
+        Returns False (registering NOTHING) if the port has no live connection, OR if it was opened
+        UNTAGGED (no owner set). An untagged connection is not refcounted, so making the borrower its sole
+        tracked owner would invert the intent: releasing the borrow would then take the LAST reference and
+        close the port out from under its real (untagged) holder. In that case the caller must leave the
+        gateway's lifecycle untouched (don't release it on detach either)."""
         with self._lock:
             if port not in self._connections:
                 return False
-            self._conn_owners.setdefault(port, set()).add(owner)
+            owners = self._conn_owners.get(port)
+            if not owners:  # untagged / unrefcounted — don't take over a lifecycle nobody is counting
+                return False
+            owners.add(owner)
             return True
 
     def attach_connection(self, device: Device, conn: Any, *, owner: str | None = None) -> Any:
