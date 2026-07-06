@@ -198,28 +198,43 @@ class NodeLink:
     def on_state_change(self, cb: Callable[[ConnectionState], None]) -> None:
         self._state_callbacks.append(cb)
 
+    def remove_state_callback(self, cb: Callable[[ConnectionState], None]) -> None:
+        try:
+            self._state_callbacks.remove(cb)
+        except ValueError:
+            pass
+
     def on_error(self, cb: Callable[[Exception], None]) -> None:
         self._error_callbacks.append(cb)
 
-    # ── Lifecycle (delegate to the gateway) ──────────────────────────
+    def _detach_from_gateway(self) -> None:
+        """Unhook OUR line + state callbacks from the (borrowed) gateway. Fully symmetric so a closed
+        NodeLink leaves no dead callback behind on a gateway that outlives it (which leaked the NodeLink +
+        its key material and fanned state events out to stale links across dongle reuse)."""
+        for method, cb in (("remove_line_callback", self._on_gateway_line),
+                           ("remove_state_callback", self._emit_state)):
+            remover = getattr(self._gateway, method, None)
+            if callable(remover):
+                try:
+                    remover(cb)
+                except Exception:
+                    pass
+
+    # ── Lifecycle ────────────────────────────────────────────────────
     def connect(self) -> None:
         self._gateway.connect()
 
     def disconnect(self) -> None:
-        self._gateway.disconnect()
+        # BORROWED gateway: unhook ourselves but do NOT tear down the shared physical port. One dongle
+        # may gateway several nodes (and the Devices tab), so force-closing it here silently killed every
+        # other consumer. The DeviceManager owner refcount decides when the gateway actually closes.
+        self._detach_from_gateway()
 
     def close(self) -> None:
-        """Detach from the gateway and disconnect. Use when a gateway may be reused for a replacement
-        link, so this NodeLink stops receiving/decoding inbound lines under a now-stale key. (The
-        gateway exposes no remove-state-callback, so the state hook may linger; the line hook — the one
-        that matters for security — is removed.)"""
-        remover = getattr(self._gateway, "remove_line_callback", None)
-        if callable(remover):
-            try:
-                remover(self._on_gateway_line)
-            except Exception:
-                pass
-        self.disconnect()
+        """Detach this NodeLink from the (borrowed) gateway so it stops receiving/decoding under a
+        now-stale key. Does NOT disconnect the shared gateway — its owner (via DeviceManager's refcount)
+        does that when the last owner releases it."""
+        self._detach_from_gateway()
 
     # ── Outbound I/O ─────────────────────────────────────────────────
     def write(self, data: str) -> None:

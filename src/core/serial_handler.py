@@ -104,6 +104,15 @@ class SerialConnection:
         """Register a callback fired on state transitions."""
         self._state_callbacks.append(cb)
 
+    def remove_state_callback(self, cb: Callable[[ConnectionState], None]) -> None:
+        """Remove a previously-registered state callback (idempotent). Symmetric with
+        :meth:`remove_line_callback` so a borrower (e.g. a NodeLink) can fully unhook from a gateway
+        that outlives it, instead of leaking a dead callback into ``_state_callbacks`` on every reuse."""
+        try:
+            self._state_callbacks.remove(cb)
+        except ValueError:
+            pass
+
     def on_error(self, cb: Callable[[Exception], None]) -> None:
         """Register a callback fired on read errors."""
         self._error_callbacks.append(cb)

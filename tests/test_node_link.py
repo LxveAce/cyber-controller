@@ -53,6 +53,12 @@ class MockGateway:
     def on_state_change(self, cb):
         self._state_cbs.append(cb)
 
+    def remove_state_callback(self, cb):
+        try:
+            self._state_cbs.remove(cb)
+        except ValueError:
+            pass
+
     def connect(self):
         self._state = ConnectionState.CONNECTED
         for cb in list(self._state_cbs):
@@ -109,9 +115,33 @@ def test_connect_disconnect_and_state_mirror_gateway():
     assert link.is_connected is False
     link.connect()
     assert link.is_connected is True and link.state == ConnectionState.CONNECTED
+    assert ConnectionState.CONNECTED in seen
+    # A NodeLink BORROWS its gateway: disconnect() detaches THIS link (stops decoding under its key) but
+    # must NOT tear down the shared physical port — one dongle may gateway several nodes + the Devices
+    # tab, so force-closing it here would silently kill every other consumer. The owner (DeviceManager
+    # refcount) closes the gateway.
     link.disconnect()
-    assert link.is_connected is False
-    assert ConnectionState.CONNECTED in seen and ConnectionState.DISCONNECTED in seen
+    assert gw.is_connected is True, "detaching a node must not close the shared gateway"
+    assert link.is_connected is True  # still mirrors the (still-open) gateway
+
+
+def test_close_spares_shared_gateway_and_removes_both_callbacks():
+    # Two nodes share ONE gateway (one dongle). Closing node A must fully unhook A (both the line hook —
+    # so it stops decoding under a now-stale key — AND the state hook, which used to leak) while leaving
+    # the gateway connected and node B fully wired.
+    gw = MockGateway()
+    a = NodeLink(gw, KEY, 1)
+    b = NodeLink(gw, KEY2, 2)
+    gw.connect()
+    assert a._on_gateway_line in gw._line_cbs and a._emit_state in gw._state_cbs
+    assert b._on_gateway_line in gw._line_cbs and b._emit_state in gw._state_cbs
+
+    a.close()
+
+    assert a._on_gateway_line not in gw._line_cbs, "close() must remove the line hook"
+    assert a._emit_state not in gw._state_cbs, "close() must remove the state hook (no leak)"
+    assert gw.is_connected is True, "closing one node must not tear down the shared gateway"
+    assert b._on_gateway_line in gw._line_cbs and b._emit_state in gw._state_cbs, "node B stays wired"
 
 
 # ── Round-trip over the mock gateway ─────────────────────────────────
@@ -248,7 +278,9 @@ def test_device_manager_attach_connection():
     # State reconciles onto the Device just like a wired connection.
     link.connect()
     assert dm.get_device(link.port).connected is True
-    link.disconnect()
+    # The gateway's owner closing it flips the node Device too — state mirrors through the attached link.
+    # (link.disconnect() is a DETACH now, not a gateway close, so we drive the gateway directly here.)
+    gw.disconnect()
     assert dm.get_device(link.port).connected is False
 
 
