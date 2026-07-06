@@ -1360,7 +1360,11 @@ _MESHTASTIC_BOARDS: Dict[str, List[str]] = {
         "m5stack-coreink", "t-lora-v1",
     ],
     "esp32c3": ["esp32-c3-devkitm-1", "heltec-ht-ct62"],
-    "esp32c6": ["heltec-mesh-node-t114"],
+    # heltec-mesh-node-t114 is an nRF52840 (SX1262) board, NOT an ESP32-C6 — its Meshtastic image ships
+    # as a .uf2 in the nrf52840 bundle, never as a .bin in an esp32c6 zip. Listing it here made it an
+    # advertised-but-unflashable target (download_and_extract raised "zip has no member ..."). Flash
+    # nRF52840 targets via the UF2/DFU path, not the esptool chip-zip expander.
+    "esp32c6": [],
     "esp32s2": [],
 }
 

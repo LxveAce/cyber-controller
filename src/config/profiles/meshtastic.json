@@ -46,7 +46,7 @@
           "m5stack-coreink", "t-lora-v1"
         ],
         "esp32c3": ["esp32-c3-devkitm-1", "heltec-ht-ct62"],
-        "esp32c6": ["heltec-mesh-node-t114"],
+        "esp32c6": [],
         "esp32s2": []
       },
       "member_template": "firmware-{board}-{version}.bin",

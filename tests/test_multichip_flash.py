@@ -42,10 +42,18 @@ def test_m5stick_nemo_profile_autodetects():
     assert prof.chip == "auto", "m5stick_nemo must auto-detect (esp32 StickCPlus2 + esp32s3 Cardputer/S3)"
 
 
-def test_marauder_and_esp32div_autodetect():
-    for stem in ("marauder", "esp32_div"):
+def test_multichip_profiles_autodetect():
+    for stem in ("marauder", "ghost_esp", "airtag_scanner"):
         prof = FirmwareProfile.from_file(resource_path("src", "config", "profiles", stem + ".json"))
         assert prof.chip == "auto", f"{stem} spans multiple chips and must auto-detect"
+
+
+def test_esp32div_singlechip_after_legacy_removal():
+    # The classic-ESP32 "DIV v1 (legacy)" board was removed in 1.6.1: the profile's chip_map is fixed to
+    # esp32s3 and the boot chain is hardcoded to tools/esp32s3/, so a real classic ESP32 could only ever
+    # be flashed wrong-chip S3 firmware. With it gone, esp32_div is single-chip esp32s3 (no auto-detect).
+    prof = FirmwareProfile.from_file(resource_path("src", "config", "profiles", "esp32_div.json"))
+    assert prof.chip == "esp32s3"
 
 
 def test_singlechip_profile_stays_pinned():

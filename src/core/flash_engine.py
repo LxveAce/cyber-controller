@@ -333,8 +333,16 @@ class FlashEngine:
             except Exception as exc:
                 # Do NOT silently downgrade to app-only and report success (the old behavior wrote a
                 # dead board yet showed "Flash complete"). Abort loudly so the failure is visible.
-                on_line(f"[error] support files unavailable ({exc}); aborting full flash — writing the "
-                        f"app alone would leave a non-booting board. Fix the download/connection and retry.")
+                if "no auto support-file mapping" in str(exc).lower():
+                    # Permanent gap: this firmware ships no bootloader/partition files for this chip
+                    # upstream (e.g. Marauder on ESP32-C5). Retrying won't help — say so plainly instead
+                    # of implying a connection problem.
+                    on_line(f"[error] {chip}: this firmware has no full-flash support for this chip yet — "
+                            f"no bootloader/partition files are published for it upstream. Not a connection "
+                            f"error; retrying won't help. Choose a supported board/chip. ({exc})")
+                else:
+                    on_line(f"[error] support files unavailable ({exc}); aborting full flash — writing the "
+                            f"app alone would leave a non-booting board. Fix the download/connection and retry.")
                 if progress:
                     progress(0, "Flash failed")
                 return False
