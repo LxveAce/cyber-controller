@@ -209,6 +209,13 @@ def _variant_label(name: str) -> str:
 # --------------------------------------------------------------------------- #
 
 def esptool_argv(*args: str) -> List[str]:
+    # In a PyInstaller build sys.executable is CyberController.exe, NOT python — so `-m esptool` would
+    # re-launch the GUI, which the single-instance mutex then aborts (GetLastError 183 -> exit 0). That
+    # looked like a SILENT successful flash while no board was ever written. Route esptool through the
+    # in-app dispatcher (see src/app.py main()'s `--_run-esptool` branch) so the BUNDLED esptool runs
+    # in-process. In a normal (source) run sys.frozen is unset and `-m esptool` works as before.
+    if getattr(sys, "frozen", False):
+        return [sys.executable, "--_run-esptool", *args]
     return [sys.executable, "-m", "esptool", *args]
 
 

@@ -94,6 +94,13 @@ def _build() -> int:
     if howto.is_file():
         cmd.extend(["--add-data", f"{howto}{sep}docs"])
 
+    # Bundled starter macros (cc_*.json) seeded on first run by MacroRecorder.seed_default_macros()
+    # via resource_path("src", "core", "default_macros"). Without this the installed Macros tab is
+    # empty — PyInstaller's module analysis never touches a plain data dir, so it must be added here.
+    default_macros_dir = _ROOT / "src" / "core" / "default_macros"
+    if default_macros_dir.is_dir():
+        cmd.extend(["--add-data", f"{default_macros_dir}{sep}src/core/default_macros"])
+
     # Dead Man's Switch submodule: the host provisioner + partition CSVs that --deadman-setup
     # imports at runtime (resolved via resource_path). Bundled only when the submodule is checked
     # out — CI uses `submodules: recursive`; locally run `git submodule update --init deadmans-switch`.
@@ -131,6 +138,12 @@ def _build() -> int:
         # Launcher
         "--hidden-import", "src.ui.launcher",
     ])
+
+    # esptool must be fully COLLECTED — its submodules, its stub_flasher/*.json data, and its deps
+    # (reedsolo / bitstring / ecdsa) — so the in-process `--_run-esptool` dispatcher (src/app.py) can
+    # run it in the frozen app. flash_core only ever shelled it as `-m esptool` before, so PyInstaller's
+    # dependency graph never saw it and left it out of the bundle entirely.
+    cmd.extend(["--collect-all", "esptool"])
 
     # Collect submodules for all UI variants
     cmd.extend([

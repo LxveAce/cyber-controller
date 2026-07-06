@@ -136,9 +136,13 @@ class BroadcastBar(QWidget):
                     preview = ""
                 btn.setToolTip(f"{n} device(s): {preview}")
         try:
-            connected = bool(self._dm.list_connected())
-            self._stop_btn.setEnabled(connected)
-            self._empty_hint.setVisible(not connected)
+            # STOP ALL must gate on whether a stop is actually PLANNABLE (a connected device whose firmware
+            # defines STOP_ALL), not on raw connection count — otherwise the button sits enabled but the
+            # click "just fails" with a misleading message when the connected device is firmware-unknown or
+            # has no STOP_ALL capability. The empty-state hint still keys off raw connection.
+            stop_n = avail.get(BroadcastVerb.STOP_ALL, 0)
+            self._stop_btn.setEnabled(stop_n > 0)
+            self._empty_hint.setVisible(not bool(self._dm.list_connected()))
         except Exception:
             pass
 

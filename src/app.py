@@ -259,6 +259,15 @@ def _acquire_instance_lock():
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Frozen-build esptool dispatcher. In a PyInstaller build sys.executable is CyberController.exe, so
+    # flash_core routes every esptool op back to this binary as `--_run-esptool <args>`. Run the BUNDLED
+    # esptool in-process and exit. This MUST precede the single-instance lock — the esptool "subprocess"
+    # is a child of the running GUI, and the lock would otherwise abort it as a duplicate instance.
+    _argv = sys.argv[1:] if argv is None else argv
+    if _argv and _argv[0] == "--_run-esptool":
+        import esptool
+        return esptool.main(_argv[1:])
+
     if not _acquire_instance_lock():
         print("Cyber Controller is already running.", file=sys.stderr)
         return 0
