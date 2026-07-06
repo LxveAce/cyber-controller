@@ -672,11 +672,17 @@ def create_app(
         conn = device_manager.get_connection(port)
         if conn and conn.is_connected:
             try:
-                conn.write(command)
+                conn.write(command)  # SerialConnection.write rejects embedded control chars
                 _audit("serial_command_ws", user=session.get("user"), port=port, command=command)
                 emit("serial_output", {"port": port, "line": f"> {command}"})
-            except Exception as exc:
+            except ValueError as exc:
+                # The validation message (e.g. "embedded control character") is useful + not sensitive.
                 emit("serial_output", {"port": port, "line": f"[Error: {exc}]"})
+            except Exception:
+                # Parity with the HTTP /api/command path: never leak internal exception text (device
+                # paths / OS errno) to the client. Log server-side, surface a generic message.
+                log.exception("serial command (ws) failed on %s", port)
+                emit("serial_output", {"port": port, "line": "[Error sending command]"})
         else:
             emit("serial_output", {"port": port, "line": f"[Not connected to {port}]"})
 
