@@ -5,6 +5,41 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.3] — 2026-07-06
+
+Four more adversarial review passes after 1.6.2 (six in total), each verifying the last. They closed a few
+more security/safety gaps — including two that *completed* fixes shipped in 1.6.2 and one regression the
+convergence checks caught before it could ship. No firmware changes; no breaking changes.
+
+### Security
+- **A gate clear now disarms the opt-in duress wipe.** `--clear-gate` removed the password/key but left the
+  destructive `wipe_on_failures` threshold in the config; since a cleared gate reprovisions as
+  unauthenticated first-time setup, the new gate silently inherited it — a few failed unlocks could
+  irreversibly wipe secrets the owner never re-opted into. Clearing the gate now fully disarms the wipe.
+- **The web remote can't pre-load the local duress wipe.** `allow_wipe=False` stopped the network path from
+  *firing* the wipe, but it still advanced the shared counter that *arms* it. The wipe is now armed by a
+  separate counter only local failures advance.
+- **Offensive-macro arm gate catches real attack commands.** The play-time arm confirmation was matched by
+  exact first-token, so `beaconspam`, `karma`, `AT+DEAUTHIDX`, `probe` played *without* the prompt and began
+  transmitting. It now prefix-matches the firmware protocols' actual attack commands.
+- **AutoRouter proximity floor** — an unknown RSSI (sentinel 0) no longer slips past an explicit `min_rssi`,
+  so a "nearby APs only" rule can't fire an attack on out-of-range targets.
+- **Web terminal** no longer leaks raw serial/OS exception text to the client (parity with the HTTP path).
+
+### Fixed
+- **A shared gateway dongle stays alive while any node rides it.** The refcount now counts NodeLink borrows,
+  so disconnecting the Devices tab can't close the dongle out from under an attached node — and (from a
+  follow-up pass) borrowing an *untagged* gateway no longer closes it on detach either.
+- **`--deadman-setup` (and other CLI subcommands) run while the GUI is open.** The single-instance lock
+  guarded every subcommand and returned success when blocked, so the DMS provisioning the GUI directs you to
+  run was a silent no-op. The lock now guards only the interactive launch; a blocked op exits nonzero.
+- **A denied access gate exits nonzero** instead of 0, so automation can tell blocked from succeeded.
+- **Batch flashing extracts per-board ZIP bundles** (e.g. GhostESP) instead of writing the raw `.zip` and
+  reporting success on a non-booting board (parity with the main flash path).
+
+### Known issue
+- The Windows `win_acl` per-user hardening no-op (see 1.6.2) is unchanged, pending an owner decision.
+
 ## [1.6.2] — 2026-07-06
 
 A security-hardening release from a second, deeper adversarial review. It removes a class of *false
