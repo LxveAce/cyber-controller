@@ -353,7 +353,16 @@ def _http_get(url: str) -> bytes:
     # SSRF guard: only https to an allowlisted GitHub host, and follow redirects ONLY to the
     # same allowlist (via _OPENER's redirect handler).
     _require_allowed_url(url)
-    req = urllib.request.Request(url, headers=_UA)
+    headers = dict(_UA)
+    # Optional GitHub auth. Unauthenticated callers get 60 req/hr, so resolving /releases/latest for
+    # several boards in a row (or several firmwares) can hit "HTTP 403: rate limit exceeded" and a flash
+    # fails before it starts. When a token is present in the environment, attach it — authenticated calls
+    # get 5000/hr. Sent ONLY to the api.github.com host (the API returns JSON with no cross-host redirect),
+    # never to a redirected asset host, and never logged.
+    tok = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if tok and url.startswith("https://api.github.com/"):
+        headers["Authorization"] = f"Bearer {tok}"
+    req = urllib.request.Request(url, headers=headers)
     with _OPENER.open(req, timeout=30) as r:
         return r.read()
 
