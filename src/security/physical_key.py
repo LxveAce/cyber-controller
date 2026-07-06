@@ -226,18 +226,23 @@ def record_successful_unlock() -> None:
     _locked_config_update(_reset)
 
 
-def record_failed_attempt() -> dict:
+def record_failed_attempt(*, allow_wipe: bool = True) -> dict:
     """Increment the persistent counter, persist it, and fire the opt-in duress wipe if the
     configured threshold is reached. Returns the new lockout status (+ 'wipe_triggered').
 
-    The increment is done under _locked_config_update so concurrent attempts can't lose it."""
+    The increment is done under _locked_config_update so concurrent attempts can't lose it.
+
+    *allow_wipe* gates the destructive duress wipe. It defaults True for the LOCAL console/Qt unlock
+    surfaces. The network-facing web remote passes allow_wipe=False: the duress wipe is a PHYSICAL
+    anti-forensic control (seizure), and a remote/pre-auth network actor must never be able to drive an
+    irreversible wipe of the vault + gate config. (The lockout counter is still shared per SEC-A1.)"""
     def _inc(cfg):
         cfg["failed_attempts"] = int(cfg.get("failed_attempts", 0) or 0) + 1
         cfg["last_failure_ts"] = _now()
         return int(cfg.get("wipe_on_failures", 0) or 0), cfg["failed_attempts"]
     wipe_at, fails = _locked_config_update(_inc)
     wiped = False
-    if wipe_at > 0 and fails >= wipe_at:  # duress wipe outside the lock (it may be slow)
+    if allow_wipe and wipe_at > 0 and fails >= wipe_at:  # duress wipe outside the lock (it may be slow)
         wiped = trigger_duress_wipe()
     st = lockout_status()
     st["wipe_triggered"] = wiped

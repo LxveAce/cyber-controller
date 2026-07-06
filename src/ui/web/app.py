@@ -198,7 +198,13 @@ def create_app(
                 session["csrf"] = new_csrf_token()
                 _audit("web_auth_ok", user=auth.username)
                 return f(*args, **kwargs)
-            physical_key.record_failed_attempt()  # count this failure toward the shared lockout
+            # Only count a failure when credentials were actually PRESENTED but wrong. A request with no
+            # Authorization header (the browser's normal pre-auth 401 handshake, or a cross-site no-cred
+            # GET) must not drive the shared lockout — otherwise an unauthenticated party can lock the
+            # owner out of the local gate without ever guessing a password. And allow_wipe=False: the
+            # network surface may never trigger the physical duress wipe.
+            if auth:
+                physical_key.record_failed_attempt(allow_wipe=False)
             _audit("web_auth_fail", user=(auth.username if auth else None))
             return Response(
                 "Authentication required.\n",
@@ -675,9 +681,32 @@ def _compute_allowed_origins(host: str, port: int) -> list[str]:
     for h in ("127.0.0.1", "localhost"):
         origins.add(f"http://{h}:{port}")
         origins.add(f"https://{h}:{port}")
-    if host not in ("127.0.0.1", "localhost", "::1", "0.0.0.0"):
-        origins.add(f"http://{host}:{port}")
-        origins.add(f"https://{host}:{port}")
+    hosts: list[str] = []
+    if host in ("0.0.0.0", "::"):
+        # Wildcard bind: a LAN client's Origin header is the server's REAL LAN IP, which is neither
+        # localhost nor "0.0.0.0". Without adding it, engineio rejects the Socket.IO handshake and every
+        # real-time feature silently dies. Enumerate the machine's own addresses (best-effort).
+        try:
+            import socket as _socket
+            name = _socket.gethostname()
+            try:
+                hosts.extend(_socket.gethostbyname_ex(name)[2])
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                hosts.extend(info[4][0] for info in _socket.getaddrinfo(name, None))
+            except Exception:  # noqa: BLE001
+                pass
+        except Exception:  # noqa: BLE001
+            pass
+    elif host not in ("127.0.0.1", "localhost", "::1"):
+        hosts.append(host)
+    for h in hosts:
+        if not h or h in ("127.0.0.1", "::1", "localhost"):
+            continue
+        hh = f"[{h}]" if ":" in h else h  # bracket IPv6 literals in a URL origin
+        origins.add(f"http://{hh}:{port}")
+        origins.add(f"https://{hh}:{port}")
     for extra in os.environ.get("CC_WEB_ORIGINS", "").split(","):
         if extra.strip():
             origins.add(extra.strip())
