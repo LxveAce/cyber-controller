@@ -281,18 +281,31 @@ def _warn_esptool_version_once(on_line: Line) -> None:
         on_line(f"[warn] {reason}")
 
 
+# esptool's signatures for "the chip never entered download/bootloader mode". Seeing any of these on a
+# failed run means it's almost always a reset-into-bootloader problem, not a bad binary — so we surface a
+# concrete hold-BOOT hint (many CP210x/CH340 boards don't auto-reset into the ROM bootloader).
+_DOWNLOAD_MODE_FAIL = (
+    "failed to connect", "wrong boot mode detected", "no serial data received",
+    "invalid head of packet",
+)
+
+
 def _run_stream(argv: List[str], on_line: Line) -> int:
     """Run a command, stream combined stdout/stderr line-by-line, return exit code.
 
     On any exception mid-stream (e.g. the UI callback raises because a dialog closed), the
     child is killed and reaped so it can't keep holding the serial port — otherwise the next
     flash fails with 'port busy'.
+
+    On a failed esptool run whose output shows the chip never entered download mode, appends a
+    concrete "hold BOOT" recovery hint — the single most common flashing snag on non-auto-reset boards.
     """
     # If this is an esptool invocation and the installed esptool is out of the supported range, say so
     # clearly up front (once) so a v6 argparse failure isn't a mystery. No-op for non-esptool argv.
     if len(argv) >= 3 and argv[1] == "-m" and argv[2] == "esptool":
         _warn_esptool_version_once(on_line)
     on_line("$ " + " ".join(argv))
+    saw_download_mode_fail = False
     try:
         proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 stdin=subprocess.DEVNULL, text=True, bufsize=1)
@@ -301,7 +314,12 @@ def _run_stream(argv: List[str], on_line: Line) -> int:
         return 127
     try:
         for line in proc.stdout:                   # type: ignore[union-attr]
-            on_line(line.rstrip("\n"))
+            text = line.rstrip("\n")
+            if not saw_download_mode_fail:
+                low = text.lower()
+                if any(sig in low for sig in _DOWNLOAD_MODE_FAIL):
+                    saw_download_mode_fail = True
+            on_line(text)
         proc.wait()
     except Exception as e:
         on_line(f"[error] {e}")
@@ -323,6 +341,12 @@ def _run_stream(argv: List[str], on_line: Line) -> int:
         except Exception:
             pass
     on_line(f"[exit {proc.returncode}]")
+    if proc.returncode not in (0, None) and saw_download_mode_fail:
+        on_line("[hint] The board never entered download/bootloader mode. Boards with a CP210x or CH340 "
+                "USB chip often don't auto-reset into the bootloader: HOLD the BOOT (a.k.a. IO0 / FLASH) "
+                "button, tap EN/RST once, keep holding BOOT until 'Connecting…' succeeds, then release. "
+                "If it still fails, lower the flash baud (Settings ▸ Flash) and use a data-capable USB "
+                "cable — charge-only cables can't flash.")
     return proc.returncode
 
 
