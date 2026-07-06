@@ -92,5 +92,7 @@ def test_router_dispatches_through_the_hub_send_sink():
         enabled=True,
     ))
     # A scan on "device A" lands an AP in the shared pool; that publishes target.added on the hub bus.
-    hub.pool.add(Target(target_type=TargetType.AP, mac="AA:BB:CC:DD:EE:FF", ssid="lab-ap", channel=6))
+    # A real RSSI (-50) that clears the -90 floor — an unknown (0) reading is correctly rejected by an
+    # explicit floor, and this test exercises the dispatch spine, not the proximity gate.
+    hub.pool.add(Target(target_type=TargetType.AP, mac="AA:BB:CC:DD:EE:FF", ssid="lab-ap", channel=6, rssi=-50))
     assert conn.written == ["channel 6"]

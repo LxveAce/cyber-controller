@@ -337,6 +337,13 @@ class AutoRouter:
             return False
         if rule.ssid_pattern and rule.ssid_pattern.lower() not in ssid.lower():
             return False
+        # RSSI 0 is the 'unknown' sentinel (a real reading is dBm, always negative). An unknown signal
+        # can't be shown to satisfy an EXPLICIT proximity floor, so it must not slip past one: without this,
+        # `0 < -45` is False and a "nearby/strong APs only" rule fires on out-of-range targets — an attack
+        # (deauth/etc.) aimed wider than intended. The default -100 floor imposes no real requirement, so
+        # unknown still matches there.
+        if rssi == 0:
+            return rule.min_rssi <= -100
         if rssi < rule.min_rssi:
             return False
         return True
