@@ -81,7 +81,10 @@ class CyberControllerTUI(App):
     """Terminal UI for Cyber Controller built with Textual."""
 
     TITLE = "Cyber Controller TUI"
-    CSS_PATH = "styles.tcss"
+    # Resolve the stylesheet frozen-safe: a bare "styles.tcss" is resolved relative to this module file,
+    # which in a PyInstaller build points into _MEIPASS where the file was never bundled -> Textual raises
+    # at startup and the packaged TUI crashes. resource_path is MEIPASS-aware and build.py bundles the file.
+    CSS_PATH = str(resource_path("src", "ui", "tui", "styles.tcss"))
 
     BINDINGS = [
         Binding("q", "quit", "Quit", priority=True),
@@ -301,7 +304,11 @@ class CyberControllerTUI(App):
             flash_log.write_line(f"Profile not found: {profile_name}")
             return
 
-        profile = self._fe.load_profile(profile_path)
+        try:
+            profile = self._fe.load_profile(profile_path)
+        except Exception as exc:  # noqa: BLE001 — a malformed profile must not kill the whole TUI
+            flash_log.write_line(f"Invalid firmware profile ({profile_path.name}): {exc}")
+            return
 
         deadman_cb = self.query_one("#deadman-toggle", Checkbox)
         if deadman_cb.value:

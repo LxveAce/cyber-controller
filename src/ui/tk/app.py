@@ -1080,7 +1080,11 @@ class TkLightApp:
             self._flash_log_append(f"Profile not found: {profile_name}")
             return
 
-        profile = self._fe.load_profile(profile_path)
+        try:
+            profile = self._fe.load_profile(profile_path)
+        except Exception as exc:  # noqa: BLE001 — a malformed profile must surface, not vanish silently
+            self._flash_log_append(f"Invalid firmware profile ({profile_path.name}): {exc}")
+            return
         self._flash_log_append(f"Flashing {profile.name} to {port}...")
         self._btn_flash.configure(state=tk.DISABLED)
         self._flash_progress["value"] = 0

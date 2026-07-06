@@ -129,6 +129,12 @@ def _build() -> int:
     for qss in theme_dir.glob("*.qss"):
         cmd.extend(["--add-data", f"{qss}{sep}src/ui/qt/theme"])
 
+    # Textual TUI stylesheet — CyberControllerTUI.CSS_PATH resolves it via resource_path; without
+    # bundling it the packaged `--ui tui` crashes on launch (Textual can't find styles.tcss in _MEIPASS).
+    tui_styles = _ROOT / "src" / "ui" / "tui" / "styles.tcss"
+    if tui_styles.is_file():
+        cmd.extend(["--add-data", f"{tui_styles}{sep}src/ui/tui"])
+
     # Web Remote UI assets — Jinja templates + static (css/js/PWA/icons). app.py resolves these via
     # resource_path, so without bundling them every web page 500s (TemplateNotFound) in the frozen
     # build. --collect-submodules only gathers .py, never these data files.
