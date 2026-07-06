@@ -231,10 +231,17 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._visible = False
 
             root = QVBoxLayout(self)
+            file_row = QHBoxLayout()
             self._btn_load = QPushButton("Load cameras.geojson…")
             self._btn_load.setToolTip("Open a saved Flock scan (the cameras.geojson a FlockSession writes).")
             self._btn_load.clicked.connect(self._on_load)
-            root.addWidget(self._btn_load)
+            self._btn_folder = QPushButton("Open data folder")
+            self._btn_folder.setToolTip("Open the folder where live Flock scans are saved (~/.cyber-controller/flock).")
+            self._btn_folder.clicked.connect(self._open_data_folder)
+            file_row.addWidget(self._btn_load)
+            file_row.addWidget(self._btn_folder)
+            file_row.addStretch(1)
+            root.addLayout(file_row)
 
             # ── Live scan controls (F5 live driving loop) ──
             live_row = QHBoxLayout()
@@ -350,9 +357,22 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 if i >= 0:
                     combo.setCurrentIndex(i)
 
+        def _flock_data_dir(self) -> str:
+            """The one canonical folder for saved Flock scans: ``~/.cyber-controller/flock``.
+
+            Live drives checkpoint here, the Load dialog opens here, and "Open data folder" reveals it — so
+            captures always live in one predictable place instead of scattered next to the working directory."""
+            from pathlib import Path
+            d = Path.home() / ".cyber-controller" / "flock"
+            try:
+                d.mkdir(parents=True, exist_ok=True)
+            except OSError:
+                pass
+            return str(d)
+
         def _default_checkpoint_path(self) -> str:
             from pathlib import Path
-            return str(Path.home() / ".cyber-controller" / "flock" / "live-drive.geojson")
+            return str(Path(self._flock_data_dir()) / "live-drive.geojson")
 
         def _toggle_live(self) -> None:
             if self._live_worker is not None:            # running -> ask it to stop
@@ -406,9 +426,16 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
         def _on_load(self) -> None:
             from PyQt5.QtWidgets import QFileDialog
             path, _ = QFileDialog.getOpenFileName(
-                self, "Open Flock scan (cameras.geojson)", "", "GeoJSON (*.geojson *.json);;All files (*)")
+                self, "Open Flock scan (cameras.geojson)", self._flock_data_dir(),
+                "GeoJSON (*.geojson *.json);;All files (*)")
             if path:
                 self.load_geojson_file(path)
+
+        def _open_data_folder(self) -> None:
+            """Reveal the canonical Flock data folder in the OS file manager (best-effort)."""
+            from PyQt5.QtGui import QDesktopServices
+            from PyQt5.QtCore import QUrl
+            QDesktopServices.openUrl(QUrl.fromLocalFile(self._flock_data_dir()))
 
 except ImportError:  # PyQt5 unavailable — the pure projection core above is still importable/testable.
     FlockHeatmapTab = None  # type: ignore[assignment,misc]

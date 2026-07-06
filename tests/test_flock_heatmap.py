@@ -234,3 +234,36 @@ def test_widget_json_nan_token_file_is_filtered(qapp, tmp_path):
         encoding="utf-8")
     w = FlockHeatmapTab()
     assert w.load_geojson_file(str(p)) == 1                  # only the finite camera survives
+
+
+# ── canonical Flock data folder (F5 "fix confusing file directories") ─────────
+
+def test_flock_data_dir_is_canonical_and_created(qapp, tmp_path, monkeypatch):
+    import pathlib
+    monkeypatch.setattr(pathlib.Path, "home", lambda: pathlib.Path(tmp_path))
+    w = FlockHeatmapTab()
+    d = w._flock_data_dir()
+    assert d == str(tmp_path / ".cyber-controller" / "flock")
+    assert (tmp_path / ".cyber-controller" / "flock").is_dir()   # created on demand
+
+
+def test_default_checkpoint_lives_under_data_dir(qapp, tmp_path, monkeypatch):
+    import pathlib
+    monkeypatch.setattr(pathlib.Path, "home", lambda: pathlib.Path(tmp_path))
+    w = FlockHeatmapTab()
+    cp = w._default_checkpoint_path()
+    assert cp.startswith(w._flock_data_dir())               # live drives checkpoint into the one folder
+    assert cp.endswith("live-drive.geojson")
+
+
+def test_open_data_folder_opens_the_canonical_dir(qapp, tmp_path, monkeypatch):
+    import pathlib
+    from PyQt5.QtGui import QDesktopServices
+    monkeypatch.setattr(pathlib.Path, "home", lambda: pathlib.Path(tmp_path))
+    captured = {}
+    monkeypatch.setattr(QDesktopServices, "openUrl",
+                        lambda url: captured.setdefault("path", url.toLocalFile()) or True)
+    w = FlockHeatmapTab()
+    assert w._btn_folder.text() == "Open data folder"       # the discoverability button exists
+    w._open_data_folder()                                    # must not launch a real file manager (mocked)
+    assert captured["path"].replace("\\", "/").rstrip("/").endswith(".cyber-controller/flock")
