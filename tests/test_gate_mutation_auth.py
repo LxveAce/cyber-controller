@@ -34,7 +34,7 @@ def test_clear_gate_denied_when_auth_fails(configured_gate, monkeypatch):
     rc = app.main(["--clear-gate"])
     assert calls["enforce"] == 1, "the gate must be challenged before a mutation"
     assert calls["clear"] == 0, "clear must NOT run when auth is denied (no pre-auth bypass)"
-    assert rc == 0
+    assert rc != 0, "a BLOCKED mutation must exit nonzero — a script checking $? must not read success"
 
 
 def test_clear_gate_allowed_when_auth_passes(configured_gate, monkeypatch):

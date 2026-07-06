@@ -312,7 +312,7 @@ def main(argv: list[str] | None = None) -> int:
     if _gate_mutation and _pk.is_configured():
         if not _ag.enforce("console"):
             print("Access denied — authenticate to modify the access gate.", file=sys.stderr)
-            return 0
+            return 1  # nonzero: the mutation was BLOCKED — a script checking $? must not read it as done
     if args.gate_status:
         return _ag.status_cli()
     if args.create_physical_key:
@@ -356,7 +356,7 @@ def main(argv: list[str] | None = None) -> int:
     if not _enforce_gate(args.ui):
         log.warning("Access denied — exiting.")
         print("Access denied.", file=sys.stderr)
-        return 0
+        return 1  # nonzero: the gate DENIED startup — never report success on a fail-closed exit
 
     dm, fe, bus, pool, vault, health, macro, audit = _bootstrap()
 
