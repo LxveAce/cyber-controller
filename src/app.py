@@ -276,10 +276,6 @@ def main(argv: list[str] | None = None) -> int:
         import esptool
         return esptool.main(_argv[1:])
 
-    if not _acquire_instance_lock():
-        print("Cyber Controller is already running.", file=sys.stderr)
-        return 0
-
     args = _parse_args(argv)
     _setup_logging(args.log_level, args.log_file)
 
@@ -338,6 +334,15 @@ def main(argv: list[str] | None = None) -> int:
         from src.core.os_catalog import run_os_flash_cli
         return run_os_flash_cli(args.flash_os, target=args.target, image=args.os_image,
                                 sig=args.os_sig, assume_yes=args.yes, offline=args.offline)
+
+    # Single-instance lock guards ONLY the interactive launch (GUI/TUI/web) — never the headless one-shot
+    # CLI subcommands handled above. Those (--deadman-setup, --flash-os, --flash-tails, gate mutations, ...)
+    # are routinely run from a terminal WHILE the GUI is open — the DMS fail-safe even directs the user to
+    # run `--deadman-setup` right after clicking Flash — so acquiring the lock before them made them a
+    # silent no-op that returned 0 (success). A genuine second GUI launch is refused with a nonzero code.
+    if not _acquire_instance_lock():
+        print("Cyber Controller is already running.", file=sys.stderr)
+        return 1
 
     # If no --ui flag was given, show the launcher dialog to let the user pick.
     if args.ui is None:

@@ -74,3 +74,16 @@ def test_gate_status_is_readonly_no_auth(configured_gate, monkeypatch):
     app.main(["--gate-status"])
     assert calls["enforce"] == 0, "read-only status must never require auth"
     assert calls["status"] == 1
+
+
+def test_cli_subcommand_runs_despite_single_instance_lock(tmp_path, monkeypatch):
+    # The single-instance lock guards only the interactive GUI launch. A headless one-shot CLI op must run
+    # even when a GUI instance holds the lock — otherwise (e.g.) the DMS setup the GUI directs the user to
+    # run while it's open would be a silent no-op returning success.
+    monkeypatch.setenv("CC_GATE_CONFIG", str(tmp_path / "access_gate.json"))
+    monkeypatch.setattr(app, "_acquire_instance_lock", lambda: False)  # simulate a running GUI holding it
+    calls = {"status": 0}
+    monkeypatch.setattr(access_gate, "status_cli", lambda: calls.__setitem__("status", calls["status"] + 1) or 0)
+    rc = app.main(["--gate-status"])
+    assert calls["status"] == 1, "a CLI subcommand must run despite the instance lock"
+    assert rc == 0
