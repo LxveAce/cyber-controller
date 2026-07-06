@@ -36,6 +36,23 @@ def _token_user_sid_ctypes() -> str | None:
 
     advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
     kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    # Declare the Win32 signatures. Without argtypes/restype, ctypes assumes 32-bit ints, so on 64-bit
+    # Windows the process HANDLE and SID pointers get truncated and every call below fails (SID=None) —
+    # which made restrict_to_current_user() silently no-op and leave the secret on its inherited ACL in
+    # frozen builds (pywin32 isn't bundled, so the ctypes fallback is the only path). See ledger W-1.
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    kernel32.GetCurrentProcess.argtypes = []
+    advapi32.OpenProcessToken.argtypes = [wintypes.HANDLE, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)]
+    advapi32.OpenProcessToken.restype = wintypes.BOOL
+    advapi32.GetTokenInformation.argtypes = [wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                             wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+    advapi32.GetTokenInformation.restype = wintypes.BOOL
+    advapi32.ConvertSidToStringSidW.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_wchar_p)]
+    advapi32.ConvertSidToStringSidW.restype = wintypes.BOOL
+    kernel32.LocalFree.argtypes = [wintypes.HGLOBAL]
+    kernel32.LocalFree.restype = wintypes.HGLOBAL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
     TOKEN_QUERY = 0x0008
     TokenUser = 1
 

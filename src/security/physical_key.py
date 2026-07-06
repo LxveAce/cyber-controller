@@ -95,6 +95,13 @@ def load_config() -> dict:
         log.warning("Access-gate config present but UNREADABLE/corrupt — failing closed")
         return {"version": 1, "policy": DEFAULT_POLICY, "password": None, "key": None,
                 "__corrupt__": True}
+    if not isinstance(cfg, dict):
+        # Valid JSON but not an object ([], null, 123, "str") — same class as unparseable. Fail CLOSED and,
+        # crucially, don't fall through to cfg.setdefault() below (which raises AttributeError on a non-dict
+        # and would break the --clear-gate corrupt-config recovery path, bricking the owner).
+        log.warning("Access-gate config is valid JSON but not an object — failing closed")
+        return {"version": 1, "policy": DEFAULT_POLICY, "password": None, "key": None,
+                "__corrupt__": True}
     cfg.setdefault("policy", DEFAULT_POLICY)
     cfg.setdefault("password", None)
     cfg.setdefault("key", None)
