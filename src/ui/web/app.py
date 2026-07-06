@@ -58,8 +58,11 @@ from src.security.web_auth import (
 log = logging.getLogger(__name__)
 
 _PROFILES_DIR = resource_path("src", "config", "profiles")
-_TEMPLATE_DIR = Path(__file__).parent / "templates"
-_STATIC_DIR = Path(__file__).parent / "static"
+# Resolve bundled web assets via resource_path (sys._MEIPASS-aware), NOT Path(__file__): in the frozen
+# build __file__ points into a MEIPASS path that was never populated, so Flask would raise
+# TemplateNotFound (HTTP 500) on every page and 404 every /static asset. build.py bundles both dirs.
+_TEMPLATE_DIR = resource_path("src", "ui", "web", "templates")
+_STATIC_DIR = resource_path("src", "ui", "web", "static")
 
 _MAX_CONTENT_LENGTH = 256 * 1024  # cap request bodies (no giant uploads)
 _MAX_COMMAND_LEN = 256

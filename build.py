@@ -129,6 +129,16 @@ def _build() -> int:
     for qss in theme_dir.glob("*.qss"):
         cmd.extend(["--add-data", f"{qss}{sep}src/ui/qt/theme"])
 
+    # Web Remote UI assets — Jinja templates + static (css/js/PWA/icons). app.py resolves these via
+    # resource_path, so without bundling them every web page 500s (TemplateNotFound) in the frozen
+    # build. --collect-submodules only gathers .py, never these data files.
+    web_templates = _ROOT / "src" / "ui" / "web" / "templates"
+    if web_templates.is_dir():
+        cmd.extend(["--add-data", f"{web_templates}{sep}src/ui/web/templates"])
+    web_static = _ROOT / "src" / "ui" / "web" / "static"
+    if web_static.is_dir():
+        cmd.extend(["--add-data", f"{web_static}{sep}src/ui/web/static"])
+
     # Hidden imports — all UI variants + serial + launcher
     cmd.extend([
         # Serial / device comms
