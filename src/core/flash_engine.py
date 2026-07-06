@@ -371,6 +371,15 @@ class FlashEngine:
                 if a.get("name", "").lower() == req:
                     on_line(f"[variant] {a['name']} (selected)")
                     return a
+            # Token-boundary pass BEFORE the loose substring match: a detection fragment like
+            # "cyd_2432S028" must NOT match the superset asset "..._cyd_2432S028_2usb.bin" (a DIFFERENT
+            # display driver — flashing it yields a white/garbled screen). Require the fragment to be the
+            # final token before the extension (immediately followed by '.'), which is unambiguous
+            # regardless of the order GitHub lists the assets in.
+            for a in cands:
+                if (req + ".") in a.get("name", "").lower():
+                    on_line(f"[variant] {a['name']} — {a.get('label', '')} (matched '{requested}')")
+                    return a
             for a in cands:  # substring of asset name or friendly label
                 if req in a.get("name", "").lower() or req in a.get("label", "").lower():
                     on_line(f"[variant] {a['name']} — {a.get('label', '')} (matched '{requested}')")
