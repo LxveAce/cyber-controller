@@ -1,0 +1,3 @@
+# Vendored third-party assets must stay byte-exact to upstream (so the recorded sha256/sha384 in
+# static/vendor/README.md keep verifying) — never line-ending-normalized.
+src/ui/web/static/vendor/** -text
