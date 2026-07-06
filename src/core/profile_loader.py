@@ -93,6 +93,15 @@ def select_chip(data: dict[str, Any], requested_chip: str | None = None, board_n
     """
     if requested_chip:
         return requested_chip
+    # Multi-chip profile with no specific board chosen: DON'T pin the first board's chip — return
+    # "auto" so the engine runs chip detection. Otherwise a profile whose boards span chips (e.g.
+    # m5stick_nemo: M5StickC Plus2 = esp32, M5Cardputer/M5Stick-S3 = esp32s3; or marauder's esp32/
+    # s2/s3/c5 boards) pins the FIRST board's chip and sends the wrong --chip to every other board,
+    # which esptool aborts on. Single-chip profiles keep their chip (no needless detection round-trip).
+    if not board_name:
+        chips = {str(b.get("chip")) for b in (data.get("boards") or []) if b.get("chip")}
+        if len(chips) > 1:
+            return "auto"
     board = select_board(data, board_name)
     if board and board.get("chip"):
         return str(board["chip"])

@@ -433,13 +433,34 @@ class FlashEngine:
         if core_id == "custom":
             return []
         core = flash_core.get_profile(core_id)
-        chip = chip or (profile.chip if profile.chip not in ("", "auto") else "esp32")
         try:
             _tag, assets = core.latest_release()
-            return core.variants_for_chip(assets, chip)
         except Exception as exc:  # noqa: BLE001 — offline / API error is non-fatal for a picker
-            log.debug("list_variants(%s,%s) failed: %s", core_id, chip, exc)
+            log.debug("list_variants(%s) release fetch failed: %s", core_id, exc)
             return []
+        # A pinned chip (explicit arg or single-chip profile) lists that chip's builds. A multi-chip /
+        # auto profile lists EVERY board's builds (union) so the user can pick, say, the M5Stick-S3
+        # image even though the profile's first board is an esp32 — the old "else esp32" fallback hid
+        # all the S3/C5 variants from the picker.
+        if chip:
+            chips = [chip]
+        elif profile.chip and profile.chip not in ("", "auto"):
+            chips = [profile.chip]
+        else:
+            chips = sorted({str(b.get("chip")).strip() for b in (profile.boards or [])
+                            if isinstance(b, dict) and b.get("chip")}) or ["esp32"]
+        out: list[dict] = []
+        seen: set = set()
+        for c in chips:
+            try:
+                for v in core.variants_for_chip(assets, c):
+                    key = v.get("name")
+                    if key not in seen:
+                        seen.add(key)
+                        out.append(v)
+            except Exception as exc:  # noqa: BLE001
+                log.debug("list_variants(%s,%s) failed: %s", core_id, c, exc)
+        return out
 
     # ── qFlipper (Flipper Zero firmwares) ────────────────────────────
 
