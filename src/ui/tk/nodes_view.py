@@ -25,9 +25,9 @@ class NodesView(ttk.Frame):
 
         self._banner = ttk.Label(
             self,
-            text=("⚠  Demo / placeholder — wireless nodes are host-side groundwork only. No relay or "
-                  "node firmware exists yet, so nothing here reaches real hardware over the air. Full "
-                  "functionality is coming in a later release."),
+            text=("⚠  Preview — the relay/node ESP32 sketches now ship in firmware/ (source-only: compile "
+                  "and flash them yourself). Live attach/detach over the air from this view isn't wired up "
+                  "yet — it's coming in a later release."),
             wraplength=560, foreground="#8a6d00", padding=(8, 6),
         )
         self._banner.pack(fill=tk.X, padx=4, pady=(4, 0))

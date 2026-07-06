@@ -57,9 +57,9 @@ class NodesTab(QWidget):
         root = QVBoxLayout(self)
 
         banner = QLabel(
-            "⚠  Demo / placeholder — wireless nodes are host-side groundwork only. There is no relay or "
-            "node firmware yet, so nothing here reaches real hardware over the air. Full functionality is "
-            "coming in a later release."
+            "⚠  Preview — the relay/node ESP32 sketches now ship in firmware/ (source-only: compile and "
+            "flash them yourself). Live attach/detach over the air from this view isn't wired up yet — "
+            "it's coming in a later release."
         )
         banner.setWordWrap(True)
         banner.setStyleSheet(
