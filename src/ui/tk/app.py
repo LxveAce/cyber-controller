@@ -1053,11 +1053,19 @@ class TkLightApp:
             self._flash_log_append("Dead Man's Switch enabled -- opening setup...")
 
             def _dms_done(confirmed: bool) -> None:
-                if confirmed:
-                    self._flash_log_append("Dead Man's Switch configured. Proceeding with flash.")
-                    self._do_flash(port_text, profile_name)
-                else:
+                if not confirmed:
                     self._flash_log_append("Dead Man's Switch setup cancelled. Flash aborted.")
+                    return
+                # FAIL SAFE: the setup dialog only collects config — it does NOT flash the gate to the
+                # device. Flashing plain firmware here would leave an unprotected board while the log
+                # claims the Dead Man's Switch is configured (false security). Abort with next steps
+                # (mirrors the TUI + Qt behavior).
+                self._flash_log_append(
+                    "Dead Man's Switch setup captured, but the GUI cannot flash the gate to the device — "
+                    "aborting so you are not left with an unprotected board that looks protected. Flash the "
+                    "gated bundle with `cyber-controller --deadman-setup`, or disable Dead Man's Switch to "
+                    "flash firmware without the gate."
+                )
 
             self._launch_deadman_setup(on_complete=_dms_done)
             return

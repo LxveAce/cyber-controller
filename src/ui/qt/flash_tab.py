@@ -324,7 +324,8 @@ class FlashTab(QWidget):
         suicide_layout.addWidget(self._suicide_checkbox)
 
         suicide_desc = QLabel(
-            "Integrates Dead Man's Switch anti-forensic wipe into the flash. Opens setup before flashing."
+            "Opens Dead Man's Switch setup and provisions a guardcfg bundle (host-side). Flashing the gate "
+            "onto the device is done with `cyber-controller --deadman-setup` — not this flash button yet."
         )
         suicide_desc.setObjectName("muted")
         suicide_desc.setWordWrap(True)
@@ -681,7 +682,18 @@ class FlashTab(QWidget):
             if result != SuicideSetupDialog.Accepted:
                 self._log("Dead Man's Switch setup cancelled — flash aborted.")
                 return
-            self._log("Dead Man's Switch setup complete — proceeding to flash.")
+            # FAIL SAFE — do NOT flash plain firmware here. Provisioning wrote a guardcfg bundle to a HOST
+            # directory; this GUI flash path does not write that gate to the device (no call to
+            # flash_core.flash_suicide anywhere in the UI). Proceeding would flash the firmware with NO boot
+            # gate and NO wipe while telling the user the Dead Man's Switch is active — false security on a
+            # security tool. Abort with clear next steps (mirrors the TUI's behavior).
+            self._log(
+                "Dead Man's Switch bundle provisioned on the host, but the GUI cannot yet flash the gate to "
+                "the device — aborting so you are NOT left with an unprotected board that looks protected. "
+                "Flash the gated bundle with `cyber-controller --deadman-setup`, or uncheck Dead Man's "
+                "Switch to flash firmware without the gate."
+            )
+            return
 
         variant = self._variant_combo.currentData() or ""
         profile.variant = variant
