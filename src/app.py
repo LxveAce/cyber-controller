@@ -302,13 +302,35 @@ def main(argv: list[str] | None = None) -> int:
     # gate without knowing the current factor(s). First-time setup (no gate yet) needs no auth; the
     # read-only `--gate-status` never does. (The vault itself stays fail-closed regardless, but this
     # also protects the gate as an access control and prevents skipping the brute-force/duress logic.)
-    _gate_mutation = (
-        args.create_physical_key or args.set_admin_password or args.gate_policy or args.clear_gate
+    # A "gate mutation" is any subcommand that changes the gate. Split out the non-clear mutations so the
+    # corrupt-config block below derives from the SAME set (never a hand-copied duplicate that could drift):
+    # add a new mutation flag here and it flows into both the "any mutation?" gate and the corrupt block.
+    _non_clear_gate_mutation = (
+        args.create_physical_key or args.set_admin_password or args.gate_policy
     )
-    if _gate_mutation and _pk.is_configured():
-        if not _ag.enforce("console"):
-            print("Access denied — authenticate to modify the access gate.", file=sys.stderr)
-            return 1  # nonzero: the mutation was BLOCKED — a script checking $? must not read it as done
+    _gate_mutation = _non_clear_gate_mutation or args.clear_gate
+    if _gate_mutation:
+        if _pk.config_is_corrupt():
+            # CC-GATE: a present-but-unreadable gate config is CONFIGURED-AND-LOCKED, never "absent".
+            # is_configured() reports False for a corrupt config (password/key can't be read), so the old
+            # `and is_configured()` guard skipped enforce() and let a mutation run PRE-AUTH — a fail-open
+            # that contradicts the fail-closed invariant the runtime path holds (enforce() and
+            # check_access() both refuse a corrupt config). enforce() can't authenticate a config it can't
+            # parse, so the ONLY thing allowed here is a PURE --clear-gate: the recovery path that resets the
+            # unreadable gate so the owner can reprovision. Clearing leaves the encrypted vault in place, and
+            # enforce() still fails closed on vault-without-gate afterward, so no protected data is exposed.
+            # NB: the action dispatch below runs create/set/policy BEFORE clear_gate, so a co-passed mutation
+            # (e.g. `--set-admin-password --clear-gate`) must ALSO be blocked — otherwise --clear-gate would
+            # wave a real mutation through pre-auth on a config we can't authenticate against.
+            if _non_clear_gate_mutation:
+                print("Locked: the access-gate configuration is unreadable/corrupt. Only --clear-gate "
+                      "(on its own) may proceed — it resets the gate so you can reprovision.", file=sys.stderr)
+                return 1  # nonzero: the mutation was BLOCKED — a script checking $? must not read it as done
+            # else: only --clear-gate was requested — fall through to the recovery path (no enforce()).
+        elif _pk.is_configured():
+            if not _ag.enforce("console"):
+                print("Access denied — authenticate to modify the access gate.", file=sys.stderr)
+                return 1  # nonzero: the mutation was BLOCKED — a script checking $? must not read it as done
     if args.gate_status:
         return _ag.status_cli()
     if args.create_physical_key:
