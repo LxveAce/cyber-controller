@@ -172,12 +172,17 @@ class SuicideSetupDialog(QDialog):
             self.build_dir.setText(d)
 
     def _collect_cfg(self) -> SuicideConfig:
+        arm_level = 1 if self.arm_level.currentIndex() == 0 else 0
         return SuicideConfig(
             chip=self.chip.currentText(),
             flash_size=self.flash.currentText(),
             variant=self.variant.currentText(),
             arm_pin=self.arm_pin.value(),
-            arm_level=1 if self.arm_level.currentIndex() == 0 else 0,
+            arm_level=arm_level,
+            # The fail-safe pull follows the armed level: HIGH-armed -> pulldown (2), LOW-armed -> pullup
+            # (1) — both idle at the NOT-armed level. The dialog doesn't expose arm_pull, and the default
+            # (2) is only fail-safe for HIGH-armed, so picking "LOW = armed" used to always fail validation.
+            arm_pull=2 if arm_level == 1 else 1,
             max_att=self.max_att.value(),
             armed=1 if self.armed.isChecked() else 0,
             brick=1 if self.brick.isChecked() else 0,

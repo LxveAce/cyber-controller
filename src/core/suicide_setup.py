@@ -162,6 +162,9 @@ def run_cli(argv: list[str] | None = None) -> int:
     cfg.variant = ask("variant (fork/guardian)", cfg.variant)
     cfg.arm_pin = ask("arming GPIO pin", cfg.arm_pin, int)
     cfg.arm_level = ask("armed logic level (1=HIGH, 0=LOW)", cfg.arm_level, int)
+    # Derive the fail-safe pull from the level (HIGH-armed -> pulldown, LOW-armed -> pullup); the other
+    # pairing is rejected by the provisioner, so never leave it at the HIGH-only default for a LOW arm.
+    cfg.arm_pull = 2 if cfg.arm_level == 1 else 1
     cfg.max_att = ask("wrong-password attempts before wipe", cfg.max_att, int)
     cfg.armed = ask("ARM now? (0=disarmed safe default, 1=armed)", cfg.armed, int)
     cfg.brick = ask("brick boot chain on wipe? (0=T1 reflashable, 1=T2 brick)", cfg.brick, int)
