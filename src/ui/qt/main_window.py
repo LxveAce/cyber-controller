@@ -925,6 +925,19 @@ class CyberControllerWindow(QMainWindow):
             try:
                 conn = self._dm.open_connection(port, owner="pterm")
                 self._pterm_conns[port] = conn
+                # Stamp a best-effort firmware so the Operate surface (Broadcast/Targets/STOP-ALL, which
+                # all route by Device.firmware) works even when the board was connected here in the
+                # terminal rather than the Devices tab. Fill a BLANK only — never clobber an explicit
+                # Devices-tab choice. Mirror device_tab's autodetect: Flipper -> flipper, else marauder.
+                dev = self._dm.get_device(port)
+                if dev is not None and not getattr(dev, "firmware", ""):
+                    from src.models.device import BoardType
+
+                    dev.firmware = (
+                        "flipper"
+                        if getattr(dev, "board_type", None) == BoardType.FLIPPER_ZERO
+                        else "marauder"
+                    )
                 color = self._pterm_assign_color(port)
                 # Capture port in closure
                 _port = port

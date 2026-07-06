@@ -78,3 +78,38 @@ def test_pterm_line_mirrored_when_device_tab_only_selected(qapp, isolated_settin
         assert "hello-mirror" in win._device_tab._terminal.toPlainText()
     finally:
         win.close()
+
+
+def _stub_connect(win, monkeypatch, dev):
+    """Wire the window so _pterm_on_connect connects COM7 to a stub conn + the given device."""
+    conn = types.SimpleNamespace(is_connected=True, on_line=lambda *_a: None, write=lambda *_a: None)
+    monkeypatch.setattr(win._dm, "open_connection", lambda port, owner=None: conn)
+    monkeypatch.setattr(win._dm, "get_device", lambda port: dev)
+    monkeypatch.setattr(win, "_pterm_checked_ports", lambda: ["COM7"])
+    monkeypatch.setattr(win, "_pterm_refresh_ports", lambda: None)
+    monkeypatch.setattr(win, "_refresh_sidebar_devices", lambda: None)
+
+
+def test_pterm_connect_stamps_default_firmware(qapp, isolated_settings, monkeypatch):
+    # Connecting a board in the terminal must stamp a firmware so the Operate surface (Broadcast/Targets/
+    # STOP-ALL, which all route by Device.firmware) can send — a blank routes to zero actions and no-ops.
+    win = _make_window()
+    try:
+        dev = types.SimpleNamespace(firmware="", board_type=None)
+        _stub_connect(win, monkeypatch, dev)
+        win._pterm_on_connect()
+        assert dev.firmware == "marauder"
+    finally:
+        win.close()
+
+
+def test_pterm_connect_does_not_clobber_explicit_firmware(qapp, isolated_settings, monkeypatch):
+    # An explicit firmware (e.g. chosen in the Devices tab) must survive a terminal connect.
+    win = _make_window()
+    try:
+        dev = types.SimpleNamespace(firmware="ghost_esp", board_type=None)
+        _stub_connect(win, monkeypatch, dev)
+        win._pterm_on_connect()
+        assert dev.firmware == "ghost_esp"
+    finally:
+        win.close()
