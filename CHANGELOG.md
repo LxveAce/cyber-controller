@@ -5,6 +5,58 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.1] — 2026-07-06
+
+A stability, correctness, and privacy release. Real flashing bugs surfaced by hardware testing and a full
+adversarial code review of the app, plus two PII fixes in the bug reporter.
+
+### Added
+- **CYD board detection** — a "Detect board" button on the Flash tab flashes a tiny probe to read the
+  panel's display-controller ID, touch type, and peripherals, then auto-selects the matching firmware
+  variant. A CYD (ESP32-2432S028) no longer ends up with a blank/white screen from a wrong-driver build.
+- **Report a Bug** (Help menu) — assembles a redacted diagnostics bundle (version, platform, recent logs,
+  your note) that you can save, copy, or open as a prefilled GitHub issue to send back for fixing.
+- **Hold-BOOT recovery hint** — when esptool can't enter the bootloader ("Wrong boot mode detected",
+  "Failed to connect"), the log now says exactly what to do: hold BOOT, tap EN/RST, lower the flash baud,
+  use a data-capable cable. Fires for flash, backup, and erase.
+- **8 MB Dead Man's Switch guardian** partition table.
+
+### Fixed
+- **M5Stick and other multi-chip boards couldn't flash** — profiles whose boards span several chips
+  (Marauder, ESP32-DIV, GhostESP, AirTag-scanner, M5Stick) pinned the chip to the first board, so an
+  ESP32-S3/-C5 board got the wrong `--chip` (esptool aborted) and its build wasn't even offered. They now
+  auto-detect the chip and the picker lists every board's build.
+- **Operate tab didn't send commands** — the terminal now stamps the connected device's firmware on
+  connect so commands route to the right backend.
+- **Web Remote UI was non-functional in the installed build** — its templates/static were resolved via
+  `__file__` and never bundled, so every page returned HTTP 500 once installed (dev was fine). Now bundled
+  and resolved frozen-safe.
+- **Vault download, Backup, and Erase blocked or could crash the window** — moved off the GUI thread onto
+  worker threads (the vault download had been mutating widgets from a raw thread — a frozen-build crash).
+- **A bad firmware profile could crash the app** — the flash path now guards profile parsing, and browsing
+  to an unparseable `.json` no longer registers it as a flashable selection.
+- **Dead Man's Switch "LOW = armed" always failed provisioning** — the fail-safe pull is now derived from
+  the armed level.
+- **Two mislabeled boards removed** — a Meshtastic nRF52840 board listed under esp32c6, and an ESP32-DIV
+  classic-ESP32 board that could only ever be flashed wrong-chip S3 firmware.
+- **CYD variant selection could pick the wrong display driver** — variant matching is now token-bounded, so
+  a `cyd_2432S028` fragment can't match the `_2usb` (ST7789) build regardless of release asset order.
+- **A shared serial port reused at a different baud** (e.g. a GPS opened at 115200 then reused at 9600) now
+  warns instead of silently producing a "No Fix".
+- Installed-build breakage from the 1.6.0 line: bundled starter macros, the Flock map tab, and broadcast
+  gating now ship correctly.
+
+### Changed
+- Marauder ESP32-C5's "no upstream support files" abort now reads as a permanent gap for that chip, not a
+  transient "fix the connection and retry" error.
+- The Nodes banner no longer claims "no firmware yet" — the relay/node sketches ship (source-only) in
+  `firmware/`; only live over-the-air attach/detach from that view is still pending.
+
+### Security
+- **Closed two PII leaks in bug reports.** BSSIDs (directly WiGLE-geolocatable → your physical location)
+  are now redacted, and SSIDs are kept out of the captured log ring at the source. The prefilled GitHub
+  issue **title** is redacted too, not just the body.
+
 ## [1.6.0] — 2026-07-05
 
 The 1.6.0 line, complete. Everything the beta pointed at has landed: a live Flock driving map, concurrent

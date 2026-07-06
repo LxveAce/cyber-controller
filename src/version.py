@@ -4,4 +4,4 @@ Imported by the UI (window title), the smart-install/version-state logic, and an
 the running version. Keep this in sync with ``pyproject.toml``'s ``version`` on every release.
 """
 
-__version__ = "1.6.0"
+__version__ = "1.6.1"
