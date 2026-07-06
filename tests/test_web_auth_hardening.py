@@ -58,8 +58,27 @@ def test_allow_wipe_false_never_triggers_duress_wipe(tmp_path, monkeypatch):
         st = pk.record_failed_attempt(allow_wipe=False)
         assert st["wipe_triggered"] is False
     assert calls["n"] == 0, "the web path (allow_wipe=False) must never fire the duress wipe"
-    # sanity: the local path (allow_wipe=True) DOES fire once past the threshold
-    assert pk.record_failed_attempt(allow_wipe=True)["wipe_triggered"] is True
+    # sanity: the LOCAL path (allow_wipe=True) fires on ITS OWN counter reaching the threshold — the 5 web
+    # failures above did not pre-load it, so it takes a full 2 local failures (not 1) to trip.
+    assert pk.record_failed_attempt(allow_wipe=True)["wipe_triggered"] is False  # wipe counter -> 1
+    assert pk.record_failed_attempt(allow_wipe=True)["wipe_triggered"] is True   # wipe counter -> 2 == threshold
+    assert calls["n"] == 1
+
+
+def test_web_failures_do_not_preload_the_local_wipe(tmp_path, monkeypatch):
+    # allow_wipe=False must not just skip firing — it must not ADVANCE the wipe-arming counter either,
+    # or a network actor could pre-load it so the owner's next local slip trips the wipe early.
+    monkeypatch.setenv("CC_GATE_CONFIG", str(tmp_path / "access_gate.json"))
+    calls = {"n": 0}
+    monkeypatch.setattr(pk, "trigger_duress_wipe", lambda: (calls.__setitem__("n", calls["n"] + 1), True)[1])
+    pk.set_wipe_on_failures(3)
+    for _ in range(5):  # 5 web failures — the wipe counter must stay at 0
+        pk.record_failed_attempt(allow_wipe=False)
+    assert calls["n"] == 0
+    assert pk.record_failed_attempt(allow_wipe=True)["wipe_triggered"] is False  # local #1 -> counter 1
+    pk.record_failed_attempt(allow_wipe=True)                                    # local #2 -> counter 2
+    assert calls["n"] == 0, "web failures must not have pre-loaded the wipe counter"
+    assert pk.record_failed_attempt(allow_wipe=True)["wipe_triggered"] is True   # local #3 -> threshold
     assert calls["n"] == 1
 
 

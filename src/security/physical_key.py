@@ -219,10 +219,11 @@ def lockout_status() -> dict:
 def record_successful_unlock() -> None:
     """Reset the persistent failure counter after a successful unlock (atomically)."""
     def _reset(cfg):
-        if not (cfg.get("failed_attempts") or cfg.get("last_failure_ts")):
+        if not (cfg.get("failed_attempts") or cfg.get("last_failure_ts") or cfg.get("wipe_failures")):
             return False  # nothing to reset — skip the write
         cfg["failed_attempts"] = 0
         cfg["last_failure_ts"] = 0
+        cfg["wipe_failures"] = 0  # a successful unlock disarms the wipe counter too
     _locked_config_update(_reset)
 
 
@@ -235,14 +236,20 @@ def record_failed_attempt(*, allow_wipe: bool = True) -> dict:
     *allow_wipe* gates the destructive duress wipe. It defaults True for the LOCAL console/Qt unlock
     surfaces. The network-facing web remote passes allow_wipe=False: the duress wipe is a PHYSICAL
     anti-forensic control (seizure), and a remote/pre-auth network actor must never be able to drive an
-    irreversible wipe of the vault + gate config. (The lockout counter is still shared per SEC-A1.)"""
+    irreversible wipe of the vault + gate config.
+
+    The wipe is armed by a SEPARATE 'wipe_failures' counter that only local (allow_wipe) failures advance —
+    the shared 'failed_attempts' lockout counter stays shared across all surfaces (SEC-A1), but a network
+    actor must not be able to pre-load the wipe counter so a later local slip trips it early."""
     def _inc(cfg):
         cfg["failed_attempts"] = int(cfg.get("failed_attempts", 0) or 0) + 1
         cfg["last_failure_ts"] = _now()
-        return int(cfg.get("wipe_on_failures", 0) or 0), cfg["failed_attempts"]
-    wipe_at, fails = _locked_config_update(_inc)
+        if allow_wipe:  # only LOCAL failures may arm the physical duress wipe
+            cfg["wipe_failures"] = int(cfg.get("wipe_failures", 0) or 0) + 1
+        return int(cfg.get("wipe_on_failures", 0) or 0), int(cfg.get("wipe_failures", 0) or 0)
+    wipe_at, wipe_fails = _locked_config_update(_inc)
     wiped = False
-    if allow_wipe and wipe_at > 0 and fails >= wipe_at:  # duress wipe outside the lock (it may be slow)
+    if allow_wipe and wipe_at > 0 and wipe_fails >= wipe_at:  # duress wipe outside the lock (it may be slow)
         wiped = trigger_duress_wipe()
     st = lockout_status()
     st["wipe_triggered"] = wiped
