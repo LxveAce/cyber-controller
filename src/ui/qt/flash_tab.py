@@ -110,6 +110,27 @@ class _VariantLoader(QThread):
         self.loaded.emit(variants)
 
 
+class _DetectWorker(QThread):
+    """Flash the CYD probe and read back the panel identity, off the UI thread."""
+
+    progress = pyqtSignal(str)
+    done = pyqtSignal(object)  # CydResult
+    failed = pyqtSignal(str)
+
+    def __init__(self, port: str) -> None:
+        super().__init__()
+        self._port = port
+
+    def run(self) -> None:
+        try:
+            from src.core.cyd_detect import detect_cyd
+
+            result = detect_cyd(self._port, progress=self.progress.emit)
+            self.done.emit(result)
+        except Exception as exc:  # noqa: BLE001 — surface as a log line, never crash the UI
+            self.failed.emit(str(exc))
+
+
 class FlashTab(QWidget):
     """Firmware flashing tab with port/profile selectors, progress bar, and batch queue."""
 
@@ -120,6 +141,8 @@ class FlashTab(QWidget):
         self._vault = vault or FirmwareVault()
         self._worker: _FlashWorker | None = None
         self._variant_loader: _VariantLoader | None = None
+        self._detect_worker: _DetectWorker | None = None
+        self._pending_variant: str | None = None  # variant to select once the async list lands
         self._profiles: dict[str, Path] = {}  # display name -> path
         self._profile_objs: dict[str, FirmwareProfile] = {}  # display name -> loaded profile
 
@@ -181,6 +204,16 @@ class FlashTab(QWidget):
         )
         self._variant_combo.addItem("Auto (default for chip)", "")
         prof_layout.addWidget(self._variant_combo)
+        # Detect which board is on the port (identifies CYD panel + variant so the screen isn't blank
+        # or mirrored from a wrong build). Flashes a probe — destructive, confirms first.
+        self._btn_detect = QPushButton("Detect board (CYD)")
+        self._btn_detect.setToolTip(
+            "Flash a tiny probe that reads the display controller to identify which board this is "
+            "(e.g. CYD 2.8\" ILI9341 vs 2-USB ST7789 vs 3.5\" ST7796), then auto-selects the matching "
+            "variant. Overwrites the current firmware — re-flash real firmware after."
+        )
+        self._btn_detect.clicked.connect(self._on_detect)
+        prof_layout.addWidget(self._btn_detect)
         top.addWidget(prof_card, stretch=2)
 
         # Flash + Backup buttons
@@ -312,7 +345,8 @@ class FlashTab(QWidget):
         pro = str(mode).lower() != "simple"
         for w in (
             getattr(self, "_btn_browse", None), getattr(self, "_variant_label", None),
-            getattr(self, "_variant_combo", None), getattr(self, "_suicide_card", None),
+            getattr(self, "_variant_combo", None), getattr(self, "_btn_detect", None),
+            getattr(self, "_suicide_card", None),
             getattr(self, "_queue_card", None), getattr(self, "_vault_card", None),
         ):
             if w is not None:
@@ -420,6 +454,12 @@ class FlashTab(QWidget):
         for v in variants:
             label = v.get("label") or v.get("name", "")
             self._variant_combo.addItem(f"{label}  ({v.get('name', '')})", v.get("name", ""))
+        # Apply a variant chosen by board-detection now that the real list is in. If detection found a
+        # key the fetched list somehow lacks, add it so it stays selectable.
+        if self._pending_variant:
+            if not self._select_variant(self._pending_variant):
+                self._variant_combo.addItem(f"{self._pending_variant}  (detected)", self._pending_variant)
+                self._select_variant(self._pending_variant)
 
     def _browse_profile(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -435,6 +475,66 @@ class FlashTab(QWidget):
             self._profiles[name] = p
             self._profile_combo.addItem(name)
             self._profile_combo.setCurrentText(name)
+
+    # ── Board detection (CYD) ────────────────────────────────────────
+
+    def _on_detect(self) -> None:
+        port = self._port_combo.currentData()
+        if not port:
+            self._log("No port selected.")
+            return
+        from PyQt5.QtWidgets import QMessageBox
+
+        resp = QMessageBox.warning(
+            self, "Detect board",
+            f"Detection flashes a small probe to the board on {port} to read its display, "
+            "OVERWRITING its current firmware.\n\nYou'll re-flash real firmware afterward. Continue?",
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+        )
+        if resp != QMessageBox.Yes:
+            self._log("Detection cancelled.")
+            return
+        self._log(f"Detecting board on {port}…")
+        self._btn_detect.setEnabled(False)
+        self._btn_flash.setEnabled(False)
+        self._detect_worker = _DetectWorker(port)
+        self._detect_worker.progress.connect(self._log)
+        self._detect_worker.done.connect(self._on_detect_done)
+        self._detect_worker.failed.connect(self._on_detect_failed)
+        self._detect_worker.start()
+
+    def _on_detect_failed(self, msg: str) -> None:
+        self._log(f"Detection failed: {msg}")
+        self._btn_detect.setEnabled(True)
+        self._btn_flash.setEnabled(True)
+
+    def _on_detect_done(self, result) -> None:
+        self._btn_detect.setEnabled(True)
+        self._btn_flash.setEnabled(True)
+        self._log(result.summary)
+        if not getattr(result, "is_cyd", False) or not result.variant:
+            return
+        # Steer the user to the Marauder profile and pre-select the detected variant. The variant list
+        # loads async, so remember the key and apply it when the list lands (or immediately if present).
+        self._pending_variant = result.variant
+        idx = self._profile_combo.findText("Marauder", Qt.MatchContains)
+        if idx >= 0 and idx != self._profile_combo.currentIndex():
+            self._profile_combo.setCurrentIndex(idx)  # triggers _reload_variants -> applied on load
+        elif not self._select_variant(result.variant):
+            pass  # not in the current list yet; _on_variants_loaded will add + select it
+        self._log(
+            f"Pre-selected variant '{result.variant}'. Pick Marauder firmware and click Flash to "
+            "install the correct build."
+        )
+
+    def _select_variant(self, key: str) -> bool:
+        """Select the variant whose data == key. Returns True if found (and clears the pending key)."""
+        for i in range(self._variant_combo.count()):
+            if self._variant_combo.itemData(i) == key:
+                self._variant_combo.setCurrentIndex(i)
+                self._pending_variant = None
+                return True
+        return False
 
     # ── Dead Man's Switch toggle ───────────────────────────────────
 

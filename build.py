@@ -72,6 +72,13 @@ def _build() -> int:
     if profiles_dir.is_dir():
         cmd.extend(["--add-data", f"{profiles_dir}{sep}src/config/profiles"])
 
+    # CYD board-detection probe (merged ESP32 image). resource_path("src","config","probes",
+    # "cyd_probe.bin") reads it in the frozen build for the Flash tab's "Detect board" button, so it
+    # must be bundled or detection can't flash the probe. PyInstaller never touches a plain .bin.
+    probes_dir = _ROOT / "src" / "config" / "probes"
+    if probes_dir.is_dir():
+        cmd.extend(["--add-data", f"{probes_dir}{sep}src/config/probes"])
+
     # Device-View per-firmware skin palettes (DV3) — resource_path("src","ui","qt","skins") reads these in
     # the frozen build, so they must be bundled or every skin silently falls back to the default palette.
     skins_dir = _ROOT / "src" / "ui" / "qt" / "skins"
