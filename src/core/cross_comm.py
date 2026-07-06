@@ -316,7 +316,11 @@ class AutoRouter:
                 log.warning("AutoRouter: rejecting target with malformed MAC %r", mac)
                 continue
             cmd = _safe_render(rule.command_template, mac, ssid, channel)
-            log.info("AutoRouter: rule %r matched %s -> %s", rule.name, target_key, cmd)
+            # Log the match at INFO with only rule + target key (whose MAC diagnostics.redact scrubs in any
+            # bug bundle). The rendered command carries the substituted SSID — an arbitrary string that
+            # can't be regex-redacted — so keep it at DEBUG only, out of the INFO ring that reports dump.
+            log.info("AutoRouter: rule %r matched target %s", rule.name, target_key)
+            log.debug("AutoRouter: rule %r -> %s", rule.name, cmd)
             try:
                 self._send(rule.device_port, cmd)
             except Exception:

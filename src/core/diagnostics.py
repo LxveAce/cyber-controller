@@ -68,6 +68,10 @@ _REDACTIONS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._\-]+"), "Bearer <redacted>"),
     (re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"), "<email>"),
     (re.compile(r"(?i)\b(token|password|passwd|secret|api[_-]?key)\b\s*[=:]\s*\S+"), r"\1=<redacted>"),
+    # MAC / BSSID. A scanned BSSID is directly geolocatable (WiGLE), so a diagnostics bundle that leaks
+    # one discloses the user's physical location. (SSIDs are arbitrary strings and can't be regex-matched
+    # safely — those are kept out of the INFO ring at the log source in cross_comm instead.)
+    (re.compile(r"\b(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}\b"), "<mac>"),
 ]
 
 
@@ -133,8 +137,14 @@ def collect_report(
 
 
 def github_issue_url(title: str, body: str, *, max_body: int = 6000) -> str:
-    """Build a prefilled GitHub 'new issue' URL. Body is truncated to keep the URL under GitHub's cap."""
+    """Build a prefilled GitHub 'new issue' URL. Body is truncated to keep the URL under GitHub's cap.
+
+    The title is redacted here too: callers derive it from the user's raw note, and a prefilled title
+    lands in a PUBLIC, search-indexed issue — an un-redacted email or token there would defeat the whole
+    point of redacting the body.
+    """
     if len(body) > max_body:
         body = body[:max_body] + "\n… (truncated — attach the full report file)"
-    query = urllib.parse.urlencode({"title": (title or "Bug report")[:120], "body": body})
+    safe_title = redact(title or "Bug report")[:120] or "Bug report"
+    query = urllib.parse.urlencode({"title": safe_title, "body": body})
     return f"{_ISSUE_BASE}?{query}"
