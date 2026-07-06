@@ -264,5 +264,6 @@ class GateSetupDialog(QDialog):
             return
         pk.clear_admin_password()
         pk.remove_physical_key()
+        pk.disarm_duress_wipe()  # clearing the gate must also disarm the opt-in wipe (parity with the CLI)
         QMessageBox.information(self, "Access gate", "Access gate cleared. Applies on next launch.")
         self._refresh()

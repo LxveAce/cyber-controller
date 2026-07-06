@@ -264,6 +264,24 @@ def set_wipe_on_failures(threshold: int) -> None:
     _locked_config_update(_set)
 
 
+def disarm_duress_wipe() -> None:
+    """Fully disarm the opt-in duress wipe and clear the failure/lockout counters. Called on a GATE CLEAR
+    (--clear-gate): removing the unlock factors must ALSO remove the destructive threshold. Otherwise the
+    threshold persists in the config, and because a cleared gate is no longer 'configured' the subsequent
+    reprovision (--set-admin-password) runs UNAUTHENTICATED as first-time setup and silently inherits the
+    old wipe_on_failures — so a few failed unlocks on the new gate would irreversibly wipe secrets the owner
+    never re-opted into on it."""
+    def _disarm(cfg):
+        if not any(cfg.get(k) for k in ("wipe_on_failures", "wipe_failures",
+                                        "failed_attempts", "last_failure_ts")):
+            return False  # nothing armed / counted — skip the write
+        cfg["wipe_on_failures"] = 0
+        cfg["wipe_failures"] = 0
+        cfg["failed_attempts"] = 0
+        cfg["last_failure_ts"] = 0
+    _locked_config_update(_disarm)
+
+
 def _secure_delete(path: Path) -> None:
     """Best-effort secure delete: overwrite content then unlink. (Honest caveat: on SSDs with
     wear-levelling/TRIM, overwrite is not a forensic guarantee — it destroys the live copy.)"""

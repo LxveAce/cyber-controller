@@ -87,3 +87,23 @@ def test_cli_subcommand_runs_despite_single_instance_lock(tmp_path, monkeypatch)
     rc = app.main(["--gate-status"])
     assert calls["status"] == 1, "a CLI subcommand must run despite the instance lock"
     assert rc == 0
+
+
+def test_disarm_duress_wipe_clears_threshold_and_counters(tmp_path, monkeypatch):
+    monkeypatch.setenv("CC_GATE_CONFIG", str(tmp_path / "access_gate.json"))
+    pk.set_wipe_on_failures(3)
+    pk.record_failed_attempt(allow_wipe=True)  # bump the counters too
+    pk.disarm_duress_wipe()
+    cfg = pk.load_config()
+    assert cfg.get("wipe_on_failures", 0) == 0
+    assert cfg.get("wipe_failures", 0) == 0
+    assert cfg.get("failed_attempts", 0) == 0
+
+
+def test_clear_gate_disarms_the_duress_wipe(configured_gate, monkeypatch):
+    # Opt into the destructive wipe, then clear the gate (authenticated). The threshold must NOT survive to
+    # silently re-arm a later reprovisioned gate the owner never re-opted into.
+    pk.set_wipe_on_failures(3)
+    monkeypatch.setattr(access_gate, "enforce", lambda ui: True)  # authenticated clear
+    assert app.main(["--clear-gate"]) == 0
+    assert pk.load_config().get("wipe_on_failures", 0) == 0, "a gate clear must disarm the duress wipe"

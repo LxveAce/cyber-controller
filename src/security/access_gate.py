@@ -176,6 +176,7 @@ def set_policy_cli(policy: str) -> int:
 def clear_cli() -> int:
     pk.clear_admin_password()
     pk.remove_physical_key()
+    pk.disarm_duress_wipe()  # a gate clear must also remove the opt-in destructive threshold (not just factors)
     print("Access gate cleared — the app will start without prompting.")
     print("NOTE: the encrypted vault file is left in place (its data stays encrypted). Delete "
           f"{vault._data_path()} / {vault._hdr_path()} manually to destroy it.")
