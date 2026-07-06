@@ -95,7 +95,9 @@ def test_shell_allowlist_is_static_only():
     assert assets, "SHELL_ASSETS should not be empty"
     for a in assets:
         assert not a.startswith("/api"), f"authenticated API path in shell allowlist: {a}"
-        assert "/socket.io" not in a, f"live serial stream in shell allowlist: {a}"
+        # The LIVE event stream lives at the root '/socket.io/...' and must never be cached; the vendored
+        # CLIENT library at '/static/vendor/socket.io.min.js' is a static shell asset and is fine.
+        assert not a.startswith("/socket.io"), f"live serial stream in shell allowlist: {a}"
         assert "://" not in a, f"cross-origin URL in shell allowlist: {a}"
         assert a.startswith("/static/") or a == "/manifest.webmanifest", f"non-shell path: {a}"
 

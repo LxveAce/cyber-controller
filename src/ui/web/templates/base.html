@@ -13,7 +13,9 @@
     <meta name="apple-mobile-web-app-title" content="Cyber Controller">
     <link rel="apple-touch-icon" href="/static/icons/ace-192.png">
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <script nonce="{{ csp_nonce }}" src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.4/socket.io.min.js"></script>
+    <!-- Socket.IO client is VENDORED and served same-origin (see static/vendor/README.md): no external
+         CDN dependency, works offline, and no supply-chain surface from a compromised content network. -->
+    <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
     <script nonce="{{ csp_nonce }}">window.CSRF_TOKEN = {{ csrf_token|tojson }};</script>
     <script nonce="{{ csp_nonce }}">
         // Register the PWA service worker. Only fires in a secure context (TLS or localhost); on a bare

@@ -251,7 +251,10 @@ def create_app(
         nonce = _csp_nonce()
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; "
-            f"script-src 'self' 'nonce-{nonce}' https://cdnjs.cloudflare.com; "
+            # No external script origin: the Socket.IO client is vendored + served same-origin, so
+            # script-src is now 'self' + the per-request nonce only (cdnjs removed — tighter, and the
+            # web remote no longer breaks offline or if a CDN is compromised).
+            f"script-src 'self' 'nonce-{nonce}'; "
             "style-src 'self' 'unsafe-inline'; "
             "connect-src 'self' ws: wss:; "
             "img-src 'self' data:; "

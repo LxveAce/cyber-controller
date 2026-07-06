@@ -12,10 +12,12 @@
 const CACHE_NAME = 'cc-shell-v1';
 
 // Static, non-sensitive shell assets ONLY. No '/', no authenticated HTML page, no '/api/*', no
-// '/socket.io/*'. The socket.io library loads cross-origin (a CDN) and is intentionally excluded — the
-// worker never caches cross-origin responses.
+// '/socket.io/*'. The socket.io CLIENT LIBRARY is now vendored + served same-origin (/static/vendor/),
+// so it's a static shell asset and is precached here for genuine offline load — distinct from the live
+// '/socket.io/*' event stream, which stays network-only and is never cached.
 const SHELL_ASSETS = [
   '/static/style.css',
+  '/static/vendor/socket.io.min.js',
   '/manifest.webmanifest',
   '/static/icons/ace-192.png',
   '/static/icons/ace-512.png',
