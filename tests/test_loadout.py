@@ -89,3 +89,38 @@ def test_default_loadout_is_unconfigured():
     d = L.default_loadout()
     assert d["configured"] is False
     assert L.is_full_stack(d)  # until configured, show everything
+
+
+def test_firmware_filtering_contract_is_honest():
+    """Honest-functionality guard: the module must not advertise the GUI as consuming
+    ``firmware_visible()`` while no picker actually does.
+
+    ``visible_tabs()`` is wired (main_window.apply_loadout); ``firmware_visible()`` /
+    ``filter_firmwares()`` are pure helpers with ZERO src/ consumers today, so the module
+    docstring must relabel firmware-level filtering as a follow-up rather than claim it is
+    consumed. If a future change wires the helpers into a picker, the claim becomes true and
+    this guard steps aside automatically.
+    """
+    from pathlib import Path
+
+    loadout_path = Path(L.__file__).resolve()
+    src_root = loadout_path.parents[1]  # .../src
+
+    consumers: list[str] = []
+    for p in src_root.rglob("*.py"):
+        if p.resolve() == loadout_path:
+            continue  # its own definitions don't count as consumption
+        text = p.read_text(encoding="utf-8")
+        if "firmware_visible(" in text or "filter_firmwares(" in text:
+            consumers.append(p.name)
+
+    doc = " ".join((L.__doc__ or "").split())
+    overclaims = "consumes ``visible_tabs()`` / ``firmware_visible()``" in doc
+
+    if consumers:
+        # Wired for real -> the contract is allowed to claim consumption.
+        return
+    assert not overclaims, (
+        "loadout docstring claims the GUI consumes firmware_visible() but no src/ picker "
+        f"does (consumers={consumers}); relabel firmware-level filtering as a follow-up."
+    )

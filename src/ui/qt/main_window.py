@@ -160,8 +160,12 @@ class CyberControllerWindow(QMainWindow):
         self._dms_auth.set_auth_handler(self._dms_password_prompt)
         self._dms_auth.set_result_handler(self._dms_auth_result)
 
-        # Start health monitor polling
+        # Start health monitor polling and wire it to the device lifecycle so the Health
+        # tab's Device Health table actually populates — the monitor (un)registers each
+        # device on the DeviceManager's connect/disconnect events and back-fills any
+        # already-known devices. Without this the per-device table stays permanently empty.
         self._health.start()
+        self._health.attach_device_manager(self._dm)
 
         self.setWindowTitle(f"Cyber Controller v{_VERSION}")
         # Cyberdeck-aware sizing: the desktop ideal is a 900x600 floor / 1280x800 launch, but a small
@@ -398,6 +402,10 @@ class CyberControllerWindow(QMainWindow):
         # Device list
         self._sidebar_device_list = QListWidget()
         self._sidebar_device_list.currentItemChanged.connect(self._on_sidebar_device_selected)
+        # Route a sidebar device pick to the Devices tab so the selection actually drives something
+        # (focus that device / make it the active device). The slot guards on _device_tab existing,
+        # so wiring it here (before the tabs are built) is safe — it only runs on user interaction.
+        self.device_selected.connect(self._focus_device_in_devices_tab)
         sidebar_layout.addWidget(self._sidebar_device_list)
 
         # Quick-action buttons
@@ -485,7 +493,7 @@ class CyberControllerWindow(QMainWindow):
         # leads, with Health (host + device-health gauges) alongside it. Both are RE-PARENTED into one inner
         # QTabWidget here, never recreated, so every self._device_tab / self._health_tab reference (dual-depth
         # fan-out, the serial-mirror path, palette, tests) keeps working. Navigate via _show_subtab().
-        self._device_tab = DeviceTab(self._dm, self._pool, self._ingestor)
+        self._device_tab = DeviceTab(self._dm, self._pool, self._ingestor, recorder=self._macro)
         self._device_tab._dms_auth = self._dms_auth
         self._health_tab = HealthTab(self._health)
         self._connect_surface = QTabWidget()
@@ -1153,6 +1161,16 @@ class CyberControllerWindow(QMainWindow):
         if port:
             self.device_selected.emit(port)
 
+    def _focus_device_in_devices_tab(self, port: str) -> None:
+        """Sync a sidebar device selection to the Devices tab: select the matching device there (so the
+        tab's active device — Send / Connect / terminal — follows the sidebar) and focus that tab. This
+        is the subscriber for the device_selected signal; without it the sidebar selection drove nothing."""
+        tab = getattr(self, "_device_tab", None)
+        if tab is None or not port:
+            return
+        if tab.select_port(port):
+            self._show_subtab(self._connect_surface, self._device_tab)
+
     def _on_sidebar_scan(self) -> None:
         """Scan ports and refresh the sidebar."""
         for dev in self._dm.scan_ports():
@@ -1175,6 +1193,10 @@ class CyberControllerWindow(QMainWindow):
         self.statusBar().addPermanentWidget(self._mode_badge)
 
         self._refresh_status()
+        # Paint the badge from the already-applied interface mode. _apply_ui_mode() ran during layout
+        # build (before this status bar existed), so its _sync_mode_chrome() call skipped the badge
+        # (guarded by hasattr(_mode_badge)) — sync it now that the badge is created, else it launches blank.
+        self._sync_mode_chrome()
 
     def _refresh_status(self) -> None:
         n = len(self._dm.list_connected())

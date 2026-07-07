@@ -223,6 +223,8 @@ class TkLightApp:
 
         self._root.config(menu=menubar)
         self._root.bind_all("<Control-q>", lambda _e: self._root.destroy())
+        # F5 refreshes the port list and target pool (advertised in Help > Keyboard Shortcuts).
+        self._root.bind_all("<F5>", lambda _e: (self._refresh_ports(), self._refresh_targets()))
 
     # ── Notebook ────────────────────────────────────────────────────
 
@@ -240,6 +242,8 @@ class TkLightApp:
         self._build_settings_tab()
         self._build_macros_tab()
         self._build_crosscomm_tab()
+        # Ctrl+Tab / Ctrl+Shift+Tab move between tabs (advertised in Help > Keyboard Shortcuts).
+        self._notebook.enable_traversal()
 
     # ── Flash Tab ───────────────────────────────────────────────────
 
@@ -834,23 +838,29 @@ class TkLightApp:
         conn = self._active_conn
         variables = dict(self._macro_variables) if self._macro_variables else None
         self._macro_status_label.configure(text="Playing...", foreground=_ACCENT)
+        # Disable Play for the duration: play() returns immediately (async), so without this a second
+        # click would re-enter play() and be silently dropped (self._playing is True).
+        self._btn_macro_play.configure(state=tk.DISABLED)
 
-        def _play_thread() -> None:
-            try:
-                self._macro_recorder.play(
-                    macro,
-                    send_command=lambda cmd: conn.write(cmd),
-                    variables=variables,
-                )
-            except Exception as exc:
-                # Bind the message to a plain local: `exc` is unbound when the except block
-                # exits, and this lambda runs later on the Tk main loop via after(0, ...).
-                err = str(exc)
-                self._root.after(0, lambda: messagebox.showerror("Macros", f"Playback error: {err}"))
-            self._root.after(0, lambda: self._macro_status_label.configure(
-                text="Idle", foreground="#8b949e"))
+        def _on_complete(success: bool, message: str) -> None:
+            # play() delivers completion/errors on its own 'macro-playback' daemon thread — this
+            # callback runs there, so marshal every widget touch back onto the Tk main loop.
+            def _finish() -> None:
+                self._macro_status_label.configure(text="Idle", foreground="#8b949e")
+                self._btn_macro_play.configure(state=tk.NORMAL)
+                if not success:
+                    messagebox.showerror("Macros", f"Playback error: {message}")
+            self._root.after(0, _finish)
 
-        threading.Thread(target=_play_thread, daemon=True).start()
+        # Mirror the Qt path: play() is async by default and reports send failures / completion ONLY
+        # through complete_callback (never by raising), so wrapping it in our own thread + try/except
+        # left both the status reset and the error dialog dead. Drive them from the callback instead.
+        self._macro_recorder.play(
+            macro,
+            send_command=lambda cmd: conn.write(cmd),
+            variables=variables,
+            complete_callback=_on_complete,
+        )
 
     def _on_add_macro_variable(self) -> None:
         name = self._macro_var_name.get().strip()
@@ -1176,6 +1186,10 @@ class TkLightApp:
             return
         try:
             self._active_conn.write(cmd)
+            # Feed the just-sent command into an in-progress macro recording (no-op when not recording),
+            # so a macro recorded from this terminal actually captures the commands the user sent.
+            if self._macro_recorder is not None:
+                self._macro_recorder.record_command(cmd)
             self._append_serial(f"> {cmd}")
             self._cmd_entry.delete(0, tk.END)
         except Exception as exc:

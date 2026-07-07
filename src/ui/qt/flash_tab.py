@@ -697,6 +697,16 @@ class FlashTab(QWidget):
 
         variant = self._variant_combo.currentData() or ""
         profile.variant = variant
+        # Offline vault fallback (read side of the FirmwareVault "offline cache" contract): if this
+        # firmware is cached in the vault, hand its path to the engine so a flash with no network can
+        # still succeed. The engine uses it ONLY if the live download fails, so the online path keeps
+        # its board-aware variant selection.
+        try:
+            cached = self._vault.get_cached(profile.id)
+            if cached:
+                profile.offline_fallback_path = str(cached)
+        except Exception:  # noqa: BLE001 — a vault lookup must never block a normal flash
+            log.debug("vault get_cached lookup failed", exc_info=True)
         if variant:
             self._log(f"Flashing {profile.name} [{variant}] to {port}...")
         else:

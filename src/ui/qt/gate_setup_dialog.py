@@ -203,20 +203,42 @@ class GateSetupDialog(QDialog):
         if not pw or pw != pw2:
             QMessageBox.warning(self, "Access gate", "Passwords are empty or do not match.")
             return
-        pk.set_admin_password(pw)
+        # Gather a factor that already unlocks an EXISTING vault so its 'password' keyslot can be
+        # RE-KEYED under the new password. Mirrors access_gate.set_password_cli: re-key the vault
+        # FIRST and commit the new gate verifier only if that succeeds, so the gate and the vault
+        # never desync. Committing the verifier first (as this did before) left a changed password
+        # that passes the gate but can no longer unwrap the DEK — a permanent, silent vault lockout.
         unlock = {}
         if pk.has_physical_key():
             ks = pk.present_key_secret()
             if ks:
                 unlock["key"] = ks
+        if not unlock and vault.is_provisioned() and "password" in vault.factors():
+            current, ok = QInputDialog.getText(
+                self, "Current admin password",
+                "Enter the CURRENT admin password to re-key the encrypted vault:",
+                QLineEdit.Password)
+            if ok and current:
+                unlock["password"] = current.encode("utf-8")
         try:
             vault.set_factor("password", pw.encode("utf-8"), unlock_with=unlock or None)
-            msg = "Admin password set; encrypted-vault keyslot provisioned. Applies on next launch."
         except vault.NeedExistingFactor:
-            msg = ("Admin password set, but the vault keyslot was not added because the existing "
-                   "physical key is not present. Insert the key and set the password again to add it.")
+            options = []
+            if vault.is_provisioned() and "password" in vault.factors():
+                options.append("the current admin password")
+            if pk.has_physical_key():
+                options.append("insert the physical key")
+            need = " or ".join(options) if options else "an existing unlock factor"
+            QMessageBox.warning(
+                self, "Access gate",
+                "Admin password NOT changed: the encrypted vault could not be unlocked to re-key it. "
+                f"Provide {need} and try again.")
+            return
+        pk.set_admin_password(pw)
         self._pw1.clear(); self._pw2.clear()
-        QMessageBox.information(self, "Access gate", msg)
+        QMessageBox.information(
+            self, "Access gate",
+            "Admin password set; encrypted-vault keyslot provisioned. Applies on next launch.")
         self._refresh()
 
     def _create_key(self) -> None:

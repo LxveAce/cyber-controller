@@ -25,8 +25,10 @@ class HealthMonitor:
     System metrics (via psutil):
         cpu_percent, memory_percent, disk_percent, battery_percent, gps_fix
 
-    Device metrics (via serial query):
-        firmware_version, uptime, signal_strength, last_seen
+    Device metrics:
+        ``last_seen`` and ``status`` are tracked live from each registered device's
+        connection; ``firmware_version``/``uptime``/``signal_strength`` are placeholder
+        fields (not yet queried over serial) that stay at their registered defaults.
     """
 
     def __init__(self, interval: float = _DEFAULT_INTERVAL) -> None:
@@ -44,6 +46,10 @@ class HealthMonitor:
 
         # Device connections for querying (port -> serial connection)
         self._device_connections: dict[str, Any] = {}
+
+        # DeviceManager this monitor is wired to (set via attach_device_manager),
+        # used to re-resolve each registered port's live connection on every poll.
+        self._dm: Any = None
 
     # ── Callback registration ────────────────────────────────────────
 
@@ -88,6 +94,24 @@ class HealthMonitor:
             self._device_connections.pop(port, None)
             self._device_health.pop(port, None)
         log.debug("HealthMonitor: unregistered device %s", port)
+
+    def attach_device_manager(self, device_manager: Any) -> None:
+        """Wire this monitor to a :class:`~src.core.device_manager.DeviceManager`.
+
+        This is the cross-module link that actually populates the device-health
+        table: every device already known to the manager is registered now, and the
+        set is kept in sync by (un)registering on the manager's device connect /
+        disconnect events. The manager is also retained so each poll can re-resolve a
+        port's live ``SerialConnection`` — a device is detected (connect event) before
+        any serial port is opened on it, so the connection appears only later.
+        """
+        self._dm = device_manager
+        for dev in device_manager.list_devices():
+            self.register_device(dev.port, device_manager.get_connection(dev.port))
+        device_manager.on_device_connected(
+            lambda d: self.register_device(d.port, device_manager.get_connection(d.port))
+        )
+        device_manager.on_device_disconnected(lambda d: self.unregister_device(d.port))
 
     # ── System health ────────────────────────────────────────────────
 
@@ -139,8 +163,10 @@ class HealthMonitor:
     def get_device_health(self, port: str) -> dict[str, Any]:
         """Get health metrics for a specific device.
 
-        If a serial connection is available, attempts to query the device
-        for firmware version and uptime. Otherwise returns cached data.
+        If a live serial connection is available for the port, refreshes
+        ``last_seen``/``status`` from its connection state; otherwise returns the
+        cached data. ``firmware_version``/``uptime``/``signal_strength`` are not yet
+        queried over serial and stay at their registered defaults.
 
         Args:
             port: Serial port identifier.
@@ -180,6 +206,28 @@ class HealthMonitor:
         with self._lock:
             return {port: dict(info) for port, info in self._device_health.items()}
 
+    def _refresh_device_health(self) -> None:
+        """Refresh cached health for every registered device.
+
+        Re-resolves each port's live connection from the attached DeviceManager (if
+        any) so a serial link opened AFTER the device was detected is reflected in its
+        ``status``/``last_seen``, then recomputes and caches per-device metrics. This
+        is the per-cycle body the polling thread runs; split out so it is directly
+        testable without starting the thread.
+        """
+        with self._lock:
+            ports = list(self._device_connections.keys())
+            dm = self._dm
+        for port in ports:
+            if dm is not None:
+                conn = dm.get_connection(port)
+                with self._lock:
+                    if port in self._device_connections:
+                        self._device_connections[port] = conn
+            health = self.get_device_health(port)
+            with self._lock:
+                self._device_health[port] = health
+
     # ── Polling thread ───────────────────────────────────────────────
 
     def start(self) -> None:
@@ -215,13 +263,9 @@ class HealthMonitor:
                 with self._lock:
                     self._system_health = system
 
-                # Update device health
-                with self._lock:
-                    ports = list(self._device_connections.keys())
-                for port in ports:
-                    health = self.get_device_health(port)
-                    with self._lock:
-                        self._device_health[port] = health
+                # Update device health (re-resolves live connections from the
+                # attached DeviceManager so a link opened after detection shows up).
+                self._refresh_device_health()
 
                 # Fire callbacks
                 payload = {

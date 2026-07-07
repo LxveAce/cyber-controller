@@ -85,7 +85,7 @@ class _ProbeSignal(QObject):
 class DeviceTab(QWidget):
     """Device management tab with list, serial terminal, and command palette."""
 
-    def __init__(self, dm: DeviceManager, pool=None, ingestor=None) -> None:
+    def __init__(self, dm: DeviceManager, pool=None, ingestor=None, recorder=None) -> None:
         super().__init__()
         self._dm = dm
         # Cross-comm: feed this device's parsed serial output (APs/clients) into the shared TargetPool
@@ -93,6 +93,11 @@ class DeviceTab(QWidget):
         # is supplied without an ingestor we make one. See src/core/target_ingest.py.
         self._pool = pool
         self._ingestor = ingestor
+        # Macro capture: the shared MacroRecorder (optional, backward-compatible). Each command sent from
+        # this tab is fed to it via record_command(), which is a no-op unless a recording is in progress.
+        # This is the producer the recorder was missing — without it a macro recorded while sending from
+        # the Devices tab captured zero steps (nothing ever notified the recorder that a command was sent).
+        self._recorder = recorder
         if self._pool is not None and self._ingestor is None:
             from src.core.target_ingest import TargetIngestor
             self._ingestor = TargetIngestor(self._pool)
@@ -377,6 +382,21 @@ class DeviceTab(QWidget):
             if not self._dm.get_device(dev.port):
                 self._dm.add_device(dev)
         self._refresh_devices()
+
+    def select_port(self, port: str) -> bool:
+        """Programmatically select a device by port (e.g. driven from the main-window sidebar). Refreshes
+        the list first so a just-added device is present, then selects its row — which fires
+        _on_device_selected and syncs the active port/connection, terminal label and button states.
+        Returns True if a matching row was found and selected."""
+        if not port:
+            return False
+        self._refresh_devices()
+        for i in range(self._device_list.count()):
+            item = self._device_list.item(i)
+            if item is not None and item.data(Qt.UserRole) == port:
+                self._device_list.setCurrentItem(item)
+                return True
+        return False
 
     def _on_device_selected(self, current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
         if current is None:
@@ -908,6 +928,9 @@ class DeviceTab(QWidget):
             except Exception:
                 pass
             self._active_conn.write(cmd)
+            # Feed the just-sent command into an in-progress macro recording (no-op when not recording).
+            if self._recorder is not None:
+                self._recorder.record_command(cmd)
             self._terminal.append(f"> {cmd}")
             self._cmd_input.clear()
         except Exception as exc:

@@ -158,6 +158,17 @@ def test_simple_streamlines_every_wired_tab(make_window):
     assert not _shown(win._wardrive_tab._out_card)
 
 
+def test_mode_badge_populated_on_startup(make_window):
+    """Regression: the status-bar Interface-Mode badge must show the mode at LAUNCH, before any toggle.
+    It was blank because _apply_ui_mode() (which paints the badge via _sync_mode_chrome) runs during the
+    layout build — BEFORE _build_status_bar() creates _mode_badge — so that write was silently skipped
+    and nothing re-synced the badge afterward. _build_status_bar() now syncs it on creation."""
+    win = make_window()  # default Pro, no toggle performed
+    text = win._mode_badge.text()
+    assert "Mode:" in text, f"badge should render its Mode label at startup, got {text!r}"
+    assert "Pro" in text, f"badge should show the launched (Pro) mode at startup, got {text!r}"
+
+
 def test_badge_and_ctrl_m_toggle(make_window):
     win = make_window()
     win.set_ui_mode("simple")

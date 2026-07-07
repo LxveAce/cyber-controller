@@ -178,6 +178,46 @@ def test_main_window_closeevent_joins_tab_workers(qapp, tmp_path, monkeypatch):
     assert live_worker.stopped and live_worker.waited, "closeEvent must stop-wait the live Flock scan"
 
 
+def test_live_scan_line_signal_is_surfaced(qapp, monkeypatch):
+    """Regression: the worker's `line` signal (start/stop notices AND the failure paths — pyserial
+    missing, busy/denied COM port) was emitted but never connected, so scan errors were silently
+    swallowed. _toggle_live must wire `line` to a visible surface. We stub the worker with real Qt
+    signals (no thread / no serial) and assert an emitted diagnostic reaches the live-log pane."""
+    from PyQt5.QtCore import QObject, pyqtSignal
+
+    from src.ui.qt import flock_heatmap_tab as fht
+
+    class _FakeWorker(QObject):
+        status = pyqtSignal(str, int)
+        updated = pyqtSignal(dict)
+        line = pyqtSignal(str)
+        stopped = pyqtSignal()
+
+        def __init__(self, *_a, **_k) -> None:
+            super().__init__()
+            self.started = False
+
+        def start(self) -> None:
+            self.started = True
+
+        def stop(self) -> None:
+            pass
+
+    monkeypatch.setattr(fht, "_FlockWorker", _FakeWorker)
+    tab = fht.FlockHeatmapTab()
+    tab._dev_combo.addItem("COM_FAKE")
+    tab._dev_combo.setCurrentText("COM_FAKE")
+
+    assert tab._live_log.toPlainText() == ""
+    tab._toggle_live()
+    assert isinstance(tab._live_worker, _FakeWorker) and tab._live_worker.started
+
+    # an emitted diagnostic (e.g. a busy/denied port) must land on the log surface — before the fix the
+    # `line` signal was connected to nothing, so this text vanished and the operator saw only "Idle".
+    tab._live_worker.line.emit("flock scan error: [Errno 13] Access is denied")
+    assert "flock scan error" in tab._live_log.toPlainText()
+
+
 def test_tab_record_render_split(qapp):
     # While hidden, live updates must be RECORDED (latest kept) but NOT rendered; showEvent catches up.
     from PyQt5.QtGui import QHideEvent, QShowEvent

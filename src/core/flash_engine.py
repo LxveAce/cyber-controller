@@ -74,6 +74,10 @@ class FirmwareProfile:
     extra_args: list[str] = field(default_factory=list)
     flash_mode: str = "full"  # 'full' (blank board) or 'app' (update only)
     local_path: str = ""  # explicit local .bin to flash, if any
+    offline_fallback_path: str = ""  # vaulted binary to flash if the live download can't run (offline
+                                     # flashing). Set by the UI from FirmwareVault.get_cached(); the engine
+                                     # consults it ONLY after a release/download failure, so a board-aware
+                                     # variant pick still wins whenever the network is up.
     variant: str = ""  # explicit release-asset variant (name or label). Empty = per-chip default.
                        # CRITICAL for boards a chip-ID can't distinguish (CYD/M5/etc. are all 'esp32');
                        # picking the wrong one flashes the wrong display driver -> white screen.
@@ -188,6 +192,28 @@ def _percent_adapter(progress: ProgressCallback | None) -> Callable[[str], None]
         progress(max(last["pct"], 0), line)
 
     return on_line
+
+
+def _sd_line_progress_adapters(
+    progress: ProgressCallback | None,
+) -> tuple[Callable[[str], None], Callable[[float], None]]:
+    """Bridge sd_backend's split callbacks — ``on_line(str)`` for log lines and
+    ``on_progress(fraction 0..1)`` for byte progress — onto the engine's single
+    ``(percent, message)`` :data:`ProgressCallback`. The last line and the last fraction
+    are held so either callback can emit a complete ``(percent, message)`` pair."""
+    state = {"pct": 0, "msg": ""}
+
+    def on_line(msg: str) -> None:
+        state["msg"] = msg
+        if progress is not None:
+            progress(state["pct"], msg)
+
+    def on_progress(frac: float) -> None:
+        state["pct"] = max(0, min(100, int(frac * 100)))
+        if progress is not None:
+            progress(state["pct"], state["msg"])
+
+    return on_line, on_progress
 
 
 class FlashEngine:
@@ -317,10 +343,24 @@ class FlashEngine:
             chip = flash_core.detect_chip(port, on_line) or "esp32"
             on_line(f"[chip] using {chip}")
 
+        # Honor an explicitly-requested full wipe BEFORE writing. erase_first exists to clear
+        # residual NVS/SPIFFS/user data that a merged or app reflash does NOT overwrite; a wipe
+        # that FAILS must abort the flash rather than leave stale data behind under a
+        # "Flash complete" (mirrors BatchFlasher._flash_one — derive success from the erase rc).
+        if profile.erase_first:
+            on_line(f"[erase] erasing flash on {port} before flashing...")
+            erase_rc = flash_core.erase(port, chip, on_line)
+            if erase_rc != 0:
+                on_line(f"[error] erase failed (exit {erase_rc}) — refusing to reflash over stale flash")
+                if progress:
+                    progress(0, "Flash failed")
+                return False
+
         # Local-file flash (explicit .bin) — merged image at 0x0 by default.
         if profile.local_path:
             custom = flash_core.get_profile("custom")
-            rc = custom.flash_local(port, chip, profile.local_path, on_line, baud=profile.baud)
+            rc = custom.flash_local(port, chip, profile.local_path, on_line, baud=profile.baud,
+                                    extra_args=profile.extra_args or None)
             if progress:
                 progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
             return rc == 0
@@ -336,6 +376,10 @@ class FlashEngine:
             on_line(f"[release] fetching latest {core_id} release...")
             _tag, assets = core.latest_release()
         except Exception as exc:
+            fb = self._flash_offline_fallback(port, chip, profile, on_line, progress,
+                                              f"could not fetch release ({exc})")
+            if fb is not None:
+                return fb
             on_line(f"[error] could not fetch release: {exc}")
             return False
         variant = self._resolve_variant(core, assets, chip, profile.variant, on_line)
@@ -360,6 +404,10 @@ class FlashEngine:
             if variant.get("sha256"):
                 flash_core.verify_sha256(app_path, variant["sha256"], on_line)
         except Exception as exc:
+            fb = self._flash_offline_fallback(port, chip, profile, on_line, progress,
+                                              f"download/verify failed ({exc})")
+            if fb is not None:
+                return fb
             on_line(f"[error] download/verify failed: {exc}")
             return False
 
@@ -391,10 +439,37 @@ class FlashEngine:
         app_offset = variant.get("offset") or core.app_offset(chip)
         rc = core.flash_assets(
             port, chip, app_path, on_line, mode=mode, baud=profile.baud,
-            support=support, app_offset=app_offset,
+            support=support, app_offset=app_offset, extra_args=profile.extra_args or None,
         )
         if progress:
             progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
+        return rc == 0
+
+    def _flash_offline_fallback(
+        self, port: str, chip: str, profile: "FirmwareProfile",
+        on_line: Callable[[str], None], progress: ProgressCallback | None, reason: str,
+    ) -> bool | None:
+        """Flash the vaulted binary when the live download can't run (offline flashing).
+
+        This is the READ side of the FirmwareVault contract: the UI hands us the cached path via
+        ``profile.offline_fallback_path`` (from :meth:`FirmwareVault.get_cached`) so a network-less
+        flash can still succeed instead of failing despite the firmware sitting in the "offline
+        cache". Returns ``True``/``False`` when a cached binary was flashed, or ``None`` when no
+        usable cached binary is available (the caller then reports the original download error).
+
+        The online path is untouched — this runs ONLY after a release/download failure, so a
+        board-aware variant pick still wins whenever the network is up. The cached image is treated
+        as a merged blob @0x0 (same as an explicit ``local_path``).
+        """
+        path = getattr(profile, "offline_fallback_path", "") or ""
+        if not path or not Path(path).exists():
+            return None
+        on_line(f"[vault] {reason}; flashing cached firmware from the offline vault: {path}")
+        custom = flash_core.get_profile("custom")
+        rc = custom.flash_local(port, chip, path, on_line, baud=profile.baud)
+        if progress:
+            progress(100 if rc == 0 else 0,
+                     "Flash complete (offline vault)" if rc == 0 else "Flash failed")
         return rc == 0
 
     def _resolve_variant(self, core, assets, chip, requested, on_line):
@@ -818,14 +893,79 @@ class FlashEngine:
     def _flash_sd(
         self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
     ) -> bool:
-
+        # SD images (Pwnagotchi / RaspyJack / Kali ARM) are NOT serial-flashable: the serial Flash
+        # path only carries a `port`, while SD imaging needs an explicit removable target drive +
+        # confirmation (the whole drive is erased). The real, device-driven flow is
+        # :meth:`flash_sd_image` (fed by :meth:`discover_sd_images`). This handler only produces an
+        # accurate message if such a profile ever reaches the serial dispatcher; it never writes.
         on_line = _percent_adapter(progress)
-        on_line("[sd] SD-card imaging requires choosing a removable target device and "
-                "explicit confirmation (and Administrator/root). Use the SD flow which "
-                "calls sd_backend.flash_sd(profile_id, asset, device, on_line, confirmed=True).")
-        # The SD backend intentionally refuses to write without an explicit device +
-        # confirmed=True (a safety invariant); the UI drives that flow, not a 'port'.
+        label = profile.name or profile.id or "SD image"
+        on_line(f"[sd] '{label}' is a Raspberry-Pi SD image, not a serial-flashable firmware — the "
+                "serial Flash path only has a port. SD imaging needs an explicit removable target "
+                "drive + confirmation. Pick an asset with FlashEngine.discover_sd_images(profile_id), "
+                "then write it with FlashEngine.flash_sd_image(profile_id, asset, device, "
+                "confirmed=True) — the same removable-only, verified writer the OS/USB imaging flow uses.")
         return False
+
+    def discover_sd_images(
+        self, profile_id: str, progress_callback: ProgressCallback | None = None
+    ) -> list[dict]:
+        """Return the downloadable image asset(s) for a Pi SD profile (``pwnagotchi`` /
+        ``raspyjack`` / ``kali-arm``) so a caller can pick one for :meth:`flash_sd_image`.
+
+        Thin, network-touching delegation to :func:`sd_backend.discover_images` — the entry point
+        the device-driven SD-imaging flow uses (the serial Flash path cannot; see :meth:`_flash_sd`)."""
+        from src.core.backends import sd_backend
+
+        on_line, _ = _sd_line_progress_adapters(progress_callback)
+        return sd_backend.discover_images(profile_id, on_line)
+
+    def flash_sd_image(
+        self,
+        profile_id: str,
+        asset: dict,
+        device: str,
+        progress_callback: ProgressCallback | None = None,
+        *,
+        confirmed: bool = False,
+        verify: bool = True,
+    ) -> bool:
+        """Image a Raspberry-Pi SD firmware to a removable *device*: download -> decompress ->
+        block-write -> read-back verify, via the hardened :mod:`sd_backend` pipeline.
+
+        This is the real "SD flow" the serial Flash path can't drive (it only has a port). *device*
+        must be a removable target from ``sd_backend.detect_sd_cards`` — the writer re-validates that
+        and refuses fixed/system disks. Returns True on success.
+
+        Raises :class:`ValueError` unless ``confirmed=True``: the ENTIRE target drive is erased, so
+        nothing is written without an explicit confirmation (mirrors ``sd_backend.flash_sd`` and
+        ``os_catalog.flash_os_image``)."""
+        if not confirmed:
+            raise ValueError("flash_sd_image requires confirmed=True — the entire target drive "
+                             "will be erased")
+        from src.core.backends import sd_backend
+
+        on_line, on_progress = _sd_line_progress_adapters(progress_callback)
+        try:
+            # Reserve the device the way serial ops reserve a port, so two writes can't race onto
+            # (and corrupt) the same card. A different device still images in parallel.
+            with self._port_guard(device):
+                with self._lock:
+                    self._status = FlashStatus.FLASHING
+                try:
+                    rc = sd_backend.flash_sd(profile_id, asset, device, on_line, on_progress,
+                                             confirmed=True, verify=verify)
+                    ok = rc == 0
+                except Exception as exc:  # never let a backend exception leak unlabelled
+                    log.exception("SD image flash failed")
+                    on_line(f"[sd] flash failed: {exc}")
+                    ok = False
+                with self._lock:
+                    self._status = FlashStatus.DONE if ok else FlashStatus.ERROR
+                return ok
+        except _PortBusy:
+            on_line(f"[sd] target {device} is busy with another flash/backup/erase — aborted.")
+            return False
 
     # ── Backup ───────────────────────────────────────────────────────
 

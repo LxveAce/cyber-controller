@@ -142,6 +142,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
         QGraphicsView,
         QHBoxLayout,
         QLabel,
+        QPlainTextEdit,
         QPushButton,
         QVBoxLayout,
         QWidget,
@@ -274,6 +275,16 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._legend.setStyleSheet("color:#8b949e;")
             root.addWidget(self._legend)
 
+            # Live-scan diagnostics surface. The worker emits every notice (start/stop, per-camera, and
+            # the failure paths — pyserial-missing / busy-or-denied COM port) on its `line` signal; without
+            # a place to show them the operator gets no clue WHY a scan didn't start (the transient status
+            # label is immediately reset to "Idle" by _on_live_stopped). Mirrors wardrive_tab's log pane.
+            self._live_log = QPlainTextEdit()
+            self._live_log.setReadOnly(True)
+            self._live_log.setMaximumHeight(90)
+            self._live_log.setPlaceholderText("Live scan messages appear here.")
+            root.addWidget(self._live_log)
+
             self.set_geojson({"type": "FeatureCollection", "features": []})
 
         # ── data in ───────────────────────────────────────────────────
@@ -388,6 +399,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._live_worker = _FlockWorker(gps, 9600, dev, 115200, self._default_checkpoint_path())
             self._live_worker.updated.connect(self._on_live_update)
             self._live_worker.status.connect(self._on_live_status)
+            self._live_worker.line.connect(self._on_live_line)
             self._live_worker.stopped.connect(self._on_live_stopped)
             self._live_worker.start()
             self._btn_live.setText("Stop scan")
@@ -402,6 +414,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
         def _on_live_status(self, fix_text: str, count: int) -> None:
             self._live_status.setText(f"Fix: {fix_text} · {count} camera(s)")
+
+        def _on_live_line(self, msg: str) -> None:
+            # Surface every worker diagnostic (esp. the failure paths) so a scan that never starts —
+            # busy/denied COM port, pyserial missing — is visible instead of silently swallowed.
+            self._live_log.appendPlainText(msg)
 
         def _on_live_stopped(self) -> None:
             self._live_worker = None

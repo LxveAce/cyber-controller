@@ -657,12 +657,16 @@ class FirmwareProfile:
                      mode: str = "app", baud: int = 921600,
                      support: Optional[Dict[str, str]] = None,
                      app_offset: Optional[str] = None,
-                     flash_freq: Optional[str] = None) -> int:
+                     flash_freq: Optional[str] = None,
+                     extra_args: Optional[List[str]] = None) -> int:
         """Write `support` (offset->path) plus the app image with esptool.
 
         mode 'app'  -> write only the application image (re-flash / update existing board)
         mode 'full' -> also write support files first (blank board); needs `support`
                        (a merged-single-bin profile never needs `support`).
+
+        `extra_args` are extra esptool write_flash options a profile supplies (e.g.
+        ``["--flash_mode", "dio"]``); they are appended to the write_flash argv.
         """
         files: List[str] = []
         if mode == "full":
@@ -681,6 +685,8 @@ class FirmwareProfile:
         extra: List[str] = []
         if flash_freq:
             extra += ["--flash_freq", flash_freq]
+        if extra_args:
+            extra += list(extra_args)
         argv = esptool_argv("--chip", chip, "--port", port, "--baud", str(baud),
                             "--before", "default_reset", "--after", "hard_reset",
                             "write_flash", "-z", "--flash_size", "detect", *extra, *files)
@@ -827,11 +833,13 @@ class Esp32DivProfile(FirmwareProfile):
                      mode: str = "app", baud: int = 921600,
                      support: Optional[Dict[str, str]] = None,
                      app_offset: Optional[str] = None,
-                     flash_freq: Optional[str] = None) -> int:
+                     flash_freq: Optional[str] = None,
+                     extra_args: Optional[List[str]] = None) -> int:
         # DIV uses a chip-specific flash_freq (S3 80m / classic 40m); default it here.
         freq = flash_freq or _DIV_FLASH_FREQ.get(chip)
         return super().flash_assets(port, chip, app_path, on_line, mode=mode, baud=baud,
-                                    support=support, app_offset=app_offset, flash_freq=freq)
+                                    support=support, app_offset=app_offset, flash_freq=freq,
+                                    extra_args=extra_args)
 
 
 def _fetch_div_file(rel_path: str, dest: str, on_line: Line) -> str:
@@ -992,12 +1000,15 @@ class CustomLocalProfile(FirmwareProfile):
     def flash_local(self, port: str, chip: str, app_path: str, on_line: Line,
                     app_offset: str = "0x0", baud: int = 921600,
                     support: Optional[Dict[str, str]] = None,
-                    flash_freq: Optional[str] = None) -> int:
+                    flash_freq: Optional[str] = None,
+                    extra_args: Optional[List[str]] = None) -> int:
         """Flash local file(s). `support` (offset->path) is optional for a full flash; the
-        app image goes at `app_offset` (0x0 for a merged blob, 0x10000 for app-only)."""
+        app image goes at `app_offset` (0x0 for a merged blob, 0x10000 for app-only).
+        `extra_args` are extra esptool write_flash options (forwarded to flash_assets)."""
         mode = "full" if support else "app"
         return self.flash_assets(port, chip, app_path, on_line, mode=mode, baud=baud,
-                                 support=support, app_offset=app_offset, flash_freq=flash_freq)
+                                 support=support, app_offset=app_offset, flash_freq=flash_freq,
+                                 extra_args=extra_args)
 
 
 # --------------------------------------------------------------------------- #
@@ -1768,7 +1779,9 @@ class MomentumProfile(FirmwareProfile):
                      mode: str = "app", baud: int = 921600,
                      support: Optional[Dict[str, str]] = None,
                      app_offset: Optional[str] = None,
-                     flash_freq: Optional[str] = None) -> int:
+                     flash_freq: Optional[str] = None,
+                     extra_args: Optional[List[str]] = None) -> int:
+        # extra_args are esptool-only; qFlipper installs the whole package and ignores them.
         on_line("[info] Flipper Zero firmware requires qFlipper for flashing.")
         on_line("[info] Attempting to launch qFlipper with the downloaded firmware package...")
         qflipper = shutil.which("qFlipper") or shutil.which("qflipper")
@@ -1837,9 +1850,11 @@ class UnleashedProfile(FirmwareProfile):
                      mode: str = "app", baud: int = 921600,
                      support: Optional[Dict[str, str]] = None,
                      app_offset: Optional[str] = None,
-                     flash_freq: Optional[str] = None) -> int:
+                     flash_freq: Optional[str] = None,
+                     extra_args: Optional[List[str]] = None) -> int:
         momentum = MomentumProfile()
-        return momentum.flash_assets(port, chip, app_path, on_line, mode, baud, support, app_offset, flash_freq)
+        return momentum.flash_assets(port, chip, app_path, on_line, mode, baud, support,
+                                     app_offset, flash_freq, extra_args)
 
 
 # --------------------------------------------------------------------------- #
@@ -2189,7 +2204,8 @@ class GenericProfile(FirmwareProfile):
                      mode: str = "app", baud: int = 921600,
                      support: Optional[Dict[str, str]] = None,
                      app_offset: Optional[str] = None,
-                     flash_freq: Optional[str] = None) -> int:
+                     flash_freq: Optional[str] = None,
+                     extra_args: Optional[List[str]] = None) -> int:
         # qFlipper-backed firmwares (momentum/unleashed) never use esptool.
         if self.backend == "qflipper":
             return self._flash_qflipper(app_path, on_line)
@@ -2198,7 +2214,8 @@ class GenericProfile(FirmwareProfile):
         if freq is None:
             freq = (self.cfg.get("flash_freq_by_chip") or {}).get(chip)
         return super().flash_assets(port, chip, app_path, on_line, mode=mode, baud=baud,
-                                    support=support, app_offset=app_offset, flash_freq=freq)
+                                    support=support, app_offset=app_offset, flash_freq=freq,
+                                    extra_args=extra_args)
 
     def _flash_qflipper(self, app_path: str, on_line: Line) -> int:
         """Hand the downloaded Flipper package to a locally installed qFlipper (mirrors
