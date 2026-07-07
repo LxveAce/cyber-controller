@@ -56,6 +56,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -417,6 +418,55 @@ def _safe_cache_name(name: str) -> str:
     return name
 
 
+# --------------------------------------------------------------------------- #
+# Concurrent-cache safety
+# --------------------------------------------------------------------------- #
+# cache_dir() is ONE process-wide directory and download_to/download_and_extract write
+# DETERMINISTIC filenames, so two concurrent flashes of the SAME firmware resolve the identical
+# dest path. FlashEngine permits parallel flashes on DIFFERENT ports and BatchFlasher.flash_parallel
+# spawns one worker thread per job, so a naive `open(dest,"wb")` in thread B would TRUNCATE that
+# file to 0 bytes while thread A's esptool child is mid-read of the same path — flashing a corrupt/
+# empty image (for a full flash the shared bootloader/partitions get clobbered and the board is
+# bricked) while esptool still exits 0 and the UI reports "Flash complete". We serialize per
+# destination path and download ONCE per session: the first request downloads to a UNIQUE temp file
+# and os.replace()s it atomically into place (no reader can exist yet, so the replace never targets
+# an open handle), and every later request for that path REUSES the completed file instead of
+# re-truncating a path another in-flight flash may currently be reading.
+_cache_locks_guard = threading.Lock()
+_cache_path_locks: Dict[str, threading.Lock] = {}
+_downloaded_paths: set = set()
+
+
+def _path_lock(path: str) -> threading.Lock:
+    """Return a stable per-path lock so concurrent downloads of the same dest serialize."""
+    with _cache_locks_guard:
+        lk = _cache_path_locks.get(path)
+        if lk is None:
+            lk = threading.Lock()
+            _cache_path_locks[path] = lk
+        return lk
+
+
+def _atomic_write(cache_dir: str, dest: str, data: bytes) -> None:
+    """Write `data` to `dest` atomically: to a unique temp file in the same dir, then os.replace().
+
+    os.replace is atomic within a filesystem, so a reader either sees the old file or the complete
+    new one — never a truncated/partial image. The temp file lives in `cache_dir` (same filesystem
+    as `dest`) so the replace is a rename, not a cross-device copy.
+    """
+    fd, tmp = tempfile.mkstemp(dir=cache_dir, prefix=".dl-", suffix=".part")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, dest)
+    except BaseException:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def download_to(url: str, cache_dir: str, name: str, on_line: Line) -> str:
     """Download `url` into `cache_dir` under the sanitized basename `name`, returning the path.
 
@@ -433,12 +483,19 @@ def download_to(url: str, cache_dir: str, name: str, on_line: Line) -> str:
     real_dest = os.path.realpath(dest)
     if real_dest != os.path.join(real_dir, safe) and not real_dest.startswith(real_dir + os.sep):
         raise ValueError(f"refusing download dest that escapes the cache dir: {dest!r}")
-    on_line(f"[download] {safe}")
-    data = _http_get(url)
-    with open(dest, "wb") as f:
-        f.write(data)
-    on_line(f"[download] {len(data)} bytes -> {dest}")
-    return dest
+    # Serialize on this dest so concurrent flashes of the same firmware never race on the shared
+    # cache file, and reuse an already-downloaded copy instead of re-truncating a path another
+    # in-flight flash may be reading. See the concurrent-cache note above.
+    with _path_lock(dest):
+        if dest in _downloaded_paths and os.path.isfile(dest):
+            on_line(f"[cache] reusing {safe} ({os.path.getsize(dest)} bytes)")
+            return dest
+        on_line(f"[download] {safe}")
+        data = _http_get(url)
+        _atomic_write(cache_dir, dest, data)
+        _downloaded_paths.add(dest)
+        on_line(f"[download] {len(data)} bytes -> {dest}")
+        return dest
 
 
 def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str, on_line: Line) -> str:
@@ -459,36 +516,46 @@ def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str,
     if (os.path.realpath(zip_path) != os.path.join(real_dir, safe_zip)
             and not os.path.realpath(zip_path).startswith(real_dir + os.sep)):
         raise ValueError(f"refusing zip dest that escapes the cache dir: {zip_path!r}")
-    # Cache reuse: a chip-wide bundle (e.g. Meshtastic's 128 MB firmware-esp32s3-*.zip)
-    # holds many boards' images — don't re-download it for each board/member. But validate the cached
-    # file is a REAL zip before trusting it: a prior download truncated mid-transfer leaves a nonzero
-    # file that isn't a valid archive, and size>0 alone would reuse it and fail every extract until the
-    # user manually clears the cache. zipfile.is_zipfile() rejects a missing/truncated EOCD → re-download.
-    if os.path.isfile(zip_path) and os.path.getsize(zip_path) > 0 and zipfile.is_zipfile(zip_path):
-        on_line(f"[cache] reusing {safe_zip} ({os.path.getsize(zip_path)} bytes)")
-    else:
-        if os.path.isfile(zip_path):
-            on_line(f"[cache] {safe_zip} is empty/corrupt — re-downloading")
-        else:
-            on_line(f"[download] {safe_zip}")
-        data = _http_get(url)
-        with open(zip_path, "wb") as f:
-            f.write(data)
-        on_line(f"[download] {len(data)} bytes -> {zip_path}")
-
     want = os.path.basename(member)
     out_path = os.path.join(cache_dir, _safe_cache_name(f"{os.path.splitext(safe_zip)[0]}_{want}"))
-    with zipfile.ZipFile(zip_path) as z:
-        target = next((n for n in z.namelist() if os.path.basename(n) == want), None)
-        if target is None:
-            raise ValueError(
-                f"zip {asset_name!r} has no member named {want!r} "
-                f"(has: {', '.join(z.namelist()[:8])})"
-            )
-        with z.open(target) as src, open(out_path, "wb") as dst:
-            dst.write(src.read())
-    on_line(f"[extract] {want} ({os.path.getsize(out_path)} bytes) -> {out_path}")
-    return out_path
+    # Serialize on the shared archive path so concurrent flashes never truncate the zip another
+    # thread is reading, and reuse an already-extracted member instead of re-truncating out_path
+    # (which a concurrent flash's esptool may be mid-read of). See the concurrent-cache note above.
+    with _path_lock(zip_path):
+        if out_path in _downloaded_paths and os.path.isfile(out_path):
+            on_line(f"[cache] reusing {os.path.basename(out_path)} "
+                    f"({os.path.getsize(out_path)} bytes)")
+            return out_path
+        # Cache reuse: a chip-wide bundle (e.g. Meshtastic's 128 MB firmware-esp32s3-*.zip) holds
+        # many boards' images — don't re-download it per board/member. But validate the cached file
+        # is a REAL zip before trusting it: a download truncated mid-transfer leaves a nonzero file
+        # that isn't a valid archive, and size>0 alone would reuse it and fail every extract until
+        # the user clears the cache. zipfile.is_zipfile() rejects a missing/truncated EOCD.
+        if (os.path.isfile(zip_path) and os.path.getsize(zip_path) > 0
+                and zipfile.is_zipfile(zip_path)):
+            on_line(f"[cache] reusing {safe_zip} ({os.path.getsize(zip_path)} bytes)")
+        else:
+            if os.path.isfile(zip_path):
+                on_line(f"[cache] {safe_zip} is empty/corrupt — re-downloading")
+            else:
+                on_line(f"[download] {safe_zip}")
+            data = _http_get(url)
+            _atomic_write(cache_dir, zip_path, data)
+            on_line(f"[download] {len(data)} bytes -> {zip_path}")
+
+        with zipfile.ZipFile(zip_path) as z:
+            target = next((n for n in z.namelist() if os.path.basename(n) == want), None)
+            if target is None:
+                raise ValueError(
+                    f"zip {asset_name!r} has no member named {want!r} "
+                    f"(has: {', '.join(z.namelist()[:8])})"
+                )
+            with z.open(target) as src:
+                blob = src.read()
+        _atomic_write(cache_dir, out_path, blob)
+        _downloaded_paths.add(out_path)
+        on_line(f"[extract] {want} ({os.path.getsize(out_path)} bytes) -> {out_path}")
+        return out_path
 
 
 def verify_sha256(path: str, expected: str, on_line: Line) -> None:

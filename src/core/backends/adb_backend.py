@@ -24,6 +24,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -151,27 +152,43 @@ def _run_adb(args: List[str], on_line: Line, timeout: int = 120) -> Tuple[int, s
         on_line(f"[error] {e}")
         return 127, ""
     lines: List[str] = []
+
+    # Drain stdout on a separate thread so the wall-clock timeout below is enforced
+    # independently of the read loop. A child that stalls without emitting output
+    # (e.g. `adb wait-for-device` with nothing attached) never yields EOF; if we read
+    # inline, `for line in proc.stdout` blocks forever and proc.wait(timeout=...) is
+    # never reached, so the timeout is silently ignored and the child is leaked.
+    def _reader() -> None:
+        try:
+            for line in proc.stdout:  # type: ignore[union-attr]
+                stripped = line.rstrip("\n")
+                lines.append(stripped)
+                on_line(stripped)
+        except Exception:
+            pass
+
+    reader = threading.Thread(target=_reader, daemon=True)
+    reader.start()
     try:
-        for line in proc.stdout:  # type: ignore[union-attr]
-            stripped = line.rstrip("\n")
-            lines.append(stripped)
-            on_line(stripped)
         proc.wait(timeout=timeout)
+        reader.join(timeout=5)
     except subprocess.TimeoutExpired:
-        on_line("[error] adb command timed out")
         try:
             proc.kill()
             proc.wait(timeout=5)
         except Exception:
             pass
+        reader.join(timeout=5)
+        on_line("[error] adb command timed out")
         return -1, "\n".join(lines)
     except Exception as e:
-        on_line(f"[error] {e}")
         try:
             proc.kill()
             proc.wait(timeout=5)
         except Exception:
             pass
+        reader.join(timeout=5)
+        on_line(f"[error] {e}")
         return -1, "\n".join(lines)
     finally:
         try:

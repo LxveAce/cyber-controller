@@ -5,6 +5,7 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -153,6 +154,42 @@ def test_audit_trail_detects_on_disk_tampering():
         ok, bad = b.verify_integrity()
         assert not ok
         assert bad == 0
+
+
+def test_audit_trail_record_is_thread_safe_under_concurrency():
+    """The single AuditTrail is shared by the Qt UI and the threaded web remote (SocketIO
+    async_mode="threading" + the flash worker thread). Concurrent record() calls must NOT read the
+    same predecessor and mint two entries with an identical prev_hash — that silently breaks the very
+    hash chain verify_integrity() exists to guarantee, with no actual tampering. Without the lock this
+    fails; every record() must land on the true previous entry, in memory AND on disk."""
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "audit-trail.jsonl"
+        a = AuditTrail(persist_path=path)
+        n_threads = 16
+        per_thread = 25
+        total = n_threads * per_thread
+        start = threading.Barrier(n_threads)  # maximize contention: all threads append at once
+
+        def worker(tid: int) -> None:
+            start.wait()
+            for i in range(per_thread):
+                a.record("evt", {"tid": tid, "i": i})
+
+        threads = [threading.Thread(target=worker, args=(t,)) for t in range(n_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert a.length == total
+        ok, bad = a.verify_integrity()          # in-memory chain intact (no duplicated prev_hash)
+        assert ok and bad == -1
+
+        # And the persisted JSONL reloads + verifies: file line order matches memory order.
+        b = AuditTrail(persist_path=path)
+        assert b.length == total
+        ok2, bad2 = b.verify_integrity()
+        assert ok2 and bad2 == -1
 
 
 def test_audit_trail_survives_torn_trailing_line():

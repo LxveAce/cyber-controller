@@ -24,6 +24,7 @@ import functools
 import logging
 import os
 import secrets
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -632,7 +633,15 @@ def create_app(
     # One fan-out callback per port (audit M-1): without this, every subscribe_serial registered a
     # NEW on_line callback that was never removed, so K subscribes => K emits per serial line
     # (callback leak + self-amplifying DoS). We keep exactly one callback per port.
+    #
+    # SocketIO runs with async_mode="threading", so two authenticated clients subscribing to the SAME
+    # port execute this handler concurrently in separate threads. The check-then-act below (read prev,
+    # remove_line_callback, on_line, store) must be atomic per the shared map: without the lock, two
+    # threads can both see the same/None prev, both call conn.on_line(cb), and the last writer wins the
+    # store — orphaning the earlier callback on the SerialConnection with no way to ever remove it,
+    # re-introducing the exact untracked-callback leak this map exists to prevent.
     _serial_subs: dict = {}
+    _serial_subs_lock = threading.Lock()
 
     @socketio.on("subscribe_serial")
     def on_subscribe_serial(data: dict) -> None:
@@ -647,12 +656,13 @@ def create_app(
             return
         conn = device_manager.get_connection(port)
         if conn and conn.is_connected:
-            prev = _serial_subs.get(port)
-            if prev is not None:
-                conn.remove_line_callback(prev)  # drop any prior/stale callback first
-            cb = (lambda line, p=port: socketio.emit("serial_output", {"port": p, "line": line}))
-            conn.on_line(cb)
-            _serial_subs[port] = cb
+            with _serial_subs_lock:
+                prev = _serial_subs.get(port)
+                if prev is not None:
+                    conn.remove_line_callback(prev)  # drop any prior/stale callback first
+                cb = (lambda line, p=port: socketio.emit("serial_output", {"port": p, "line": line}))
+                conn.on_line(cb)
+                _serial_subs[port] = cb
             emit("serial_output", {"port": port, "line": f"[Subscribed to {port}]"})
         else:
             emit("serial_output", {"port": port, "line": f"[Not connected to {port}]"})

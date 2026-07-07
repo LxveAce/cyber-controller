@@ -422,6 +422,20 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._visible = False
             super().hideEvent(ev)
 
+        # ── real shutdown (app close) — the ONE place the live worker is stopped ──
+        def shutdown(self) -> None:
+            """Stop the live Flock scan and wait for its thread to exit before the tab is destroyed.
+
+            hideEvent keeps the worker running on purpose; this is the only hook that actually tears it down.
+            Without it, closing the main window destroys the still-looping QThread wrapper ('QThread:
+            Destroyed while thread is still running') and leaks the GPS + device serial ports, which are
+            closed only in run()'s finally-block. Waiting lets that finally-block close both ports cleanly.
+            Invoked from MainWindow.closeEvent."""
+            w = self._live_worker
+            if w is not None:
+                w.stop()
+                w.wait()
+
         # ── load button (dialog; not unit-tested) ─────────────────────
         def _on_load(self) -> None:
             from PyQt5.QtWidgets import QFileDialog

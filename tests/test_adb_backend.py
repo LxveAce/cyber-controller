@@ -4,6 +4,10 @@ Covers the (github-only) host allowlist, filename guard, release-asset selection
 (_pick_platform_asset), and the version-compare in check_version. Subprocess/network calls are monkeypatched.
 """
 
+import sys
+import threading
+import time
+
 import pytest
 
 adb = pytest.importorskip("src.core.backends.adb_backend")
@@ -196,3 +200,38 @@ def test_install_manual_indeterminate_probe_config_push_failure_propagates(monke
     rc = adb.install_manual(daemon, log.append, serial="X")
     assert rc == 4, "a failed config push after an indeterminate probe must not report success"
     assert "complete" not in "\n".join(log).lower()
+
+
+# ── _run_adb: the wall-clock timeout must be enforced on a silent child ─────
+def test_run_adb_enforces_timeout_on_silent_child():
+    """A child that emits no stdout and does not exit must still honour the timeout.
+
+    Regression for the wait_for_device hang. `_run_adb` read stdout with a blocking
+    `for line in proc.stdout` loop and only called proc.wait(timeout=...) AFTER that
+    loop drained to EOF. A silent, long-running child (like `adb wait-for-device`
+    with nothing attached) never produces EOF, so the timeout was never reached: the
+    call blocked until the child exited on its own and the adb process was leaked.
+    Post-fix the read happens on a reader thread, so proc.wait(timeout=...) fires,
+    the child is killed, and the call returns ~timeout with rc == -1.
+    """
+    # Silent child: prints nothing, sleeps far longer than the _run_adb timeout.
+    args = [sys.executable, "-c", "import time; time.sleep(30)"]
+    log = []
+    result = {}
+
+    def run():
+        result["rc"], result["out"] = adb._run_adb(args, log.append, timeout=1)
+
+    t = threading.Thread(target=run, daemon=True)
+    start = time.monotonic()
+    t.start()
+    t.join(timeout=10)
+    elapsed = time.monotonic() - start
+
+    assert not t.is_alive(), (
+        "_run_adb blocked past its timeout on a silent child — the read loop "
+        "never reached proc.wait(timeout=...)"
+    )
+    assert elapsed < 10, "should return near the 1s timeout, not the child's 30s runtime"
+    assert result["rc"] == -1, "the timeout path must return rc -1"
+    assert any("timed out" in line.lower() for line in log), "must log a timeout"

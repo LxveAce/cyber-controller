@@ -41,6 +41,7 @@ import binascii
 import logging
 import os
 import re
+import threading
 from typing import Any, Callable
 
 from cryptography.hazmat.primitives import hashes
@@ -140,6 +141,13 @@ class NodeLink:
         # persist tx_epoch/tx_counter (see the class docstring) and pass them back via epoch/counter.
         tx_epoch = epoch if epoch is not None else int.from_bytes(os.urandom(4), "big")
         self._sealer = FrameSealer(seal_key, node_id, epoch=tx_epoch, counter=counter)  # outbound
+        # FrameSealer is 'not thread-safe — one sealer per sender': its read-counter/seal/increment is not
+        # atomic, so two threads writing the SAME NodeLink could both seal under the identical (epoch,
+        # counter) -> catastrophic AES-GCM nonce reuse. SerialConnection.write is thread-safe (guarded by
+        # its _io_lock); NodeLink is a drop-in for it and its callers (AutoRouter reader threads, the
+        # per-device Broadcast threads) rely on that contract. Serialize the whole seal->gateway.write so
+        # nonce uniqueness holds by construction. Mirrors SerialConnection._io_lock.
+        self._io_lock = threading.Lock()
         self._open_key = open_key                                                        # inbound verify key
         self._window = ReplayWindow(window_size, initial_epoch=rx_epoch, initial_highest=rx_highest)
         self._max_pt = max_plaintext(ESP_NOW_MTU)
@@ -273,9 +281,12 @@ class NodeLink:
                 f"payload {len(payload)}B exceeds the node MTU budget ({self._max_pt}B); "
                 f"fragmentation is not implemented yet"
             )
-        frame = self._sealer.seal(payload)
-        line = base64.b64encode(frame).decode("ascii")  # control-char-free -> passes the gateway guard
-        self._gateway.write(line)
+        # Hold the I/O lock across seal + write: the sealer's counter read/increment is not atomic, so two
+        # concurrent writers must be serialized here or they reuse a (key, nonce) pair (GCM break).
+        with self._io_lock:
+            frame = self._sealer.seal(payload)
+            line = base64.b64encode(frame).decode("ascii")  # control-char-free -> passes the gateway guard
+            self._gateway.write(line)
 
     # ── Inbound I/O ──────────────────────────────────────────────────
     def _on_gateway_line(self, line: str) -> None:

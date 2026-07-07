@@ -179,21 +179,26 @@ def download_image(url: str, dest_dir: str, on_line: Line,
     current = url
     for _ in range(8):
         resp = requests.get(current, stream=True, timeout=60, allow_redirects=False)
-        if resp.is_redirect or resp.is_permanent_redirect:
-            current = _require_tails_url(resp.headers.get("Location", ""))
+        # try/finally: the streamed socket is released deterministically even when the
+        # redirect-allowlist check or raise_for_status raises (mirrors firmware_vault
+        # ._safe_streamed_download) — never leak the connection to GC finalization.
+        try:
+            if resp.is_redirect or resp.is_permanent_redirect:
+                current = _require_tails_url(resp.headers.get("Location", ""))
+                continue
+            resp.raise_for_status()
+            total = int(resp.headers.get("content-length", 0) or 0)
+            written = 0
+            with open(dest, "wb") as fh:
+                for chunk in resp.iter_content(chunk_size=1 << 20):
+                    fh.write(chunk)
+                    written += len(chunk)
+                    if on_progress and total:
+                        on_progress(min(written / total, 1.0))
+            on_line(f"[tails] downloaded {written} bytes -> {dest}")
+            return dest
+        finally:
             resp.close()
-            continue
-        resp.raise_for_status()
-        total = int(resp.headers.get("content-length", 0) or 0)
-        written = 0
-        with open(dest, "wb") as fh:
-            for chunk in resp.iter_content(chunk_size=1 << 20):
-                fh.write(chunk)
-                written += len(chunk)
-                if on_progress and total:
-                    on_progress(min(written / total, 1.0))
-        on_line(f"[tails] downloaded {written} bytes -> {dest}")
-        return dest
     raise ValueError("too many redirects fetching the Tails image")
 
 

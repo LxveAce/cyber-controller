@@ -255,6 +255,38 @@ def test_detach_persists_rx_and_unregisters():
     assert c.detach(8) is False                              # idempotent
 
 
+def test_detach_quiesces_rx_window_before_persisting(monkeypatch):
+    """The ReplayWindow is NOT thread-safe (one window per link). detach() must detach the link from the
+    gateway (close) BEFORE it reads/persists rx_epoch/rx_highest, or the gateway's reader thread could
+    rotate the epoch between the two separate property reads -> a torn (rx_epoch, rx_highest) pair that
+    never coexisted gets saved, corrupting anti-replay across restart. Assert the link is already detached
+    from the gateway at the moment persist runs."""
+    c, v, dm = _ctrl()
+    node_provision.provision_node(v, 8, key=FAKE_KEY, role="host")
+    gw = MockGateway()
+    link = c.attach(8, gw)
+    assert link._on_gateway_line in gw._line_cbs      # the link is wired to the gateway's RX path
+
+    seen = {}
+    real_persist = node_provision.persist_rx_state
+
+    def spy_persist(vault, node_id, lk):
+        # Is the RX path still live (window still mutable) at the moment we snapshot it for persistence?
+        seen["attached_at_persist"] = lk._on_gateway_line in gw._line_cbs
+        return real_persist(vault, node_id, lk)
+
+    monkeypatch.setattr(node_provision, "persist_rx_state", spy_persist)
+
+    assert c.detach(8) is True
+    assert seen.get("attached_at_persist") is False, (
+        "detach persisted the replay head while the link was still attached to the gateway — the RX "
+        "thread could be mutating the (non-thread-safe) window during the two-property read"
+    )
+    # And teardown still fully completed.
+    assert dm.get_device("node:8") is None
+    assert c.attached_ids() == []
+
+
 def test_available_gateways_excludes_nodes_and_disconnected():
     from src.models.device import Device
 

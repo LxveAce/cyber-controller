@@ -57,6 +57,27 @@ def test_rate_limiter_keys_are_independent() -> None:
     assert rl.allow("b") is True
 
 
+def test_rate_limiter_evicts_stale_keys(monkeypatch) -> None:
+    """Every distinct source IP the web remote ever sees must NOT leave a permanent entry: once a
+    client's events fully age out of the window its key has to be dropped, bounding _hits to
+    currently-active clients. Without the periodic sweep the dict grows unbounded (one entry per IP
+    ever seen). Uses a fake monotonic clock so the test is deterministic and fast."""
+    clock = {"t": 1000.0}
+    monkeypatch.setattr(web_auth.time, "monotonic", lambda: clock["t"])
+
+    rl = web_auth.RateLimiter(max_events=5, window_seconds=10.0)
+    # 50 one-shot clients within the window — each leaves a key.
+    for i in range(50):
+        assert rl.allow(f"10.0.0.{i}") is True
+    assert len(rl._hits) == 50
+
+    # Advance well past the window so every seeded key is stale, then one new request triggers the
+    # sweep. Only the currently-active client should remain — not 51 keys.
+    clock["t"] += 100.0
+    assert rl.allow("192.168.1.1") is True
+    assert len(rl._hits) == 1
+
+
 # ── csrf_valid ───────────────────────────────────────────────────────
 
 def test_csrf_valid_matching() -> None:

@@ -787,6 +787,27 @@ class FlashTab(QWidget):
         else:
             self._log("Flash failed — see log for details.")
 
+    # ── Cleanup ──────────────────────────────────────────────────────
+
+    def shutdown(self) -> None:
+        """Block until every in-flight background QThread has finished, so app teardown can't destroy a
+        still-running QThread ('QThread: Destroyed while thread is still running' -> abort) and a live
+        flash / detect / vault-download can't keep touching the board after the GUI is gone. A tab is a
+        child widget, so it never gets its own closeEvent when the main window closes — the main window
+        calls this from its closeEvent. (closeEvent below covers the popped-out / detached case.)"""
+        workers = list(self._bg_workers) + [self._worker, self._detect_worker, self._op_worker]
+        for w in workers:
+            try:
+                if w is not None and w.isRunning():
+                    w.wait(3000)
+            except RuntimeError:
+                # The underlying C++ QThread may already be gone — nothing left to wait on.
+                pass
+
+    def closeEvent(self, event) -> None:
+        self.shutdown()
+        super().closeEvent(event)
+
     # ── Logging ──────────────────────────────────────────────────────
 
     def _log(self, msg: str) -> None:

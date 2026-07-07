@@ -287,17 +287,27 @@ class SoftwareTab(QWidget):
     # ── actions ──────────────────────────────────────────────────────
 
     def _on_check(self) -> None:
+        if self._resolver is not None and self._resolver.isRunning():
+            return  # a resolve is already in flight — don't orphan its still-running QThread
         e = self._current_entry()
         if not e:
             return
+        # Disable BOTH triggers while the auto-resolve runs: _on_flash() also routes here (it kicks off a
+        # resolve when nothing is resolved yet), and a second Flash-OS click would otherwise re-enter and
+        # reassign self._resolver, destroying the first QThread mid-run.
         self._btn_check.setEnabled(False)
+        self._btn_flash.setEnabled(False)
         self._os_status.setText("Resolving…")
         self._resolver = _ResolveWorker(e, self._offline_cb.isChecked())
         self._resolver.done.connect(self._on_resolved)
+        # Clear the reference only once the thread has truly finished (QThread.finished fires after run()
+        # returns), so a fresh resolve can start without ever dropping a running worker.
+        self._resolver.finished.connect(lambda: setattr(self, "_resolver", None))
         self._resolver.start()
 
     def _on_resolved(self, resolved, log_text: str) -> None:
         self._btn_check.setEnabled(True)
+        self._btn_flash.setEnabled(True)
         if log_text:
             self._log(log_text)
         self._resolved = resolved
@@ -348,6 +358,18 @@ class SoftwareTab(QWidget):
             self._log("OS flash completed successfully — boot the target machine from this USB.")
         else:
             self._log("OS flash failed — see log above.")
+
+    def shutdown(self) -> None:
+        """Stop-wait any in-flight resolve / OS-flash worker before the tab (and the window) is torn down.
+
+        Neither QThread is parented, so if it is still running when its Python wrapper is collected on exit
+        Qt aborts the process ('QThread: Destroyed while thread is still running') — and for the OS-flash
+        worker that also means a multi-GB removable-disk write cut off mid-stream. Blocking until the worker
+        finishes is deliberate: a destructive write must not be interrupted. Invoked from
+        MainWindow.closeEvent."""
+        for w in (self._resolver, self._worker):
+            if w is not None and w.isRunning():
+                w.wait()
 
     def _log(self, msg: str) -> None:
         self._log_output.append(msg)

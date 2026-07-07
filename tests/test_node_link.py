@@ -411,6 +411,46 @@ def test_different_node_ids_do_not_cross_decrypt():
     assert got == []           # distinct derived keys -> auth fail -> dropped
 
 
+def test_concurrent_writes_never_reuse_a_nonce(monkeypatch):
+    """NodeLink is a drop-in for SerialConnection, whose write() is thread-safe (its _io_lock). Two
+    threads writing the SAME NodeLink must not both seal under the identical (epoch, counter) — that is
+    catastrophic AES-GCM nonce reuse. FrameSealer.seal reads the counter, encrypts (the C AES-GCM call
+    releases the GIL), then increments — a non-atomic read/increment. We widen that window here so the
+    race is DETERMINISTIC: without the _io_lock in _send_sealed every thread reads the same counter and
+    the frames on the wire collide; with it, every (epoch, counter) is unique by construction.
+    """
+    import struct
+    import threading
+    import time
+
+    from src.core import node_crypto
+    from src.core.node_crypto import HEADER_LEN
+
+    real_seal = node_crypto.seal
+
+    def slow_seal(*args, **kwargs):
+        # Exaggerate the GIL-release window between FrameSealer reading self._counter and incrementing it.
+        time.sleep(0.01)
+        return real_seal(*args, **kwargs)
+
+    monkeypatch.setattr(node_crypto, "seal", slow_seal)
+
+    host = NodeLink(MockGateway(), KEY, 1, role="host", epoch=0, counter=0)
+    n = 12
+    threads = [threading.Thread(target=lambda: host.write_bytes(b"payload")) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    nonces = []
+    for line in host._gateway.sent:
+        _, _, epoch, counter = struct.unpack(">BHIQ", base64.b64decode(line)[:HEADER_LEN])
+        nonces.append((epoch, counter))
+    assert len(nonces) == n
+    assert len(set(nonces)) == n, f"concurrent writes reused a (key, nonce) pair: {sorted(nonces)}"
+
+
 def test_close_detaches_from_gateway():
     gw = MockGateway()
     link = NodeLink(gw, KEY, 1)

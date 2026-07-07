@@ -128,11 +128,25 @@ class RateLimiter:
         self._window = window_seconds
         self._hits: dict[str, list[float]] = {}
         self._lock = threading.Lock()
+        # allow() only touches the key it is called with, so a one-shot client's entry (every distinct
+        # source IP the server ever sees) would otherwise linger forever — an unbounded leak in shared
+        # server state. A periodic full sweep drops keys whose newest event has aged out, bounding
+        # memory to currently-active clients. Amortized O(n) at most once per window.
+        self._last_sweep = 0.0
+
+    def _sweep(self, now: float) -> None:
+        """Drop keys whose most-recent event has fully aged out of the window."""
+        self._hits = {
+            k: ts for k, ts in self._hits.items() if ts and now - ts[-1] < self._window
+        }
+        self._last_sweep = now
 
     def allow(self, key: str) -> bool:
         """Record an event for *key*; return False if it exceeds the window budget."""
         now = time.monotonic()
         with self._lock:
+            if now - self._last_sweep >= self._window:
+                self._sweep(now)
             recent = [t for t in self._hits.get(key, []) if now - t < self._window]
             if len(recent) >= self._max:
                 self._hits[key] = recent

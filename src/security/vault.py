@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -42,6 +43,27 @@ class NeedExistingFactor(Exception):
 
 def _dir() -> Path:
     return Path(os.environ.get("CC_VAULT_DIR") or _DEFAULT_DIR)
+
+
+# Vault.set() is a load→mutate→save read-modify-write, and the Vault handle is the process-global
+# singleton written by MULTIPLE subsystems under their OWN, non-shared locks (node_provision._RES_LOCK,
+# secure_store._KEY_LOCK). Without a lock shared across all writers of the SAME vault, a container-key
+# mint and a node-table write interleave and the second save clobbers the first key (lost update →
+# orphaned ciphertext / dropped node). This registry hands every writer of a given vault dir the SAME
+# lock, keyed on the resolved dir, so the read-modify-write is atomic regardless of which subsystem (or
+# which Vault instance) initiates it. Reentrant so a future update(key, fn) can nest load()/save().
+_DIR_LOCKS: dict[str, threading.RLock] = {}
+_DIR_LOCKS_GUARD = threading.Lock()
+
+
+def _dir_lock() -> threading.RLock:
+    key = str(_dir().resolve())
+    with _DIR_LOCKS_GUARD:
+        lock = _DIR_LOCKS.get(key)
+        if lock is None:
+            lock = threading.RLock()
+            _DIR_LOCKS[key] = lock
+        return lock
 
 
 def _hdr_path() -> Path:
@@ -219,9 +241,13 @@ class Vault:
         return self.load().get(key, default)
 
     def set(self, key: str, value) -> None:
-        data = self.load()
-        data[key] = value
-        self.save(data)
+        # Serialize the whole load→mutate→save against every other writer of this same vault dir so
+        # concurrent sets of DIFFERENT keys (e.g. secure_container_key vs node_keys) can't lose one
+        # another's update — see _dir_lock() for why a shared, per-dir lock is required here.
+        with _dir_lock():
+            data = self.load()
+            data[key] = value
+            self.save(data)
 
 
 def open_vault(available: dict) -> Optional[Vault]:

@@ -84,6 +84,100 @@ def test_tab_live_controls_and_port_guard(qapp):
     assert "device port" in tab._live_status.text().lower()
 
 
+def test_shutdown_stops_and_waits_live_worker(qapp):
+    """closeEvent calls FlockHeatmapTab.shutdown(); unlike hideEvent (which keeps the worker running on
+    purpose), it must stop AND wait the live QThread so run()'s finally-block closes both serial ports
+    before the wrapper is destroyed on exit."""
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    tab = FlockHeatmapTab()
+
+    class _W:
+        def __init__(self) -> None:
+            self.stopped = False
+            self.waited = False
+            self._run = True
+
+        def stop(self) -> None:
+            self.stopped = True
+
+        def isRunning(self) -> bool:  # noqa: N802
+            return self._run
+
+        def wait(self, *_a) -> bool:
+            self.waited = True
+            self._run = False
+            return True
+
+    w = _W()
+    tab._live_worker = w
+    tab.shutdown()
+    assert w.stopped, "shutdown must ask the live scan worker to stop"
+    assert w.waited, "shutdown must wait for the worker to close its serial ports before teardown"
+
+
+def test_shutdown_without_worker_is_safe(qapp):
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    tab = FlockHeatmapTab()
+    assert tab._live_worker is None
+    tab.shutdown()  # no live scan running -> a clean no-op, must not raise
+
+
+def test_main_window_closeevent_joins_tab_workers(qapp, tmp_path, monkeypatch):
+    """End-to-end: the real MainWindow.closeEvent must stop-wait the SoftwareTab OS-flash worker and the
+    FlockHeatmapTab live-scan worker, so neither unparented QThread is destroyed mid-run on exit."""
+    import src.config.settings as S
+    monkeypatch.setattr(S, "SETTINGS_DIR", tmp_path, raising=False)
+    monkeypatch.setattr(S, "SETTINGS_PATH", tmp_path / "settings.json", raising=False)
+
+    from src.core.device_manager import DeviceManager
+    from src.core.flash_engine import FlashEngine
+    from src.core.cross_comm import EventBus, TargetPool
+    from src.ui.qt.main_window import CyberControllerWindow
+
+    bus = EventBus()
+    win = CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
+
+    class _SoftW:
+        def __init__(self) -> None:
+            self.waited = False
+            self._run = True
+
+        def isRunning(self) -> bool:  # noqa: N802
+            return self._run
+
+        def wait(self, *_a) -> bool:
+            self.waited = True
+            self._run = False
+            return True
+
+    class _LiveW:
+        def __init__(self) -> None:
+            self.stopped = False
+            self.waited = False
+            self._run = True
+
+        def stop(self) -> None:
+            self.stopped = True
+
+        def isRunning(self) -> bool:  # noqa: N802
+            return self._run
+
+        def wait(self, *_a) -> bool:
+            self.waited = True
+            self._run = False
+            return True
+
+    sw_worker = _SoftW()
+    live_worker = _LiveW()
+    win._software_tab._worker = sw_worker
+    win._flock_heatmap._live_worker = live_worker
+
+    win.close()  # -> closeEvent
+
+    assert sw_worker.waited, "closeEvent must wait for the SoftwareTab OS-flash worker"
+    assert live_worker.stopped and live_worker.waited, "closeEvent must stop-wait the live Flock scan"
+
+
 def test_tab_record_render_split(qapp):
     # While hidden, live updates must be RECORDED (latest kept) but NOT rendered; showEvent catches up.
     from PyQt5.QtGui import QHideEvent, QShowEvent

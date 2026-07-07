@@ -15,6 +15,7 @@ import hashlib
 import json
 import logging
 import os
+import threading
 from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -86,6 +87,12 @@ class AuditTrail:
 
     def __init__(self, persist_path: str | Path | None = None) -> None:
         self._entries: list[AuditEntry] = []
+        # One AuditTrail is shared by the Qt UI and the threaded web remote (SocketIO
+        # async_mode="threading" + the flash worker thread), so record() must be serialized:
+        # concurrent appends would otherwise read the SAME last entry and mint two entries with an
+        # identical prev_hash, breaking the chain that verify_integrity() promises. Reentrant so the
+        # construction-time _load_jsonl → verify_integrity path can nest safely.
+        self._lock = threading.RLock()
         self._persist_path: Path | None = Path(persist_path) if persist_path else None
         if self._persist_path is not None:
             self._init_persistence()
@@ -141,7 +148,8 @@ class AuditTrail:
             except (json.JSONDecodeError, TypeError, ValueError) as exc:
                 torn = True
                 log.warning("Skipping unparseable audit line in %s: %s", path, exc)
-        self._entries = entries
+        with self._lock:
+            self._entries = entries
         if torn:
             # Rewrite the file from the clean in-memory chain so the next append lands on a well-formed
             # boundary (drops the torn tail) instead of gluing onto a newline-less partial line.
@@ -164,7 +172,8 @@ class AuditTrail:
 
     @property
     def entries(self) -> list[AuditEntry]:
-        return list(self._entries)
+        with self._lock:
+            return list(self._entries)
 
     @property
     def length(self) -> int:
@@ -177,17 +186,20 @@ class AuditTrail:
             action: Action category string.
             details: Optional metadata dict.
         """
-        prev_hash = self._entries[-1].entry_hash if self._entries else _GENESIS_HASH
-        entry = AuditEntry(
-            timestamp=datetime.now(timezone.utc).isoformat(),
-            action=action,
-            details=details or {},
-            prev_hash=prev_hash,
-        )
-        self._entries.append(entry)
-        self._append_jsonl(entry)  # L-2: durably flush as the event happens
-        log.debug("Audit: %s — %s", action, entry.entry_hash[:16])
-        return entry
+        # Hold the lock across read-last → build → append → flush so two threads can never read the
+        # same predecessor (identical prev_hash) and so the JSONL line order matches memory order.
+        with self._lock:
+            prev_hash = self._entries[-1].entry_hash if self._entries else _GENESIS_HASH
+            entry = AuditEntry(
+                timestamp=datetime.now(timezone.utc).isoformat(),
+                action=action,
+                details=details or {},
+                prev_hash=prev_hash,
+            )
+            self._entries.append(entry)
+            self._append_jsonl(entry)  # L-2: durably flush as the event happens
+            log.debug("Audit: %s — %s", action, entry.entry_hash[:16])
+            return entry
 
     def verify_integrity(self) -> tuple[bool, int]:
         """Walk the full chain and verify every hash link.
@@ -200,16 +212,17 @@ class AuditTrail:
         Returns:
             (is_valid, first_bad_index) — if valid, index is -1.
         """
-        expected_prev = _GENESIS_HASH
-        for idx, entry in enumerate(self._entries):
-            if entry.prev_hash != expected_prev:
-                log.warning("Audit chain broken at index %d (prev_hash mismatch)", idx)
-                return False, idx
-            if not entry.verify():
-                log.warning("Audit chain broken at index %d (self-hash mismatch)", idx)
-                return False, idx
-            expected_prev = entry.entry_hash
-        return True, -1
+        with self._lock:
+            expected_prev = _GENESIS_HASH
+            for idx, entry in enumerate(self._entries):
+                if entry.prev_hash != expected_prev:
+                    log.warning("Audit chain broken at index %d (prev_hash mismatch)", idx)
+                    return False, idx
+                if not entry.verify():
+                    log.warning("Audit chain broken at index %d (self-hash mismatch)", idx)
+                    return False, idx
+                expected_prev = entry.entry_hash
+            return True, -1
 
     # ── Persistence ──────────────────────────────────────────────────
 

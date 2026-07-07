@@ -227,6 +227,16 @@ class NodesController:
                 self._dm.close_connection(gw_port, owner=self._gateway_owner_tag(node_id))
             except Exception:  # noqa: BLE001 — teardown must always continue
                 log.debug("could not release gateway ownership for node %s", node_id, exc_info=True)
+        # Detach the link from the gateway FIRST so the RX thread can no longer advance the (not
+        # thread-safe) ReplayWindow, THEN read it: persist_rx_state reads rx_epoch and rx_highest as two
+        # separate property reads, and an epoch rotation between them would persist a (rx_epoch, rx_highest)
+        # pair that never coexisted -> a torn anti-replay cursor that spuriously rejects or under-protects
+        # after restart. Quiescing the window before reading it removes that race. close() is best-effort;
+        # even if it fails we still attempt the persist below.
+        try:
+            link.close()
+        except Exception:
+            log.warning("error closing link for node %s; persisting + unregistering anyway", node_id)
         # Best-effort persist of the replay head — must never block teardown.
         try:
             node_provision.persist_rx_state(self._vault(), node_id, link)
@@ -235,10 +245,6 @@ class NodesController:
         except Exception:  # e.g. the node was deprovisioned by another process mid-session
             log.warning("could not persist replay head for node %s; tearing down anyway", node_id)
         # Teardown always runs.
-        try:
-            link.close()
-        except Exception:
-            log.warning("error closing link for node %s; unregistering anyway", node_id)
         self._dm.remove_device(link.port)
         log.info("detached node %s", node_id)
         return True

@@ -90,3 +90,46 @@ def test_host_allowlist():
         tails._require_tails_url("https://evil.example.com/tails.img")
     with pytest.raises(ValueError):
         tails._require_tails_url("http://download.tails.net/x.img")  # non-https
+
+
+# ── download_image: streamed socket must be closed deterministically ──
+#
+# Regression for a leaked streamed connection: download_image() opens each hop with stream=True,
+# so the socket stays live until resp.close(). If the close only ran *after* the redirect-allowlist
+# check (or after raise_for_status), an off-allowlist redirect or an HTTP error would raise before
+# the close, leaking the socket to GC finalization. The fix wraps the loop body in
+# try/finally: resp.close() (mirroring firmware_vault._safe_streamed_download).
+
+class _FakeResp:
+    def __init__(self, *, is_redirect=False, location="", raise_http=False):
+        self.is_redirect = is_redirect
+        self.is_permanent_redirect = False
+        self.headers = {"Location": location} if location else {}
+        self._raise_http = raise_http
+        self.closed = False
+
+    def raise_for_status(self):
+        if self._raise_http:
+            raise tails.requests.HTTPError("500 Server Error")
+
+    def iter_content(self, chunk_size=1):
+        return iter([b"data"])
+
+    def close(self):
+        self.closed = True
+
+
+def test_download_image_closes_response_on_offallowlist_redirect(tmp_path, monkeypatch):
+    resp = _FakeResp(is_redirect=True, location="https://evil.example.com/pwn.img")
+    monkeypatch.setattr(tails.requests, "get", lambda *a, **k: resp)
+    with pytest.raises(ValueError):
+        tails.download_image("https://download.tails.net/tails.img", str(tmp_path), _silent)
+    assert resp.closed is True  # socket released before the allowlist ValueError propagated
+
+
+def test_download_image_closes_response_on_http_error(tmp_path, monkeypatch):
+    resp = _FakeResp(raise_http=True)
+    monkeypatch.setattr(tails.requests, "get", lambda *a, **k: resp)
+    with pytest.raises(tails.requests.HTTPError):
+        tails.download_image("https://download.tails.net/tails.img", str(tmp_path), _silent)
+    assert resp.closed is True  # streamed body left unconsumed, but the socket was still closed

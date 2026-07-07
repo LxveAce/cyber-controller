@@ -1017,14 +1017,18 @@ class CyberControllerWindow(QMainWindow):
     @pyqtSlot(str, str)
     def _pterm_on_line(self, port: str, line: str) -> None:
         """Handle a serial line from a device in the persistent terminal."""
-        # Run through Dead Man's Switch auth detection
         conn = self._pterm_conns.get(port)
         if conn:
-            handled = self._dms_auth.check_line(
-                line, lambda pw: conn.write(pw)
-            )
-            if handled:
-                pass
+            # Dead Man's Switch auth detection — but only when the Devices tab is NOT co-owning this
+            # port. When both panels hold the SAME shared SerialConnection, one received line fires BOTH
+            # on_line callbacks, so running check_line here AND in DeviceTab._on_line_received would drive
+            # _handle_auth twice for a single prompt: the modal password dialog spins a nested event loop,
+            # so the second queued line stacks a second dialog on top and, on OK, writes the boot password
+            # to the gate TWICE — which the DMS can read as a wrong/extra attempt and wipe/brick. Let the
+            # Devices tab be the sole DMS owner for any port it has connected (its handler also marks
+            # _dms_seen to suppress the connect probe); the terminal only handles ports it owns alone.
+            if port not in getattr(self._device_tab, "_devtab_line_cbs", {}):
+                self._dms_auth.check_line(line, lambda pw: conn.write(pw))
         color = self._pterm_port_colors.get(port, "#3fb950")
         self._pterm_output.append(
             f'<span style="color:{color};">[{port}]</span> {line}'
@@ -1849,6 +1853,39 @@ class CyberControllerWindow(QMainWindow):
     def closeEvent(self, event) -> None:
         self._timer.stop()
         self._sidebar_timer.stop()
+        # Join every in-flight background QThread BEFORE tearing down connections/resources. Without
+        # this, app.exec_() returns, this window (parent of the worker QThreads) is garbage-collected,
+        # and a QThread C++ dtor firing while its thread still runs aborts the process on exit
+        # ('QThread: Destroyed while thread is still running') — most visible in the frozen build.
+        # FlashTab owns its own worker set (variant loader / flash / detect / vault / backup-erase); a
+        # tab is a child widget so it gets no closeEvent of its own — join through its shutdown().
+        ft = getattr(self, "_flash_tab", None)
+        if ft is not None:
+            try:
+                ft.shutdown()
+            except Exception:  # noqa: BLE001 — teardown must never raise
+                pass
+        # SoftwareTab (OS-flash / resolve) and FlockHeatmapTab (live scan) own their own unparented worker
+        # QThreads too, and don't route through the DeviceManager — join them the same way so nothing is
+        # destroyed mid-run (a cut-off USB write / leaked serial ports) on exit.
+        for _tab_attr in ("_software_tab", "_flock_heatmap"):
+            _tab = getattr(self, _tab_attr, None)
+            _shutdown = getattr(_tab, "shutdown", None)
+            if callable(_shutdown):
+                try:
+                    _shutdown()
+                except Exception:  # noqa: BLE001 — teardown must never raise
+                    pass
+        # The update / self-update check threads (started on launch + on manual check) are held only on
+        # self, so join them here too.
+        for attr in ("_update_worker", "_self_update_worker"):
+            w = getattr(self, attr, None)
+            if w is not None:
+                try:
+                    if w.isRunning():
+                        w.wait(3000)
+                except RuntimeError:  # C++ side already gone
+                    pass
         # Save splitter state
         self._qsettings.setValue("main_splitter_state", self._main_splitter.saveState())
         # Remember which tabs were popped out (+ their window geometry), then re-dock them so no

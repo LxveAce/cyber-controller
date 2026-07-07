@@ -98,6 +98,48 @@ def test_cannot_remove_last_factor(v):
     assert v.open_vault({"password": b"pw"}) is not None
 
 
+def test_vault_set_concurrent_writes_do_not_lose_updates(v, monkeypatch):
+    """Two subsystems writing DIFFERENT keys concurrently must not clobber each other's update.
+
+    Vault.set is a load→mutate→save read-modify-write and the handle is a process-global singleton
+    shared by node_provision (node_keys) and secure_store (secure_container_key) under separate,
+    non-shared locks. Without a shared per-vault lock inside set(), both threads read the same on-disk
+    state and whichever saves second drops the other's key — a lost update (orphaned ciphertext /
+    dropped node). Here alpha and beta MUST both survive."""
+    import threading
+    import time
+
+    v.set_factor("password", b"pw")
+    vault = v.open_vault({"password": b"pw"})
+
+    # Widen the load→save window so an unsynchronized set() reliably interleaves; the fix serializes
+    # this (the second set() can't even load until the first releases), so both keys survive.
+    orig_save = v.Vault.save
+
+    def slow_save(self, data):
+        time.sleep(0.3)
+        return orig_save(self, data)
+
+    monkeypatch.setattr(v.Vault, "save", slow_save)
+
+    start = threading.Barrier(2)
+
+    def writer(key, value):
+        start.wait()
+        vault.set(key, value)
+
+    ta = threading.Thread(target=writer, args=("alpha", 1))
+    tb = threading.Thread(target=writer, args=("beta", 2))
+    ta.start()
+    tb.start()
+    ta.join()
+    tb.join()
+
+    final = v.open_vault({"password": b"pw"}).load()
+    assert final.get("alpha") == 1
+    assert final.get("beta") == 2
+
+
 def test_vault_load_truncated_raises_clean_valueerror(tmp_path, monkeypatch):
     """A truncated vault.enc (shorter than nonce+tag) must fail closed with ONE clean ValueError,
     not a raw crash — and never returns plaintext."""
