@@ -79,3 +79,24 @@ def test_missing_rssi_from_another_board_does_not_hijack_merged_row():
     assert s.per_board.get("COM4", 0) == 0                   # not credited, not double-counted
     rows = [ln for ln in buf.getvalue().splitlines()[2:] if ln]
     assert len(rows) == 1 and rows[0].split(",")[6] == "-40"  # only the strong row was written
+
+
+def test_interleaved_multiline_streams_do_not_cross_contaminate():
+    # Modern Marauder streams each AP across separate ESSID/BSSID/RSSI lines. Two boards scanning at once
+    # interleave those fragments, so the reassembly state MUST be per-port — a shared accumulator would
+    # stitch COM3's ESSID onto COM4's BSSID (or vice-versa) and mislabel the merged WiGLE rows.
+    buf = io.StringIO()
+    s = wd.MultiWardriveSession(buf)
+    s.update_gps(FIX)
+    seq = [
+        ("COM3", "ESSID: NetA"), ("COM4", "ESSID: NetB"),
+        ("COM3", "BSSID: aa:bb:cc:dd:ee:01"), ("COM4", "BSSID: aa:bb:cc:dd:ee:02"),
+        ("COM3", "RSSI: -40"), ("COM4", "RSSI: -55"),
+    ]
+    for port, line in seq:
+        s.observe(port, line)
+    rows = {r.split(",")[0]: r.split(",") for r in buf.getvalue().splitlines()[2:] if r}
+    assert rows["AA:BB:CC:DD:EE:01"][1] == "NetA" and rows["AA:BB:CC:DD:EE:01"][6] == "-40"
+    assert rows["AA:BB:CC:DD:EE:02"][1] == "NetB" and rows["AA:BB:CC:DD:EE:02"][6] == "-55"
+    assert s.ap_count == 2
+    assert s.per_board == {"COM3": 1, "COM4": 1}

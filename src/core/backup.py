@@ -147,9 +147,17 @@ def restore_flash(port: str, backup_path: str, on_line: Line,
     size = os.path.getsize(backup_path)
     on_line(f"[restore] Writing {size} bytes to {port} ({chip})...")
 
+    # A restore must reproduce the dump VERBATIM, so write with --flash_size keep (NOT detect).
+    # With `detect`, esptool re-patches the flash-size nibble in the image header to the chip's
+    # physically-detected size; on a chip whose bootloader lives at 0x0 (S3 / C-series / H2) the
+    # write address 0x0 IS that header, so the on-flash byte then differs from backup_path. The
+    # verify_flash below reads the reference straight from backup_path (esptool's default
+    # --flash_size keep), so a `detect` write would trip a spurious 1-byte "flash may be corrupt"
+    # mismatch AND leave a non-byte-exact restore. `keep` preserves the exact bytes and stays
+    # symmetric with the verify.
     argv = esptool_argv(
         "--chip", chip, "--port", port, "--baud", "921600",
-        "write_flash", "-z", "--flash_size", "detect",
+        "write_flash", "-z", "--flash_size", "keep",
         "0x0", backup_path,
     )
     rc = _run_stream(argv, on_line)

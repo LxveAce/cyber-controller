@@ -24,6 +24,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from src.config.settings import load_settings
 from src.core.device_manager import DeviceManager
 from src.core.firmware_vault import FirmwareVault
 from src.core.flash_engine import (
@@ -697,6 +698,20 @@ class FlashTab(QWidget):
 
         variant = self._variant_combo.currentData() or ""
         profile.variant = variant
+        # Honor the user-configured Flash Baud Rate (Settings ▸ Flash ▸ flash.flash_baud). Without this the
+        # flash always ran at the profile's own baud, so a user LOWERING the baud to make a marginal CH340K /
+        # long-cable ESP32 flash reliably had NO effect — the value reached settings.json but no code read it.
+        # Falls back to the profile's baud when unset/unparseable, so profiles that pin a baud still win when
+        # the user hasn't chosen one.
+        try:
+            cfg_baud = load_settings().get("flash", {}).get("flash_baud")
+        except Exception:  # noqa: BLE001 — a settings read must never block a flash
+            cfg_baud = None
+        if cfg_baud:
+            try:
+                profile.baud = int(cfg_baud)
+            except (TypeError, ValueError):
+                pass
         # Offline vault fallback (read side of the FirmwareVault "offline cache" contract): if this
         # firmware is cached in the vault, hand its path to the engine so a flash with no network can
         # still succeed. The engine uses it ONLY if the live download fails, so the online path keeps
@@ -708,9 +723,9 @@ class FlashTab(QWidget):
         except Exception:  # noqa: BLE001 — a vault lookup must never block a normal flash
             log.debug("vault get_cached lookup failed", exc_info=True)
         if variant:
-            self._log(f"Flashing {profile.name} [{variant}] to {port}...")
+            self._log(f"Flashing {profile.name} [{variant}] to {port} at {profile.baud} baud...")
         else:
-            self._log(f"Flashing {profile.name} to {port}...")
+            self._log(f"Flashing {profile.name} to {port} at {profile.baud} baud...")
         self._btn_flash.setEnabled(False)
         self._progress.setValue(0)
 

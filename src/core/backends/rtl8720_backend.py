@@ -68,6 +68,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from typing import Callable, List, Optional
 
@@ -307,9 +308,11 @@ def _tool_argv(tool: str, *args: str) -> List[str]:
 def _run_stream(argv: List[str], on_line: Line, timeout: int) -> int:
     """Run *argv*, stream combined stdout/stderr line-by-line through *on_line*, return rc.
 
-    On any mid-stream exception (e.g. the UI callback raises) or timeout the child is killed
-    and reaped so it cannot keep holding the serial port — otherwise the next op fails with
-    'port busy'. Mirrors :func:`flash_core._run_stream` / :func:`adb_backend._run_adb`.
+    On timeout — or any error from :meth:`subprocess.Popen.wait` — the child is killed and
+    reaped so it cannot keep holding the serial port (otherwise the next op fails with 'port
+    busy'). stdout is drained on a **separate daemon thread** so the wall-clock *timeout* is
+    enforced independently of the read loop; a child that stalls without emitting output or
+    exiting therefore cannot silently defeat it. Mirrors :func:`adb_backend._run_adb`.
     Returns 127 if the executable itself is missing.
     """
     on_line("$ " + " ".join(argv))
@@ -321,25 +324,42 @@ def _run_stream(argv: List[str], on_line: Line, timeout: int) -> int:
     except FileNotFoundError as e:
         on_line(f"[error] {e}")
         return 127
+
+    # Drain stdout on a side thread so proc.wait(timeout=...) below can fire while the child is
+    # stalled. A hung flasher — e.g. rtltool/ImageTool opened the COM port and is blocked waiting
+    # for a ROM-loader handshake that never comes because the BW16 is NOT in download mode —
+    # emits no further output and never reaches EOF. If we read inline, `for line in proc.stdout`
+    # blocks in readline() forever, proc.wait(timeout=...) is never reached, TimeoutExpired can
+    # never be raised, and the child is leaked holding the serial port.
+    def _reader() -> None:
+        try:
+            for line in proc.stdout:  # type: ignore[union-attr]
+                on_line(line.rstrip("\n"))
+        except Exception:
+            pass
+
+    reader = threading.Thread(target=_reader, daemon=True)
+    reader.start()
     try:
-        for line in proc.stdout:  # type: ignore[union-attr]
-            on_line(line.rstrip("\n"))
         proc.wait(timeout=timeout)
+        reader.join(timeout=5)
     except subprocess.TimeoutExpired:
-        on_line("[error] rtltool timed out")
         try:
             proc.kill()
             proc.wait(timeout=5)
         except Exception:
             pass
+        reader.join(timeout=5)
+        on_line("[error] rtltool timed out")
         return -1
     except Exception as e:
-        on_line(f"[error] {e}")
         try:
             proc.kill()
             proc.wait(timeout=5)
         except Exception:
             pass
+        reader.join(timeout=5)
+        on_line(f"[error] {e}")
         return -1
     finally:
         try:

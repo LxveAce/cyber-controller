@@ -263,12 +263,50 @@ def win_swap_script(pid: int, new_exe: str, cur_exe: str) -> str:
     )
 
 
+def _oem_encoding() -> str:
+    """The console/OEM code page cmd.exe uses to interpret a .cmd file's bytes (e.g. ``'cp850'``).
+
+    cmd.exe parses a batch file's bytes in the console's OEM code page, so the swap script — whose
+    text embeds the full exe paths — must be written in that same code page for a non-ASCII path (an
+    accented Windows username like ``José``) to survive intact into the ``move``/``start`` lines.
+    Writing the script as ``ascii`` (the old behavior) raised ``UnicodeEncodeError`` on any such path
+    and aborted the update AFTER the new binary was already downloaded, verified, and staged. Falls
+    back to ``utf-8`` when the OEM code page can't be queried or Python has no codec for it (the
+    helper only runs on Windows, where the query succeeds)."""
+    try:
+        import codecs
+        import ctypes  # Windows-only; any failure falls through to the utf-8 fallback below.
+
+        cp = int(ctypes.windll.kernel32.GetOEMCP())  # type: ignore[attr-defined]
+        codec = f"cp{cp}"
+        codecs.lookup(codec)  # raises LookupError if Python has no such codec
+        return codec
+    except Exception:  # noqa: BLE001 — any failure => safe universal fallback
+        return "utf-8"
+
+
 def _apply_windows(cur_exe: str, new_exe: str, pid: int) -> None:
     """Spawn the detached swap helper and return; the CALLER then exits so the helper can swap the
-    (now unlocked) binary and relaunch it."""
+    (now unlocked) binary and relaunch it.
+
+    The script text embeds the full ``cur_exe``/``new_exe`` paths, which can contain non-ASCII
+    characters (e.g. a Windows username with an accent). It is written in the console OEM code page
+    (:func:`_oem_encoding`) — the code page cmd.exe reads the .cmd in — so those paths reach the
+    ``move``/``start`` commands intact. If a path genuinely can't be encoded there we fail CLOSED as
+    :class:`SelfUpdateError` (the module's contract) rather than leak a raw ``UnicodeEncodeError``."""
+    script_text = win_swap_script(pid, new_exe, cur_exe)
+    try:
+        # errors='strict' so an un-encodable path surfaces as UnicodeEncodeError (caught below),
+        # never silently mangled into a wrong path the swap would target.
+        data = script_text.encode(_oem_encoding(), errors="strict")
+    except UnicodeEncodeError as exc:
+        raise SelfUpdateError(
+            f"cannot encode the self-update swap script for path {cur_exe!r} in the console code "
+            f"page ({exc}); update staged but not applied") from exc
+    # Binary mode: the script's CRLF line endings are written verbatim (no text-mode translation).
     fd, script = tempfile.mkstemp(prefix="cc-update-", suffix=".cmd")
-    with os.fdopen(fd, "w", encoding="ascii", newline="") as fh:
-        fh.write(win_swap_script(pid, new_exe, cur_exe))
+    with os.fdopen(fd, "wb") as fh:
+        fh.write(data)
     subprocess.Popen(["cmd", "/c", script], close_fds=True, creationflags=_DETACHED)  # noqa: S603,S607
     log.info("self-update: swap helper spawned (%s); app should exit now", script)
 

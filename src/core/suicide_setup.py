@@ -73,6 +73,38 @@ def _canon_flash_size(v: str) -> str:
     return _FLASH_ALIASES.get(v.strip().lower().replace(" ", ""), v.strip())
 
 
+# esptool --chip names (mirrors provision.CHIPS). The bootloader offset the provisioner derives is an
+# EXACT-membership test (S3/C3/C6/H2 -> 0x0, else 0x1000), so any non-exact spelling silently yields
+# the classic 0x1000 offset. We must hand the provisioner a canonical name — never free-form text.
+_CHIPS = ("esp32", "esp32s2", "esp32s3", "esp32c3", "esp32c6", "esp32h2")
+
+
+def _canon_chip(v: str) -> str:
+    """Canonicalize free-form chip text to the exact esptool key, or RAISE on an unknown chip.
+
+    Lowercases, strips, and drops hyphens/underscores/spaces so Espressif's own branding
+    ('ESP32-S3'), run-together forms ('ESP32S3'), and bare-suffix shorthand ('s3' -> 'esp32s3') all
+    map to the canonical 'esp32s3'. RAISES ``ValueError`` on anything not in :data:`_CHIPS`.
+
+    This is fail-loud by design (mirrors :func:`_canon_flash_size` / :func:`partitions_csv`): the
+    provisioner's ``bootloader_offset`` uses an EXACT membership test, so an unrecognized spelling of
+    an S3/C3/C6/H2 part would silently default to the classic-ESP32 2nd-stage bootloader offset
+    (0x1000). Flashing that bundle writes the bootloader to 0x1000 while the ROM loader reads it from
+    0x0 -> the board is unbootable/soft-bricked, yet the tool reports success. Reject it here instead.
+    """
+    s = v.strip().lower().replace("-", "").replace("_", "").replace(" ", "")
+    # bare-suffix shorthand ('s3','c3','h2',...) -> prepend the family prefix
+    if not s.startswith("esp32") and ("esp32" + s) in _CHIPS:
+        s = "esp32" + s
+    if s not in _CHIPS:
+        raise ValueError(
+            f"unknown chip {v!r}; known chips: {list(_CHIPS)}. An unrecognized spelling would "
+            f"default to the classic-ESP32 bootloader offset 0x1000, which soft-bricks an "
+            f"S3/C3/C6/H2 board (its 2nd-stage bootloader must live at 0x0)."
+        )
+    return s
+
+
 def partitions_csv(cfg: SuicideConfig) -> Path:
     """Resolve the partition CSV for a config.
 
@@ -125,9 +157,13 @@ def build(cfg: SuicideConfig, password: str, out_dir: str | Path) -> tuple[str, 
     """
     if not password:
         raise ValueError("password must not be empty")
+    # Canonicalize + validate the chip BEFORE anything else so a bad chip fails LOUD here — for both
+    # the CLI and programmatic callers — instead of silently defaulting to the classic 0x1000
+    # bootloader offset downstream (which soft-bricks an S3/C3/C6/H2 board).
+    chip = _canon_chip(cfg.chip)
     prov = _load_provision()
     args = argparse.Namespace(
-        partitions=str(partitions_csv(cfg)), out=str(out_dir), variant=cfg.variant, chip=cfg.chip,
+        partitions=str(partitions_csv(cfg)), out=str(out_dir), variant=cfg.variant, chip=chip,
         build_dir=(cfg.build_dir or None), nvs_gen_dir=None,
         arm_pin=cfg.arm_pin, arm_level=cfg.arm_level, arm_pull=cfg.arm_pull, max_att=cfg.max_att,
         deadman=cfg.deadman, armed=cfg.armed, wipe_ota=cfg.wipe_ota, wipe_nvs=cfg.wipe_nvs,

@@ -49,6 +49,19 @@ def test_parse_marauder_ap():
     assert wd.parse_marauder_ap("no mac here") is None
 
 
+def test_parse_marauder_ap_ssid_not_overcaptured_without_pipe():
+    # Space-separated single-line record with NO '|' delimiter (the legacy Marauder ordering). The SSID
+    # capture must stop at the next key token (BSSID/Ch/RSSI), not run to end-of-line and swallow the
+    # trailing fields — otherwise that garbage string is written into the WiGLE SSID column and uploaded.
+    a = wd.parse_marauder_ap("SSID: MyNet BSSID: aa:bb:cc:dd:ee:ff Ch: 6 RSSI: -52")
+    assert a is not None
+    assert a.ssid == "MyNet"                     # NOT "MyNet BSSID: aa:bb:cc:dd:ee:ff Ch: 6 RSSI: -52"
+    assert a.bssid == "aa:bb:cc:dd:ee:ff" and a.channel == 6 and a.rssi == -52
+    # The pipe-delimited variant is unchanged (stops at the first '|').
+    b = wd.parse_marauder_ap("SSID: MyNet | BSSID: aa:bb:cc:dd:ee:ff | Ch: 6 | RSSI: -52")
+    assert b is not None and b.ssid == "MyNet"
+
+
 def test_to_wigle_row():
     obs = wd.ApObservation(bssid="aa:bb:cc:dd:ee:ff", ssid="Net", channel=6, rssi=-40, auth="[WPA2][ESS]")
     fix = wd.GpsFix(lat=48.1173, lon=11.5167, alt=545.4, has_fix=True)
@@ -136,3 +149,47 @@ def test_missing_rssi_does_not_overwrite_strong_reading():
     rows = [ln for ln in buf.getvalue().splitlines()[2:] if ln]
     assert len(rows) == 1                                     # no second, no-signal row appended
     assert rows[0].split(",")[6] == "-40" and rows[0].split(",")[7] == "48.117300"
+
+
+def test_multiline_marauder_scanall_is_reassembled():
+    # Modern Marauder (v1.12.3+) streams each AP as SEPARATE serial lines. The session must stitch the
+    # ESSID/BSSID/Ch/RSSI fragments into ONE WiGLE row — the pre-fix behaviour logged only the BSSID line,
+    # producing a row with a blank SSID and 0 channel/frequency/RSSI (the whole feature lost).
+    buf = io.StringIO()
+    s = wd.WardriveSession(buf)
+    s.start()
+    s.update_gps("$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47")
+    wrote = [s.observe(ln, now="2026-06-27 00:00:00")
+             for ln in ["ESSID: MyNet", "BSSID: aa:bb:cc:dd:ee:ff", "Ch: 6", "RSSI: -52"]]
+    # No fragment writes a row until BSSID + RSSI have both been seen; then exactly one row is emitted.
+    assert wrote == [False, False, False, True]
+    rows = [ln for ln in buf.getvalue().splitlines()[2:] if ln]
+    assert len(rows) == 1                                     # NOT a stray all-zero BSSID-only row
+    cols = rows[0].split(",")
+    assert cols[0] == "AA:BB:CC:DD:EE:FF"
+    assert cols[1] == "MyNet"                                 # SSID recovered (was "")
+    assert cols[4] == "6" and cols[5] == "2437"              # channel + frequency recovered (were 0/0)
+    assert cols[6] == "-52"                                   # RSSI recovered (was 0)
+    assert s.ap_count == 1
+
+
+def test_multiline_scanall_dedup_keeps_strongest_rssi():
+    # Secondary effect of the multi-line drop: every AP used to land with rssi=0 (the missing sentinel),
+    # so the strongest-RSSI location dedup never fired. With real RSSI now parsed from the stream, a
+    # stronger re-sighting of the same BSSID refreshes the mapped row instead of being pinned to the first.
+    buf = io.StringIO()
+    s = wd.WardriveSession(buf)
+    s.start()
+    s.update_gps("$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47")
+    for ln in ["ESSID: Cam", "BSSID: aa:bb:cc:dd:ee:ab", "RSSI: -70"]:
+        s.observe(ln, now="2026-06-27 00:00:00")
+    assert s.seen["aa:bb:cc:dd:ee:ab"] == -70
+    # Weaker re-sighting -> not refreshed.
+    for ln in ["ESSID: Cam", "BSSID: aa:bb:cc:dd:ee:ab", "RSSI: -80"]:
+        s.observe(ln, now="2026-06-27 00:00:01")
+    assert s.seen["aa:bb:cc:dd:ee:ab"] == -70
+    # Stronger re-sighting -> refreshed to the closer reading.
+    for ln in ["ESSID: Cam", "BSSID: aa:bb:cc:dd:ee:ab", "RSSI: -30"]:
+        s.observe(ln, now="2026-06-27 00:00:02")
+    assert s.seen["aa:bb:cc:dd:ee:ab"] == -30
+    assert s.ap_count == 1                                    # still one unique AP across all sightings

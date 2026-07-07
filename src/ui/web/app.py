@@ -230,8 +230,34 @@ def create_app(
         return decorated
 
     def _known_port(port: str) -> bool:
-        """True only if *port* is a currently-registered device port."""
-        return any(d.port == port for d in device_manager.list_devices())
+        """True if *port* is a registered device port OR a live, currently-present serial port.
+
+        The Flash page dropdown is built from a LIVE ``scan_ports()`` enumeration, but a device that was
+        already plugged in when the server started is NEVER hot-plug-registered (HotPlugMonitor seeds it
+        into its ``_known_ports`` set without ``add_device``-ing it), so the registry alone would reject
+        the very port the user just selected — /api/flash would 400 every visible port. We therefore
+        also accept any port present in a fresh scan (the same source the page renders from). This still
+        rejects a port that does not physically exist, so it is not an accept-all gate.
+        """
+        if any(d.port == port for d in device_manager.list_devices()):
+            return True
+        return any(d.port == port for d in device_manager.scan_ports())
+
+    def _devices_for_display() -> list:
+        """Registered devices, merged with any live-scanned port not yet in the registry.
+
+        A device already plugged in at startup is never hot-plug-registered, so the raw registry is
+        empty and /devices reads 'No devices detected' even with hardware attached — leaving the user no
+        way to open a connection (and, downstream, the whole serial-command surface unreachable). Showing
+        the live-scanned ports too gives every present device a Connect action. A registered entry (which
+        carries live connection state) always wins over the fresh scan Device for the same port.
+        """
+        registered = {d.port: d for d in device_manager.list_devices()}
+        merged = list(registered.values())
+        for d in device_manager.scan_ports():
+            if d.port not in registered:
+                merged.append(d)
+        return merged
 
     @app.context_processor
     def _inject_csrf() -> dict[str, str]:
@@ -298,7 +324,7 @@ def create_app(
     @app.route("/devices")
     @requires_auth
     def devices_page():
-        return render_template("devices.html", devices=device_manager.list_devices())
+        return render_template("devices.html", devices=_devices_for_display())
 
     @app.route("/flash")
     @requires_auth
@@ -442,6 +468,45 @@ def create_app(
 
         threading.Thread(target=flash_thread, daemon=True).start()
         return jsonify({"status": "flashing", "port": port, "profile": profile_name})
+
+    @app.route("/api/connect", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_connect():
+        # Open a managed serial connection so the command surface (/api/command, subscribe_serial,
+        # send_command) can actually reach the device. Without this route get_connection(port) is always
+        # None — the web remote could never talk to a real board. Registers the scanned Device first (a
+        # port present at startup is not yet in the registry), then opens the link.
+        data = request.get_json(force=True, silent=True) or {}
+        port = str(data.get("port", ""))
+        if not port:
+            return jsonify({"error": "port is required"}), 400
+        if device_manager.get_device(port) is None:
+            match = next((d for d in device_manager.scan_ports() if d.port == port), None)
+            if match is None:
+                return jsonify({"error": f"Unknown/unregistered port: {port}"}), 400
+            device_manager.add_device(match)
+        try:
+            device_manager.open_connection(port, owner="web")
+        except Exception:  # noqa: BLE001 — surface a clean 400; the OS/serial error text is logged, not leaked
+            log.exception("web connect failed on %s", port)
+            return jsonify({"error": f"Could not open a connection on {port}"}), 400
+        _audit("device_connect", user=session.get("user"), port=port)
+        return jsonify({"status": "connected", "port": port})
+
+    @app.route("/api/disconnect", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_disconnect():
+        data = request.get_json(force=True, silent=True) or {}
+        port = str(data.get("port", ""))
+        if not port:
+            return jsonify({"error": "port is required"}), 400
+        if not _known_port(port):
+            return jsonify({"error": f"Unknown/unregistered port: {port}"}), 400
+        device_manager.close_connection(port, owner="web")
+        _audit("device_disconnect", user=session.get("user"), port=port)
+        return jsonify({"status": "disconnected", "port": port})
 
     @app.route("/api/command", methods=["POST"])
     @requires_auth

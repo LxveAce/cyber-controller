@@ -83,7 +83,7 @@ def test_pterm_line_mirrored_when_device_tab_only_selected(qapp, isolated_settin
 def _stub_connect(win, monkeypatch, dev):
     """Wire the window so _pterm_on_connect connects COM7 to a stub conn + the given device."""
     conn = types.SimpleNamespace(is_connected=True, on_line=lambda *_a: None, write=lambda *_a: None)
-    monkeypatch.setattr(win._dm, "open_connection", lambda port, owner=None: conn)
+    monkeypatch.setattr(win._dm, "open_connection", lambda port, baud=115200, owner=None: conn)
     monkeypatch.setattr(win._dm, "get_device", lambda port: dev)
     monkeypatch.setattr(win, "_pterm_checked_ports", lambda: ["COM7"])
     monkeypatch.setattr(win, "_pterm_refresh_ports", lambda: None)
@@ -111,6 +111,65 @@ def test_pterm_connect_does_not_clobber_explicit_firmware(qapp, isolated_setting
         _stub_connect(win, monkeypatch, dev)
         win._pterm_on_connect()
         assert dev.firmware == "ghost_esp"
+    finally:
+        win.close()
+
+
+def test_pterm_send_stamps_flipper_cr_terminator(qapp, isolated_settings):
+    # A Flipper connected in the persistent terminal must receive a CR-terminated command. The connection
+    # is built with LF (open_connection seeds the terminator from Device.firmware, still blank when the
+    # terminal opens the port), and the Flipper CLI silently ignores LF — so _pterm_on_send must re-stamp
+    # the terminator from the device's persisted firmware right before writing (mirrors device_tab._on_send).
+    from src.models.device import Device
+
+    win = _make_window()
+    try:
+        win._dm.add_device(Device(port="COM7", name="Flipper", firmware="flipper", connected=True))
+
+        class _Conn:
+            def __init__(self):
+                self.line_ending = "\n"  # what open_connection seeded before firmware was known
+                self.writes = []
+
+            def write(self, s):
+                self.writes.append((s, self.line_ending))
+
+        conn = _Conn()
+        win._pterm_conns["COM7"] = conn
+        win._pterm_port_colors["COM7"] = "#39ff14"
+        win._pterm_checked_ports = lambda: ["COM7"]  # both checked and connected
+        win._pterm_input.setText("help")
+        win._pterm_on_send()
+        assert conn.line_ending == "\r", "Flipper CLI needs CR; an LF-terminated command is silently ignored"
+        assert conn.writes and conn.writes[-1] == ("help", "\r")
+    finally:
+        win.close()
+
+
+def test_pterm_send_keeps_lf_for_marauder(qapp, isolated_settings):
+    # The re-stamp must be per-firmware, not a blanket CR: a Marauder must still get LF.
+    from src.models.device import Device
+
+    win = _make_window()
+    try:
+        win._dm.add_device(Device(port="COM8", name="Marauder", firmware="marauder", connected=True))
+
+        class _Conn:
+            def __init__(self):
+                self.line_ending = "\n"
+                self.writes = []
+
+            def write(self, s):
+                self.writes.append((s, self.line_ending))
+
+        conn = _Conn()
+        win._pterm_conns["COM8"] = conn
+        win._pterm_port_colors["COM8"] = "#39ff14"
+        win._pterm_checked_ports = lambda: ["COM8"]
+        win._pterm_input.setText("scanap")
+        win._pterm_on_send()
+        assert conn.line_ending == "\n"
+        assert conn.writes and conn.writes[-1] == ("scanap", "\n")
     finally:
         win.close()
 

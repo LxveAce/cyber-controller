@@ -22,7 +22,6 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPushButton,
     QScrollArea,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -86,12 +85,7 @@ class SettingsTab(QWidget):
         self._baud_combo.setEditable(True)
         self._baud_combo.setMinimumWidth(120)
         self._baud_combo.addItems(["9600", "57600", "115200", "230400", "460800", "921600"])
-        self._timeout_spin = QSpinBox()
-        self._timeout_spin.setRange(1, 120)
-        self._timeout_spin.setSuffix(" s")
-        self._timeout_spin.setMinimumWidth(80)
         serial_form.addRow("Default Baud Rate:", self._baud_combo)
-        serial_form.addRow("Connection Timeout:", self._timeout_spin)
         serial_outer.addLayout(serial_form)
         root.addWidget(serial_card)
 
@@ -103,15 +97,7 @@ class SettingsTab(QWidget):
         self._flash_baud_combo.setEditable(True)
         self._flash_baud_combo.setMinimumWidth(120)
         self._flash_baud_combo.addItems(["115200", "230400", "460800", "921600"])
-        self._flash_mode_combo = QComboBox()
-        self._flash_mode_combo.setMinimumWidth(100)
-        self._flash_mode_combo.addItems(["qio", "qout", "dio", "dout"])
-        self._verify_check = QCheckBox("Verify after flash")
-        self._backup_check = QCheckBox("Auto-backup before flash")
         flash_form.addRow("Flash Baud Rate:", self._flash_baud_combo)
-        flash_form.addRow("Flash Mode:", self._flash_mode_combo)
-        flash_form.addRow(self._verify_check)
-        flash_form.addRow(self._backup_check)
         flash_outer.addLayout(flash_form)
         root.addWidget(flash_card)
 
@@ -265,16 +251,9 @@ class SettingsTab(QWidget):
         """Populate widgets from a settings dict."""
         serial = settings.get("serial", {})
         self._set_combo_text(self._baud_combo, str(serial.get("default_baud", 115200)))
-        self._timeout_spin.setValue(int(serial.get("timeout", 5)))
 
         flash = settings.get("flash", {})
         self._set_combo_text(self._flash_baud_combo, str(flash.get("flash_baud", 921600)))
-        mode = str(flash.get("mode", "dio"))
-        idx = self._flash_mode_combo.findText(mode)
-        if idx >= 0:
-            self._flash_mode_combo.setCurrentIndex(idx)
-        self._verify_check.setChecked(bool(flash.get("verify", True)))
-        self._backup_check.setChecked(bool(flash.get("auto_backup", True)))
 
         comm = settings.get("cross_comm", {})
         self._auto_share_check.setChecked(bool(comm.get("auto_share", True)))
@@ -301,15 +280,15 @@ class SettingsTab(QWidget):
     def _gather(self) -> dict:
         """Read the current UI state into a settings dict."""
         return {
+            # Only widget-backed keys are gathered; the other keys DEFAULTS carries for these sections
+            # (serial.timeout, flash.verify/auto_backup/mode) had no consumer in the Qt app, so their
+            # inert controls were removed — save_settings' deep-merge still restores those keys from
+            # DEFAULTS, keeping the on-disk schema stable.
             "serial": {
                 "default_baud": self._parse_int(self._baud_combo.currentText(), 115200),
-                "timeout": self._timeout_spin.value(),
             },
             "flash": {
                 "flash_baud": self._parse_int(self._flash_baud_combo.currentText(), 921600),
-                "verify": self._verify_check.isChecked(),
-                "auto_backup": self._backup_check.isChecked(),
-                "mode": self._flash_mode_combo.currentText(),
             },
             "cross_comm": {
                 "auto_share": self._auto_share_check.isChecked(),

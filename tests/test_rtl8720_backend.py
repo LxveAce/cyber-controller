@@ -26,6 +26,8 @@ Covered:
 from __future__ import annotations
 
 import os
+import subprocess
+import threading
 
 import pytest
 
@@ -97,6 +99,60 @@ def _force_tool(monkeypatch, path="/fake/rtltool.py"):
     monkeypatch.setattr(rtl, "find_flash_loader",
                         lambda tool_path=None, explicit=None: None)
     return path
+
+
+class _HangingPopen:
+    """Stand-in for a child that opened the serial port and then STALLED.
+
+    Models the BW16-not-in-download-mode hang: rtltool/ImageTool holds the COM port
+    open, blocks waiting for a ROM-loader handshake that never comes, and neither
+    emits another stdout line nor exits until it is killed.
+
+      * ``stdout`` is a blocking iterator whose ``__next__`` parks until ``kill()`` is
+        called, then reports EOF — so an inline ``for line in proc.stdout`` never returns.
+      * ``wait(timeout=...)`` raises :class:`subprocess.TimeoutExpired` while the child is
+        still "running" (not yet killed), exactly like a real stalled process; a blocking
+        ``wait()`` (no timeout) would park forever.
+
+    With the buggy inline read, ``proc.wait(timeout=...)`` is never reached, so the timeout
+    can never fire and ``kill()`` is never called. Only the side-thread drain lets the
+    wall-clock timeout raise while the child is stalled.
+    """
+
+    def __init__(self, argv, stdout=None, stderr=None, stdin=None, text=None, bufsize=None):
+        self.argv = list(argv)
+        self.returncode = None
+        self._killed = threading.Event()
+        self.kill_called = False
+        parent = self
+
+        class _BlockingStdout:
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                parent._killed.wait()  # park until the child is killed
+                raise StopIteration    # then report EOF
+
+            def close(self):
+                pass
+
+        self.stdout = _BlockingStdout()
+
+    def wait(self, timeout=None):
+        if self._killed.is_set():
+            self.returncode = -9
+            return self.returncode
+        if timeout is not None:
+            # Still running and asked to wait a bounded time -> just like a stalled child.
+            raise subprocess.TimeoutExpired(self.argv, timeout)
+        self._killed.wait()
+        self.returncode = -9
+        return self.returncode
+
+    def kill(self):
+        self.kill_called = True
+        self._killed.set()
 
 
 # --------------------------------------------------------------------------- #
@@ -222,6 +278,73 @@ def test_read_flash_missing_tool_raises(monkeypatch, tmp_path):
     monkeypatch.setattr(rtl, "find_rtltool", lambda explicit=None: None)
     with pytest.raises(rtl.RtlToolNotFound):
         rtl.read_flash("COM1", str(tmp_path / "d.bin"), on_line=_Collector())
+
+
+# --------------------------------------------------------------------------- #
+# _run_stream — the streaming timeout MUST be enforceable even when the child
+# stalls (BW16 not in download mode: tool holds the port, emits no output, never
+# exits). Regression guard for the inline `for line in proc.stdout` read, which
+# blocks in readline() forever so proc.wait(timeout=...) is never reached and the
+# timeout is silently ignored, leaking the child + keeping the serial port busy.
+# --------------------------------------------------------------------------- #
+
+def test_run_stream_timeout_kills_stalled_child(monkeypatch):
+    proc_ref = {}
+
+    def _factory(argv, **kw):
+        p = _HangingPopen(argv, **kw)
+        proc_ref["proc"] = p
+        return p
+
+    monkeypatch.setattr(rtl.subprocess, "Popen", _factory)
+
+    result = {}
+
+    def _call():
+        result["rc"] = rtl._run_stream(["python", "rtltool.py", "rf"], _Collector(), timeout=1)
+
+    # Run in a watchdog thread so the OLD inline-read code (which hangs forever) surfaces as a
+    # failed assertion instead of wedging the whole suite; the FIXED code returns promptly.
+    worker = threading.Thread(target=_call, daemon=True)
+    worker.start()
+    worker.join(timeout=15)
+
+    assert not worker.is_alive(), (
+        "_run_stream hung on a stalled child: the streaming timeout was not enforced "
+        "(inline `for line in proc.stdout` never reaches proc.wait(timeout=...))"
+    )
+    assert result["rc"] == -1, "a timed-out flash must return the timeout code (-1)"
+    assert proc_ref["proc"].kill_called, (
+        "the stalled child must be killed+reaped so it stops holding the serial port"
+    )
+
+
+def test_run_stream_timeout_message_and_no_port_leak(monkeypatch):
+    """On the streaming timeout the user sees the timeout notice and the child is reaped."""
+    proc_ref = {}
+
+    def _factory(argv, **kw):
+        p = _HangingPopen(argv, **kw)
+        proc_ref["proc"] = p
+        return p
+
+    monkeypatch.setattr(rtl.subprocess, "Popen", _factory)
+
+    log = _Collector()
+    result = {}
+
+    def _call():
+        result["rc"] = rtl._run_stream(["python", "rtltool.py", "wf"], log, timeout=1)
+
+    worker = threading.Thread(target=_call, daemon=True)
+    worker.start()
+    worker.join(timeout=15)
+
+    assert not worker.is_alive()
+    assert result["rc"] == -1
+    assert "timed out" in log.text.lower()
+    # killed => reaped: returncode is set (not None), proving the child was collected.
+    assert proc_ref["proc"].returncode is not None
 
 
 def test_read_flash_emits_download_mode_help(monkeypatch, tmp_path):

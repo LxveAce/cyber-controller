@@ -932,7 +932,12 @@ class CyberControllerWindow(QMainWindow):
                 continue  # already connected and live
             self._pterm_conns.pop(port, None)  # stale/dead entry -> fall through and reopen
             try:
-                conn = self._dm.open_connection(port, owner="pterm")
+                # Honor the user-configured Default Baud Rate (Settings ▸ Serial) instead of falling back
+                # to open_connection's hardcoded 115200 — otherwise a device that talks at a non-default
+                # baud connects at the wrong speed and its TX/RX is garbled in the persistent terminal.
+                from src.config.settings import load_settings
+                baud = load_settings().get("serial", {}).get("default_baud", 115200)
+                conn = self._dm.open_connection(port, baud=baud, owner="pterm")
                 self._pterm_conns[port] = conn
                 # Stamp a best-effort firmware so the Operate surface (Broadcast/Targets/STOP-ALL, which
                 # all route by Device.firmware) works even when the board was connected here in the
@@ -1013,6 +1018,19 @@ class CyberControllerWindow(QMainWindow):
             conn = self._pterm_conns[port]
             color = self._pterm_port_colors.get(port, "#58a6ff")
             try:
+                # Per-device terminator: re-stamp from THIS port's persisted firmware right before writing.
+                # The connection was built with LF at open time (open_connection seeds the terminator from
+                # Device.firmware, still blank when the terminal opens the port), and the terminal can
+                # broadcast one command to several ports of DIFFERENT firmwares — so a CR-only Flipper would
+                # otherwise get an LF-terminated line its shell silently ignores. Mirrors device_tab._on_send.
+                try:
+                    from src.protocols import line_ending_for
+                    _dev = self._dm.get_device(port)
+                    _fw = (getattr(_dev, "firmware", "") or "").strip()
+                    if _fw:
+                        conn.line_ending = line_ending_for(_fw)
+                except Exception:
+                    pass
                 conn.write(cmd)
                 self._pterm_output.append(
                     f'<span style="color:{color};">[{port}] &gt; {cmd}</span>'

@@ -15,7 +15,7 @@ from typing import Any
 import requests
 
 # Reuse the flash core's vetted SSRF/path-traversal primitives (single source of truth).
-from src.core.flash_core import _require_allowed_url, _safe_cache_name
+from src.core.flash_core import IMAGE_MULTI, _require_allowed_url, _safe_cache_name
 from src.core.resources import resource_path
 
 log = logging.getLogger(__name__)
@@ -211,6 +211,25 @@ class FirmwareVault:
         profile = self._load_profile(profile_id)
         if not profile:
             log.error("Unknown firmware profile: %s", profile_id)
+            return None
+
+        # Offline-cache safety: the vault stores ONE bare .bin per profile and the offline-flash path
+        # (flash_engine._flash_offline_fallback) writes that file as a MERGED blob at 0x0. That is only
+        # correct for a merged-single-bin firmware. A 'multi-file-offsets' profile (marauder, esp32-div)
+        # ships an APP-ONLY image meant to flash at 0x10000 ON TOP of a separate bootloader/partitions/
+        # boot_app0 boot chain — none of which the vault can store or the offline path can apply. Caching
+        # it would let an offline flash write an app-only image at the wrong offset with no boot chain and
+        # brick the board (white screen / non-booting). Refuse to cache it (fail closed) rather than store
+        # a brick. (Board-aware multi-file offline caching needs the boot chain persisted in the index AND
+        # the offline flash path taught the offsets — see the module notes.)
+        if profile.get("image_model") == IMAGE_MULTI:
+            log.error(
+                "Refusing to vault %s: its firmware is app-only ('%s') and needs a bootloader/partitions/"
+                "boot_app0 boot chain flashed at per-file offsets. The offline vault can only store and "
+                "flash a single merged image at 0x0, so caching this would brick the board on an offline "
+                "flash. Flash it online (board-aware) instead.",
+                profile_id, IMAGE_MULTI,
+            )
             return None
 
         urls = profile.get("firmware_urls", {})

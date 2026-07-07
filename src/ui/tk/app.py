@@ -173,6 +173,9 @@ class TkLightApp:
         self._profiles: dict[str, Path] = {}
         self._active_conn: SerialConnection | None = None
         self._active_port: str = ""
+        # Ports we've already offered to the auto-connect toggle, so it opens a link once per detection
+        # (not every 3s tick) and never fights a user who manually disconnects a device.
+        self._autoconn_seen: set[str] = set()
 
         # Macro recorder (optional backend)
         self._macro_recorder: MacroRecorder | None = None
@@ -1019,9 +1022,32 @@ class TkLightApp:
     # ── Periodic refresh ────────────────────────────────────────────
 
     def _start_periodic_refresh(self) -> None:
+        self._maybe_autoconnect()
         self._refresh_status()
         self._refresh_device_list()
         self._root.after(3000, self._start_periodic_refresh)
+
+    def _maybe_autoconnect(self) -> None:
+        """Consume the Settings 'Auto-connect on device detection' toggle: when it is on, open a link to
+        each newly-detected, not-yet-connected device at the configured baud. Runs on the periodic refresh
+        so a hot-plugged board opens without a manual Connect click. Each port is offered only ONCE (first
+        detection) so the loop never reconnects a device the user just disconnected. Without this the
+        toggle was inert — set/get only inside the Settings handlers, consumed nowhere."""
+        seen = getattr(self, "_autoconn_seen", None)
+        if seen is None:
+            seen = self._autoconn_seen = set()
+        var = getattr(self, "_settings_autoconnect", None)
+        enabled = bool(var.get()) if var is not None else False
+        baud = self._configured_baud()
+        for dev in self._dm.list_devices():
+            if dev.port in seen:
+                continue
+            seen.add(dev.port)  # mark seen regardless, so we only auto-open on the first detection
+            if enabled and not dev.connected:
+                try:
+                    self._dm.open_connection(dev.port, baud=baud, owner="tk_autoconnect")
+                except Exception:
+                    log.debug("auto-connect failed for %s", dev.port, exc_info=True)
 
     # ── Profile / port loading ──────────────────────────────────────
 
@@ -1154,11 +1180,29 @@ class TkLightApp:
             self._btn_dev_disconnect.configure(state=tk.NORMAL if connected else tk.DISABLED)
             self._btn_send.configure(state=tk.NORMAL if connected else tk.DISABLED)
 
+    def _configured_baud(self) -> int:
+        """The serial baud the user configured in Settings (falls back to the persisted default, then
+        115200). Without this the Settings 'Baud Rate' control is inert — open_connection would always
+        use its hardcoded 115200 default, so a device that only talks at another speed (e.g. a 9600
+        UART/GPS module) gets a wrong-speed link and garbled/absent output with nothing surfaced."""
+        widget = getattr(self, "_settings_baud", None)
+        if widget is not None:
+            try:
+                return int(widget.get())
+            except (TypeError, ValueError, tk.TclError):
+                pass
+        if _HAS_SETTINGS:
+            try:
+                return int(load_settings().get("serial", {}).get("default_baud", 115200))
+            except Exception:
+                pass
+        return 115200
+
     def _on_dev_connect(self) -> None:
         if not self._active_port:
             return
         try:
-            conn = self._dm.open_connection(self._active_port)
+            conn = self._dm.open_connection(self._active_port, baud=self._configured_baud())
             self._active_conn = conn
             conn.on_line(lambda line: self._root.after(0, self._append_serial, line))
             self._serial_append_sys(f"Connected to {self._active_port}")

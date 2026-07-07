@@ -423,7 +423,11 @@ class DeviceTab(QWidget):
         if not port:
             return
         try:
-            conn = self._dm.open_connection(port, owner="devices_tab")
+            # Honor the user-configured Default Baud Rate (Settings ▸ Serial). Without this the connect
+            # falls back to open_connection's hardcoded 115200, so a device whose serial monitor runs at a
+            # non-default baud (e.g. 9600 or 230400) connects at the wrong speed and produces garbled TX/RX.
+            baud = load_settings().get("serial", {}).get("default_baud", 115200)
+            conn = self._dm.open_connection(port, baud=baud, owner="devices_tab")
             self._active_conn = conn
             # Persist the chosen firmware onto the Device so the ActionResolver + BroadcastEngine resolve
             # the SAME protocol the ingestor parses with (both key off Device.firmware, which scan_ports

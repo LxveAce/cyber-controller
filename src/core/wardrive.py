@@ -123,36 +123,100 @@ def channel_to_frequency(ch: int) -> int:
 # ── Marauder/ESP32 scan-line parsing ─────────────────────────────────
 
 _MAC_RE = re.compile(r"([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})")
+_RSSI_RE = re.compile(r"RSSI[:=]?\s*(-?\d+)", re.I)
+_CH_RE = re.compile(r"\bCh(?:annel)?[:=]?\s*(\d+)", re.I)
+# SSID capture is BOUNDED: the non-greedy value stops at the next key token (BSSID/SSID/Ch/RSSI) or a
+# '|' delimiter, not just at end-of-line. Without that bound a space-separated single-line record with
+# no pipe (the legacy Marauder form 'SSID: MyNet BSSID: .. Ch: .. RSSI: ..') lets the group run to EOL
+# and swallow the trailing fields into the SSID. Leading \b keeps 'BSSID' from matching as an 'SSID'.
+_SSID_RE = re.compile(
+    r"\bE?SSID[:=]?\s*(.+?)(?:\s*\||\s+(?:B?SSID|Ch(?:annel)?|RSSI)[:=]|\s*$)", re.I
+)
+_AUTH_RE = re.compile(r"\b(WPA3|WPA2|WPA|WEP|OPEN)\b", re.I)
+
+
+def _extract_ap_fields(line: str) -> Dict[str, object]:
+    """Extract whatever AP fields appear on ONE serial line.
+
+    Returns a dict holding only the keys found among ``bssid`` / ``rssi`` / ``channel`` / ``ssid`` /
+    ``auth``. Shared by the single-line :func:`parse_marauder_ap` and the multi-line
+    :class:`_ApAccumulator` so both read a given field identically.
+    """
+    fields: Dict[str, object] = {}
+    m = _MAC_RE.search(line)
+    if m:
+        fields["bssid"] = m.group(1).lower()
+    rm = _RSSI_RE.search(line)
+    if rm:
+        fields["rssi"] = int(rm.group(1))
+    cm = _CH_RE.search(line)
+    if cm:
+        fields["channel"] = int(cm.group(1))
+    sm = _SSID_RE.search(line)
+    if sm:
+        fields["ssid"] = sm.group(1).strip()
+    am = _AUTH_RE.search(line)
+    if am:
+        tok = am.group(1).upper()
+        fields["auth"] = "[ESS]" if tok == "OPEN" else f"[{tok}][ESS]"
+    return fields
+
+
+def _obs_from_fields(fields: Dict[str, object]) -> ApObservation:
+    return ApObservation(
+        bssid=str(fields["bssid"]),
+        ssid=str(fields.get("ssid", "")),
+        channel=int(fields.get("channel", 0)),   # type: ignore[arg-type]
+        rssi=int(fields.get("rssi", 0)),          # type: ignore[arg-type]
+        auth=str(fields.get("auth", "[ESS]")),
+    )
 
 
 def parse_marauder_ap(line: str) -> Optional[ApObservation]:
-    """Tolerantly parse one ESP32/Marauder AP scan line into an :class:`ApObservation`.
+    """Tolerantly parse ONE self-contained ESP32/Marauder AP scan line into an :class:`ApObservation`.
 
-    Requires a BSSID (MAC). RSSI/channel/SSID/encryption are extracted if present (formats vary across
-    Marauder versions, so this is field-extraction rather than a fixed column parse).
+    Requires a BSSID (MAC); RSSI/channel/SSID/encryption are extracted if present (formats vary across
+    Marauder versions, so this is field-extraction rather than a fixed column parse). This is the
+    single-line path — modern Marauder (v1.12.3+) streams each AP across SEPARATE lines, which the
+    session reassembles via :class:`_ApAccumulator`.
     """
-    m = _MAC_RE.search(line)
-    if not m:
+    fields = _extract_ap_fields(line)
+    if "bssid" not in fields:
         return None
-    bssid = m.group(1).lower()
-    rssi = 0
-    rm = re.search(r"RSSI[:=]?\s*(-?\d+)", line, re.I)
-    if rm:
-        rssi = int(rm.group(1))
-    ch = 0
-    cm = re.search(r"\bCh(?:annel)?[:=]?\s*(\d+)", line, re.I)
-    if cm:
-        ch = int(cm.group(1))
-    ssid = ""
-    sm = re.search(r"\bE?SSID[:=]?\s*(.+?)\s*(?:\||$)", line, re.I)  # \b so 'BSSID' is not matched
-    if sm:
-        ssid = sm.group(1).strip()
-    auth = "[ESS]"
-    am = re.search(r"\b(WPA3|WPA2|WPA|WEP|OPEN)\b", line, re.I)
-    if am:
-        tok = am.group(1).upper()
-        auth = "[ESS]" if tok == "OPEN" else f"[{tok}][ESS]"
-    return ApObservation(bssid=bssid, ssid=ssid, channel=ch, rssi=rssi, auth=auth)
+    return _obs_from_fields(fields)
+
+
+class _ApAccumulator:
+    """Reassemble one AP from either a single line or several consecutive lines.
+
+    Modern Marauder ``scanall`` (v1.12.3+) prints each AP across SEPARATE ``ESSID:`` / ``BSSID:`` /
+    ``RSSI:`` (+ optional ``Ch:``) lines, so a stateless single-line parser drops every field except the
+    one on the BSSID line — logging an AP with a blank SSID and 0 channel/RSSI. This accumulator stitches
+    those fragments into one record and emits an :class:`ApObservation` only once BOTH a BSSID and an
+    RSSI have been seen. A complete single-line record (legacy Marauder / GhostESP pipe form) carries all
+    fields at once and so emits immediately.
+
+    An ``ESSID``/``SSID`` token starts a fresh record (it is the first line Marauder prints per AP), so a
+    new AP never inherits the previous one's fields. Feed exactly the lines from ONE serial stream;
+    interleaved streams (several boards) need one accumulator each.
+    """
+
+    def __init__(self) -> None:
+        self._record: Optional[Dict[str, object]] = None
+
+    def feed(self, line: str) -> Optional[ApObservation]:
+        fields = _extract_ap_fields(line)
+        if not fields:
+            return None
+        if "ssid" in fields or self._record is None:
+            # A new SSID line — or the first fragment seen — begins a fresh AP record.
+            self._record = {}
+        self._record.update(fields)
+        if "bssid" in self._record and "rssi" in self._record:
+            obs = _obs_from_fields(self._record)
+            self._record = None
+            return obs
+        return None
 
 
 # ── WiGLE CSV row ────────────────────────────────────────────────────
@@ -219,6 +283,7 @@ class WardriveSession:
     ap_count: int = 0
     seen: Dict[str, int] = field(default_factory=dict)  # bssid -> best RSSI
     _header_written: bool = False
+    _parser: _ApAccumulator = field(default_factory=_ApAccumulator)  # stitches multi-line AP records
 
     def start(self) -> None:
         self.out.write(wigle_preheader(self.app_version) + "\n")
@@ -243,7 +308,7 @@ class WardriveSession:
         """
         if not self._header_written:
             self.start()
-        obs = parse_marauder_ap(line)
+        obs = self._parser.feed(line)
         if obs is None or not self.has_fix:
             return False
         prev = self.seen.get(obs.bssid)
@@ -273,6 +338,9 @@ class MultiWardriveSession:
     seen: Dict[str, int] = field(default_factory=dict)          # bssid -> best RSSI (shared across boards)
     per_board: Dict[str, int] = field(default_factory=dict)     # port -> unique APs first seen by that board
     _header_written: bool = False
+    # One AP accumulator PER port: boards stream concurrently, so a shared accumulator would interleave
+    # different boards' multi-line ESSID/BSSID/RSSI fragments into corrupt records.
+    _parsers: Dict[str, _ApAccumulator] = field(default_factory=dict)
 
     def start(self) -> None:
         self.out.write(wigle_preheader(self.app_version) + "\n")
@@ -309,7 +377,7 @@ class MultiWardriveSession:
         if not self._header_written:
             self.start()
         self.per_board.setdefault(port, 0)
-        obs = parse_marauder_ap(line)
+        obs = self._parsers.setdefault(port, _ApAccumulator()).feed(line)
         if obs is None or not self.has_fix:
             return False
         prev = self.seen.get(obs.bssid)

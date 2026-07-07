@@ -137,6 +137,52 @@ def test_win_swap_script_gates_move_failure_with_breadcrumb():
     assert 'del "%~f0"' in s
 
 
+# ── _apply_windows: non-ASCII exe path (accented Windows username) ──────────────────────────────────
+
+def test_apply_windows_writes_non_ascii_path_script(monkeypatch, tmp_path):
+    """Regression: a non-ASCII exe path (e.g. an accented Windows username 'José') must NOT crash the
+    swap-script write with UnicodeEncodeError. The old ascii-encoded write raised on the 'é' AFTER the
+    new binary was already downloaded, verified, and staged. The script must be written in a code page
+    that round-trips the path, so cmd.exe's move/start target the right file."""
+    spawned = {}
+
+    def fake_popen(argv, **kw):
+        spawned["argv"] = argv
+        return object()  # the real code ignores the return value
+
+    monkeypatch.setattr(su.subprocess, "Popen", fake_popen)
+
+    cur = r"C:\Users\José\AppData\Local\Programs\cyber-controller\cyber-controller.exe"
+    new = cur + ".new"
+    su._apply_windows(cur, new, pid=4242)  # must not raise
+
+    script = spawned["argv"][-1]
+    assert os.path.isfile(script)
+    try:
+        with open(script, "rb") as fh:
+            text = fh.read().decode(su._oem_encoding())  # decode in the same code page it was written
+        assert "José" in text                             # the accented path survived intact
+        assert "4242" in text                             # PID still embedded
+        assert '\r\n' in text                             # CRLF line endings preserved (binary write)
+    finally:
+        os.remove(script)
+
+
+def test_apply_windows_encode_failure_is_fail_closed(monkeypatch):
+    """If a path truly can't be encoded in the target code page, the failure surfaces as
+    SelfUpdateError (the module's fail-closed contract), not a raw UnicodeEncodeError — so callers
+    catching SelfUpdateError handle it cleanly."""
+    monkeypatch.setattr(su, "_oem_encoding", lambda: "ascii")  # force the accented path to be unencodable
+
+    def _no_spawn(*a, **k):
+        raise AssertionError("must not spawn the swap helper when the script can't be written")
+
+    monkeypatch.setattr(su.subprocess, "Popen", _no_spawn)
+
+    with pytest.raises(su.SelfUpdateError):
+        su._apply_windows(r"C:\Users\José\app.exe", r"C:\Users\José\app.exe.new", pid=1)
+
+
 def test_failed_update_marker_roundtrip(tmp_path):
     cur = tmp_path / "cyber-controller.exe"
     cur.write_bytes(b"OLD")

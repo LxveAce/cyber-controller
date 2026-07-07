@@ -34,8 +34,9 @@
                 <td>
                     {% if dev.connected %}
                     <a href="/terminal/{{ dev.port }}" class="btn btn-sm">Terminal</a>
+                    <button class="btn btn-sm btn-disconnect" data-port="{{ dev.port }}">Disconnect</button>
                     {% else %}
-                    <span class="text-muted">--</span>
+                    <button class="btn btn-sm btn-accent btn-connect" data-port="{{ dev.port }}">Connect</button>
                     {% endif %}
                 </td>
             </tr>
@@ -57,5 +58,43 @@
     function onDeviceDisconnected(data) {
         location.reload();
     }
+
+    // Open / close a managed serial connection so the Terminal + command surface can reach the device.
+    // Reuses the guarded /api/connect|/api/disconnect endpoints (auth + CSRF), matching the flash page.
+    function postConnect(url, port) {
+        return fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN},
+            body: JSON.stringify({port: port}),
+        }).then(function (r) { return r.json(); });
+    }
+
+    document.querySelectorAll('.btn-connect').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            btn.disabled = true;
+            btn.textContent = 'Connecting...';
+            postConnect('/api/connect', btn.getAttribute('data-port')).then(function (data) {
+                if (data && data.error) {
+                    btn.disabled = false;
+                    btn.textContent = 'Connect';
+                    alert(data.error);
+                } else {
+                    location.reload();
+                }
+            }).catch(function () {
+                btn.disabled = false;
+                btn.textContent = 'Connect';
+            });
+        });
+    });
+
+    document.querySelectorAll('.btn-disconnect').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            btn.disabled = true;
+            postConnect('/api/disconnect', btn.getAttribute('data-port')).then(function () {
+                location.reload();
+            }).catch(function () { btn.disabled = false; });
+        });
+    });
 </script>
 {% endblock %}
