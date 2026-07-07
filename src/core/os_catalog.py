@@ -139,18 +139,33 @@ def list_images(path: Optional[str] = None) -> List[Dict[str, str]]:
 
 # ── HTTP helpers (allowlisted; monkeypatched in tests) ───────────────
 
-def _http_get_text(url: str, timeout: int = 30) -> str:
+def _http_get_parsed(url: str, timeout: int, extract: Callable[[Any], Any]) -> Any:
+    """GET an allowlisted OS-metadata URL and return ``extract(resp)``, following redirects
+    MANUALLY and re-validating every hop with ``_require_os_url`` (mirrors ``download()`` and
+    firmware_vault._safe_api_get_json). requests' default redirect following is NOT used: a 302
+    on an allowlisted host must not bounce a metadata fetch off-allowlist (SSRF) — otherwise the
+    SHA256SUMS/feed these resolvers trust could be served by an attacker-chosen endpoint."""
     _require_os_url(url)
-    resp = requests.get(url, timeout=timeout)
-    resp.raise_for_status()
-    return resp.text
+    current = url
+    for _ in range(8):
+        resp = requests.get(current, timeout=timeout, allow_redirects=False)
+        try:
+            if resp.is_redirect or resp.is_permanent_redirect:
+                current = _require_os_url(resp.headers.get("Location", ""))
+                continue
+            resp.raise_for_status()
+            return extract(resp)
+        finally:
+            resp.close()
+    raise ValueError("too many redirects fetching the OS metadata")
+
+
+def _http_get_text(url: str, timeout: int = 30) -> str:
+    return _http_get_parsed(url, timeout, lambda r: r.text)
 
 
 def _http_get_json(url: str, timeout: int = 30) -> Any:
-    _require_os_url(url)
-    resp = requests.get(url, timeout=timeout)
-    resp.raise_for_status()
-    return resp.json()
+    return _http_get_parsed(url, timeout, lambda r: r.json())
 
 
 # ── resolvers ────────────────────────────────────────────────────────

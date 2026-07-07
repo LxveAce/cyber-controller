@@ -117,6 +117,28 @@ def list_targets(on_line: Line) -> list:
 
 # ── best-effort metadata fetch ───────────────────────────────────────
 
+def _fetch_feed_json(url: str, timeout: int = 30):
+    """GET an allowlisted Tails metadata URL as JSON, following redirects MANUALLY and
+    re-validating every hop with ``_require_tails_url`` (mirrors ``download_image``).
+
+    requests' default redirect following is NOT used: a 302 on the feed host must not bounce the
+    metadata fetch off-allowlist (SSRF), nor let the ``sha256`` it yields — the SOLE integrity
+    anchor when gpg is unavailable — come from an attacker-chosen endpoint."""
+    _require_tails_url(url)
+    current = url
+    for _ in range(8):
+        resp = requests.get(current, timeout=timeout, allow_redirects=False)
+        try:
+            if resp.is_redirect or resp.is_permanent_redirect:
+                current = _require_tails_url(resp.headers.get("Location", ""))
+                continue
+            resp.raise_for_status()
+            return resp.json()
+        finally:
+            resp.close()
+    raise ValueError("too many redirects fetching the Tails feed")
+
+
 def try_fetch_latest(on_line: Line) -> Optional[dict]:
     """Best-effort: fetch the official 'latest stable' feed → {version, url, sha256, size}.
 
@@ -125,10 +147,7 @@ def try_fetch_latest(on_line: Line) -> Optional[dict]:
     object carrying a ``.img`` url plus a sha256.
     """
     try:
-        _require_tails_url(_LATEST_FEED)
-        resp = requests.get(_LATEST_FEED, timeout=30)
-        resp.raise_for_status()
-        data = resp.json()
+        data = _fetch_feed_json(_LATEST_FEED)
     except (requests.RequestException, ValueError) as exc:
         on_line(f"[tails] could not fetch the latest-version feed ({exc}); use --tails-image with a "
                 "manually downloaded + verified image.")

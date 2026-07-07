@@ -109,3 +109,42 @@ def test_device_node_gates_danger_and_skips_templates(qapp, monkeypatch):
     scan = next(cb for lbl, cb in dev_node.actions if lbl == "scanall")
     scan()
     assert ("COM7", "scanall") in sent
+
+
+def test_target_action_gates_danger(qapp, monkeypatch):
+    """A target action (Deauth AP / Beacon Clone / Karma evil-twin) fired from the Network tab is a real
+    attack send and must clear the SAME danger confirmation as a device command — otherwise the tab is a
+    silent bypass that dispatches attack commands with no confirmation."""
+    monkeypatch.setattr("src.config.settings.load_settings", lambda: {})  # defaults -> confirm dangerous
+
+    # execute_action is imported lazily inside _run_target_action, so patch it on the source module and
+    # record every dispatch instead of touching real hardware.
+    calls: "list[tuple[str, str]]" = []
+    monkeypatch.setattr(
+        "src.core.action_resolver.execute_action",
+        lambda action, port, dm, **k: calls.append((getattr(action, "command_template", ""), port)),
+    )
+
+    tab, _sent = _make_tab()
+    from PyQt5.QtWidgets import QMessageBox  # noqa: E402
+    from src.models.action import ActionCategory, TargetAction  # noqa: E402
+
+    attack = TargetAction(
+        "Deauth AP", "attack -t deauth", "x", ActionCategory.ATTACK, pre_commands=["select -a 0"],
+    )
+
+    # Dangerous target action, user answers No -> it must NOT be dispatched.
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.No))
+    tab._run_target_action(attack, "COM7")
+    assert calls == [], "a dangerous target action must be gated; answering No aborts the send"
+
+    # Same action, user answers Yes -> it dispatches through execute_action.
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.Yes))
+    tab._run_target_action(attack, "COM7")
+    assert calls == [("attack -t deauth", "COM7")]
+
+    # A non-attack (safe) action is never gated: it dispatches even though 'warning' would answer No.
+    safe = TargetAction("Monitor Channel", "sniffraw", "x", ActionCategory.MONITOR)
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.No))
+    tab._run_target_action(safe, "COM7")
+    assert ("sniffraw", "COM7") in calls

@@ -2,6 +2,8 @@
 validation (M-4), vault API SSRF allowlist (M-2), and Windows ACL hardening (L-1)."""
 from __future__ import annotations
 
+import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -190,6 +192,70 @@ def test_audit_trail_record_is_thread_safe_under_concurrency():
         assert b.length == total
         ok2, bad2 = b.verify_integrity()
         assert ok2 and bad2 == -1
+
+
+# ── L-2 (SEC follow-up): the persisted trail is owner-only 0600 on POSIX ──────
+# win_acl.restrict_to_current_user is a no-op off Windows, so on Linux/macOS the ONLY thing
+# protecting the auth-fail/device/serial records is the POSIX mode. Without the 0600 fallback the
+# file is created 0644 (umask 022) and a second local account can read every audit record.
+
+def _mode(path: Path) -> int:
+    return stat.S_IMODE(path.stat().st_mode)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits are ignored on Windows (ACL path)")
+def test_persisted_audit_file_is_owner_only_0600():
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "audit-trail.jsonl"
+        a = AuditTrail(persist_path=path)          # fresh-create path (path.touch + _harden_perms)
+        assert path.exists()
+        assert _mode(path) == 0o600, oct(_mode(path))
+        # Appends must not widen the mode back out.
+        a.record("web_auth_fail", {"user": "mallory"})
+        a.record("flash", {"port": "COM9"})
+        assert _mode(path) == 0o600, oct(_mode(path))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits are ignored on Windows (ACL path)")
+def test_append_recreates_file_owner_only_0600():
+    # If the file is removed mid-session, the next record() re-creates it via _append_jsonl's
+    # os.open(...,0o600) — it must come back owner-only, never 0644.
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "audit-trail.jsonl"
+        a = AuditTrail(persist_path=path)
+        a.record("app_start", {})
+        path.unlink()
+        a.record("web_auth_ok", {"user": "lxve"})
+        assert path.exists()
+        assert _mode(path) == 0o600, oct(_mode(path))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits are ignored on Windows (ACL path)")
+def test_reload_hardens_legacy_world_readable_file():
+    # A pre-fix (0644) trail on disk must be tightened to 0600 the next time it's loaded.
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "audit-trail.jsonl"
+        a = AuditTrail(persist_path=path)
+        a.record("web_auth_fail", {"user": "mallory"})
+        os.chmod(path, 0o644)                       # simulate a legacy world-readable file
+        assert _mode(path) == 0o644
+        AuditTrail(persist_path=path)               # reload -> _init_persistence hardens it
+        assert _mode(path) == 0o600, oct(_mode(path))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX mode bits are ignored on Windows (ACL path)")
+def test_torn_line_rewrite_stays_owner_only_0600():
+    # The torn-tail recovery rewrites the sensitive chain via write_text; it must re-assert 0600.
+    with tempfile.TemporaryDirectory() as d:
+        path = Path(d) / "audit-trail.jsonl"
+        a = AuditTrail(persist_path=path)
+        a.record("app_start", {})
+        a.record("web_auth_fail", {"user": "mallory"})
+        os.chmod(path, 0o644)                       # widen, then trigger the rewrite path
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write('{"timestamp":"2026-01-01T00:00:00+00:00","action":"fla')
+        AuditTrail(persist_path=path)               # load -> torn line skipped + rewrite + harden
+        assert _mode(path) == 0o600, oct(_mode(path))
 
 
 def test_audit_trail_survives_torn_trailing_line():

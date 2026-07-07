@@ -36,7 +36,10 @@ _RE_BLE = re.compile(
 )
 _RE_STATUS = re.compile(r"\[Ghost(?:ESP)?\]\s*(.*)", re.IGNORECASE)
 _RE_ERROR = re.compile(r"(?:ERR|Error):\s*(.*)", re.IGNORECASE)
-_RE_GPS = re.compile(r"GPS:\s*Lat=([\d.\-]+)\s+Lon=([\d.\-]+)", re.IGNORECASE)
+# Capture a real float shape (optional sign, digits, optional fractional part) so a device that
+# streams a malformed coord like "Lat=1.2.3" / "Lat=." simply doesn't match here (falling through to
+# a generic info event) instead of matching and raising ValueError out of the unguarded float() below.
+_RE_GPS = re.compile(r"GPS:\s*Lat=(-?\d+(?:\.\d+)?)\s+Lon=(-?\d+(?:\.\d+)?)", re.IGNORECASE)
 _RE_SD = re.compile(r"SD:\s*(.*)", re.IGNORECASE)
 
 

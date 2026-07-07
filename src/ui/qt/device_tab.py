@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import os
 import re
@@ -924,7 +925,10 @@ class DeviceTab(QWidget):
                     # A DMS auth gate spoke on this port — mark it so the connect-time probe never writes an
                     # unsolicited command here (see _should_probe).
                     self._dms_seen.add(port)
-        self._terminal.append(line)
+        # Untrusted device bytes: QTextEdit.append() renders rich text when the line begins with markup
+        # (mightBeRichText), so escape it -- otherwise a board emitting <b>/<img>/<span> spoofs the
+        # terminal (command-echo/output injection on a security tool).
+        self._terminal.append(html.escape(line))
 
     # ── Command palette ──────────────────────────────────────────────
 

@@ -89,6 +89,36 @@ def test_session_gating_and_dedup():
     assert all(len(r.split(",")) == 14 for r in data_rows)
 
 
+def test_csv_field_neutralizes_formula_injection():
+    # An attacker-chosen SSID that begins with a spreadsheet formula trigger (= + - @ / tab / CR) must be
+    # de-fanged with a leading single quote so opening the WiGLE CSV in Excel/LibreOffice can't evaluate it
+    # (DDE/command execution). None of these payloads contain an RFC-4180 delimiter, so the old
+    # quote-only path left them bare.
+    assert wd._csv_field("=cmd|'/C calc'!A0") == "'=cmd|'/C calc'!A0"
+    assert wd._csv_field("+SUM(1+1)") == "'+SUM(1+1)"
+    assert wd._csv_field("-2+3") == "'-2+3"
+    assert wd._csv_field("@SUM(A1)") == "'@SUM(A1)"
+    assert wd._csv_field("\t=1+1") == "'\t=1+1"
+    # Leading CR is both de-fanged AND still delimiter-quoted (it contains \r).
+    assert wd._csv_field("\r=1+1") == '"\'\r=1+1"'
+    # Benign SSIDs are untouched (no spurious quoting).
+    assert wd._csv_field("MyNet") == "MyNet"
+    assert wd._csv_field("[WPA2][ESS]") == "[WPA2][ESS]"
+
+
+def test_wigle_row_defangs_malicious_ssid():
+    # End-to-end: a beacon whose SSID is a formula payload flows parse -> to_wigle_row and the SSID column
+    # is written de-fanged, so the exported row cannot execute a formula when opened in a spreadsheet.
+    # (Payload avoids '|', which parse_marauder_ap treats as an SSID terminator.)
+    obs = wd.parse_marauder_ap("BSSID:AA:BB:CC:DD:EE:FF RSSI:-40 Ch:6 ESSID:=2+5+cmdexec")
+    assert obs is not None and obs.ssid == "=2+5+cmdexec"
+    fix = wd.GpsFix(lat=48.1173, lon=11.5167, alt=545.4, has_fix=True)
+    row = wd.to_wigle_row(obs, fix, "2026-06-27 12:00:00")
+    ssid_col = row.split(",")[1]
+    assert not ssid_col.startswith("=")          # not a live formula
+    assert ssid_col == "'=2+5+cmdexec"           # rendered as literal text instead
+
+
 def test_missing_rssi_does_not_overwrite_strong_reading():
     # A line with no parseable RSSI token defaults rssi=0. Because real RSSI is negative, a raw `0 <= -40`
     # comparison would let that no-signal sighting win the dedup and hijack the strongest-RSSI row/location.

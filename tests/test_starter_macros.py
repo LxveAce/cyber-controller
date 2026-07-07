@@ -146,6 +146,27 @@ def test_is_offensive_flags_real_attack_commands_that_bypassed_exact_match():
         assert is_offensive_macro(m) is True, cmd
 
 
+def test_is_offensive_flags_embedded_verb_attack_commands():
+    # Real HaleHound transmitting commands (src/protocols/halehound.py) whose attack verb is a NON-leading
+    # token or a different separator, so the old startswith gate missed them and they played with NO arm
+    # confirmation. A recorded macro has device_protocol='' and an ordinary user name, so the -attack /
+    # [TEMPLATE branches don't fire either — the per-step check is the only gate. It must catch these.
+    for cmd in ("wifi_deauth", "ble_cinder", "subghz_replay", "mousejack"):
+        m = Macro(name="my recording", device_protocol="", steps=[MacroStep(command=cmd)])
+        assert is_offensive_macro(m) is True, cmd
+
+
+def test_macro_arm_gate_agrees_with_danger_classifier():
+    # The macro arm gate must never DISAGREE with the terminal's danger classifier: any command
+    # safety.classify() rates non-safe must arm the gate (invariant: missing a real attack is unacceptable).
+    from src.core import safety
+
+    for cmd in ("wifi_deauth", "ble_cinder", "subghz_replay", "mousejack", "attack -t deauth"):
+        assert safety.classify(cmd) != ""  # classifier flags it lab-only/illegal
+        m = Macro(name="my recording", device_protocol="", steps=[MacroStep(command=cmd)])
+        assert is_offensive_macro(m) is True, cmd
+
+
 def test_benign_recon_commands_are_not_flagged():
     for cmd in ("scanap", "stopscan", "list -a", "select -a 3", "channel 6", "clearlist"):
         m = Macro(name="plain", steps=[MacroStep(command=cmd)])

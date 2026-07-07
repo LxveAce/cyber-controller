@@ -14,6 +14,8 @@ assert:
 
 from __future__ import annotations
 
+import logging
+
 import pytest
 
 # pyserial is the gating dep: serial_handler imports `serial` at module top.
@@ -75,6 +77,25 @@ def test_write_rejects_other_control_chars(payload: str) -> None:
     with pytest.raises(ValueError):
         conn.write(payload)
     assert fake.written == []
+
+
+def test_write_does_not_log_raw_payload(caplog) -> None:
+    # Security regression: write() is the single funnel for every outgoing command, including the
+    # Dead Man's Switch unlock password (deadman_auth routes the user-typed secret straight through
+    # conn.write). The DEBUG TX log must NOT emit the raw command text, or a --log-file (or console)
+    # persists the crown-jewel secret verbatim. It may log only a non-sensitive byte-count summary.
+    conn, fake = _make_conn()
+    secret = "hunter2-dms-unlock-secret"
+    with caplog.at_level(logging.DEBUG, logger="src.core.serial_handler"):
+        conn.write(secret)
+    # The command still went out on the wire...
+    assert fake.written == [(secret + "\n").encode("utf-8")]
+    # ...but its plaintext must appear in NO log record.
+    assert secret not in caplog.text
+    # A non-sensitive summary is still emitted so TX is observable at DEBUG (byte count = payload + LF).
+    tx_records = [r for r in caplog.records if r.getMessage().startswith(f"TX [{conn.port}]")]
+    assert tx_records, "write() should still emit a DEBUG TX summary record"
+    assert str(len(secret) + 1) in tx_records[-1].getMessage()
 
 
 def test_write_without_serial_raises_runtime_error() -> None:

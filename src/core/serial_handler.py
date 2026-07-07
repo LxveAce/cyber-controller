@@ -234,7 +234,13 @@ class SerialConnection:
             try:
                 ser.write(payload)
                 ser.flush()
-                log.debug("TX [%s]: %s", self.port, data.strip())
+                # NEVER log the raw command text: write() is the single funnel for every outgoing
+                # command, including the Dead Man's Switch unlock password (deadman_auth routes the
+                # user-typed secret straight through conn.write). Emitting data.strip() at DEBUG would
+                # persist that crown-jewel secret verbatim to any --log-file (and the console), defeating
+                # deadman_auth's care to not retain it. Log only a non-sensitive byte-count summary — the
+                # same shape send_interrupt()/write_bytes() already use.
+                log.debug("TX [%s]: <%d bytes>", self.port, len(payload))
             except (serial.SerialException, OSError) as exc:
                 self._set_state(ConnectionState.ERROR)
                 self._emit_error(exc)

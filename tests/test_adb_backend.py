@@ -235,3 +235,37 @@ def test_run_adb_enforces_timeout_on_silent_child():
     assert elapsed < 10, "should return near the 1s timeout, not the child's 30s runtime"
     assert result["rc"] == -1, "the timeout path must return rc -1"
     assert any("timed out" in line.lower() for line in log), "must log a timeout"
+
+
+# ── secret redaction: admin password must never reach the on_line log sink ──
+def test_redacted_cmdline_masks_admin_password():
+    # RayHunter's network installer takes the device admin password on its argv.
+    # That argv is echoed to on_line (the UI/console log, which can be exported),
+    # so the password value must be masked in the display string.
+    args = ["/tmp/installer", "orbic", "--admin-password", "hunter2",
+            "--admin-ip", "192.168.1.1"]
+    line = adb._redacted_cmdline(args)
+    assert "hunter2" not in line, "cleartext admin password must not appear in the log line"
+    assert "--admin-password ***" in line, "the secret value must be masked"
+    # non-secret tokens are left intact
+    assert "orbic" in line
+    assert "--admin-ip 192.168.1.1" in line
+
+
+def test_redacted_cmdline_masks_trailing_password_value():
+    # Password as the last token (no trailing flags) must still be masked.
+    args = ["installer", "orbic", "--admin-password", "s3cr3t"]
+    assert adb._redacted_cmdline(args) == "$ installer orbic --admin-password ***"
+
+
+def test_run_adb_does_not_log_admin_password_end_to_end():
+    # _run_adb echoes the argv to on_line as its very first action. Feed it an argv
+    # shaped like the RayHunter network installer and assert the plaintext password
+    # never reaches the log sink. A trivial python child stands in for the installer
+    # so nothing real runs; it exits 0 immediately.
+    args = [sys.executable, "-c", "pass", "--admin-password", "hunter2"]
+    log = []
+    adb._run_adb(args, log.append, timeout=10)
+    joined = "\n".join(log)
+    assert "hunter2" not in joined, "plaintext admin password leaked to the on_line log sink"
+    assert "--admin-password ***" in joined, "the echoed argv must mask the password value"

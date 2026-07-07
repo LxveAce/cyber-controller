@@ -354,6 +354,28 @@ class NetworkTab(QWidget):
     def _run_target_action(self, action, port: str) -> None:
         if self._dm is None:
             return
+        # A target action (Deauth AP / Beacon Clone / Karma evil-twin) is a real attack send, so it must
+        # clear the SAME safety gate as _run_device_cmd — otherwise the experimental Network tab is a silent
+        # bypass that fires attack commands with no confirmation. Classify over the action's rendered
+        # command AND its pre-commands (worst wins), and floor an ATTACK-category action at lab-only so a
+        # keyword-free attack template is still gated.
+        from src.config.settings import load_settings
+        from src.core import safety
+        from src.models.action import ActionCategory
+        cmds = [getattr(action, "command_template", "") or ""]
+        cmds += list(getattr(action, "pre_commands", None) or [])
+        danger = safety.worst_of(*(safety.classify(c) for c in cmds))
+        if getattr(action, "category", None) == ActionCategory.ATTACK:
+            danger = safety.worst_of(danger, safety.LAB_ONLY)
+        if safety.should_confirm(danger, load_settings()):
+            from PyQt5.QtWidgets import QMessageBox
+            reply = QMessageBox.warning(
+                self, "Confirm dangerous command",
+                safety.lab_only_warning_text(getattr(action, "command_template", ""), danger),
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+            )
+            if reply != QMessageBox.Yes:
+                return
         try:
             from src.core.action_resolver import execute_action
             execute_action(action, port, self._dm)

@@ -133,3 +133,70 @@ def test_download_image_closes_response_on_http_error(tmp_path, monkeypatch):
     with pytest.raises(tails.requests.HTTPError):
         tails.download_image("https://download.tails.net/tails.img", str(tmp_path), _silent)
     assert resp.closed is True  # streamed body left unconsumed, but the socket was still closed
+
+
+# ── latest-version feed fetch must re-validate redirects against the allowlist ──
+#
+# try_fetch_latest validates only the initial feed URL, then (before the fix) let requests follow a
+# 302 anywhere with allow_redirects=True. A feed host that redirects latest.json to an
+# attacker/internal endpoint would (a) send the feed request there (SSRF) and (b) take the sha256 —
+# the SOLE integrity anchor when gpg is unavailable — verbatim from that endpoint. The image url is
+# re-checked (line 160), so the attacker keeps the real allowlisted .img url but swaps the sha.
+# download_image already re-validates every hop; the feed fetch must too.
+
+class _FeedResp:
+    def __init__(self, *, location=None, json_body=None):
+        self.is_redirect = location is not None
+        self.is_permanent_redirect = False
+        self.headers = {"Location": location} if location else {}
+        self._json = json_body
+        self.closed = False
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return self._json
+
+    def close(self):
+        self.closed = True
+
+
+def test_try_fetch_latest_refuses_offallowlist_feed_redirect(monkeypatch):
+    # Attacker feed keeps the real allowlisted .img url (so the line-160 recheck passes) but injects
+    # its OWN sha256. Following the off-allowlist redirect would return that attacker sha; the fix
+    # rejects the redirect first, so try_fetch_latest reports "unavailable" (None) instead.
+    attacker_feed = {
+        "version": "9.9",
+        "url": "https://download.tails.net/tails/stable/tails-amd64-9.9/tails-amd64-9.9.img",
+        "sha256": "e" * 64,
+    }
+    resp = _FeedResp(location="http://169.254.169.254/latest.json", json_body=attacker_feed)
+    monkeypatch.setattr(tails.requests, "get", lambda *a, **k: resp)
+    out = tails.try_fetch_latest(_silent)
+    assert out is None  # before the fix this returned the attacker-controlled sha256
+    assert resp.closed is True
+
+
+def test_try_fetch_latest_follows_allowlisted_redirect(monkeypatch):
+    # A redirect that STAYS on the allowlist is followed and the feed parsed (don't over-block).
+    good_feed = {
+        "version": "9.9",
+        "url": "https://download.tails.net/tails/stable/tails-amd64-9.9/tails-amd64-9.9.img",
+        "sha256": "f" * 64,
+    }
+    seq = [
+        _FeedResp(location="https://download.tails.net/install/v2/Tails/amd64/stable/latest.json"),
+        _FeedResp(json_body=good_feed),
+    ]
+    calls = {"n": 0}
+
+    def fake_get(*a, **k):
+        r = seq[calls["n"]]
+        calls["n"] += 1
+        return r
+
+    monkeypatch.setattr(tails.requests, "get", fake_get)
+    out = tails.try_fetch_latest(_silent)
+    assert out is not None and out["sha256"] == "f" * 64
+    assert calls["n"] == 2  # the allowlisted hop was actually followed

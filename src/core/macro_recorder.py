@@ -28,13 +28,22 @@ _SEEDED_LEDGER = ".seeded.json"
 # Command PREFIXES that mark a macro step as transmitting/disruptive and therefore needing the play-time
 # arm gate (§4.3). Grounded in the ATTACK-category TargetAction templates across src/protocols/*.py
 # (attack -d/-t …, beaconspam -r, blespam …, karma -s …, probe, AT+DEAUTHIDX…, subghz tx, nfc/rfid emulate,
-# startportal). Matched as case-insensitive PREFIXES on the whole step command — NOT exact first-token
-# equality, which let 'beaconspam -r', 'karma -s <ssid>', 'AT+DEAUTHIDX=ALL' and 'probe' bypass the gate
-# because their first token wasn't literally in the old verb list. This is a WARN/arm gate (always offers
-# "Yes, proceed"), so over-flagging a benign command is acceptable — MISSING a real attack is not.
+# startportal) PLUS the HaleHound offensive verbs whose attack keyword is a NON-leading token or uses a
+# different separator (wifi_deauth, ble_cinder, subghz_replay, mousejack, protokill, tag_disrupt — see
+# src/protocols/halehound.py). Matched as case-insensitive PREFIXES on the whole step command — NOT exact
+# first-token equality, which let 'beaconspam -r', 'karma -s <ssid>', 'AT+DEAUTHIDX=ALL' and 'probe' bypass
+# the gate because their first token wasn't literally in the old verb list. Because the underscore-joined
+# HaleHound verbs ('wifi_deauth' etc.) don't start with the bare keyword ('deauth'), each is listed here in
+# FULL so the prefix match fires. These are the same danger verbs ``src.core.safety`` flags as 'lab-only',
+# so the arm gate cannot silently disagree with the terminal's danger classifier. This is a WARN/arm gate
+# (always offers "Yes, proceed"), so over-flagging a benign command is acceptable — MISSING a real attack is
+# not.
 _ATTACK_PREFIXES = (
     "attack", "deauth", "at+deauth", "beacon", "blespam", "spam", "rickroll", "karma", "probe",
     "startportal", "evilportal", "sourapple", "jam", "subghz tx", "nfc emulate", "rfid emulate",
+    # HaleHound & underscore-joined offensive verbs the old first-token gate missed:
+    "wifi_deauth", "ble_cinder", "cinder", "subghz_replay", "replay", "mousejack", "protokill",
+    "tag_disrupt",
 )
 
 
@@ -48,8 +57,10 @@ def is_offensive_macro(macro: Macro) -> bool:
     """Return True if a macro transmits / can disrupt and therefore needs the play-time arm gate.
 
     Heuristic (spec §4.3): the ``device_protocol`` ends with ``-attack``, OR the name starts with
-    ``[TEMPLATE``, OR any step command starts with a known attack-command prefix. Pure logic (no Qt) so
-    it is unit testable and reusable by the UI play path.
+    ``[TEMPLATE``, OR any step command starts with a known attack-command prefix (``_ATTACK_PREFIXES``,
+    which now includes the underscore-joined HaleHound verbs — ``wifi_deauth``, ``ble_cinder``,
+    ``subghz_replay``, ``mousejack`` — whose embedded attack keyword the old bare-keyword list missed).
+    Pure logic (no Qt) so it is unit testable and reusable by the UI play path.
     """
     if macro.device_protocol.endswith("-attack"):
         return True

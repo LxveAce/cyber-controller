@@ -334,3 +334,70 @@ def test_download_closes_response_on_http_error(tmp_path, monkeypatch):
     with pytest.raises(oc.requests.HTTPError):
         oc.download("https://cdimage.kali.org/x.iso", str(tmp_path), _silent)
     assert resp.closed is True  # streamed body left unconsumed, but the socket was still closed
+
+
+# ── metadata GETs must re-validate redirects against the SSRF allowlist ──
+#
+# _http_get_text / _http_get_json back every online resolver (Kali SHA256SUMS, Arch feed JSON,
+# Parrot index + signed-hashes.txt). If they follow redirects with requests' default
+# allow_redirects=True, an allowlisted host that answers a 302 -> http://169.254.169.254/... (or any
+# off-allowlist URL) silently bounces the metadata fetch to that endpoint (SSRF) and its body is then
+# trusted as the SHA256SUMS/feed. download() already re-validates every hop; these must too.
+
+class _MetaResp:
+    def __init__(self, *, location=None, body="", json_body=None):
+        self.is_redirect = location is not None
+        self.is_permanent_redirect = False
+        self.headers = {"Location": location} if location else {}
+        self._body = body
+        self._json = json_body
+        self.closed = False
+
+    def raise_for_status(self):
+        pass
+
+    @property
+    def text(self):
+        return self._body
+
+    def json(self):
+        return self._json
+
+    def close(self):
+        self.closed = True
+
+
+def test_http_get_text_refuses_offallowlist_redirect(monkeypatch):
+    # 302 from an allowlisted metadata host to a link-local internal address must NOT be followed.
+    resp = _MetaResp(location="http://169.254.169.254/latest/meta-data/", body="ATTACKER-SHA256SUMS")
+    monkeypatch.setattr(oc.requests, "get", lambda *a, **k: resp)
+    with pytest.raises(ValueError):
+        oc._http_get_text("https://cdimage.kali.org/current/SHA256SUMS")
+    assert resp.closed is True  # socket released before the allowlist ValueError propagated
+
+
+def test_http_get_json_refuses_offallowlist_redirect(monkeypatch):
+    resp = _MetaResp(location="http://169.254.169.254/", json_body={"releases": [{"pwned": True}]})
+    monkeypatch.setattr(oc.requests, "get", lambda *a, **k: resp)
+    with pytest.raises(ValueError):
+        oc._http_get_json("https://archlinux.org/releng/releases/json/")
+    assert resp.closed is True
+
+
+def test_http_get_text_follows_allowlisted_redirect(monkeypatch):
+    # A redirect that STAYS on the allowlist is followed and its body returned (don't over-block).
+    seq = [
+        _MetaResp(location="https://kali.download/current/SHA256SUMS"),
+        _MetaResp(body="a" * 64 + "  kali-linux-2026.2-live-amd64.iso\n"),
+    ]
+    calls = {"n": 0}
+
+    def fake_get(*a, **k):
+        r = seq[calls["n"]]
+        calls["n"] += 1
+        return r
+
+    monkeypatch.setattr(oc.requests, "get", fake_get)
+    out = oc._http_get_text("https://cdimage.kali.org/current/SHA256SUMS")
+    assert "kali-linux-2026.2-live-amd64.iso" in out
+    assert calls["n"] == 2  # the allowlisted hop was actually followed

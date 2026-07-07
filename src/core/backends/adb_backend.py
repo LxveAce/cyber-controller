@@ -143,8 +143,32 @@ def _adb_argv(*args: str) -> List[str]:
     return [adb, *args]
 
 
+# Argv flags whose immediately-following value is a secret (e.g. a device admin
+# password). The value must never be echoed to the on_line sink, which the UI
+# surfaces and can export/persist to disk.
+_SECRET_ARG_FLAGS = frozenset({"--admin-password"})
+
+
+def _redacted_cmdline(args: List[str]) -> str:
+    """Build the '$ ...' log line for an argv, masking any value that follows a
+    known secret flag so cleartext credentials never reach on_line. Only the
+    display string is redacted; the real argv is still passed to the subprocess.
+    """
+    parts: List[str] = []
+    mask_next = False
+    for a in args:
+        if mask_next:
+            parts.append("***")
+            mask_next = False
+        else:
+            parts.append(a)
+            if a in _SECRET_ARG_FLAGS:
+                mask_next = True
+    return "$ " + " ".join(parts)
+
+
 def _run_adb(args: List[str], on_line: Line, timeout: int = 120) -> Tuple[int, str]:
-    on_line("$ " + " ".join(args))
+    on_line(_redacted_cmdline(args))
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                 stdin=subprocess.DEVNULL, text=True, bufsize=1)

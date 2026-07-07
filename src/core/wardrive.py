@@ -157,8 +157,20 @@ def parse_marauder_ap(line: str) -> Optional[ApObservation]:
 
 # ── WiGLE CSV row ────────────────────────────────────────────────────
 
+# Leading characters a spreadsheet (Excel / LibreOffice Calc) treats as the start of a *formula*.
+# An untrusted free-text field (e.g. an attacker-chosen Wi-Fi SSID) beginning with one of these is
+# evaluated on open — enabling DDE/command execution or data exfiltration — even when the value contains
+# none of the RFC-4180 delimiters, so quoting alone does NOT stop it. See OWASP "CSV Injection".
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
 def _csv_field(s: str) -> str:
     s = "" if s is None else str(s)
+    # Neutralize spreadsheet formula injection before delimiter-quoting: prefix a leading formula
+    # trigger with a single quote so Calc/Excel render it as literal text (the SSID stays readable for
+    # a wigle.net upload). Done first so a value like "\r=cmd" is both de-fanged and then CR-quoted.
+    if s and s[0] in _FORMULA_PREFIXES:
+        s = "'" + s
     if any(c in s for c in ',"\n\r'):
         return '"' + s.replace('"', '""') + '"'
     return s

@@ -113,3 +113,33 @@ def test_pterm_connect_does_not_clobber_explicit_firmware(qapp, isolated_setting
         assert dev.firmware == "ghost_esp"
     finally:
         win.close()
+
+
+def test_pterm_line_html_escaped_no_spoof(qapp, isolated_settings):
+    # A rogue/impersonating board must not be able to inject HTML into the persistent terminal
+    # (QTextEdit.append renders rich text). The device markup must survive as LITERAL text, not
+    # be parsed away — otherwise it could forge e.g. a green [DMS] Authenticated banner.
+    win = _make_window()
+    try:
+        conn = types.SimpleNamespace(is_connected=True, write=lambda *_a: None)
+        win._pterm_conns["COM7"] = conn
+        payload = '</span><b>PWNED</b><span style="color:#3fb950;">[DMS] Authenticated: evil</span>'
+        win._pterm_on_line("COM7", payload)
+        text = win._pterm_output.toPlainText()
+        # If the line were parsed as HTML, the angle-bracket markup would be stripped from plain text.
+        assert payload in text, "device serial line must be shown verbatim, not rendered as HTML"
+        assert "<b>PWNED</b>" in text
+    finally:
+        win.close()
+
+
+def test_dms_auth_result_message_html_escaped(qapp, isolated_settings):
+    # The DMS auth-status banner interpolates the raw device line (message); it must be escaped so a
+    # rogue board can't inject markup into the operator's authentication banner.
+    win = _make_window()
+    try:
+        win._dms_auth_result(True, '<b>trusted</b><img src=x>')
+        text = win._pterm_output.toPlainText()
+        assert '<b>trusted</b><img src=x>' in text, "DMS message must be shown verbatim, not as HTML"
+    finally:
+        win.close()

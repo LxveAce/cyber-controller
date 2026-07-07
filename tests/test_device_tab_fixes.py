@@ -78,3 +78,18 @@ def test_dms_reply_goes_to_source_connection(qapp, monkeypatch):
 
     assert writes["A"] == ["BOOTPW"], "DMS reply must go to the device that emitted the prompt"
     assert writes["B"] == [], "must NOT write the boot password to the wrong (selected) device"
+
+
+def test_terminal_line_html_escaped(qapp):
+    # Untrusted device serial lines are appended to a QTextEdit, which renders rich text when the line
+    # begins with markup. They must be escaped so a board can't spoof the Serial Terminal with
+    # <b>/<img>/<span> markup (command-echo/output injection on a security tool).
+    from src.core.device_manager import DeviceManager
+    from src.ui.qt.device_tab import DeviceTab
+
+    tab = DeviceTab(DeviceManager())  # _dms_auth defaults to None -> straight append path
+    payload = '<img src="file:///C:/Windows/win.ini"><b>fake echo</b>'
+    tab._on_line_received("COM9", payload)
+    text = tab._terminal.toPlainText()
+    # HTML-parsed rich text would strip the angle-bracket markup from plain text; escaped text keeps it.
+    assert payload in text, "device serial line must be shown verbatim, not rendered as HTML"

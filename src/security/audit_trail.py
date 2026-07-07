@@ -99,6 +99,22 @@ class AuditTrail:
 
     # ── Durable persistence (append-only JSONL) ──────────────────────
 
+    @staticmethod
+    def _harden_perms(path: Path) -> None:
+        """POSIX 0600 fallback for the owner-only guarantee (a no-op on Windows).
+
+        The owner-only promise in the class docstring is enforced two ways, mirroring every sibling
+        secret file (encrypted_storage.save, vault._save_hdr, web_auth): restrict_to_current_user()
+        sets the explicit NTFS ACL on Windows, and this chmod is the POSIX side. win_acl is a
+        documented no-op off Windows (win_acl.py:143), so WITHOUT this the persisted trail — which
+        holds web auth-fail/ok usernames plus flash/connect/serial-command records — is created
+        world-readable (umask 022 → 0644) and any second local account can read it.
+        """
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            pass  # best-effort on platforms without POSIX perms (Windows)
+
     def _init_persistence(self) -> None:
         """Load + verify any existing chain, then ensure the file is owner-only."""
         path = self._persist_path
@@ -122,7 +138,8 @@ class AuditTrail:
             else:
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.touch()
-            restrict_to_current_user(path)
+            self._harden_perms(path)        # POSIX 0600 (also fixes a legacy 0644 file on reload)
+            restrict_to_current_user(path)  # Windows owner-only NTFS ACL
         except Exception:
             # Never let a persistence problem prevent the app from running.
             log.exception("Audit persistence init failed for %s; continuing in-memory only", path)
@@ -155,13 +172,18 @@ class AuditTrail:
             # boundary (drops the torn tail) instead of gluing onto a newline-less partial line.
             data = "".join(json.dumps(asdict(e), separators=(",", ":")) + "\n" for e in entries)
             path.write_text(data, encoding="utf-8")
+            self._harden_perms(path)  # re-assert 0600 after rewriting the sensitive chain
 
     def _append_jsonl(self, entry: AuditEntry) -> None:
         if self._persist_path is None:
             return
         try:
             line = json.dumps(asdict(entry), separators=(",", ":"))
-            with self._persist_path.open("a", encoding="utf-8") as fh:
+            # O_CREAT with mode 0o600 so if the file is (re)created here it is owner-only from the
+            # first byte on POSIX; the mode is ignored when the file already exists. Mirrors
+            # encrypted_storage.save's os.open(...,0o600) — win_acl is a no-op off Windows.
+            fd = os.open(str(self._persist_path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+            with os.fdopen(fd, "a", encoding="utf-8") as fh:
                 fh.write(line + "\n")
                 fh.flush()
                 os.fsync(fh.fileno())  # shrink the torn-write window on a crash/power-loss

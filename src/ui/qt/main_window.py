@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import sys
 
@@ -1030,8 +1031,11 @@ class CyberControllerWindow(QMainWindow):
             if port not in getattr(self._device_tab, "_devtab_line_cbs", {}):
                 self._dms_auth.check_line(line, lambda pw: conn.write(pw))
         color = self._pterm_port_colors.get(port, "#3fb950")
+        # Device serial bytes are untrusted: QTextEdit.append() renders rich text (the leading <span>
+        # guarantees mightBeRichText), so escape the device line or a rogue board could forge markup
+        # (e.g. a fake green [DMS] Authenticated banner) in the operator's terminal.
         self._pterm_output.append(
-            f'<span style="color:{color};">[{port}]</span> {line}'
+            f'<span style="color:{color};">[{port}]</span> {html.escape(line)}'
         )
         # Also mirror to the device tab terminal if it has the port SELECTED but does NOT itself hold the
         # same shared connection — otherwise the device tab's own on_line callback already appended this
@@ -1042,7 +1046,7 @@ class CyberControllerWindow(QMainWindow):
             and hasattr(self._device_tab, '_terminal')
             and getattr(self._device_tab, '_active_conn', None) is not conn
         ):
-            self._device_tab._terminal.append(line)
+            self._device_tab._terminal.append(html.escape(line))
 
     # ── Dead Man's Switch auth UI ────────────────────────────────────
 
@@ -1072,15 +1076,18 @@ class CyberControllerWindow(QMainWindow):
 
     def _dms_auth_result(self, success: bool, message: str) -> None:
         """Handle DMS auth result — show in persistent terminal with coloring."""
+        # `message` is the raw device line (deadman_auth passes line.strip()); escape it so a rogue board
+        # can't inject markup into the auth-status banner it triggers.
+        safe = html.escape(message)
         if success:
             self._pterm_output.append(
                 f'<span style="color:#3fb950; font-weight:bold;">'
-                f'[DMS] Authenticated: {message}</span>'
+                f'[DMS] Authenticated: {safe}</span>'
             )
         else:
             self._pterm_output.append(
                 f'<span style="color:#f85149; font-weight:bold;">'
-                f'[DMS] Auth failed: {message}</span>'
+                f'[DMS] Auth failed: {safe}</span>'
             )
 
     # ── Sidebar helpers ──────────────────────────────────────────────

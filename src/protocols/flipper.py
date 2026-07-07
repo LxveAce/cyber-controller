@@ -30,9 +30,11 @@ _RE_SUBGHZ = re.compile(
     r"SubGhz:\s*Protocol:\s*(\w+)\s*\|.*?Key:\s*(\S+)\s*\|\s*Freq:\s*([\d.]+\s*MHz)"
 )
 
-# SubGHz with RSSI
+# SubGHz with RSSI. The RSSI capture is a real float shape (not a permissive [\d.] run) so a malformed
+# device line like "RSSI: 1.2.3" simply doesn't match — the subghz_found event still emits, just without
+# rssi — instead of matching and raising ValueError out of the unguarded int(float()) in parse_line.
 _RE_SUBGHZ_RSSI = re.compile(
-    r"SubGhz:.*Freq:\s*([\d.]+\s*MHz)\s*\|\s*RSSI:\s*(-?[\d.]+)"
+    r"SubGhz:.*Freq:\s*([\d.]+\s*MHz)\s*\|\s*RSSI:\s*(-?\d+(?:\.\d+)?)"
 )
 
 # NFC: Type: ... | UID: ...
