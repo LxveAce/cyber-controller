@@ -289,9 +289,12 @@ def disarm_duress_wipe() -> None:
     _locked_config_update(_disarm)
 
 
-def _secure_delete(path: Path) -> None:
-    """Best-effort secure delete: overwrite content then unlink. (Honest caveat: on SSDs with
-    wear-levelling/TRIM, overwrite is not a forensic guarantee — it destroys the live copy.)"""
+def _secure_delete(path: Path) -> bool:
+    """Best-effort secure delete: overwrite content then unlink. Returns True ONLY when the file is
+    verifiably gone afterwards — an anti-forensic control must never report a wipe it did not perform,
+    so a swallowed PermissionError (file held open / read-only) must surface as a False result to the
+    caller. (Honest caveat: on SSDs with wear-levelling/TRIM, overwrite is not a forensic guarantee —
+    it destroys the live copy.)"""
     try:
         if path.exists() and path.is_file():
             n = max(path.stat().st_size, 1)
@@ -309,29 +312,39 @@ def _secure_delete(path: Path) -> None:
             path.unlink()
         except OSError:
             pass
+    return not path.exists()
 
 
 def trigger_duress_wipe() -> bool:
     """Anti-forensic wipe of the app's OWN secrets (gate config + encrypted vault) on a duress
     failed-attempt threshold. Best-effort secure overwrite+delete; NEVER touches anything outside the
-    app's own data. Returns True if anything was wiped. Defeats casual/seizure access to the secrets,
-    NOT a forensic adversary on modern SSDs."""
+    app's own data. Returns True ONLY when every targeted secret is verifiably gone afterwards — a wipe
+    that could not destroy a file (held open, read-only, ACL) must NOT be reported as success, or the
+    owner is falsely told their secrets were destroyed while recoverable ciphertext remains on disk.
+    Defeats casual/seizure access to the secrets, NOT a forensic adversary on modern SSDs."""
     log.warning("Duress wipe triggered (failed-attempt threshold reached) — destroying app secrets.")
-    wiped = False
+    attempted = False   # did we target at least one existing secret?
+    all_gone = True     # is every targeted secret verifiably gone?
     try:
         from src.security import vault
         for p in (vault._data_path(), vault._hdr_path()):
             if Path(p).exists():
-                _secure_delete(Path(p))
-                wiped = True
+                attempted = True
+                if not _secure_delete(Path(p)):
+                    all_gone = False
+                    log.error("duress wipe: FAILED to destroy %s — secret may remain on disk", p)
     except Exception:
+        all_gone = False
         log.exception("duress wipe: vault destruction failed")
     try:
         cp = _config_path()
         if cp.exists():
-            _secure_delete(cp)
-            wiped = True
+            attempted = True
+            if not _secure_delete(cp):
+                all_gone = False
+                log.error("duress wipe: FAILED to destroy %s — secret may remain on disk", cp)
     except Exception:
+        all_gone = False
         log.exception("duress wipe: gate-config destruction failed")
     try:
         import shutil
@@ -339,12 +352,19 @@ def trigger_duress_wipe() -> bool:
         if secure_dir.exists():
             for p in secure_dir.rglob("*"):
                 if p.is_file():
-                    _secure_delete(p)
+                    attempted = True
+                    if not _secure_delete(p):
+                        all_gone = False
+                        log.error("duress wipe: FAILED to destroy %s — secret may remain on disk", p)
             shutil.rmtree(secure_dir, ignore_errors=True)
-            wiped = True
+            if secure_dir.exists():
+                all_gone = False
+                log.error("duress wipe: FAILED to remove secure container %s — secrets may remain", secure_dir)
     except Exception:
+        all_gone = False
         log.exception("duress wipe: secure-container destruction failed")
-    return wiped
+    # Truthful status: only claim a wipe when we actually targeted secrets AND all of them are gone.
+    return attempted and all_gone
 
 
 def is_configured() -> bool:

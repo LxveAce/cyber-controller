@@ -116,10 +116,30 @@ class BatchFlasher:
             profile = flasher_module.get_profile(job.profile_id)
 
             if job.erase_first:
+                # A requested wipe that fails or is skipped must FAIL the job — never continue
+                # silently. erase_first exists to clear residual NVS/SPIFFS/user data that a merged
+                # or app reflash does NOT overwrite, so flashing over a skipped/failed erase leaves
+                # stale data behind while the job would otherwise report a clean success. Mirror
+                # FlashEngine.erase: derive ok from the erase rc.
                 capture(f"[erase] Erasing flash on {job.port}...")
                 chip = flasher_module._detect_chip(job.port, capture)
-                if chip:
-                    flasher_module.erase(job.port, chip, capture)
+                if not chip:
+                    capture("[error] erase requested but chip not detected — refusing to reflash "
+                            "without the wipe")
+                    return FlashResult(
+                        port=job.port, profile_id=job.profile_id, success=False,
+                        error="erase skipped: chip not detected", log=log,
+                        duration_ms=int((time.monotonic() - start) * 1000),
+                    )
+                erase_rc = flasher_module.erase(job.port, chip, capture)
+                if erase_rc != 0:
+                    capture(f"[error] erase failed (exit {erase_rc}) — refusing to reflash over "
+                            "stale flash")
+                    return FlashResult(
+                        port=job.port, profile_id=job.profile_id, success=False,
+                        exit_code=erase_rc, error="erase failed", log=log,
+                        duration_ms=int((time.monotonic() - start) * 1000),
+                    )
 
             tag, assets = profile.latest_release()
             chip = flasher_module._detect_chip(job.port, capture)

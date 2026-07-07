@@ -8,6 +8,7 @@ and the orchestration wiring. No network, no real binary is ever touched.
 from __future__ import annotations
 
 import hashlib
+import os
 
 import pytest
 
@@ -118,6 +119,43 @@ def test_win_swap_script_content():
     assert 'move /Y "C:\\app\\new.exe" "C:\\app\\cur.exe"' in s  # swaps new over old
     assert 'start "" "C:\\app\\cur.exe"' in s              # relaunches
     assert 'del "%~f0"' in s                               # cleans itself up
+
+
+def test_win_swap_script_gates_move_failure_with_breadcrumb():
+    # A failed swap must NOT silently relaunch the stale exe as if it updated: the script gates on
+    # move's errorlevel and drops a breadcrumb the next launch reads.
+    cur, new = r"C:\app\cur.exe", r"C:\app\new.exe"
+    s = su.win_swap_script(4242, new, cur)
+    marker = su.failed_update_marker(cur)
+    assert "move /Y" in s
+    assert "if errorlevel 1" in s                           # the swap result is checked
+    tail = s.split("if errorlevel 1", 1)[1]
+    assert f'>"{marker}"' in tail                           # failed move writes a breadcrumb...
+    assert f'staged update left at "{new}"' in tail         # ...that records the orphaned .new
+    assert f'del "{marker}"' in tail                        # a successful move clears a stale one
+    assert f'start "" "{cur}"' in s                         # app still comes back
+    assert 'del "%~f0"' in s
+
+
+def test_failed_update_marker_roundtrip(tmp_path):
+    cur = tmp_path / "cyber-controller.exe"
+    cur.write_bytes(b"OLD")
+    assert su.read_failed_update(str(cur)) is None          # clean launch: nothing to report
+
+    # Simulate what the swap helper leaves behind on a failed move: a breadcrumb + orphaned .new.
+    marker = su.failed_update_marker(str(cur))
+    with open(marker, "w", encoding="ascii") as fh:
+        fh.write("update did not apply - could not replace the running binary.")
+    orphan = tmp_path / "cyber-controller-v9.9.9-windows-x64.exe.new"
+    orphan.write_bytes(b"NEW")
+
+    msg = su.read_failed_update(str(cur))                   # next launch surfaces the failure
+    assert msg is not None and "did not apply" in msg
+
+    su.clear_failed_update(str(cur))                        # acknowledging clears + sweeps leftovers
+    assert su.read_failed_update(str(cur)) is None
+    assert not os.path.exists(marker)
+    assert not orphan.exists()
 
 
 # ── frozen-build guard (destructive paths refuse on a source checkout) ────────────────────────────

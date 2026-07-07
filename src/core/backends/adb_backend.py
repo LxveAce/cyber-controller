@@ -679,7 +679,14 @@ def install_manual(daemon_binary_path: str, on_line: Line,
     # push config (only if not already present)
     rc, output = adb_shell(f"test -f {_DEVICE_CONFIG} && echo EXISTS || echo MISSING",
                            on_line, serial=serial)
-    if "MISSING" in output:
+    # The probe always exits 0 shell-side, so a non-zero rc — or output carrying
+    # neither token (e.g. "error: device offline" while the transport re-settles
+    # right after the big binary push) — means the probe itself failed and the
+    # config state is unknown. Only skip the push when the probe *cleanly* reports
+    # EXISTS; otherwise treat the config as absent and push it. Skipping on an
+    # indeterminate probe ships a daemon with no config.toml, which fails to start —
+    # a broken install reported as success.
+    if not (rc == 0 and "EXISTS" in output):
         on_line("[rayhunter] pushing default config...")
         config_tmp = os.path.join(tempfile.gettempdir(), "rayhunter_config.toml")
         config_rc = 0

@@ -119,8 +119,107 @@ def test_absent_gate_config_is_still_a_noop(temp_gate):
 def test_secure_delete_overwrites_and_removes(tmp_path):
     f = tmp_path / "secret.bin"
     f.write_bytes(b"sensitive-data" * 64)
-    pk._secure_delete(f)
+    assert pk._secure_delete(f) is True   # verifiably gone
     assert not f.exists()
+
+
+def test_secure_delete_reports_false_when_file_cannot_be_removed(tmp_path, monkeypatch):
+    """SEC wrong-success-on-error: a best-effort secure delete that cannot actually remove the file
+    (held open / read-only / ACL) must return False — it must NOT swallow the error and imply success.
+    An anti-forensic control has to be able to tell the caller the secret is still on disk."""
+    import pathlib
+
+    f = tmp_path / "secret.bin"
+    f.write_bytes(b"sensitive-data" * 64)
+
+    def _boom(*_a, **_k):
+        raise PermissionError("held open")
+
+    # Both the primary os.remove and the fallback path.unlink fail -> file survives.
+    monkeypatch.setattr(pk.os, "remove", _boom)
+    monkeypatch.setattr(pathlib.Path, "unlink", _boom)
+
+    assert pk._secure_delete(f) is False   # was None (falsely swallowed) before the fix
+    assert f.exists()                      # the file genuinely remains on disk
+
+
+def test_duress_wipe_reports_false_when_a_secret_survives(temp_gate, tmp_path, monkeypatch):
+    """SEC wrong-success-on-error: if a targeted secret cannot actually be destroyed (held open /
+    read-only / ACL), trigger_duress_wipe must return False and check_access must NOT announce a
+    'secure wipe'. Previously it flagged wiped=True unconditionally, so the owner was told their
+    secrets were destroyed while recoverable ciphertext was still on disk."""
+    import pathlib
+    from src.security import vault
+
+    data = tmp_path / "vault.enc"
+    data.write_bytes(b"ciphertext-that-must-not-survive" * 64)
+    hdr = tmp_path / "vault.hdr.json"  # absent -> skipped by the wipe
+    monkeypatch.setattr(vault, "_data_path", lambda: data)
+    monkeypatch.setattr(vault, "_hdr_path", lambda: hdr)
+
+    pk.set_admin_password("secret")   # gives _config_path() a real (removable) secret to target
+    pk.set_policy("password")
+
+    real_remove = pk.os.remove
+    real_unlink = pathlib.Path.unlink
+
+    def _blocked_remove(p, *a, **k):
+        if pathlib.Path(p) == data:
+            raise PermissionError("vault held open")
+        return real_remove(p, *a, **k)
+
+    def _blocked_unlink(self, *a, **k):
+        if pathlib.Path(self) == data:
+            raise PermissionError("vault held open")
+        return real_unlink(self, *a, **k)
+
+    monkeypatch.setattr(pk.os, "remove", _blocked_remove)
+    monkeypatch.setattr(pathlib.Path, "unlink", _blocked_unlink)
+
+    # Direct: the wipe of the still-locked vault must be reported as a failure, not a success.
+    assert pk.trigger_duress_wipe() is False
+    assert data.exists(), "the vault ciphertext could not be deleted (as set up)"
+
+
+def test_check_access_does_not_report_wipe_that_did_not_happen(temp_gate, tmp_path, monkeypatch):
+    """End-to-end repro of the finding: drive the failed-attempt threshold with a secret that cannot
+    be deleted. check_access must not return 'secure wipe triggered' (nor set wipe_triggered) while the
+    ciphertext is still on disk."""
+    import pathlib
+    from src.security import vault
+
+    data = tmp_path / "vault.enc"
+    data.write_bytes(b"ciphertext" * 128)
+    hdr = tmp_path / "vault.hdr.json"
+    monkeypatch.setattr(vault, "_data_path", lambda: data)
+    monkeypatch.setattr(vault, "_hdr_path", lambda: hdr)
+
+    pk.set_admin_password("secret")
+    pk.set_policy("password")
+    pk.set_wipe_on_failures(3)
+
+    real_remove = pk.os.remove
+    real_unlink = pathlib.Path.unlink
+
+    def _blocked_remove(p, *a, **k):
+        if pathlib.Path(p) == data:
+            raise PermissionError("vault held open")
+        return real_remove(p, *a, **k)
+
+    def _blocked_unlink(self, *a, **k):
+        if pathlib.Path(self) == data:
+            raise PermissionError("vault held open")
+        return real_unlink(self, *a, **k)
+
+    monkeypatch.setattr(pk.os, "remove", _blocked_remove)
+    monkeypatch.setattr(pathlib.Path, "unlink", _blocked_unlink)
+
+    results = [pk.check_access(password="wrong") for _ in range(3)]
+    last_ok, last_reason = results[-1]
+
+    assert last_ok is False
+    assert data.exists(), "the vault ciphertext survived the blocked delete"
+    assert "wipe" not in last_reason.lower(), "must not claim a secure wipe that did not happen"
 
 
 def test_console_waits_for_key_under_default_both_policy(temp_gate, tmp_path, monkeypatch):

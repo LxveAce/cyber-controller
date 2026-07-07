@@ -45,10 +45,20 @@ class CydResult:
     variant: str = ""            # marauder variant key ("" when not a CYD)
     label: str = ""              # human label for variant
     ldr: int = -1
+    responded: bool = False      # True only when a parseable probe report block was actually seen
     raw: str = ""                # the parsed probe block, for the log / bug reports
 
     @property
     def summary(self) -> str:
+        # A read that never produced a probe report block is NOT proof of a bare ESP32 — the board
+        # may not be running the probe, or the reset/report window was missed (CH340 re-enumeration,
+        # an adapter without control lines). Reporting that as a confident "bare ESP32" would defeat
+        # the safeguard, so surface it as a distinct "no response" outcome instead of a false negative.
+        if not self.responded:
+            return (
+                "No response from the detection probe — the board emitted no readable report. "
+                "Re-flash the probe and retry (this is NOT a confirmed bare ESP32)."
+            )
         if not self.is_cyd:
             return "No CYD display detected on this board (looks like a bare ESP32)."
         return f"Detected {self.label or self.variant}  —  confidence: {self.confidence}"
@@ -62,6 +72,7 @@ def _grab(text: str, pattern: str, default: str = "") -> str:
 def parse_report(raw: str) -> CydResult:
     """Parse the probe's serial output into a CydResult, using the last complete report block."""
     blocks = [b for b in raw.split("=====CYD_PROBE=====") if "CYD=" in b]
+    responded = bool(blocks)  # no CYD= block means the probe never reported — can't judge the panel
     block = blocks[-1] if blocks else raw
     is_cyd = _grab(block, r"CYD=(\w+)") == "yes"
     conf = _grab(block, r"CONF=(\w+)", "none")
@@ -80,6 +91,7 @@ def parse_report(raw: str) -> CydResult:
         variant=variant,
         label=VARIANT_LABELS.get(variant, variant),
         ldr=ldr,
+        responded=responded,
         raw=block.strip(),
     )
 

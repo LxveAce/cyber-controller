@@ -92,6 +92,40 @@ def test_macro_refuses_plaintext_when_enabled_but_locked(tmp_path, monkeypatch):
     assert not md.exists() or not any(md.glob("*.json"))  # nothing leaked in cleartext
 
 
+def test_list_skips_malformed_plaintext_macros(tmp_path, monkeypatch):
+    """One corrupt/wrong-shape *.json in the macros dir must NOT crash the whole listing — the
+    bad file is skipped and the good ones still list. Regression for the too-narrow except that
+    only caught (json.JSONDecodeError, OSError) while the body raised AttributeError/TypeError."""
+    monkeypatch.setattr(ss, "_DIR", tmp_path / "secure")
+    monkeypatch.setattr(ss, "enabled", lambda: False)  # plaintext fallback, no secure listing
+    monkeypatch.setattr(access_gate, "get_current_vault", lambda: None)
+
+    rec = MacroRecorder(macros_dir=tmp_path / "macros")
+    good = rec.save_macro(Macro(name="Good", steps=[MacroStep(command="scanap")]))
+    assert good.suffix == ".json"
+
+    md = tmp_path / "macros"
+    # valid JSON but a bare array -> data.get(...) would raise AttributeError
+    (md / "bad_array.json").write_text("[]", encoding="utf-8")
+    # object with a non-list steps -> len(5) would raise TypeError
+    (md / "bad_steps.json").write_text('{"name":"x","steps":5}', encoding="utf-8")
+    # not even JSON -> JSONDecodeError (already handled, kept to prove the loop keeps going)
+    (md / "not_json.json").write_text("{not json", encoding="utf-8")
+
+    listed = rec.list_saved_macros()  # must not raise (pre-fix this raised AttributeError/TypeError)
+
+    by_name = {x["name"]: x for x in listed}
+    # the good macro still lists correctly despite the bad neighbours
+    assert "Good" in by_name
+    assert by_name["Good"]["step_count"] == 1
+    # a non-object file (bare array) can't be represented as a macro -> skipped entirely
+    assert not any(x["path"].endswith("bad_array.json") for x in listed)
+    # a dict with a non-list steps is salvaged, never crashes: step_count coerced to 0
+    assert all(isinstance(x["step_count"], int) for x in listed)
+    salvaged = [x for x in listed if x["path"].endswith("bad_steps.json")]
+    assert all(x["step_count"] == 0 for x in salvaged)
+
+
 def test_enabled_fails_closed_on_settings_error(monkeypatch):
     """SEC-B1: an unexpected settings-read error must not be swallowed into False (which would
     silently permit a plaintext downgrade); enabled() re-raises so callers fail closed."""

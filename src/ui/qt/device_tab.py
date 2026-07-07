@@ -645,13 +645,28 @@ class DeviceTab(QWidget):
     @staticmethod
     def _bj_http_request(method: str, url: str, body) -> int:
         """Generic HTTP delivery to the device's own web UI (endpoints come from the user's control map;
-        nothing jammer-specific is shipped). Returns the HTTP status."""
+        nothing jammer-specific is shipped). Returns the HTTP status.
+
+        Fail-safe: a transport failure (device unreachable / joined the wrong network / timeout) is
+        translated to ``ControlUnavailable`` — the same contract ``HttpTransport.send`` uses for a
+        non-2xx status. Letting a raw ``URLError``/``OSError`` escape here would propagate out of the
+        Qt clicked-slot (``_bj_stop`` / ``_bj_set_mode``); with no ``sys.excepthook`` installed PyQt
+        aborts the whole app, so the safety STOP button would crash instead of showing the
+        'cut power / press the device button / set Idle in the web UI' guidance."""
+        import urllib.error
         import urllib.request
 
         data = body.encode() if isinstance(body, str) else body
         req = urllib.request.Request(url, data=data, method=method)  # noqa: S310 - user-supplied LAN endpoint
-        with urllib.request.urlopen(req, timeout=4) as resp:  # noqa: S310
-            return int(getattr(resp, "status", 200) or 200)
+        try:
+            with urllib.request.urlopen(req, timeout=4) as resp:  # noqa: S310
+                return int(getattr(resp, "status", 200) or 200)
+        except urllib.error.HTTPError as exc:
+            # A real HTTP response carrying a non-2xx status — hand the code back so HttpTransport.send
+            # reports it ("web UI returned HTTP <status>") rather than masking a reachable-but-erroring device.
+            return int(getattr(exc, "code", 0) or 0)
+        except OSError as exc:  # URLError (unreachable/DNS), socket.timeout (TimeoutError), ConnectionError, ...
+            raise ControlUnavailable(f"device web UI unreachable at {url} ({exc})") from exc
 
     def _bj_on_event(self, kind: str, mode: "Mode", transport: str) -> None:
         self._terminal.append(f"[BlueJammer {kind}: {mode.value} via {transport}]")

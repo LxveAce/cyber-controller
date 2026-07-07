@@ -500,10 +500,13 @@ class MacroRecorder:
                     continue  # skip metadata dotfiles (e.g. the .seeded.json seed ledger)
                 try:
                     data = json.loads(f.read_text(encoding="utf-8"))
+                    if not isinstance(data, dict):
+                        continue  # valid JSON but not a macro object (e.g. a bare array) — skip
+                    steps = data.get("steps")
                     macros.append({
                         "name": data.get("name", f.stem),
                         "path": str(f),
-                        "step_count": len(data.get("steps", [])),
+                        "step_count": len(steps) if isinstance(steps, list) else 0,
                         "protocol": data.get("device_protocol", ""),
                         "created_at": data.get("created_at", ""),
                         "secured": False,
@@ -518,12 +521,13 @@ class MacroRecorder:
                     data = secure_store.load("macros", name)
                 except Exception:
                     continue  # tampered/unreadable entry — skip from the listing
-                if not data:
-                    continue
+                if not data or not isinstance(data, dict):
+                    continue  # empty/unreadable or not a macro object — skip
+                steps = data.get("steps")
                 macros.append({
                     "name": data.get("name", name),
                     "path": str(secure_store.entry_path("macros", name)),
-                    "step_count": len(data.get("steps", [])),
+                    "step_count": len(steps) if isinstance(steps, list) else 0,
                     "protocol": data.get("device_protocol", ""),
                     "created_at": data.get("created_at", ""),
                     "secured": True,

@@ -27,6 +27,7 @@ replaced live while running (the kernel holds the old inode), so we swap in plac
 
 from __future__ import annotations
 
+import glob
 import hashlib
 import logging
 import os
@@ -201,13 +202,47 @@ _DETACHED = (
 )
 
 
+def failed_update_marker(cur_exe: str | None = None) -> str:
+    """Path of the breadcrumb the swap helper drops beside the exe when the swap fails. Read on the
+    next launch (:func:`read_failed_update`) so a silently-failed update surfaces instead of the app
+    quietly coming back on the old build."""
+    exe = cur_exe if cur_exe is not None else current_exe()
+    return exe + ".update-failed"
+
+
+def read_failed_update(cur_exe: str | None = None) -> str | None:
+    """The breadcrumb's message if a previous swap failed, else None. The app calls this at startup
+    to tell the user 'the update did not apply' rather than pretending it installed."""
+    try:
+        with open(failed_update_marker(cur_exe), "r", encoding="ascii", errors="replace") as fh:
+            return fh.read().strip() or None
+    except OSError:
+        return None
+
+
+def clear_failed_update(cur_exe: str | None = None) -> None:
+    """Dismiss the breadcrumb and sweep the orphaned ``*.new`` staged binaries left beside the exe by
+    a failed swap, so a reported failure can be acknowledged and the leftovers don't linger forever."""
+    exe = cur_exe if cur_exe is not None else current_exe()
+    _quiet_remove(failed_update_marker(exe))
+    for orphan in glob.glob(os.path.join(os.path.dirname(exe), "*.new")):
+        _quiet_remove(orphan)
+
+
 def win_swap_script(pid: int, new_exe: str, cur_exe: str) -> str:
     """The helper batch that waits for our PID to exit, swaps the new binary over the old,
     relaunches, then deletes itself. Kept pure (returns the text) so it's tested without running.
 
     The wait loop leans on ``tasklist | find "<pid>"``: while the PID is listed the loop sleeps ~1s
     via ``ping`` (no dependency on ``timeout.exe``, unavailable to a detached, console-less child);
-    once the process is gone ``find`` fails and we fall through to the swap."""
+    once the process is gone ``find`` fails and we fall through to the swap.
+
+    The swap is gated on ``move``'s ``errorlevel``: if the rename fails (exe dir not writable by a
+    non-elevated user, an AV/lock on the just-released binary), we DO NOT pretend the update took —
+    we drop a breadcrumb (:func:`failed_update_marker`) the next launch reads and leave the verified
+    ``*.new`` in place, then still relaunch the old exe so the app comes back. Only a successful move
+    clears any stale breadcrumb."""
+    marker = failed_update_marker(cur_exe)
     return (
         "@echo off\r\n"
         ":wait\r\n"
@@ -217,6 +252,12 @@ def win_swap_script(pid: int, new_exe: str, cur_exe: str) -> str:
         "  goto wait\r\n"
         ")\r\n"
         f'move /Y "{new_exe}" "{cur_exe}" >nul\r\n'
+        "if errorlevel 1 (\r\n"
+        f'  >"{marker}" echo update did not apply - could not replace the running binary. '
+        f'staged update left at "{new_exe}"\r\n'
+        ") else (\r\n"
+        f'  del "{marker}" >nul 2>nul\r\n'
+        ")\r\n"
         f'start "" "{cur_exe}"\r\n'
         'del "%~f0"\r\n'
     )

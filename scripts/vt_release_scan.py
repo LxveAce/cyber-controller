@@ -24,6 +24,14 @@ import requests
 BEGIN, END = "<!-- VT:BEGIN -->", "<!-- VT:END -->"
 
 
+class VTError(RuntimeError):
+    """A VirusTotal request failed for real (auth / server / rate-limit) — not merely 'no data yet'.
+
+    Raised so a broken secret or outage fails the release loudly instead of being coerced into an
+    innocuous-looking 'scan pending' row.
+    """
+
+
 def sha256(path: str) -> str:
     h = hashlib.sha256()
     with open(path, "rb") as f:
@@ -46,7 +54,9 @@ def api(method: str, url: str, key: str, **kw):
             time.sleep(35)
             continue
         return r
-    return r
+    # Retries exhausted on a persistent 429: this is a real failure, not success. Surface it
+    # instead of returning the last rate-limited response (which callers would misread as data).
+    raise VTError(f"{method} {url} still rate-limited (HTTP 429) after retries")
 
 
 def stats_for(path: str, key: str):
@@ -60,10 +70,15 @@ def stats_for(path: str, key: str):
             aid = api("POST", uu, key, files={"file": (os.path.basename(path), fh)}, timeout=600).json()["data"]["id"]
         for _ in range(60):
             time.sleep(20)
-            j = api("GET", f"https://www.virustotal.com/api/v3/analyses/{aid}", key).json()
-            if j.get("data", {}).get("attributes", {}).get("status") == "completed":
-                return sha, j["data"]["attributes"]["stats"]
-    return sha, None
+            ra = api("GET", f"https://www.virustotal.com/api/v3/analyses/{aid}", key)
+            if ra.status_code != 200:  # poll itself errored (auth expired / server) — don't mask as pending
+                raise VTError(f"analysis poll for {os.path.basename(path)} failed: HTTP {ra.status_code}")
+            if ra.json().get("data", {}).get("attributes", {}).get("status") == "completed":
+                return sha, ra.json()["data"]["attributes"]["stats"]
+        # Upload succeeded but the analysis is still running after the poll window: genuinely pending.
+        return sha, None
+    # Any other status (401/403 bad-or-expired key, 5xx outage, …) is a real failure, not 'no data yet'.
+    raise VTError(f"VirusTotal lookup for {os.path.basename(path)} failed: HTTP {r.status_code}")
 
 
 def main() -> int:
@@ -81,9 +96,20 @@ def main() -> int:
         if not f.endswith(".sha256") and not f.endswith(".txt")
     )
     rows = []
+    failed = False
     for f in files:
-        sha, st = stats_for(f, key)
         name = os.path.basename(f)
+        try:
+            sha, st = stats_for(f, key)
+        except VTError as e:
+            # A real failure (bad/expired key, outage, rate-limit exhaustion). Record it as a
+            # clearly-labeled FAILED row and fail the step — do NOT dress it up as 'scan pending'.
+            failed = True
+            link = f"https://www.virustotal.com/gui/file/{sha256(f)}"
+            rows.append(f"| `{name}` | **scan FAILED** | [report]({link}) |")
+            print(f"{name}: SCAN FAILED — {e}", file=sys.stderr, flush=True)
+            time.sleep(16)
+            continue
         link = f"https://www.virustotal.com/gui/file/{sha}"
         if st is None:
             rows.append(f"| `{name}` | _scan pending_ | [report]({link}) |")
@@ -111,6 +137,12 @@ def main() -> int:
         fh.write(new_body)
     subprocess.run(["gh", "release", "edit", tag, "--notes-file", "_vt_body.md"], check=True)
     print(f"VirusTotal section updated on release {tag}.")
+    if failed:
+        # At least one binary could not be scanned. The notes carry honest 'scan FAILED' rows;
+        # exit nonzero so the release step fails loudly (e.g. a revoked VT_API_KEY) instead of
+        # silently publishing a VirusTotal section that never actually scanned anything.
+        print("One or more binaries could not be scanned — failing the release step.", file=sys.stderr)
+        return 1
     return 0
 
 

@@ -175,3 +175,65 @@ def test_loaded_validated_map_sends_stop(qapp, monkeypatch):
     tab._bj_stop()
     assert sent and sent[0][0] == "POST" and sent[0][1].endswith("/mode")
     assert "stop sent" in tab._bj_status.text().lower()
+
+
+# ── transport-unreachable fail-safe (regression: safety button must not crash the app) ───────────
+
+def test_bj_http_request_translates_transport_error_to_control_unavailable(qapp, monkeypatch):
+    """The HTTP boundary must translate a raw transport failure (URLError/OSError/timeout) into
+    ControlUnavailable — the same contract HttpTransport.send uses for a non-2xx status — instead of
+    letting the raw exception leak up into a Qt clicked-slot (which, with no sys.excepthook, aborts
+    the whole app)."""
+    import urllib.error
+    import urllib.request
+    from src.core.bluejammer_control import ControlUnavailable
+    from src.ui.qt.device_tab import DeviceTab
+
+    def _boom(*a, **k):
+        raise urllib.error.URLError("Network is unreachable")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    with pytest.raises(ControlUnavailable):
+        DeviceTab._bj_http_request("POST", "http://192.168.1.1/mode", "idle")
+
+
+def test_stop_with_validated_map_but_unreachable_device_is_safe(qapp, monkeypatch):
+    """Regression for the safety-critical STOP: with a validated map, if the device is unreachable
+    (wrong network / timeout) urlopen raises URLError. STOP must NOT raise out of the Qt slot — it must
+    surface the fail-safe 'cut power / web UI' guidance."""
+    import urllib.error
+    import urllib.request
+    from src.core.bluejammer_control import ControlMap, Mode
+
+    def _boom(*a, **k):
+        raise urllib.error.URLError("Network is unreachable")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _boom)
+    tab = _tab()
+    tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
+    tab._bj_build_controller()
+    tab._bj_stop()  # must NOT raise (pre-fix: URLError escapes the slot)
+    assert "unavailable" in tab._bj_status.text().lower()
+    assert "web ui" in tab._bj_status.text().lower()
+
+
+def test_arm_with_validated_map_but_unreachable_device_is_safe(qapp, monkeypatch):
+    """Regression mirror of STOP for arming: attested + confirmed + validated map, but the device is
+    unreachable (socket timeout). _bj_set_mode must NOT raise out of the Qt slot — it must surface the
+    recoverable fail-safe status instead of aborting the app."""
+    import socket
+    import urllib.request
+    from PyQt5.QtWidgets import QMessageBox
+    from src.core.bluejammer_control import ControlMap, Mode
+
+    def _timeout(*a, **k):
+        raise socket.timeout("timed out")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _timeout)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    tab = _tab()
+    tab._bj_attest.setChecked(True)
+    tab._bj_map = ControlMap(http_calls={Mode.WIFI: ("POST", "/mode", "wifi")}, validated=True)
+    tab._bj_build_controller()
+    tab._bj_set_mode(Mode.WIFI)  # must NOT raise (pre-fix: socket.timeout escapes both except clauses)
+    assert "unavailable" in tab._bj_status.text().lower()

@@ -110,3 +110,118 @@ def test_stats_for_reuploads_full_file_after_rate_limit(monkeypatch, tmp_path):
         "the upload stream was not rewound before the retry"
     )
     assert stats == {"malicious": 0, "suspicious": 0, "undetected": 70, "harmless": 5}
+
+
+# ── silent-failure defect: real VT failures must NOT be coerced into 'scan pending' ────────────────
+#
+# ``stats_for`` used to fall through to ``return sha, None`` for EVERY non-200/404 status, and
+# ``api`` used to ``return r`` after exhausting its 429 retries. So an expired/wrong key (401/403),
+# a 5xx outage, or persistent rate-limiting all produced ``(sha, None)`` — rendered as an innocuous
+# ``_scan pending_`` row while the release still exited 0. These tests pin the fix: a genuine failure
+# raises ``VTError`` (loud), while a legitimately-still-running analysis stays ``None`` (pending).
+
+
+def test_api_raises_on_persistent_rate_limit(monkeypatch):
+    """8 straight 429s is exhaustion, not success — api() must raise, not return the 429 response."""
+    def fake_request(method, url, headers=None, timeout=None, **kw):
+        return _Resp(429)
+
+    monkeypatch.setattr(vt.requests, "request", fake_request)
+
+    with pytest.raises(vt.VTError):
+        vt.api("GET", "https://vt.example/x", "KEY")
+
+
+def test_stats_for_raises_on_auth_error(monkeypatch, tmp_path):
+    """A 401 from a wrong/expired key is a real failure — must raise, not return (sha, None)."""
+    binpath = tmp_path / "cyber-controller-linux-x64"
+    binpath.write_bytes(b"BINARY")
+
+    def fake_request(method, url, headers=None, timeout=None, **kw):
+        return _Resp(401)  # bad/expired/under-permissioned key
+
+    monkeypatch.setattr(vt.requests, "request", fake_request)
+
+    with pytest.raises(vt.VTError):
+        vt.stats_for(str(binpath), "BAD-KEY")
+
+
+def test_stats_for_raises_when_poll_errors(monkeypatch, tmp_path):
+    """A 404 takes the upload path; if the analysis POLL then errors (5xx), that is a failure,
+    not a pending scan — the loop must raise rather than spin out and return None."""
+    binpath = tmp_path / "cyber-controller-linux-x64"
+    binpath.write_bytes(b"FRESH-BINARY")
+
+    def fake_request(method, url, headers=None, timeout=None, **kw):
+        if method == "GET" and url.endswith("/files/upload_url"):
+            return _Resp(200, {"data": "https://upload.example/slot"})
+        if method == "GET" and "/files/" in url:
+            return _Resp(404)  # not seen yet -> upload branch
+        if method == "POST":
+            return _Resp(200, {"data": {"id": "analysis-xyz"}})
+        if method == "GET" and "/analyses/" in url:
+            return _Resp(500)  # backend hiccup while polling
+        raise AssertionError(f"unexpected request: {method} {url}")
+
+    monkeypatch.setattr(vt.requests, "request", fake_request)
+
+    with pytest.raises(vt.VTError):
+        vt.stats_for(str(binpath), "KEY")
+
+
+def test_stats_for_returns_pending_when_analysis_still_running(monkeypatch, tmp_path):
+    """The one legitimate None: upload succeeded but the analysis never reaches 'completed'
+    within the poll window. This must stay a genuine 'pending' (None), not raise."""
+    binpath = tmp_path / "cyber-controller-linux-x64"
+    binpath.write_bytes(b"FRESH-BINARY")
+
+    def fake_request(method, url, headers=None, timeout=None, **kw):
+        if method == "GET" and url.endswith("/files/upload_url"):
+            return _Resp(200, {"data": "https://upload.example/slot"})
+        if method == "GET" and "/files/" in url:
+            return _Resp(404)
+        if method == "POST":
+            return _Resp(200, {"data": {"id": "analysis-xyz"}})
+        if method == "GET" and "/analyses/" in url:
+            return _Resp(200, {"data": {"attributes": {"status": "queued"}}})  # never completes
+        raise AssertionError(f"unexpected request: {method} {url}")
+
+    monkeypatch.setattr(vt.requests, "request", fake_request)
+
+    sha, stats = vt.stats_for(str(binpath), "KEY")
+    assert stats is None, "a still-running analysis is legitimately pending, not a failure"
+
+
+class _FakeCompleted:
+    def __init__(self, stdout=""):
+        self.stdout = stdout
+
+
+def test_main_fails_loudly_on_scan_error(monkeypatch, tmp_path):
+    """End-to-end: an auth failure must make main() exit nonzero and write a 'scan FAILED' row —
+    NOT publish a '_scan pending_' section and return 0."""
+    bindir = tmp_path / "dist"
+    bindir.mkdir()
+    (bindir / "cyber-controller-linux-x64").write_bytes(b"BINARY-CONTENT")
+
+    def fake_request(method, url, headers=None, timeout=None, **kw):
+        return _Resp(401)  # revoked VT_API_KEY: every file lookup 401s
+
+    monkeypatch.setattr(vt.requests, "request", fake_request)
+
+    def fake_run(cmd, *a, **kw):
+        if "view" in cmd:
+            return _FakeCompleted(stdout="existing release notes\n")
+        return _FakeCompleted()  # the `gh release edit` call
+
+    monkeypatch.setattr(vt.subprocess, "run", fake_run)
+    monkeypatch.setenv("VT_API_KEY", "revoked-key")
+    monkeypatch.setattr(vt.sys, "argv", ["vt_release_scan.py", "v9.9.9", str(bindir)])
+    monkeypatch.chdir(tmp_path)  # main() writes _vt_body.md into cwd
+
+    rc = vt.main()
+
+    assert rc != 0, "a scan that could not be established must fail the release step (nonzero exit)"
+    written = (tmp_path / "_vt_body.md").read_text(encoding="utf-8")
+    assert "scan FAILED" in written, "the failed file must be labeled FAILED in the notes"
+    assert "_scan pending_" not in written, "a real auth failure must not masquerade as 'pending'"

@@ -316,6 +316,11 @@ class MacroTab(QWidget):
                 self._display_macro(self._current_macro)
             except Exception as exc:
                 log.error("Failed to load macro: %s", exc)
+                # Never leave the previously loaded macro silently armed for Play:
+                # surface the failure (mirroring _on_load_file) and clear stale state.
+                self._current_macro = None
+                self._clear_display()
+                QMessageBox.warning(self, "Load Error", f"Failed to load macro:\n{exc}")
 
     def _on_load_file(self) -> None:
         path, _ = QFileDialog.getOpenFileName(

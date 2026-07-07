@@ -103,11 +103,13 @@ def test_adb_profiles_has_rayhunter():
 
 
 # ── install_manual: partial-push failures must NOT report success ──────────
-def _stub_manual_env(monkeypatch, tmp_path, push, config_exists=True):
+def _stub_manual_env(monkeypatch, tmp_path, push, config_exists=True, probe_reply=None):
     """Wire install_manual with a real daemon file, a canned adb_shell, and *push*.
 
     adb_shell answers the 'test -f config' probe with EXISTS/MISSING so we can steer
     whether the config push is attempted; all other shell calls succeed (rc 0).
+    Pass ``probe_reply=(rc, output)`` to override that probe answer directly (e.g. to
+    simulate a transiently failed probe that reports neither token).
     """
     daemon = tmp_path / "rayhunter-daemon"
     daemon.write_bytes(b"\x7fELF fake daemon")
@@ -115,7 +117,9 @@ def _stub_manual_env(monkeypatch, tmp_path, push, config_exists=True):
     marker = "EXISTS" if config_exists else "MISSING"
 
     def fake_shell(command, on_line, serial=None):
-        return (0, marker) if "test -f" in command else (0, "")
+        if "test -f" in command:
+            return probe_reply if probe_reply is not None else (0, marker)
+        return (0, "")
 
     monkeypatch.setattr(adb, "adb_shell", fake_shell)
     monkeypatch.setattr(adb, "adb_push", push)
@@ -155,3 +159,40 @@ def test_install_manual_success_when_all_pushes_ok(monkeypatch, tmp_path):
     rc = adb.install_manual(daemon, log.append, serial="X")
     assert rc == 0
     assert "complete" in "\n".join(log).lower()
+
+
+def test_install_manual_pushes_config_when_probe_indeterminate(monkeypatch, tmp_path):
+    # The 'test -f config' probe transiently fails (rc != 0, "error: device offline") so its
+    # output carries neither EXISTS nor MISSING — common while the transport re-settles right
+    # after the big binary push. The config state is UNKNOWN, so the install must push the
+    # default config rather than assume it exists. Pre-fix, the missing "MISSING" token routed
+    # control into the 'skip' branch and the config was never pushed.
+    pushed = []
+
+    def push(local, remote, on_line, serial=None):
+        pushed.append(remote)
+        return 0
+
+    daemon = _stub_manual_env(monkeypatch, tmp_path, push,
+                              probe_reply=(1, "error: device offline"))
+    log = []
+    rc = adb.install_manual(daemon, log.append, serial="X")
+    assert rc == 0
+    assert adb._DEVICE_CONFIG in pushed, "an indeterminate probe must push the config, not skip it"
+    assert "skipping" not in "\n".join(log).lower()
+
+
+def test_install_manual_indeterminate_probe_config_push_failure_propagates(monkeypatch, tmp_path):
+    # Same indeterminate probe, but the config push then fails. Pre-fix the probe was mis-read
+    # as 'exists', the config push was skipped, and install_manual returned 0 — a broken install
+    # (no config.toml, daemon can't start) reported as success. Now the config is pushed, the
+    # failure surfaces, and rc is non-zero.
+    def push(local, remote, on_line, serial=None):
+        return 4 if remote == adb._DEVICE_CONFIG else 0
+
+    daemon = _stub_manual_env(monkeypatch, tmp_path, push,
+                              probe_reply=(1, "error: device offline"))
+    log = []
+    rc = adb.install_manual(daemon, log.append, serial="X")
+    assert rc == 4, "a failed config push after an indeterminate probe must not report success"
+    assert "complete" not in "\n".join(log).lower()

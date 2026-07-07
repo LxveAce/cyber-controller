@@ -38,6 +38,7 @@ def test_parse_bare_esp32_is_not_a_cyd():
     raw = _block("no", "none", "none", "resistive", "none", 0, 82)
     r = parse_report(raw)
     assert not r.is_cyd
+    assert r.responded  # the probe DID answer — this is a confirmed bare-ESP32 verdict
     assert r.variant == ""  # 'none' normalizes to empty so nothing gets pre-selected
     assert "No CYD" in r.summary
 
@@ -60,6 +61,26 @@ def test_parse_uses_last_complete_block():
 def test_parse_empty_is_safe():
     r = parse_report("")
     assert not r.is_cyd and r.variant == "" and r.confidence == "none"
+
+
+def test_no_report_is_not_reported_as_bare_esp32():
+    # A read that captured NO probe report (timeout, wrong firmware, missed reset window) must not be
+    # dressed up as a confident "bare ESP32" verdict — that false negative would let the user flash the
+    # wrong CYD build (blank/mirrored screen), defeating the whole safeguard. It must be a distinct
+    # "no response" outcome so the caller/UI can say "detection failed, retry" instead.
+    for raw in ("", "boot noise\r\nrst:0x1 (POWERON)\r\nno probe here\r\n"):
+        r = parse_report(raw)
+        assert not r.responded, f"expected no-response for {raw!r}"
+        assert not r.is_cyd  # still not a CYD, but...
+        assert "No CYD" not in r.summary  # ...must NOT claim a confirmed bare ESP32
+        assert "No response" in r.summary
+
+
+def test_real_report_marks_responded():
+    # Sanity: a genuine probe report (CYD or not) flips responded True, so the "no response" branch
+    # only fires when there truly was no report.
+    r = parse_report(_block("yes", "high", "ILI9341", "resistive", "cyd_2432S028", 1, 2100))
+    assert r.responded and r.is_cyd
 
 
 def test_probe_binary_is_bundled():
