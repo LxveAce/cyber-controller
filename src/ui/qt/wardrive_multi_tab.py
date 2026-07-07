@@ -47,6 +47,7 @@ class WardriveMultiTab(QWidget):
         self._dm = device_manager
         self._controller: MultiWardriveController | None = None
         self._fh = None
+        self._seen_ports: set[str] = set()
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self._tick)
@@ -135,14 +136,17 @@ class WardriveMultiTab(QWidget):
 
     def _refresh_boards(self) -> None:
         checked = {p for p, _ in self._checked_boards()}
+        boards = self._connected_boards()
         self._board_list.clear()
-        for port, fw in self._connected_boards():
+        for port, fw in boards:
             item = QListWidgetItem(f"{port}  —  {fw or '(unknown fw → Marauder default)'}")
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
-            # keep a board's tick across a refresh; default new boards to checked
-            item.setCheckState(Qt.Checked if (not checked or port in checked) else Qt.Unchecked)
+            # keep a board's tick across a refresh; default genuinely new (never-seen) boards to checked
+            new_board = port not in self._seen_ports
+            item.setCheckState(Qt.Checked if (port in checked or new_board) else Qt.Unchecked)
             item.setData(Qt.UserRole, (port, fw))
             self._board_list.addItem(item)
+        self._seen_ports = {port for port, _ in boards}
 
     def _checked_boards(self) -> list[tuple[str, str]]:
         out = []

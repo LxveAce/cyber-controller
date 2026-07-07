@@ -140,25 +140,42 @@ def status_cli() -> int:
 
 def set_password_cli() -> int:
     print("=== Set Cyber Controller admin password ===")
-    pw = getpass.getpass("  New admin password: ")
-    pw2 = getpass.getpass("  Confirm: ")
-    if not pw or pw != pw2:
-        print("Passwords empty or do not match — aborted.", file=sys.stderr)
-        return 2
-    pk.set_admin_password(pw)
-    # Provision the vault keyslot for the password (creating the vault on first factor).
+    # Gather the factor(s) that already unlock an EXISTING vault so we can RE-KEY it under the new
+    # password. Re-keying the 'password' slot needs a currently-valid factor to unwrap the DEK: the
+    # physical key (if present) OR the OLD password. Without this, CHANGING a password-only vault's
+    # password desyncs the gate verifier from the vault keyslot and permanently locks the vault (the
+    # new password passes the gate but can no longer unwrap the DEK).
     unlock = {}
     if pk.has_physical_key():
         ks = pk.present_key_secret()
         if ks:
             unlock["key"] = ks
+    if not unlock and vault.is_provisioned() and "password" in vault.factors():
+        existing = getpass.getpass("  Current admin password (to re-key the vault): ") or None
+        if existing:
+            unlock["password"] = existing.encode("utf-8")
+    pw = getpass.getpass("  New admin password: ")
+    pw2 = getpass.getpass("  Confirm: ")
+    if not pw or pw != pw2:
+        print("Passwords empty or do not match — aborted.", file=sys.stderr)
+        return 2
+    # Re-key the vault BEFORE committing the new gate verifier so the two stay in sync: if the vault
+    # can't be unlocked to re-key it, abort WITHOUT changing the gate password (both keep their old,
+    # matching state) rather than leaving the gate on the new password and the vault on the old one.
     try:
         vault.set_factor("password", pw.encode("utf-8"), unlock_with=unlock or None)
-        print("Admin password set; encrypted vault keyslot provisioned (salted scrypt; no plaintext).")
     except vault.NeedExistingFactor:
-        print("Admin password set, but the encrypted vault keyslot was NOT added because the existing "
-              "physical key is not present. Insert the key and re-run --set-admin-password to add it.",
-              file=sys.stderr)
+        options = []
+        if vault.is_provisioned() and "password" in vault.factors():
+            options.append("the current admin password")
+        if pk.has_physical_key():
+            options.append("insert the physical key")
+        need = " or ".join(options) if options else "an existing unlock factor"
+        print(f"Admin password NOT changed: the encrypted vault could not be unlocked to re-key it. "
+              f"Provide {need} and re-run --set-admin-password.", file=sys.stderr)
+        return 2
+    pk.set_admin_password(pw)
+    print("Admin password set; encrypted vault keyslot provisioned (salted scrypt; no plaintext).")
     _print_policy_hint()
     return 0
 

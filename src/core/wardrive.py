@@ -187,6 +187,15 @@ def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
 
 
+def _signal_key(rssi: int) -> int:
+    """Comparison key for 'strongest signal'. RSSI 0 is the parser's missing/unknown sentinel
+    (:func:`parse_marauder_ap` leaves ``rssi=0`` when a line has no ``RSSI`` token, and real Wi-Fi RSSI is
+    strongly negative — 0 dBm at the antenna is physically absurd), so it must rank BELOW any real reading;
+    otherwise a no-RSSI sighting (0) would beat a genuine strong reading (e.g. -40) and hijack the mapped
+    location. Mirrors :func:`src.core.flock._signal_key`."""
+    return rssi if rssi != 0 else -9999
+
+
 # ── session ──────────────────────────────────────────────────────────
 
 @dataclass
@@ -226,8 +235,8 @@ class WardriveSession:
         if obs is None or not self.has_fix:
             return False
         prev = self.seen.get(obs.bssid)
-        if prev is not None and obs.rssi <= prev:
-            return False  # already logged with an equal/stronger signal
+        if prev is not None and _signal_key(obs.rssi) <= _signal_key(prev):
+            return False  # already logged with an equal/stronger signal (a missing-RSSI 0 can't overwrite)
         self.seen[obs.bssid] = obs.rssi
         if prev is None:
             self.ap_count += 1
@@ -292,8 +301,8 @@ class MultiWardriveSession:
         if obs is None or not self.has_fix:
             return False
         prev = self.seen.get(obs.bssid)
-        if prev is not None and obs.rssi <= prev:
-            return False
+        if prev is not None and _signal_key(obs.rssi) <= _signal_key(prev):
+            return False  # a missing-RSSI 0 must not overwrite a real reading's merged row/location
         if prev is None:
             self.per_board[port] += 1
         self.seen[obs.bssid] = obs.rssi

@@ -30,6 +30,17 @@ _MAX_FIRMWARE_BYTES = 64 * 1024 * 1024  # 64 MB cap — abort oversized / MITM-s
 _MAX_REDIRECTS = 6
 
 
+def _safe_version_key(version: str) -> str:
+    """Sanitize a version/tag string into the filesystem- and index-safe key.
+
+    Any character outside ``[A-Za-z0-9._-]`` is replaced with ``_`` (path-traversal
+    defense). The vault index is keyed by this sanitized form, so callers comparing an
+    upstream GitHub tag against cached keys MUST run the tag through this same function
+    first — otherwise a tag like ``2024.1+deb`` never matches its stored key ``2024.1_deb``.
+    """
+    return re.sub(r"[^A-Za-z0-9._-]", "_", str(version)) or "unknown"
+
+
 def _safe_streamed_download(url: str, dest_path: Path, progress_callback, filename: str) -> int:
     """Stream *url* to *dest_path*, SSRF-safe and size-capped.
 
@@ -256,7 +267,7 @@ class FirmwareVault:
             return None
 
         # Sanitize the version tag for use as a directory name (path-traversal defense).
-        safe_version = re.sub(r"[^A-Za-z0-9._-]", "_", str(resolved_version)) or "unknown"
+        safe_version = _safe_version_key(resolved_version)
         dest_dir = self.vault_dir / profile_id / safe_version
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / filename
@@ -407,7 +418,10 @@ class FirmwareVault:
                 cached_entries = dict(self._index.get(pid, {}))
             cached_versions = list(cached_entries)
 
-            if latest_tag not in cached_versions:
+            # The index is keyed by the SANITIZED version (see download_firmware), so the raw
+            # upstream tag must be sanitized the same way before the membership test — otherwise a
+            # tag containing e.g. '+' is perpetually reported as an available update despite being cached.
+            if _safe_version_key(latest_tag) not in cached_versions:
                 # Report the NEWEST cached version (by download time, matching get_cached), not an
                 # arbitrary dict-insertion-order key — otherwise "you have X, latest is Y" can name an
                 # older cached version that happens to sort last.

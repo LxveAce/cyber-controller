@@ -60,6 +60,29 @@ def test_add_factor_without_existing_raises(v):
         v.set_factor("key", b"new-key")          # no existing factor supplied to unwrap the DEK
 
 
+def test_rekey_slot_honors_old_secret_via_unlock_with(v):
+    """CHANGING an existing slot's secret must succeed when the OLD secret is supplied in
+    unlock_with[name]. Previously set_factor did `avail[name]=secret`, clobbering the supplied OLD
+    secret with the NEW one, so _dek_from could never unwrap and the re-key raised NeedExistingFactor
+    (the root cause behind the gate/vault password-change desync)."""
+    v.set_factor("password", b"old")
+    v.open_vault({"password": b"old"}).set("k", "v")
+    # old -> new, unlocking with the CURRENT (old) secret of the SAME slot
+    v.set_factor("password", b"new", unlock_with={"password": b"old"})
+    v_new = v.open_vault({"password": b"new"})
+    assert v_new is not None and v_new.get("k") == "v"   # same DEK/data, re-wrapped under the new secret
+    assert v.open_vault({"password": b"old"}) is None      # old secret no longer opens it
+
+
+def test_reset_same_secret_still_self_unlocks(v):
+    """Guard: re-setting a slot to the SAME secret with no unlock_with must still self-unlock (the
+    setdefault only defers to unlock_with when it actually carries that factor)."""
+    v.set_factor("password", b"pw")
+    v.open_vault({"password": b"pw"}).set("k", "v")
+    v.set_factor("password", b"pw")                        # no unlock_with; new==old self-unlocks
+    assert v.open_vault({"password": b"pw"}).get("k") == "v"
+
+
 def test_remove_factor_keeps_data(v):
     v.set_factor("password", b"pw")
     v.set_factor("key", b"ks", unlock_with={"password": b"pw"})

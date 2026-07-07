@@ -72,9 +72,17 @@ class HealthFooter(Static):
         return f"  CPU: {self.cpu_pct:.0f}%  |  RAM: {self.ram_pct:.0f}%"
 
     def watch_cpu_pct(self) -> None:
-        self.set_class(_health_class(self.cpu_pct) == "health-ok", "health-ok")
-        self.set_class(_health_class(self.cpu_pct) == "health-warn", "health-warn")
-        self.set_class(_health_class(self.cpu_pct) == "health-crit", "health-crit")
+        self._apply_health_class()
+
+    def watch_ram_pct(self) -> None:
+        self._apply_health_class()
+
+    def _apply_health_class(self) -> None:
+        # Colour off whichever half is worse — RAM pressure must raise the indicator too, not just CPU.
+        cls = _health_class(max(self.cpu_pct, self.ram_pct))
+        self.set_class(cls == "health-ok", "health-ok")
+        self.set_class(cls == "health-warn", "health-warn")
+        self.set_class(cls == "health-crit", "health-crit")
 
 
 class CyberControllerTUI(App):

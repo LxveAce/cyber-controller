@@ -16,10 +16,11 @@ AP2 = "BSSID:AA:BB:CC:DD:EE:02 RSSI:-50 Ch:6 ESSID:B"
 
 
 class _FakeConn:
-    def __init__(self) -> None:
+    def __init__(self, fail_write: bool = False) -> None:
         self._cbs: list = []
         self.written: list[str] = []
         self.line_ending = "\n"
+        self._fail_write = fail_write
 
     def on_line(self, cb) -> None:
         self._cbs.append(cb)
@@ -29,6 +30,8 @@ class _FakeConn:
             self._cbs.remove(cb)
 
     def write(self, data: str) -> None:
+        if self._fail_write:
+            raise OSError("write failed (device yanked mid-start)")
         self.written.append(data)
 
     def feed(self, line: str) -> None:
@@ -37,17 +40,18 @@ class _FakeConn:
 
 
 class _FakeDM:
-    def __init__(self, fail_ports=()) -> None:
+    def __init__(self, fail_ports=(), write_fail_ports=()) -> None:
         self.conns: dict[str, _FakeConn] = {}
         self.opened: list[tuple[str, str | None]] = []
         self.closed: list[tuple[str, str | None]] = []
         self._fail = set(fail_ports)
+        self._write_fail = set(write_fail_ports)
 
     def open_connection(self, port: str, baud: int = 115200, owner=None) -> _FakeConn:
         if port in self._fail:
             raise OSError(f"Access is denied ({port})")
         self.opened.append((port, owner))
-        return self.conns.setdefault(port, _FakeConn())
+        return self.conns.setdefault(port, _FakeConn(fail_write=port in self._write_fail))
 
     def close_connection(self, port: str, owner=None) -> None:
         self.closed.append((port, owner))
@@ -130,6 +134,28 @@ def test_one_bad_board_does_not_sink_the_deck():
     started = {b["port"]: b["started"] for b in snap["boards"]}
     assert started == {"COM_BAD": False, "COM_OK": True}
     c.stop()
+
+
+def test_board_failing_mid_start_is_torn_down_not_leaked():
+    # open_connection succeeds and the reader callback is registered, but a scan-start write() raises
+    # (e.g. the ESP32 is yanked mid-start). The board must not be left open/scanning under our owner tag.
+    dm = _FakeDM(write_fail_ports=["COM_WF"])
+    c = _ctrl(dm)
+    c.add_board("COM_WF")
+    c.add_board("COM_OK")
+    c.start()
+    assert any(p == "COM_WF" for p, _ in c.errors)            # the write failure is recorded, not raised
+    conn = dm.conns["COM_WF"]
+    assert ("COM_WF", "wardrive-multi") in dm.closed          # connection reclaimed (not leaked)
+    assert conn._cbs == []                                    # reader callback removed (device not left scanning)
+    dm.conns["COM_GPS"].feed(FIX)                             # the good board keeps capturing
+    dm.conns["COM_OK"].feed(AP1)
+    assert c.ap_count == 1
+    snap = c.snapshot()
+    started = {b["port"]: b["started"] for b in snap["boards"]}
+    assert started == {"COM_WF": False, "COM_OK": True}       # the failed board reports not-started
+    c.stop()
+    assert dm.closed.count(("COM_WF", "wardrive-multi")) == 1  # stop() doesn't double-close the reclaimed port
 
 
 def test_add_board_after_start_raises():

@@ -78,3 +78,33 @@ def test_check_updates_reports_newest_cached_by_date(vault, monkeypatch):
     ups = vault.check_updates()
     assert ups and ups[0]["cached_version"] == "v2.0"
     assert ups[0]["latest_version"] == "v3.0"
+
+
+def test_check_updates_no_false_positive_for_sanitized_tag(vault, monkeypatch):
+    # The index is keyed by the SANITIZED version. download_firmware stores a release whose raw
+    # GitHub tag is "2024.1+deb" under the key "2024.1_deb" (re.sub of chars outside [A-Za-z0-9._-]).
+    # A later check_updates fetching the RAW tag must NOT report an update for the already-cached fw.
+    assert fwv._safe_version_key("2024.1+deb") == "2024.1_deb"
+    vault._index = {"p": {
+        "2024.1_deb": {"downloaded_at": "2024-01-01T00:00:00+00:00"},
+    }}
+    monkeypatch.setattr(vault, "list_profiles", lambda: [{"id": "p", "name": "P"}])
+    monkeypatch.setattr(vault, "_load_profile", lambda pid: {"firmware_urls": {"latest": _GH}})
+    monkeypatch.setattr(fwv, "_safe_api_get_json", lambda url: {"tag_name": "2024.1+deb"})
+
+    ups = vault.check_updates()
+    assert ups == []  # already cached -> no false "update available"
+
+
+def test_check_updates_reports_genuinely_new_sanitized_tag(vault, monkeypatch):
+    # Cached "2024.1_deb"; upstream is a genuinely newer "2024.2+deb" -> an update SHOULD be reported.
+    vault._index = {"p": {
+        "2024.1_deb": {"downloaded_at": "2024-01-01T00:00:00+00:00"},
+    }}
+    monkeypatch.setattr(vault, "list_profiles", lambda: [{"id": "p", "name": "P"}])
+    monkeypatch.setattr(vault, "_load_profile", lambda pid: {"firmware_urls": {"latest": _GH}})
+    monkeypatch.setattr(fwv, "_safe_api_get_json", lambda url: {"tag_name": "2024.2+deb"})
+
+    ups = vault.check_updates()
+    assert ups and ups[0]["cached_version"] == "2024.1_deb"
+    assert ups[0]["latest_version"] == "2024.2+deb"

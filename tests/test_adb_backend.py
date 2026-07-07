@@ -100,3 +100,58 @@ def test_latest_version_unknown_profile():
 
 def test_adb_profiles_has_rayhunter():
     assert adb.ADB_PROFILES["rayhunter"]["repo"] == "EFForg/rayhunter"
+
+
+# ── install_manual: partial-push failures must NOT report success ──────────
+def _stub_manual_env(monkeypatch, tmp_path, push, config_exists=True):
+    """Wire install_manual with a real daemon file, a canned adb_shell, and *push*.
+
+    adb_shell answers the 'test -f config' probe with EXISTS/MISSING so we can steer
+    whether the config push is attempted; all other shell calls succeed (rc 0).
+    """
+    daemon = tmp_path / "rayhunter-daemon"
+    daemon.write_bytes(b"\x7fELF fake daemon")
+
+    marker = "EXISTS" if config_exists else "MISSING"
+
+    def fake_shell(command, on_line, serial=None):
+        return (0, marker) if "test -f" in command else (0, "")
+
+    monkeypatch.setattr(adb, "adb_shell", fake_shell)
+    monkeypatch.setattr(adb, "adb_push", push)
+    return str(daemon)
+
+
+def test_install_manual_fails_when_init_push_fails(monkeypatch, tmp_path):
+    # The daemon push succeeds but the init-script push fails. The init script is what
+    # auto-starts the daemon at boot, so this is a broken install and must NOT return 0.
+    def push(local, remote, on_line, serial=None):
+        return 7 if remote == adb._DEVICE_INIT else 0
+
+    daemon = _stub_manual_env(monkeypatch, tmp_path, push, config_exists=True)
+    log = []
+    rc = adb.install_manual(daemon, log.append, serial="X")
+    assert rc == 7, "a failed init-script push must propagate a non-zero rc"
+    assert "complete" not in "\n".join(log).lower(), "must not claim success"
+
+
+def test_install_manual_fails_when_config_push_fails(monkeypatch, tmp_path):
+    # Config missing on device -> config push attempted and fails; must propagate.
+    def push(local, remote, on_line, serial=None):
+        return 4 if remote == adb._DEVICE_CONFIG else 0
+
+    daemon = _stub_manual_env(monkeypatch, tmp_path, push, config_exists=False)
+    log = []
+    rc = adb.install_manual(daemon, log.append, serial="X")
+    assert rc == 4
+    assert "complete" not in "\n".join(log).lower()
+
+
+def test_install_manual_success_when_all_pushes_ok(monkeypatch, tmp_path):
+    # Positive control: every push succeeds -> rc 0 and the completion message is logged.
+    daemon = _stub_manual_env(monkeypatch, tmp_path,
+                              lambda l, r, on_line, serial=None: 0, config_exists=False)
+    log = []
+    rc = adb.install_manual(daemon, log.append, serial="X")
+    assert rc == 0
+    assert "complete" in "\n".join(log).lower()

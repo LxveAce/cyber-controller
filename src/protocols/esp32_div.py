@@ -53,8 +53,11 @@ _RE_HANDSHAKE = re.compile(
     re.IGNORECASE,
 )
 
+# The target MAC is captured when present, but the whole ".*? MAC" tail is optional so a target-less
+# deauth (e.g. a broadcast "Deauth sent") still registers. The MAC group itself must NOT be optional or the
+# lazy ".*?" matches empty and group(1) is always None — the bug this replaces.
 _RE_DEAUTH = re.compile(
-    r"(?:Deauth|DEAUTH)\s+(?:sent|frame|attack).*?([\da-fA-F:]{17})?",
+    r"(?:Deauth|DEAUTH)\s+(?:sent|frame|attack)\b(?:.*?([\da-fA-F:]{17}))?",
     re.IGNORECASE,
 )
 

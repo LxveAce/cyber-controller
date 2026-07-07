@@ -63,6 +63,7 @@ class MultiWardriveController:
                 self.errors.append((self._gps_port, f"gps: {exc}"))
                 self._gps_conn = None
         for b in self._boards:
+            conn = cb = None
             try:
                 conn = self._dm.open_connection(b["port"], b["baud"], owner=self.OWNER)
                 cb = self._make_dev_cb(b["port"])
@@ -78,6 +79,13 @@ class MultiWardriveController:
                 b["conn"], b["cb"] = conn, cb
             except Exception as exc:  # noqa: BLE001 — isolate one bad board from the rest of the deck
                 self.errors.append((b["port"], str(exc)))
+                if conn is not None:               # opened but failed mid-start: don't leak the port/callback
+                    for step in (lambda c=conn, f=cb: c.remove_line_callback(f) if f is not None else None,
+                                 lambda p=b["port"]: self._dm.close_connection(p, owner=self.OWNER)):
+                        try:
+                            step()
+                        except Exception:  # noqa: BLE001
+                            pass
         self._on_update()
 
     def stop(self) -> None:

@@ -1,0 +1,37 @@
+"""ESP32-DIV parser fix (firmware-comms): the deauth line's target MAC was never captured.
+
+_RE_DEAUTH made the trailing MAC group OPTIONAL after a lazy '.*?', so the engine matched with the group
+empty and group(1) was always None -> deauth_sent's 'target' was always "". The fix keeps the whole tail
+optional (a target-less broadcast deauth still registers) but the MAC group itself is required WHEN it
+matches, so a present MAC is captured. Mirrors the sibling ghost_esp / handshake parsers.
+"""
+
+from __future__ import annotations
+
+import pytest
+
+
+@pytest.mark.parametrize(
+    "line,expected_mac",
+    [
+        ("Deauth sent AA:BB:CC:DD:EE:FF", "AA:BB:CC:DD:EE:FF"),
+        ("Deauth frame to 11:22:33:44:55:66", "11:22:33:44:55:66"),
+        ("DEAUTH attack on AA:BB:CC:DD:EE:99", "AA:BB:CC:DD:EE:99"),
+    ],
+)
+def test_div_deauth_captures_target_mac(line, expected_mac):
+    """A deauth line WITH a target MAC now yields it in data['target'] (was always '')."""
+    from src.protocols import get_protocol
+
+    ev = get_protocol("esp32-div").parse_line(line)
+    assert ev.event_type == "deauth_sent"
+    assert ev.data["target"] == expected_mac
+
+
+def test_div_deauth_without_mac_still_registers():
+    """A target-less deauth (broadcast) still emits deauth_sent with an empty target — no regression."""
+    from src.protocols import get_protocol
+
+    ev = get_protocol("esp32-div").parse_line("Deauth sent")
+    assert ev.event_type == "deauth_sent"
+    assert ev.data["target"] == ""

@@ -6,7 +6,26 @@ Network + hardware fully mocked."""
 
 from __future__ import annotations
 
+import re
+
 from src.core import batch, flash_core
+
+
+def test_deck_flash_plan_docstring_count_matches_actual():
+    """The '(N devices)' claim in the docstring must equal the number of jobs returned.
+
+    Regression: the docstring said '(14 devices)' while the plan returned only 9
+    FlashJob entries, so any caller trusting the documented deck size was misled.
+    """
+    plan = batch.create_deck_flash_plan()
+    assert plan and all(isinstance(j, batch.FlashJob) for j in plan)
+
+    doc = batch.create_deck_flash_plan.__doc__ or ""
+    m = re.search(r"\((\d+)\s+devices\)", doc)
+    assert m, f"docstring must state a '(N devices)' count, got: {doc!r}"
+    assert int(m.group(1)) == len(plan), (
+        f"docstring claims {m.group(1)} devices but the plan returns {len(plan)}"
+    )
 
 
 def _stub(monkeypatch, tmp_path, sha, verify_raises):

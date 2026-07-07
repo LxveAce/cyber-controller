@@ -329,13 +329,38 @@ def test_write_flash_missing_tool_raises(monkeypatch, tmp_path):
 
 def test_write_flash_unprotect_warning_surfaced(monkeypatch, tmp_path):
     _force_tool(monkeypatch)
-    # rc==0 but output mentions unprotect -> the classic silent no-op gotcha.
+    # rc==0 but output mentions an unprotect FAILURE -> the classic silent no-op gotcha.
     _install_fake_popen(monkeypatch,
                         out_lines=["flash unprotect failed", "done"], returncode=0)
     image = _make_image(tmp_path)
     log = _Collector()
     rtl.write_flash("COM1", image, on_line=log, tool="/fake/rtltool.py")
     assert "unprotect" in log.text.lower()
+
+
+def test_write_flash_success_unprotect_chatter_not_warned(monkeypatch, tmp_path):
+    # Ledger C-1 class regression: a fully successful write prints the normal unprotect
+    # STEP name and the SUCCESS word "unprotected". Bare "unprotect"/"protected" substrings
+    # used to trip the "unprotect step may have been skipped" advisory on a clean write.
+    _force_tool(monkeypatch)
+    _install_fake_popen(monkeypatch,
+                        out_lines=["unprotecting flash...", "unprotected", "[100%] done"],
+                        returncode=0)
+    image = _make_image(tmp_path)
+    log = _Collector()
+    rc = rtl.write_flash("COM1", image, on_line=log, tool="/fake/rtltool.py")
+    assert rc == 0
+    assert "may have been skipped" not in log.text.lower()
+
+
+def test_looks_like_unprotect_fail_ignores_benign_success():
+    # Benign unprotect STEP chatter and the SUCCESS word "unprotected" must NOT read as a
+    # failure (they contain bare "unprotect"/"protected")...
+    assert rtl._looks_like_unprotect_fail("unprotecting flash... unprotected OK") is False
+    assert rtl._looks_like_unprotect_fail("flash unprotected") is False
+    # ...but genuine unprotect failures still do.
+    assert rtl._looks_like_unprotect_fail("SPI unprotect failed") is True
+    assert rtl._looks_like_unprotect_fail("flash is still protected") is True
 
 
 # --------------------------------------------------------------------------- #

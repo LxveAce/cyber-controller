@@ -1781,7 +1781,9 @@ class CyberControllerWindow(QMainWindow):
         self._show_subtab(self._operate_surface, self._flock_heatmap)
 
     # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
-    _SKIN_PROTOCOL = {"marauder": "marauder", "ghostesp": "ghostesp", "esp32div": "esp32_div",
+    # These MUST equal the real BaseProtocol.protocol_name values (ghost_esp.py -> "ghost-esp",
+    # esp32_div.py -> "esp32-div"), or _device_view_send() never matches and silently refuses to write.
+    _SKIN_PROTOCOL = {"marauder": "marauder", "ghostesp": "ghost-esp", "esp32div": "esp32-div",
                       "bruce": "bruce"}
 
     def _device_view_send(self, firmware: str, cmd: str) -> bool:

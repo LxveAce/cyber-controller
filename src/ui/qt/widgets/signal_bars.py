@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from PyQt5.QtCore import QModelIndex, QRectF, Qt
 from PyQt5.QtGui import QColor, QPainter
-from PyQt5.QtWidgets import QStyledItemDelegate, QStyleOptionViewItem
+from PyQt5.QtWidgets import QStyle, QStyledItemDelegate, QStyleOptionViewItem
 
 from src.ui.qt.theme.colors import ACCENT, ERROR, WARNING
 
@@ -56,7 +56,7 @@ class SignalBarsDelegate(QStyledItemDelegate):
         max_height = rect.height() - 12
 
         # Draw selection background if selected
-        if option.state & 0x00000008:  # State_Selected
+        if option.state & QStyle.State_Selected:
             painter.fillRect(rect, QColor("#1c2128"))
 
         # Draw bars

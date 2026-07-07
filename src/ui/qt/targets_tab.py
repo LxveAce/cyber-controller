@@ -260,10 +260,15 @@ class TargetsTab(QWidget):
             self._table.setItem(row, 1, QTableWidgetItem(t.ssid or ""))
             self._table.setItem(row, 2, QTableWidgetItem(t.mac or ""))
 
-            rssi_item = QTableWidgetItem(str(t.rssi))
+            # Store RSSI / Channel as ints in the DisplayRole so the Ch and RSSI headers sort
+            # numerically (1, 2, 10) instead of lexicographically ("1", "10", "2").
+            rssi_item = QTableWidgetItem()
+            rssi_item.setData(Qt.DisplayRole, int(t.rssi))
             self._table.setItem(row, 3, rssi_item)
 
-            self._table.setItem(row, 4, QTableWidgetItem(str(t.channel)))
+            chan_item = QTableWidgetItem()
+            chan_item.setData(Qt.DisplayRole, int(t.channel))
+            self._table.setItem(row, 4, chan_item)
             self._table.setItem(row, 5, QTableWidgetItem(t.device_source or ""))
             self._table.setItem(row, 6, QTableWidgetItem(t.encryption or ""))
             self._table.setItem(row, 7, QTableWidgetItem(self._fmt_time(t.last_seen)))

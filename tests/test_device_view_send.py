@@ -82,3 +82,36 @@ def test_no_cross_firmware_send(qapp, isolated_settings, monkeypatch):
         assert conn.sent == []
     finally:
         win.close()
+
+
+@pytest.mark.parametrize("skin_id, proto_cls_path", [
+    ("ghostesp", "src.protocols.ghost_esp.GhostESPProtocol"),   # protocol_name "ghost-esp"
+    ("esp32div", "src.protocols.esp32_div.Esp32DivProtocol"),   # protocol_name "esp32-div"
+])
+def test_sends_to_matching_hyphenated_protocol(qapp, isolated_settings, monkeypatch,
+                                               skin_id, proto_cls_path):
+    """The skin id ('ghostesp'/'esp32div') must map to the device's real protocol_name
+    ('ghost-esp'/'esp32-div'), or a correctly-matched device silently never receives the command.
+
+    Regression: _SKIN_PROTOCOL used to map 'ghostesp'->'ghostesp' and 'esp32div'->'esp32_div',
+    so the guard comparison never matched and _device_view_send returned False (preview, not sent)."""
+    import importlib
+    import src.core.safety as safety
+    monkeypatch.setattr(safety, "should_confirm", lambda *a, **k: False)
+
+    mod_path, cls_name = proto_cls_path.rsplit(".", 1)
+    proto_cls = getattr(importlib.import_module(mod_path), cls_name)
+    proto = proto_cls()
+
+    win = _make_window()
+    try:
+        conn = _FakeConn()
+        win._device_tab._active_conn = conn
+        # Pin the active device's selected protocol to the real matching firmware protocol.
+        monkeypatch.setattr(win._device_tab, "_selected_protocol", lambda: proto)
+
+        ok = win._device_view_send(skin_id, "scanap")
+        assert ok is True, "matching device must actually receive the command, not preview"
+        assert conn.sent == ["scanap"]
+    finally:
+        win.close()

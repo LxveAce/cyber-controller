@@ -151,7 +151,11 @@ def set_factor(name: str, secret: bytes, unlock_with: Optional[dict] = None) -> 
         _save_hdr(hdr)
         return
     avail = dict(unlock_with or {})
-    avail[name] = secret  # a re-set of the same factor can unlock itself
+    # A re-set of the SAME factor can unlock itself with the new secret — but only if the caller did
+    # not supply that factor's CURRENT secret in unlock_with. When CHANGING a slot's secret (e.g. a
+    # password change), unlock_with[name] is the OLD secret that still unwraps the DEK; overwriting it
+    # with the new secret here would leave no way to unwrap and desync the slot (SEC).
+    avail.setdefault(name, secret)
     dek = _dek_from(hdr, avail)
     if dek is None:
         raise NeedExistingFactor(

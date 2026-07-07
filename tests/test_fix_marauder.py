@@ -47,6 +47,39 @@ def test_marauder_legacy_singleline_still_parses():
     assert ev.event_type == "ap_found"
 
 
+def test_marauder_identify_rejects_foreign_firmware_tokens():
+    """Marauder.identify() must fingerprint only Marauder-specific output. The old markers 'scanap' (a
+    GhostESP command), 'BSSID:' and 'Deauth sent' (both printed verbatim by GhostESP / ESP32-DIV) made it
+    claim a sibling firmware's lines during auto-detect."""
+    from src.protocols import get_protocol
+
+    m = get_protocol("marauder")
+    # These lines come from OTHER firmwares and must NOT be claimed as Marauder.
+    assert not m.identify("scanap - Scan for access points")          # GhostESP command
+    assert not m.identify("SSID: Net | BSSID: aa:bb:cc:dd:ee:ff | CH: 6 | RSSI: -40")  # GhostESP AP line
+    assert not m.identify("Deauth sent AA:BB:CC:DD:EE:FF")            # ESP32-DIV deauth line
+    # Genuine Marauder tokens still identify.
+    assert m.identify("ESP32 Marauder v1.12.3")
+    assert m.identify("  scanall")
+    assert m.identify("  sniffpmkid")
+
+
+def test_ghostesp_help_not_misdetected_as_marauder():
+    """detect_firmware over a GhostESP 'help' reply must NOT resolve to Marauder. Previously Marauder's
+    'scanap' marker matched GhostESP's own 'scanap' command line and (as first-registered protocol) won."""
+    from src.core.handshake import detect_firmware
+
+    ghost_help = [
+        "GhostESP v1.0.0",
+        "  scanap - Scan for access points",
+        "  blescan - Scan BLE",
+        "  stopscan",
+    ]
+    assert detect_firmware(ghost_help) == "ghost-esp"
+    # And a command-only dump (no banner) must not flip to Marauder either.
+    assert detect_firmware(["scanap", "blescan", "stopscan"]) != "marauder"
+
+
 def test_marauder_ap_actions_use_documented_grammar():
     # bug-hunt #12: the AP actions appended flags that aren't in the firmware grammar (attack -t beacon -s,
     # attack -t probe -s, sniffpmkid -c). They must use only the documented forms.

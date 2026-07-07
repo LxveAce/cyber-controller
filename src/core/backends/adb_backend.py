@@ -682,30 +682,40 @@ def install_manual(daemon_binary_path: str, on_line: Line,
     if "MISSING" in output:
         on_line("[rayhunter] pushing default config...")
         config_tmp = os.path.join(tempfile.gettempdir(), "rayhunter_config.toml")
+        config_rc = 0
         try:
             with open(config_tmp, "w", encoding="utf-8") as f:
                 f.write(_DEFAULT_CONFIG)
-            adb_push(config_tmp, _DEVICE_CONFIG, on_line, serial=serial)
+            config_rc = adb_push(config_tmp, _DEVICE_CONFIG, on_line, serial=serial)
         finally:
             try:
                 os.unlink(config_tmp)
             except OSError:
                 pass
+        if config_rc != 0:
+            on_line("[error] failed to push default config")
+            return config_rc
     else:
         on_line("[rayhunter] config already exists on device, skipping")
 
     # push init script
     on_line("[rayhunter] pushing init script...")
     init_tmp = os.path.join(tempfile.gettempdir(), "rayhunter_daemon_init")
+    init_rc = 0
     try:
         with open(init_tmp, "w", encoding="utf-8", newline="\n") as f:
             f.write(_INIT_SCRIPT)
-        adb_push(init_tmp, _DEVICE_INIT, on_line, serial=serial)
+        init_rc = adb_push(init_tmp, _DEVICE_INIT, on_line, serial=serial)
     finally:
         try:
             os.unlink(init_tmp)
         except OSError:
             pass
+    if init_rc != 0:
+        # The init script is what auto-starts the daemon at boot; without it the
+        # install is broken even though the binary landed. Never report success.
+        on_line("[error] failed to push init script — RayHunter will not auto-start")
+        return init_rc
 
     adb_shell(f"chmod 755 {_DEVICE_INIT}", on_line, serial=serial)
 

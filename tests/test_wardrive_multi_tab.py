@@ -38,6 +38,13 @@ class _FakeDM:
         return list(self._devs)
 
 
+class _MutableDM(_FakeDM):
+    """Device manager whose connected-board list can change between refreshes."""
+
+    def set(self, devs) -> None:
+        self._devs = [_Dev(p, f) for p, f in devs]
+
+
 def test_lists_connected_boards(qapp):
     tab = WardriveMultiTab(device_manager=_FakeDM([("COM3", "marauder"), ("COM4", "")]))
     assert tab._board_list.count() == 2                    # populated from dm.list_connected()
@@ -77,3 +84,27 @@ def test_no_device_manager_is_safe(qapp):
     assert tab._board_list.count() == 0                    # nothing to list, no crash
     tab._on_start()
     assert tab._controller is None
+
+
+def test_new_board_defaults_checked_after_refresh(qapp):
+    # Two boards connected and auto-checked, then a brand-new board is plugged in.
+    dm = _MutableDM([("COM3", "marauder"), ("COM4", "")])
+    tab = WardriveMultiTab(device_manager=dm)
+    assert tab._checked_boards() == [("COM3", "marauder"), ("COM4", "")]  # both auto-ticked
+
+    dm.set([("COM3", "marauder"), ("COM4", ""), ("COM5", "ghostesp")])
+    tab._refresh_boards()
+    assert tab._board_list.count() == 3
+    # The never-seen board must default to checked even though others are already ticked.
+    assert ("COM5", "ghostesp") in tab._checked_boards()
+
+
+def test_unchecked_board_stays_unchecked_across_refresh(qapp):
+    # A deliberately-unticked board must not be silently re-checked by a refresh.
+    dm = _MutableDM([("COM3", "marauder"), ("COM4", "")])
+    tab = WardriveMultiTab(device_manager=dm)
+    tab._board_list.item(1).setCheckState(Qt.Unchecked)     # operator drops COM4
+    assert tab._checked_boards() == [("COM3", "marauder")]
+
+    tab._refresh_boards()                                    # no topology change
+    assert tab._checked_boards() == [("COM3", "marauder")]  # untick preserved, not new

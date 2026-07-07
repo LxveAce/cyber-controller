@@ -122,8 +122,21 @@ _NO_SYNC_MARKERS = (
     "device not found",
 )
 
-#: Substrings that indicate the known SPI "unprotect" failure (see module docstring).
-_UNPROTECT_MARKERS = ("unprotect", "protected", "write protect")
+#: Substrings that indicate the known SPI "unprotect" FAILURE (see module docstring).
+#: These are matched as plain lowercase substrings, so they must be FAILURE-specific: the normal
+#: unprotect *step* name rtltool prints on every write ("unprotecting flash...") and the SUCCESS word
+#: "unprotected" both contain bare "unprotect"/"protected", which mislabeled a successful write as a
+#: skipped-unprotect no-op. Only genuine failure phrasings belong here (same over-broad-substring class
+#: as _NO_SYNC_MARKERS, ledger C-1).
+_UNPROTECT_MARKERS = (
+    "unprotect failed",
+    "failed to unprotect",
+    "unprotect error",
+    "unprotect not supported",
+    "still protected",
+    "write protect error",
+    "write protect failed",
+)
 
 
 # --------------------------------------------------------------------------- #

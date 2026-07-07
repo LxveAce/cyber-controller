@@ -188,7 +188,7 @@ class BatchFlasher:
 
 
 def create_deck_flash_plan() -> List[FlashJob]:
-    """Return the default flash plan for a full cyberdeck build (14 devices)."""
+    """Return the default flash plan for a full cyberdeck build (9 devices)."""
     return [
         FlashJob(port="", profile_id="marauder", mode="full", erase_first=True),
         FlashJob(port="", profile_id="marauder", mode="full", erase_first=True),

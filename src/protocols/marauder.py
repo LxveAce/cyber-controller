@@ -370,14 +370,19 @@ class MarauderProtocol(BaseProtocol):
     # ── Auto-detection ───────────────────────────────────────────────
 
     def identify(self, line: str) -> bool:
-        """Return True if line looks like Marauder output."""
+        """Return True if line looks like Marauder output.
+
+        Markers must be Marauder-SPECIFIC — a shared token misfingerprints a sibling firmware during
+        auto-detect (detect_firmware scores each protocol's identify() over the same 'help' reply and the
+        first-registered protocol wins ties). So the old broad tokens are gone: 'scanap' is a GhostESP
+        command (Marauder v1.12.3 renamed it 'scanall'), and 'BSSID:'/'Deauth sent' also appear verbatim in
+        GhostESP / ESP32-DIV output. Rely on tokens only Marauder prints: its banner and 'scanall'/'sniffpmkid'.
+        """
         markers = (
             "Marauder",
-            "WiFi Scan",
-            "scanap",
             "ESP32 Marauder",
-            "BSSID:",
-            "Deauth sent",
+            "WiFi Scan",
+            "scanall",
             "sniffpmkid",
         )
         return any(m in line for m in markers)

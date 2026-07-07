@@ -410,7 +410,10 @@ def create_app(
         if not profile_path:
             return jsonify({"error": f"Unknown profile: {profile_name}"}), 404
 
-        profile = flash_engine.load_profile(profile_path)
+        try:
+            profile = flash_engine.load_profile(profile_path)
+        except Exception as exc:  # noqa: BLE001 — a malformed profile must surface as a clean 400, not an opaque 500
+            return jsonify({"error": f"Invalid firmware profile ({profile_path.name}): {exc}"}), 400
         # Reject fast if the port is already mid flash/backup/erase — a second esptool on the same UART
         # can brick the board. (The engine's per-port guard is the hard backstop against the TOCTOU
         # window; this 409 is the clean API answer so a scripted caller doesn't kick off a doomed thread.)

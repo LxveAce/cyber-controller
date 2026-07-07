@@ -34,8 +34,14 @@ def sha256(path: str) -> str:
 
 def api(method: str, url: str, key: str, **kw):
     headers = {"x-apikey": key}
+    timeout = kw.pop("timeout", 120)  # read once so retries keep the caller's timeout
     for _ in range(8):
-        r = requests.request(method, url, headers=headers, timeout=kw.pop("timeout", 120), **kw)
+        # Rewind any upload stream so a 429 retry re-sends the full file, not EOF (0 bytes).
+        for spec in (kw.get("files") or {}).values():
+            fh = spec[1] if isinstance(spec, (tuple, list)) else spec
+            if hasattr(fh, "seek"):
+                fh.seek(0)
+        r = requests.request(method, url, headers=headers, timeout=timeout, **kw)
         if r.status_code == 429:  # public API rate limit — back off
             time.sleep(35)
             continue

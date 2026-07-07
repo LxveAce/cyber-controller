@@ -87,3 +87,22 @@ def test_session_gating_and_dedup():
 
     data_rows = [ln for ln in buf.getvalue().splitlines()[2:] if ln]
     assert all(len(r.split(",")) == 14 for r in data_rows)
+
+
+def test_missing_rssi_does_not_overwrite_strong_reading():
+    # A line with no parseable RSSI token defaults rssi=0. Because real RSSI is negative, a raw `0 <= -40`
+    # comparison would let that no-signal sighting win the dedup and hijack the strongest-RSSI row/location.
+    buf = io.StringIO()
+    s = wd.WardriveSession(buf)
+    s.start()
+    # Strong reading at fix A -> logged.
+    s.update_gps("$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47")
+    assert s.observe("BSSID:AA:BB:CC:DD:EE:FF RSSI:-40 Ch:6 ESSID:Net", now="2026-06-27 00:00:00") is True
+    assert s.seen["aa:bb:cc:dd:ee:ff"] == -40
+    # Move the rig to fix B, then a same-BSSID line with NO RSSI token (parses to rssi=0).
+    s.update_gps("$GPGGA,123520,4810.000,N,01135.000,E,1,08,0.9,545.4,M,46.9,M,,*4E")
+    assert s.observe("BSSID:AA:BB:CC:DD:EE:FF Ch:6 ESSID:Net", now="2026-06-27 00:00:01") is False
+    assert s.seen["aa:bb:cc:dd:ee:ff"] == -40                 # strong reading (and its location) preserved
+    rows = [ln for ln in buf.getvalue().splitlines()[2:] if ln]
+    assert len(rows) == 1                                     # no second, no-signal row appended
+    assert rows[0].split(",")[6] == "-40" and rows[0].split(",")[7] == "48.117300"
