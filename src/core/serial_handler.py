@@ -144,12 +144,21 @@ class SerialConnection:
 
         self._set_state(ConnectionState.CONNECTING)
         try:
-            self._serial = serial.Serial(
-                port=self.port,
-                baudrate=self.baud,
-                timeout=self.timeout,
-                write_timeout=self.timeout,
-            )
+            # Open WITHOUT letting the adapter's DTR/RTS lines pulse the ESP32's EN/GPIO0 on connect.
+            # pyserial asserts both by default; on CYD panels (esp. the CH340K 2-USB / Guition boards)
+            # that lack the auto-reset transistor pair, an asserted DTR+RTS at open yanks GPIO0/EN low
+            # and drops the chip into ROM download mode ("waiting for download") — the firmware never
+            # runs and the display stays blank. That is exactly the "CYD shows no GUI" report: simply
+            # connecting to monitor a CYD was bricking its screen until power-cycle. Deassert both first
+            # so opening the port leaves the running firmware (and its on-screen GUI) undisturbed.
+            self._serial = serial.Serial()
+            self._serial.port = self.port
+            self._serial.baudrate = self.baud
+            self._serial.timeout = self.timeout
+            self._serial.write_timeout = self.timeout
+            self._serial.dtr = False
+            self._serial.rts = False
+            self._serial.open()
             self._stop_event.clear()
             self._read_thread = threading.Thread(
                 target=self._reader_loop,

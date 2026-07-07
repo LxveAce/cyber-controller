@@ -135,6 +135,11 @@ class _ScriptedSerial:
         self._raise_exc = raise_exc
         self.closed = False
 
+    def open(self) -> None:
+        # connect() now uses pyserial's construct -> set port/dtr/rts -> open() pattern (so the port
+        # opens without pulsing the ESP32's EN/GPIO0 into download mode). Mirror the no-op open here.
+        self.is_open = True
+
     @property
     def in_waiting(self) -> int:
         return len(self._chunks[0]) if self._chunks else 0
@@ -258,6 +263,46 @@ def test_connect_releases_stale_handle_before_reopen(monkeypatch) -> None:
     try:
         assert stale.closed, "stale handle not released before reopen"
         assert conn.state == ConnectionState.CONNECTED
+    finally:
+        conn.disconnect()
+
+
+def test_connect_opens_without_pulsing_dtr_rts(monkeypatch) -> None:
+    # Regression (CYD blank screen): connect() must open the port with DTR and RTS DEASSERTED so it
+    # doesn't yank a CH340K CYD's EN/GPIO0 into ROM download mode on connect. Assert both lines were
+    # False at the moment open() was called (i.e. set before open, not after).
+    captured = {}
+
+    class _RecordingSerial:
+        def __init__(self):
+            self.is_open = False
+            self.dtr = True   # pyserial's asserted default — connect() must flip these off pre-open
+            self.rts = True
+            self.closed = False
+        def open(self):
+            captured["dtr_at_open"] = self.dtr
+            captured["rts_at_open"] = self.rts
+            self.is_open = True
+        @property
+        def in_waiting(self):
+            return 0
+        def read(self, _n):
+            time.sleep(0.005)
+            return b""
+        def write(self, payload):
+            return len(payload)
+        def flush(self):
+            pass
+        def close(self):
+            self.closed = True
+            self.is_open = False
+
+    monkeypatch.setattr(serial_handler.serial, "Serial", lambda *a, **k: _RecordingSerial())
+    conn = SerialConnection("COMX")
+    conn.connect()
+    try:
+        assert captured.get("dtr_at_open") is False, "DTR must be deasserted before open()"
+        assert captured.get("rts_at_open") is False, "RTS must be deasserted before open()"
     finally:
         conn.disconnect()
 

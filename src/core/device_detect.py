@@ -29,6 +29,10 @@ USB_DEVICE_MAP: Dict[Tuple[int, Optional[int]], str] = {
     # it cannot tell a classic ESP32 from a BW16. Disambiguate by probing the serial
     # banner (see FIRMWARE_SIGNATURES["bw16"]) or let the user pick the firmware.
     (0x1A86, 0x7523): "CH340/CH341 USB-Serial (ESP32 classic / Gold / WROOM / BW16 RTL8720DN)",
+    # CH340K (0x7522) — the compact CH340 variant on newer CYD panels (2.8" 2-USB, Guition capacitive)
+    # and many recent ESP32 devkits. Without this it fell through to a generic "USB 1A86:7522" and the
+    # board wasn't recognized as an ESP32/CYD at all — the first half of the "CYD detect is broken" report.
+    (0x1A86, 0x7522): "CH340K USB-Serial (ESP32 classic / CYD 2-USB / Guition / newer devkit)",
     (0x1A86, 0x55D4): "CH9102 USB-Serial (ESP32-S3 devkit)",
     (0x10C4, 0xEA60): "CP2102 USB-Serial (Heltec LoRa V3 / some ESP32)",
     (0x0403, 0x6001): "FTDI FT232R USB-Serial",

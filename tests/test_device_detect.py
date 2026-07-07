@@ -18,6 +18,14 @@ def test_identify_usb_exact_hit():
     assert dd.identify_usb(0x0483, 0x5740) == "Flipper Zero USB CDC"
 
 
+def test_identify_usb_ch340k_7522_recognized():
+    # Regression: the CH340K (0x1A86, 0x7522) on newer CYD panels was missing from the map, so those
+    # boards fell through to a generic "USB 1A86:7522" and weren't recognized as an ESP32/CYD at all.
+    label = dd.identify_usb(0x1A86, 0x7522)
+    assert "CH340K" in label
+    assert label != "USB 1A86:7522"
+
+
 def test_identify_usb_wildcard_pid_falls_back():
     # (0x1D6B, None) is a wildcard entry — any pid under that vid resolves to it.
     assert dd.identify_usb(0x1D6B, 0x9999) == "Linux USB gadget (Orbic RNDIS)"
