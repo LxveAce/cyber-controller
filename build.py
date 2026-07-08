@@ -49,6 +49,9 @@ def _build() -> int:
 
     cmd: list[str] = [
         sys.executable, "-m", "PyInstaller",
+        # Non-interactive: overwrite an existing dist/ without the "…will be REMOVED! Continue? (y/N)"
+        # prompt, which otherwise hangs (or aborts on EOFError) any headless/CI/automation rebuild.
+        "--noconfirm",
         "--onedir" if onedir else "--onefile",
         "--windowed",
         "--name", _NAME,
