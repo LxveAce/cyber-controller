@@ -23,6 +23,10 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
 - **"Clear Terminal" now clears the terminal you're actually looking at.** The command-palette "Clear Terminal"
   only cleared the Devices tab's terminal, leaving the always-visible bottom terminal panel — the one on screen
   most of the time — untouched, so it looked like it did nothing. It now clears both.
+- **The Flash tab can no longer start two flashes at once.** During a single flash, the "Flash Queue" button
+  stayed clickable and the batch guard never checked the single-flash worker — so starting a batch mid-flash
+  launched a second, concurrent esptool run. Both flash buttons are now disabled for the duration of any flash,
+  and each flash path refuses to start while the other is running.
 
 ## [1.6.4] — 2026-07-07
 

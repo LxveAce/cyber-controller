@@ -646,6 +646,15 @@ class FlashTab(QWidget):
     # ── Actions ──────────────────────────────────────────────────────
 
     def _on_flash(self) -> None:
+        # Concurrency guard: refuse a single flash while a single flash OR a batch is already running.
+        # _btn_flash is disabled during a flash, but this stops a second _FlashWorker from ever overwriting
+        # self._worker (leaking the running thread) and racing the first on the same board. The engine's
+        # per-port lock is the last-ditch defense; this stops the double-start at the UI.
+        if (self._worker is not None and self._worker.isRunning()) or (
+            self._batch_worker is not None and self._batch_worker.isRunning()
+        ):
+            self._log("A flash is already in progress — wait for it to finish.")
+            return
         port = self._port_combo.currentData()
         profile_name = self._profile_combo.currentText()
         if not port:
@@ -735,7 +744,10 @@ class FlashTab(QWidget):
             self._log(f"Flashing {profile.name} [{variant}] to {port} at {profile.baud} baud...")
         else:
             self._log(f"Flashing {profile.name} to {port} at {profile.baud} baud...")
+        # Disable BOTH flash buttons for the duration — a single flash used to leave "Flash Queue" live, so
+        # clicking it started a concurrent batch mid-flash. Re-enabled in _on_flash_done.
         self._btn_flash.setEnabled(False)
+        self._btn_flash_queue.setEnabled(False)
         self._progress.setValue(0)
 
         self._worker = _FlashWorker(self._fe, port, profile)
@@ -814,6 +826,11 @@ class FlashTab(QWidget):
         if self._batch_jobs or (self._batch_worker is not None and self._batch_worker.isRunning()):
             self._log("Batch flash already in progress.")
             return
+        # Don't start a batch while a SINGLE flash is running — the reverse (single during batch) is already
+        # blocked by disabling _btn_flash at 828-829; this closes the other half of the asymmetry.
+        if self._worker is not None and self._worker.isRunning():
+            self._log("A single flash is already in progress — wait for it to finish.")
+            return
         jobs: list[tuple[str, str]] = []
         for i in range(self._queue_list.count()):
             data = self._queue_list.item(i).data(Qt.UserRole)
@@ -890,6 +907,7 @@ class FlashTab(QWidget):
 
     def _on_flash_done(self, success: bool) -> None:
         self._btn_flash.setEnabled(True)
+        self._btn_flash_queue.setEnabled(True)
         if success:
             self._progress.setValue(100)
             self._log("Flash completed successfully.")
