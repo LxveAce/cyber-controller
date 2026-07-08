@@ -9,6 +9,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 - **Flock map: you can now zoom back out.** v1.6.6 fixed zoom-*in* but left the zoom-*out* floor at a fixed value the
   map often sits below (a real camera spread, or the world basemap, frames below it), so the wheel refused to zoom out.
   The zoom-out floor is now "fit the whole scene," so you can always pull back to see everything.
+- **Macros: starter macros now use real firmware commands.** Several bundled macros sent commands the firmware no
+  longer accepts, so they silently did nothing (and downstream steps then acted on an empty list): Marauder's
+  `scanap`/`scansta` (removed in firmware v1.12.3 — now `scanall`), a `select -a -f <ssid>` form that never existed
+  (now `select -a <index>`), and `sniffpmkid -c <ch>` (now set the channel first, then `sniffpmkid`). The Flipper
+  device-info macro's `device_info` is now recognized in the command catalog, and the mislabeled GhostESP "BLE spam"
+  template was removed (GhostESP has no BLE-spam command; that capability lives on Marauder/ESP32-DIV). A new test
+  validates every bundled macro against its firmware's real command set so this can't drift again.
 
 ## [1.6.6] — 2026-07-08
 

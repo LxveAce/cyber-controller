@@ -3,7 +3,7 @@
   "description": "Passive: discover nearby access points, stop, then print the list. No transmit.",
   "steps": [
     {
-      "command": "scanap",
+      "command": "scanall",
       "delay_ms": 0,
       "expected_response": ""
     },

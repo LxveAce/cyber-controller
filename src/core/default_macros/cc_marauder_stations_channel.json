@@ -8,7 +8,7 @@
       "expected_response": ""
     },
     {
-      "command": "scansta",
+      "command": "scanall",
       "delay_ms": 500,
       "expected_response": ""
     },

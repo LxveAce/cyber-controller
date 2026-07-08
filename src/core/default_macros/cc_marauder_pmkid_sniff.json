@@ -3,8 +3,13 @@
   "description": "Passive PMKID/handshake capture on a channel for 10 s. No deauth, no transmit.",
   "steps": [
     {
-      "command": "sniffpmkid -c {{CHANNEL}}",
+      "command": "channel -s {{CHANNEL}}",
       "delay_ms": 0,
+      "expected_response": ""
+    },
+    {
+      "command": "sniffpmkid",
+      "delay_ms": 500,
       "expected_response": ""
     },
     {

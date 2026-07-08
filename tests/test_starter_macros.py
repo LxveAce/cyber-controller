@@ -33,9 +33,9 @@ _BUILTIN_DIR = Path(__file__).resolve().parent.parent / "src" / "core" / "defaul
 
 # ── Bundled builtins are well-formed ──────────────────────────────────
 
-def test_ships_fourteen_builtins():
+def test_ships_thirteen_builtins():
     files = sorted(_BUILTIN_DIR.glob("cc_*.json"))
-    assert len(files) == 14  # 12 safe-recon/util + 2 offensive templates
+    assert len(files) == 13  # 12 safe-recon/util + 1 offensive template
 
 
 def test_builtins_match_real_macro_shape():
@@ -47,13 +47,41 @@ def test_builtins_match_real_macro_shape():
         assert macro.to_dict()["steps"] == data["steps"]
 
 
-def test_exactly_two_offensive_templates():
+def test_builtins_use_real_protocol_commands():
+    """Every bundled macro step must be a real verb in its firmware's command catalog.
+
+    Guards against command drift: Marauder v1.12.3 removed scanap/scansta (now 'scanall'), and
+    'select -a -f <ssid>' was never a real select form — a macro sending a dead verb silently no-ops
+    on the device, so downstream select/deauth steps then operate on an empty list. Protocols with an
+    empty catalog (Generic passthrough, e.g. esp8266_deauther) send raw and cannot be validated.
+    """
+    from src.protocols import get_protocol
+
+    def skeleton(cmd: str) -> tuple[str, ...]:
+        # verb + flag tokens; drop values and {{VAR}} placeholders so 'select -a {{IDX}}' matches the
+        # catalog's 'select -a <idx>' while a fabricated flag like 'select -a -f' does not.
+        toks = cmd.split()
+        return (toks[0], *[t for t in toks[1:] if t.startswith("-")]) if toks else ()
+
+    for f in sorted(_BUILTIN_DIR.glob("cc_*.json")):
+        macro = Macro.from_dict(json.loads(f.read_text(encoding="utf-8")))
+        base = macro.device_protocol.removesuffix("-attack")
+        catalog = get_protocol(base).get_commands()
+        if not catalog:
+            continue  # Generic passthrough: nothing to validate against
+        known = {skeleton(c.name) for c in catalog}
+        for step in macro.steps:
+            skel = skeleton(step.command)
+            assert skel in known, f"{f.name}: step '{step.command}' -> {skel} is not a real {base} command"
+
+
+def test_exactly_one_offensive_template():
     offensive = []
     for f in sorted(_BUILTIN_DIR.glob("cc_*.json")):
         macro = Macro.from_dict(json.loads(f.read_text(encoding="utf-8")))
         if is_offensive_macro(macro):
             offensive.append(macro.name)
-    assert len(offensive) == 2
+    assert len(offensive) == 1
     assert all(n.startswith("[TEMPLATE") for n in offensive)
 
 
@@ -70,7 +98,7 @@ def test_excluded_firmwares_not_shipped():
 def test_first_run_seeds_all_builtins(tmp_path):
     rec = MacroRecorder(macros_dir=tmp_path / "macros")
     written = rec.seed_default_macros()
-    assert len(written) == 14
+    assert len(written) == 13
     listed = {m["name"] for m in rec.list_saved_macros()}
     assert "Marauder — AP scan + list" in listed
     # ledger is present but never surfaces as a macro
@@ -80,7 +108,7 @@ def test_first_run_seeds_all_builtins(tmp_path):
 
 def test_seeding_is_idempotent(tmp_path):
     rec = MacroRecorder(macros_dir=tmp_path / "macros")
-    assert len(rec.seed_default_macros()) == 14
+    assert len(rec.seed_default_macros()) == 13
     assert rec.seed_default_macros() == []  # second run writes nothing
 
 
@@ -178,7 +206,7 @@ def test_safe_recon_macro_is_not_offensive():
         name="Marauder — AP scan + list",
         device_protocol="marauder",
         steps=[
-            MacroStep(command="scanap"),
+            MacroStep(command="scanall"),
             MacroStep(command="stopscan"),
             MacroStep(command="list -a"),
         ],
@@ -260,7 +288,7 @@ def test_safe_macro_plays_without_gate(qapp, tmp_path, monkeypatch):
     macro = Macro(
         name="Marauder — AP scan + list",
         device_protocol="marauder",
-        steps=[MacroStep(command="scanap"), MacroStep(command="stopscan")],
+        steps=[MacroStep(command="scanall"), MacroStep(command="stopscan")],
     )
     tab, rec = _make_tab(tmp_path, macro)
 

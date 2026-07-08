@@ -1,9 +1,9 @@
 {
   "name": "[TEMPLATE — REVIEW] Marauder — targeted deauth (arm required)",
-  "description": "TEMPLATE — transmits. Deauth a single AP you own or are authorized to test. Confirm-gated; cannot fire until you type a TARGET_SSID (an unfilled filter selects nothing). Only run on equipment you are authorized to test.",
+  "description": "TEMPLATE — transmits. Deauth a single AP you own or are authorized to test. Confirm-gated: run the scan, read the AP list, then enter TARGET_INDEX from the `list -a` output. An unfilled index selects nothing, so it cannot fire blind. Only run on equipment you are authorized to test.",
   "steps": [
     {
-      "command": "scanap",
+      "command": "scanall",
       "delay_ms": 0,
       "expected_response": ""
     },
@@ -18,7 +18,7 @@
       "expected_response": ""
     },
     {
-      "command": "select -a -f \"{{TARGET_SSID}}\"",
+      "command": "select -a {{TARGET_INDEX}}",
       "delay_ms": 500,
       "expected_response": ""
     },

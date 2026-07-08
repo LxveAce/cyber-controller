@@ -186,6 +186,8 @@ class FlipperProtocol(BaseProtocol):
     def get_commands(self) -> list[CommandInfo]:
         """Flipper Zero CLI command set (ported from source command catalog)."""
         return [
+            # ---- System ----
+            CommandInfo("device_info", "System", "Device / firmware info"),
             # ---- SubGHz ----
             CommandInfo("subghz rx", "SubGHz", "Receive SubGHz signals"),
             CommandInfo("subghz tx", "SubGHz", "Transmit SubGHz signal", danger="lab-only"),
