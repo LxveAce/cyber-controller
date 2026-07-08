@@ -746,6 +746,55 @@ def sha256_file(path: str, on_line: Line,
     return digest
 
 
+def _drop_block_cache(fd: int, length: int) -> None:
+    """Best-effort: evict the block device's cached pages so a verify read-back reflects the MEDIA,
+    not the Linux page cache — otherwise a corrupted physical write could pass verify from RAM. No-op
+    where posix_fadvise / POSIX_FADV_DONTNEED are unavailable (Windows/macOS)."""
+    fadvise = getattr(os, "posix_fadvise", None)
+    dontneed = getattr(os, "POSIX_FADV_DONTNEED", None)
+    if fadvise is None or dontneed is None:
+        return
+    try:
+        fadvise(fd, 0, length, dontneed)
+    except OSError:
+        pass
+
+
+def _hash_reader(reader, img_size: int, h, on_progress: Optional[Callable[[float], None]]) -> None:
+    """Read exactly img_size bytes from a binary reader into hasher h, reporting fractional progress."""
+    read_total = 0
+    while read_total < img_size:
+        data = reader.read(min(_CHUNK, img_size - read_total))
+        if not data:
+            break
+        h.update(data)
+        read_total += len(data)
+        if on_progress and img_size > 0:
+            on_progress(min(read_total / img_size, 1.0))
+
+
+def _verify_read_via_sudo_dd(dev: str, img_size: int, h, on_progress, on_line: Line) -> bool:
+    """Read img_size bytes back at write-privilege (`sudo dd`) with the cache bypassed (iflag=direct),
+    for the Linux non-root case: the write ran via `sudo dd` so an unprivileged open() is denied and a
+    GOOD write would otherwise be reported as a verify failure. Streams dd stdout into the hasher."""
+    blocks = (img_size + _CHUNK - 1) // _CHUNK
+    argv = ["sudo", "dd", f"if={dev}", f"bs={_CHUNK}", f"count={blocks}", "iflag=direct"]
+    on_line("[verify] reading back at write-privilege (sudo dd, cache bypassed)...")
+    try:
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    except (OSError, ValueError) as exc:
+        on_line(f"[verify] privileged read-back failed to start ({exc}); run the imaging as root to verify")
+        return False
+    if proc.stdout is not None:
+        _hash_reader(proc.stdout, img_size, h, on_progress)
+        proc.stdout.close()
+    proc.wait()
+    if proc.returncode:
+        on_line(f"[verify] privileged read-back (sudo dd) exited {proc.returncode}")
+        return False
+    return True
+
+
 def verify_write(img_path: str, device: str, on_line: Line,
                  on_progress: Optional[Callable[[float], None]] = None) -> bool:
     """Read back img_size bytes from device and compare SHA-256 against the image file."""
@@ -792,24 +841,27 @@ def verify_write(img_path: str, device: str, on_line: Line,
         finally:
             kernel32.CloseHandle(handle)
     else:
-        # Linux/macOS: read the raw device file
+        # Linux/macOS. macOS reads the raw, UNBUFFERED /dev/rdiskN, so its read-back already reflects
+        # the media. Linux /dev/sdX is a BUFFERED block device: without dropping its cache a read-back
+        # can be served from RAM (a corrupted write could pass verify), and when the write ran via
+        # `sudo dd` (non-root) an unprivileged open() here is denied — a GOOD write then falsely fails.
         dev = device
         if system == "Darwin":
             dev = device.replace("/dev/disk", "/dev/rdisk")
         try:
             with open(dev, "rb") as f:
-                while read_total < img_size:
-                    to_read = min(_CHUNK, img_size - read_total)
-                    data = f.read(to_read)
-                    if not data:
-                        break
-                    h.update(data)
-                    read_total += len(data)
-                    if on_progress and img_size > 0:
-                        on_progress(min(read_total / img_size, 1.0))
+                if system == "Linux":
+                    _drop_block_cache(f.fileno(), img_size)  # read the media, not the page cache (#2)
+                _hash_reader(f, img_size, h, on_progress)
         except PermissionError:
-            on_line("[verify] permission denied reading device — run as root/Administrator")
-            return False
+            # the write ran as `sudo dd` but this read isn't privileged — read back at the SAME
+            # privilege so a good write is actually verified, not reported as a permission failure (#3).
+            if system == "Linux":
+                if not _verify_read_via_sudo_dd(dev, img_size, h, on_progress, on_line):
+                    return False
+            else:
+                on_line("[verify] permission denied reading device — run as root/Administrator")
+                return False
 
     dev_hash = h.hexdigest()
     on_line(f"[verify] device SHA-256: {dev_hash}")

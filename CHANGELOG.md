@@ -8,6 +8,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Fixed
+- **SD-card write verification now reflects the physical card and works from a non-root shell (Linux).** The read-back
+  opened the block device buffered, so a verify could pass by reading the just-written data straight from the Linux
+  page cache (RAM) rather than the card — a corrupted write could be reported as verified. It also read with an
+  unprivileged `open()` even though the write ran via `sudo dd`, so a good write from a non-root shell was reported as a
+  permission failure. The read-back now drops the device's cached pages first (`posix_fadvise DONTNEED`) and, when the
+  write needed `sudo`, reads back with `sudo dd iflag=direct` at the same privilege. macOS already read the unbuffered
+  `/dev/rdisk`; Windows is unaffected. (Helper logic is unit-tested; on-card behaviour needs a Linux bench to validate.)
 - **A firmware profile can no longer accidentally disable the flash-size safety check.** The engine forces
   `--flash_size detect` (which patches a merged image's header to the board's real size). If a profile had put its own
   `--flash_size` in `extra_args`, esptool's last-flag-wins would have silently overridden that safeguard and re-opened

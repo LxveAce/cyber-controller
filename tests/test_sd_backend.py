@@ -225,3 +225,93 @@ def test_download_image_streams_to_temp_not_the_shared_dest(tmp_path, monkeypatc
     assert out == str(dest)
     assert dest.read_bytes() == b"abcdef"            # complete, uncorrupted download
     assert seen["dest_existed_mid_stream"] is False  # streamed to a temp file, not the shared dest
+
+
+# ── verify read-back: cache bypass + same-privilege (BUGHUNT-0708 #2/#3, Linux) ──────────────────
+# The Linux read-back went through the buffered block device (a corrupted write could pass verify from
+# RAM), and used an unprivileged open() even though the write ran via `sudo dd` (a good non-root write
+# then falsely failed). These lock the helper logic; the on-device behaviour needs a Linux bench.
+import hashlib  # noqa: E402
+import io  # noqa: E402
+
+
+def test_hash_reader_reads_exactly_img_size_and_ignores_trailing():
+    payload = b"A" * 2500
+    reader = io.BytesIO(payload + b"JUNK-BEYOND-THE-IMAGE")
+    h = hashlib.sha256()
+    seen: list[float] = []
+    sd._hash_reader(reader, len(payload), h, seen.append)
+    assert h.hexdigest() == hashlib.sha256(payload).hexdigest()  # stops at img_size, ignores trailing
+    assert seen and seen[-1] == 1.0
+
+
+def test_hash_reader_stops_on_short_read():
+    reader = io.BytesIO(b"AB")  # device returns fewer bytes than img_size
+    h = hashlib.sha256()
+    sd._hash_reader(reader, 100, h, None)
+    assert h.hexdigest() == hashlib.sha256(b"AB").hexdigest()
+
+
+def test_drop_block_cache_calls_fadvise_dontneed(monkeypatch):
+    calls: list = []
+    monkeypatch.setattr(sd.os, "posix_fadvise",
+                        lambda fd, off, ln, adv: calls.append((fd, off, ln, adv)), raising=False)
+    monkeypatch.setattr(sd.os, "POSIX_FADV_DONTNEED", 4, raising=False)
+    sd._drop_block_cache(7, 4096)
+    assert calls == [(7, 0, 4096, 4)]  # drops the whole image range from cache -> read hits the media
+
+
+def test_drop_block_cache_noop_without_fadvise(monkeypatch):
+    monkeypatch.delattr(sd.os, "posix_fadvise", raising=False)
+    sd._drop_block_cache(7, 4096)  # Windows/macOS lack it -> must be a silent no-op, not a crash
+
+
+def test_drop_block_cache_swallows_oserror(monkeypatch):
+    def boom(*a):
+        raise OSError("fadvise not supported here")
+    monkeypatch.setattr(sd.os, "posix_fadvise", boom, raising=False)
+    monkeypatch.setattr(sd.os, "POSIX_FADV_DONTNEED", 4, raising=False)
+    sd._drop_block_cache(7, 4096)  # best-effort: swallow the OSError
+
+
+class _FakeProc:
+    def __init__(self, data: bytes, rc: int = 0):
+        self.stdout = io.BytesIO(data)
+        self.returncode = rc
+        self.waited = False
+
+    def wait(self):
+        self.waited = True
+
+
+def test_verify_read_via_sudo_dd_hashes_privileged_stream(monkeypatch):
+    payload = b"Z" * 5000
+    captured: dict = {}
+
+    def fake_popen(argv, stdout=None, stderr=None):
+        captured["argv"] = argv
+        return _FakeProc(payload)
+
+    monkeypatch.setattr(sd.subprocess, "Popen", fake_popen)
+    h = hashlib.sha256()
+    ok = sd._verify_read_via_sudo_dd("/dev/sdX", len(payload), h, None, lambda ln: None)
+    assert ok is True
+    assert h.hexdigest() == hashlib.sha256(payload).hexdigest()
+    argv = captured["argv"]
+    assert argv[0] == "sudo" and argv[1] == "dd"      # read back at write-privilege (#3)
+    assert "iflag=direct" in argv                     # ...with the page cache bypassed (#2)
+    assert "if=/dev/sdX" in argv
+
+
+def test_verify_read_via_sudo_dd_fails_on_nonzero_exit(monkeypatch):
+    monkeypatch.setattr(sd.subprocess, "Popen", lambda *a, **k: _FakeProc(b"", rc=1))
+    assert sd._verify_read_via_sudo_dd("/dev/sdX", 0, hashlib.sha256(), None, lambda ln: None) is False
+
+
+def test_verify_read_via_sudo_dd_fails_when_popen_raises(monkeypatch):
+    def boom(*a, **k):
+        raise OSError("sudo not found")
+    monkeypatch.setattr(sd.subprocess, "Popen", boom)
+    lines: list[str] = []
+    assert sd._verify_read_via_sudo_dd("/dev/sdX", 0, hashlib.sha256(), None, lines.append) is False
+    assert any("failed to start" in ln for ln in lines)
