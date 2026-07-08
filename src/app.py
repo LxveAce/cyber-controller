@@ -273,6 +273,28 @@ def main(argv: list[str] | None = None) -> int:
     # is a child of the running GUI, and the lock would otherwise abort it as a duplicate instance.
     _argv = sys.argv[1:] if argv is None else argv
     if _argv and _argv[0] == "--_run-esptool":
+        # A frozen WINDOWED build (PyInstaller --noconsole) has sys.stdout/stderr = None, so esptool's
+        # progress print(".", flush=True) / print("") raises `OSError: [Errno 22] Invalid argument` and
+        # CRASHES the flash before it can report the real connect result — the owner hit exactly this
+        # (esptool "Invalid head of packet" was masked by the OSError). flash_core._run_stream launches us
+        # with a piped stdout, so fd 1/2 are valid at the OS level; rebind Python's streams onto them so
+        # esptool's output reaches that pipe (and the GUI log). Fall back to devnull if a fd isn't usable
+        # (e.g. launched with neither a console nor a pipe). closefd=False so the process-exit gc doesn't
+        # close the shared fd out from under the parent's pipe.
+        import os
+        for _fd, _name in ((1, "stdout"), (2, "stderr")):
+            _s = getattr(sys, _name, None)
+            try:
+                if _s is None:
+                    raise OSError
+                _s.write("")
+                _s.flush()
+            except Exception:
+                try:
+                    setattr(sys, _name, os.fdopen(_fd, "w", encoding="utf-8",
+                                                  errors="replace", closefd=False))
+                except OSError:
+                    setattr(sys, _name, open(os.devnull, "w", encoding="utf-8"))
         import esptool
         return esptool.main(_argv[1:])
 
