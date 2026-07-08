@@ -65,16 +65,17 @@ def test_no_fix_logs_nothing():
     assert s.ap_count == 0
 
 
-def test_missing_rssi_from_another_board_does_not_hijack_merged_row():
-    # A generic AP line lacking an RSSI token (common on a mixed-firmware deck) defaults rssi=0. A raw
-    # `0 <= -40` comparison would let it overwrite the merged strongest-RSSI row and its shared location.
+def test_zero_rssi_from_another_board_does_not_hijack_merged_row():
+    # A board emitting an explicit `RSSI:0` (0 dBm = no-signal sentinel) for an already-merged BSSID yields
+    # obs.rssi=0 and DOES reach the dedup comparison. A raw `0 <= -40` would let it overwrite the merged
+    # strongest-RSSI row and shared location; the _signal_key sentinel (0 -> -9999) keeps the strong reading.
     buf = io.StringIO()
     s = wd.MultiWardriveSession(buf)
     s.update_gps(FIX)
     assert s.observe("COM3", "BSSID:AA:BB:CC:DD:EE:FF RSSI:-40 Ch:6 ESSID:N") is True     # strong, first-seen
     assert list(s.seen.values()) == [-40]
-    # Same BSSID on another board, but no parseable RSSI -> rssi=0 (missing sentinel), must NOT overwrite.
-    assert s.observe("COM4", "BSSID:AA:BB:CC:DD:EE:FF Ch:6 ESSID:N") is False
+    # Same BSSID on another board carrying an explicit RSSI:0 -> obs.rssi=0, must NOT overwrite.
+    assert s.observe("COM4", "BSSID:AA:BB:CC:DD:EE:FF RSSI:0 Ch:6 ESSID:N") is False
     assert list(s.seen.values()) == [-40]                    # strongest RSSI / location retained
     assert s.per_board.get("COM4", 0) == 0                   # not credited, not double-counted
     rows = [ln for ln in buf.getvalue().splitlines()[2:] if ln]

@@ -139,9 +139,13 @@ def test_generated_web_password_goes_to_console_not_logs(monkeypatch, capsys) ->
     assert generated
 
     err = capsys.readouterr().err
-    m = re.search(r"password:\s*(\S+)", err)
+    # Anchor to the indented "      password: <pw>" value line. A bare `password:\s*(\S+)` instead matches
+    # the earlier header line ("...web remote password:") and \s* eats the newline+indent, capturing the
+    # literal "username:" token rather than the secret — leaving the leak assertion below blind.
+    m = re.search(r"(?m)^\s+password:\s*(\S+)", err)
     assert m, f"generated password not shown on the console: {err!r}"
     shown_pw = m.group(1)
+    assert ":" not in shown_pw, f"captured a label, not the password: {shown_pw!r}"
 
     # the live password must appear ONLY on the console, never in any log record
     assert all(shown_pw not in rec for rec in records), "generated web password leaked into logs"

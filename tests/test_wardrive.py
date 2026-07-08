@@ -132,9 +132,10 @@ def test_wigle_row_defangs_malicious_ssid():
     assert ssid_col == "'=2+5+cmdexec"           # rendered as literal text instead
 
 
-def test_missing_rssi_does_not_overwrite_strong_reading():
-    # A line with no parseable RSSI token defaults rssi=0. Because real RSSI is negative, a raw `0 <= -40`
-    # comparison would let that no-signal sighting win the dedup and hijack the strongest-RSSI row/location.
+def test_zero_rssi_does_not_overwrite_strong_reading():
+    # An explicit `RSSI:0` line (0 dBm = the parser's no-signal sentinel) for an already-mapped BSSID
+    # produces obs.rssi=0 and DOES reach the dedup comparison. A raw `0 <= -40` would let that no-signal
+    # sighting win and hijack the strongest-RSSI row/location; the _signal_key sentinel (0 -> -9999) blocks it.
     buf = io.StringIO()
     s = wd.WardriveSession(buf)
     s.start()
@@ -142,9 +143,9 @@ def test_missing_rssi_does_not_overwrite_strong_reading():
     s.update_gps("$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47")
     assert s.observe("BSSID:AA:BB:CC:DD:EE:FF RSSI:-40 Ch:6 ESSID:Net", now="2026-06-27 00:00:00") is True
     assert s.seen["aa:bb:cc:dd:ee:ff"] == -40
-    # Move the rig to fix B, then a same-BSSID line with NO RSSI token (parses to rssi=0).
+    # Move the rig to fix B, then a same-BSSID line carrying an explicit RSSI:0 (obs.rssi=0).
     s.update_gps("$GPGGA,123520,4810.000,N,01135.000,E,1,08,0.9,545.4,M,46.9,M,,*4E")
-    assert s.observe("BSSID:AA:BB:CC:DD:EE:FF Ch:6 ESSID:Net", now="2026-06-27 00:00:01") is False
+    assert s.observe("BSSID:AA:BB:CC:DD:EE:FF RSSI:0 Ch:6 ESSID:Net", now="2026-06-27 00:00:01") is False
     assert s.seen["aa:bb:cc:dd:ee:ff"] == -40                 # strong reading (and its location) preserved
     rows = [ln for ln in buf.getvalue().splitlines()[2:] if ln]
     assert len(rows) == 1                                     # no second, no-signal row appended
