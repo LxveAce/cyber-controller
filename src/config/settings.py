@@ -111,12 +111,15 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     merged: dict[str, Any] = {}
     for key, base_val in base.items():
         over_val = override.get(key)
-        if isinstance(base_val, dict) and isinstance(over_val, dict):
-            merged[key] = {**base_val, **over_val}
+        if isinstance(base_val, dict):
+            # A section defaults to a dict, so a null/non-dict override (e.g. {"serial": null} from a
+            # partial/corrupt file) is junk. Merge it if it's a dict, otherwise keep the default section
+            # rather than letting None through — consumers do serial.get(...) and would crash on None.
+            merged[key] = {**base_val, **over_val} if isinstance(over_val, dict) else dict(base_val)
         elif key in override:
             merged[key] = over_val
         else:
-            merged[key] = dict(base_val) if isinstance(base_val, dict) else base_val
+            merged[key] = base_val
     # Carry over any extra sections present in the saved file but not in DEFAULTS.
     for key, over_val in override.items():
         if key not in merged:

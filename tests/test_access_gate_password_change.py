@@ -62,6 +62,37 @@ def test_password_change_rekeys_vault_in_sync(gate_and_vault, monkeypatch):
     assert vault.open_vault({"password": b"old"}) is None
 
 
+def test_password_change_falls_back_when_key_not_a_vault_slot(gate_and_vault, monkeypatch):
+    """Gate/vault can drift: the physical key is stored in the gate config but was never added as a
+    vault keyslot (e.g. --create-physical-key succeeded while the vault set_factor('key') was rejected
+    for a missing admin password). With the USB inserted, set_password_cli must NOT try to unlock with
+    the (non-existent) 'key' slot and skip the current-password prompt — that permanently blocks the
+    change. It must fall back to the current admin password."""
+    _provision(monkeypatch, "old")
+    vault.open_vault({"password": b"old"}).set("note", "keep")
+
+    # Store a physical key in the GATE only (never call vault.set_factor('key', …)), then "insert" it.
+    usb = gate_and_vault / "usb"
+    usb.mkdir()
+    pk.create_physical_key(usb)
+    monkeypatch.setattr(pk, "list_removable_drives", lambda: [usb])
+
+    # Precondition: the drift is real — gate has the key, the vault does not, and the key reads present.
+    assert pk.has_physical_key() is True
+    assert "key" not in vault.factors()
+    assert pk.present_key_secret() is not None
+
+    # Change old -> new. The current-password fallback must be reached and the re-key must succeed.
+    _feed_getpass(monkeypatch, [("Current admin password", "old"),
+                                ("New admin password", "new"), ("Confirm", "new")])
+    assert access_gate.set_password_cli() == 0
+
+    assert pk.verify_admin_password("new") is True
+    v_new = vault.open_vault({"password": b"new"})
+    assert v_new is not None and v_new.get("note") == "keep"   # same DEK, data intact
+    assert vault.open_vault({"password": b"old"}) is None
+
+
 def test_wrong_current_password_aborts_without_desync(gate_and_vault, monkeypatch):
     _provision(monkeypatch, "old")
     vault.open_vault({"password": b"old"}).set("note", "keep")

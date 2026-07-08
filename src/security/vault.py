@@ -109,7 +109,15 @@ def _load_hdr() -> dict:
     p = _hdr_path()
     if not p.exists():
         return {}
-    return json.loads(p.read_text(encoding="utf-8"))
+    # is_provisioned() is just "file exists", so a truncated/empty/garbage header (e.g. a crash during
+    # _save_hdr's O_TRUNC-then-write window, or a 0-byte file) must NOT raise a raw JSONDecodeError out
+    # of factors()/set_factor into user-facing management commands (--gate-status runs without auth).
+    # Fail closed to an empty header: the encrypted data stays sealed and the caller sees a clean state.
+    try:
+        hdr = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return hdr if isinstance(hdr, dict) else {}
 
 
 def _save_hdr(hdr: dict) -> None:
@@ -126,7 +134,12 @@ def _save_hdr(hdr: dict) -> None:
 
 
 def _dek_from(hdr: dict, available: dict) -> Optional[bytes]:
-    salt = bytes.fromhex(hdr["salt"])
+    # A valid-JSON-but-incomplete header (missing 'salt') must not raise a raw KeyError out of
+    # set_factor; treat it as unusable so the caller gets NeedExistingFactor / an empty factor list.
+    salt_hex = hdr.get("salt")
+    if not salt_hex:
+        return None
+    salt = bytes.fromhex(salt_hex)
     slots = hdr.get("slots", {})
     chk = hdr.get("check")
     for name, secret in available.items():

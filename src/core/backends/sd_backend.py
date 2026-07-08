@@ -285,23 +285,29 @@ def decompress(src: str, dest_dir: str, on_line: Line,
     """Auto-detect compression and decompress src into dest_dir. Returns .img path."""
     os.makedirs(dest_dir, exist_ok=True)
     base = os.path.basename(src)
-    if base.endswith(".img.xz"):
+    # Match the extension case-insensitively so it mirrors discover_images(), which compiles the
+    # profile file_pattern with re.IGNORECASE. Otherwise an asset with an uppercase extension (e.g.
+    # 'Foo-v2.0.IMG.XZ') is discovered, offered and fully downloaded, only to fail here after the
+    # download — advertised as flashable but never flashable. Slicing uses the original base so the
+    # decompressed filename keeps its real casing.
+    low = base.lower()
+    if low.endswith(".img.xz"):
         img_name = base[:-3]  # strip .xz
-    elif base.endswith(".img.gz"):
+    elif low.endswith(".img.gz"):
         img_name = base[:-3]  # strip .gz
-    elif base.endswith(".zip"):
+    elif low.endswith(".zip"):
         img_name = base[:-4] + ".img"
-    elif base.endswith(".img"):
+    elif low.endswith(".img"):
         on_line("[decompress] already an .img, no decompression needed")
         return src
     else:
         raise ValueError(f"unsupported archive format: {base}")
     dest = os.path.join(dest_dir, _safe_filename(img_name))
-    if base.endswith(".img.xz"):
+    if low.endswith(".img.xz"):
         return _decompress_xz(src, dest, on_line, on_progress)
-    elif base.endswith(".img.gz"):
+    elif low.endswith(".img.gz"):
         return _decompress_gz(src, dest, on_line, on_progress)
-    elif base.endswith(".zip"):
+    elif low.endswith(".zip"):
         return _decompress_zip(src, dest, on_line, on_progress)
     raise ValueError(f"unsupported archive format: {base}")
 

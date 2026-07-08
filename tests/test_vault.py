@@ -166,3 +166,31 @@ def test_vault_load_tampered_raises_clean_valueerror(tmp_path, monkeypatch):
     vd = vaultmod.Vault(os.urandom(32))
     with pytest.raises(ValueError, match="corrupt or tampered"):
         vd.load()
+
+
+def test_factors_on_truncated_header_fails_closed(v):
+    """A truncated/0-byte header (crash during _save_hdr's O_TRUNC-then-write window) leaves
+    is_provisioned() True — factors() must NOT raise a raw JSONDecodeError into the no-auth
+    --gate-status command, but fail closed to an empty factor list."""
+    v.set_factor("password", b"hunter2")
+    v._hdr_path().write_text("", encoding="utf-8")   # simulate a truncated write
+    assert v.is_provisioned() is True
+    assert v.factors() == []   # was: unhandled json.JSONDecodeError
+
+
+def test_factors_on_non_dict_header_fails_closed(v):
+    v.set_factor("password", b"hunter2")
+    v._hdr_path().write_text("null", encoding="utf-8")   # valid JSON, wrong type
+    assert v.factors() == []
+
+
+def test_set_factor_on_header_missing_salt_raises_need_existing(v):
+    """A valid-JSON header missing 'salt' must surface as NeedExistingFactor out of set_factor,
+    not a raw KeyError that set_password_cli doesn't catch."""
+    import json as _json
+    v.set_factor("password", b"hunter2")
+    hdr = _json.loads(v._hdr_path().read_text(encoding="utf-8"))
+    hdr.pop("salt", None)
+    v._hdr_path().write_text(_json.dumps(hdr), encoding="utf-8")
+    with pytest.raises(v.NeedExistingFactor):
+        v.set_factor("password", b"newpass", unlock_with={"password": b"hunter2"})

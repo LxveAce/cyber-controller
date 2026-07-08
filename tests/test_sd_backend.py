@@ -158,6 +158,29 @@ def test_decompress_xz_dispatch_and_name(tmp_path, monkeypatch):
     assert calls["dest"].endswith("kali.img")
 
 
+def test_decompress_matches_extension_case_insensitively(tmp_path, monkeypatch):
+    # discover_images() compiles file_pattern with re.IGNORECASE, so an asset with an uppercase
+    # extension (e.g. 'Raspyjack-v2.0.IMG.XZ') is discovered + downloaded verbatim. decompress must
+    # dispatch on it too, not fall through to "unsupported archive format" after the whole download.
+    routed = {}
+
+    def fake_xz(src, dest, on_line, on_progress):
+        routed["dest"] = dest
+        return dest
+
+    monkeypatch.setattr(sd, "_decompress_xz", fake_xz)
+    out = sd.decompress(str(tmp_path / "Raspyjack-v2.0.IMG.XZ"), str(tmp_path / "out"), lambda _l: None)
+    # dispatched to the xz path (not ValueError); decompressed name keeps its original casing.
+    assert out.endswith("Raspyjack-v2.0.IMG")
+    assert routed["dest"].endswith("Raspyjack-v2.0.IMG")
+
+
+def test_decompress_uppercase_img_passthrough(tmp_path):
+    src = str(tmp_path / "Already.IMG")
+    out = sd.decompress(src, str(tmp_path / "out"), lambda _l: None)
+    assert out == src  # uppercase .IMG recognised as already-an-image, returned unchanged
+
+
 # ── Pi profile registry ───────────────────────────────────────────────────
 def test_get_pi_profile_known_and_unknown():
     assert sd.get_pi_profile("pwnagotchi")["repo"] == "jayofelony/pwnagotchi"

@@ -66,3 +66,20 @@ def test_download_firmware_allows_merged_profile_past_guard(vault, monkeypatch):
 
     vault.download_firmware("bruce")
     assert called["api"] == 1  # merged profile proceeded past the guard to the release query
+
+
+# ── corrupt-but-valid-JSON index resilience ───────────────────────────────
+import json as _json
+
+
+@pytest.mark.parametrize("payload", ["null", "[1, 2, 3]", '"a string"', "42"])
+def test_non_dict_index_starts_fresh(tmp_path, payload):
+    """A valid-JSON-but-non-dict index (e.g. the literal `null` from a bad external write) must not
+    make self._index a non-dict — otherwise the next op (list_cached/get_cached) crashes with
+    AttributeError and the whole offline-cache feature is dead until the file is hand-repaired."""
+    (tmp_path / fwv._INDEX_FILE).write_text(payload, encoding="utf-8")
+    v = fwv.FirmwareVault(vault_dir=tmp_path)
+    assert v._index == {}
+    # The consumers that previously blew up now degrade cleanly.
+    assert v.list_cached() == {}
+    assert v.get_cached("marauder") is None

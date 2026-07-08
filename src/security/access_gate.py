@@ -146,7 +146,13 @@ def set_password_cli() -> int:
     # password desyncs the gate verifier from the vault keyslot and permanently locks the vault (the
     # new password passes the gate but can no longer unwrap the DEK).
     unlock = {}
-    if pk.has_physical_key():
+    # Only try to unwrap with the physical key if it is actually a vault keyslot. The gate verifier and
+    # the vault can drift out of sync (e.g. --create-physical-key stored the gate key but the vault
+    # set_factor('key',…) was rejected for a missing admin password), leaving has_physical_key() True
+    # while the vault has no 'key' slot. Unlocking with a non-existent slot can't unwrap the DEK and,
+    # by populating `unlock`, would skip the current-password fallback below — permanently blocking the
+    # change while the USB is inserted. Mirror the 'password' branch's `in vault.factors()` guard.
+    if pk.has_physical_key() and vault.is_provisioned() and "key" in vault.factors():
         ks = pk.present_key_secret()
         if ks:
             unlock["key"] = ks

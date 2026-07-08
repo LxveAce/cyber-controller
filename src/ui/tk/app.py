@@ -646,6 +646,12 @@ class TkLightApp:
             messagebox.showwarning("Settings", "Settings module not available.")
             return
         settings = load_settings()
+        # A null section on disk makes setdefault return the existing None (key present) -> item-assign
+        # TypeError; coerce non-dict sections to {} first.
+        if not isinstance(settings.get("serial"), dict):
+            settings["serial"] = {}
+        if not isinstance(settings.get("ui"), dict):
+            settings["ui"] = {}
         baud_str = self._settings_baud.get()
         if baud_str:
             settings.setdefault("serial", {})["default_baud"] = int(baud_str)
@@ -667,7 +673,11 @@ class TkLightApp:
             settings = load_settings()
         except Exception:
             return
-        serial = settings.get("serial", {})
+        # A null/non-dict section (e.g. {"serial": null} from a partial/corrupt file) survives
+        # load_settings for keys with no default; coerce to {} so .get(...) can't AttributeError and
+        # fail the whole Lite UI launch. ("ui" has no default section, so _deep_merge can't fix it.)
+        serial = settings.get("serial")
+        serial = serial if isinstance(serial, dict) else {}
         baud = str(serial.get("default_baud", 115200))
         if baud in [self._settings_baud.cget("values")]:
             self._settings_baud.set(baud)
@@ -681,7 +691,8 @@ class TkLightApp:
                 self._settings_port["values"] = current_vals
             self._settings_port.set(port)
         self._settings_autoconnect.set(serial.get("auto_connect", False))
-        ui = settings.get("ui", {})
+        ui = settings.get("ui")
+        ui = ui if isinstance(ui, dict) else {}
         theme = ui.get("theme", "dark")
         self._settings_theme.set(theme.capitalize())
 

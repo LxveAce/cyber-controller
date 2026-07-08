@@ -76,8 +76,13 @@ def normalize(loadout: "dict | None") -> dict:
     """Coerce a stored loadout into a clean dict; unknown ids dropped. Fail-open on junk."""
     if not isinstance(loadout, dict):
         return default_loadout()
-    fw = [f for f in loadout.get("firmwares", []) if f in FIRMWARES]
-    hw = [h for h in loadout.get("hardware", []) if h in HARDWARE]
+    # Coerce a non-list container (null, a scalar) to [] before iterating — dict.get returns the stored
+    # value when the key is present, so a hand-edited "firmwares": null would otherwise raise TypeError
+    # and break the "fail-open on junk" contract for the whole loadout.
+    fw_raw = loadout.get("firmwares")
+    hw_raw = loadout.get("hardware")
+    fw = [f for f in fw_raw if f in FIRMWARES] if isinstance(fw_raw, list) else []
+    hw = [h for h in hw_raw if h in HARDWARE] if isinstance(hw_raw, list) else []
     return {
         "full_stack": bool(loadout.get("full_stack", False)),
         "configured": bool(loadout.get("configured", False)),

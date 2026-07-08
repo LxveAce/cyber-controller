@@ -85,6 +85,19 @@ def test_normalize_drops_junk():
     assert lo["full_stack"] is True  # bool("x")
 
 
+def test_normalize_coerces_non_list_containers():
+    """normalize() promises "fail-open on junk". dict.get returns the stored value when the key is
+    present, so a hand-edited "firmwares": null (or a scalar) must be coerced to [] rather than
+    raising TypeError from `for f in None` — the valid sibling keys are still preserved."""
+    lo = L.normalize({"configured": True, "firmwares": None, "hardware": ["esp32", "gps"]})
+    assert lo["firmwares"] == []
+    assert lo["hardware"] == ["esp32", "gps"]
+    assert lo["configured"] is True
+    # a scalar container is junk too — coerced, not crashed on
+    assert L.normalize({"firmwares": 5, "hardware": "esp32"})["firmwares"] == []
+    assert L.normalize({"firmwares": 5, "hardware": "esp32"})["hardware"] == []
+
+
 def test_default_loadout_is_unconfigured():
     d = L.default_loadout()
     assert d["configured"] is False

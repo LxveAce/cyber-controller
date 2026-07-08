@@ -715,7 +715,11 @@ def create_app(
         if not cmd_limiter.allow(_client_ip()):  # subscribe is now rate-limited too
             emit("serial_output", {"port": "", "line": "[Rate limited]"})
             return
-        port = str((data or {}).get("port", ""))
+        # Coerce any non-object payload (a bare scalar/array) to {} — mirrors _json_body() on the HTTP
+        # twin so .get() below can't AttributeError on e.g. a list. `data or {}` only handles falsy.
+        if not isinstance(data, dict):
+            data = {}
+        port = str(data.get("port", ""))
         if not _known_port(port):
             emit("serial_output", {"port": port, "line": f"[Unknown port {port}]"})
             return
@@ -739,8 +743,12 @@ def create_app(
         if not cmd_limiter.allow(_client_ip()):
             emit("serial_output", {"port": "", "line": "[Rate limited]"})
             return
-        port = str((data or {}).get("port", ""))
-        command = str((data or {}).get("command", ""))
+        # Coerce any non-object payload (a bare scalar/array) to {} — mirrors _json_body() on the HTTP
+        # twin so .get() below can't AttributeError on e.g. a list. `data or {}` only handles falsy.
+        if not isinstance(data, dict):
+            data = {}
+        port = str(data.get("port", ""))
+        command = str(data.get("command", ""))
         if len(command) > _MAX_COMMAND_LEN:
             emit("serial_output", {"port": port, "line": "[Command too long]"})
             return

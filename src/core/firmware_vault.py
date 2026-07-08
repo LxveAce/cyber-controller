@@ -146,9 +146,16 @@ class FirmwareVault:
         path = self._index_path()
         if path.exists():
             try:
-                return json.loads(path.read_text(encoding="utf-8"))
+                raw = json.loads(path.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 log.warning("Corrupt vault index — starting fresh")
+            else:
+                # Valid JSON of the wrong type (null, an array, a bare string) would otherwise sail
+                # through and make self._index a non-dict, so the next vault op (list_cached/get_cached)
+                # blows up on .items()/.get(). Require an object, else start fresh.
+                if isinstance(raw, dict):
+                    return raw
+                log.warning("Vault index is not a JSON object — starting fresh")
         return {}
 
     def _save_index(self) -> None:
