@@ -87,6 +87,12 @@ def heat_color(t: float) -> Tuple[int, int, int]:
     return _HEAT_STOPS[-1][1]
 
 
+def zoom_step(angle_delta: int, base: float = 1.2) -> float:
+    """Map a mouse-wheel ``angleDelta().y()`` to a zoom multiplier: one notch (±120) scales by *base*
+    (in) or ``1/base`` (out); 0 is a no-op (1.0). Pure + Qt-free so the slippy-map zoom is unit-testable."""
+    return base ** (angle_delta / 120.0)
+
+
 def _valid_point(feature: Any) -> bool:
     try:
         if not isinstance(feature, dict):
@@ -150,6 +156,26 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
     _BG = QColor("#0d1117")
     _CANVAS_W, _CANVAS_H = 800, 600
+
+    class _PannableGraphicsView(QGraphicsView):
+        """A QGraphicsView you can drag to pan and wheel to zoom toward the cursor — a slippy map, not a
+        static fit. Total zoom is clamped to the transform scale so the scene can't be flung off-screen or
+        zoomed into the void; the clamp reads the live transform, so fitInView()/reset compose cleanly."""
+
+        _MIN_SCALE, _MAX_SCALE = 0.15, 60.0
+
+        def __init__(self, scene) -> None:
+            super().__init__(scene)
+            self.setDragMode(QGraphicsView.ScrollHandDrag)          # click-drag to pan
+            self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)  # zoom toward the cursor
+            self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+
+        def wheelEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+            f = zoom_step(ev.angleDelta().y())
+            new = self.transform().m11() * f
+            if new < self._MIN_SCALE or new > self._MAX_SCALE:
+                return                                              # clamp: ignore the notch at the limit
+            self.scale(f, f)
 
     class _FlockWorker(QThread):
         """Drive a live Flock scan on its own thread: read GPS + the Flock-You device serial, feed them
@@ -266,10 +292,20 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._refresh_ports()
 
             self._scene = QGraphicsScene(self)
-            self._view = QGraphicsView(self._scene)
+            self._view = _PannableGraphicsView(self._scene)
             self._view.setRenderHint(QPainter.Antialiasing)
             self._view.setBackgroundBrush(QBrush(_BG))
             root.addWidget(self._view, 1)
+
+            # Map controls: the view is now a slippy map (drag to pan, wheel to zoom); "Reset view"
+            # re-frames every camera so you can always get back to the whole set after exploring.
+            map_row = QHBoxLayout()
+            self._btn_reset_view = QPushButton("Reset view")
+            self._btn_reset_view.setToolTip("Re-frame all cameras (drag to pan · scroll to zoom).")
+            self._btn_reset_view.clicked.connect(self.reset_view)
+            map_row.addWidget(self._btn_reset_view)
+            map_row.addStretch(1)
+            root.addLayout(map_row)
 
             self._legend = QLabel("No detections loaded. Blue = few sightings · red = many.")
             self._legend.setStyleSheet("color:#8b949e;")
@@ -309,6 +345,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self.set_geojson({"type": "FeatureCollection", "features": []})
                 self._legend.setText("Could not read that file.")
                 return 0
+            self.reset_view()                               # frame the freshly-loaded cameras
             return len(self._features)
 
         @property
@@ -342,6 +379,14 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._scene.setSceneRect(0, 0, _CANVAS_W, _CANVAS_H)
             self._legend.setText(
                 f"{len(self._features)} camera(s) · blue = few sightings · red = many (up to {maxc}).")
+
+        def reset_view(self) -> None:
+            """Re-frame all cameras: drop any pan/zoom and fit the whole set into the view. Safe on an
+            empty scene (nothing to fit → leaves the view as-is)."""
+            self._view.resetTransform()
+            rect = self._scene.itemsBoundingRect()
+            if rect.isValid() and not rect.isEmpty():
+                self._view.fitInView(rect, Qt.KeepAspectRatio)
 
         def render_native(self, width: int = _CANVAS_W, height: int = _CANVAS_H) -> "QImage":
             """Render the scene into a QImage — pure, offscreen-testable (no window needed)."""
