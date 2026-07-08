@@ -315,6 +315,60 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self.line.emit(f"Flock scan stopped — {self.session.camera_count} camera(s) located")
                 self.stopped.emit()
 
+    class _GpsWorker(QThread):
+        """Standalone GPS reader — opens ONLY the NMEA port, parses fixes, emits ``location``. Lets the
+        'My location (GPS)' pin track your position WITHOUT a full Flock scan (the scan is otherwise the only
+        thing that opens the GPS port). Mirrors _FlockWorker's stop-flag + finally-close lifecycle; it reads
+        nothing but GPS and writes nothing. Never share the port with a running scan — the tab guards that."""
+        location = pyqtSignal(float, float, bool)   # lat, lon, has_fix
+        line = pyqtSignal(str)
+        stopped = pyqtSignal()
+
+        def __init__(self, gps_port: str, gps_baud: int = 9600) -> None:
+            super().__init__()
+            self._gps_port, self._gps_baud = gps_port, gps_baud
+            self._stop = False
+            self.session = flock.FlockSession()
+
+        def stop(self) -> None:
+            self._stop = True
+
+        def run(self) -> None:  # pragma: no cover — serial I/O loop (the parse it drives is unit-tested)
+            try:
+                import serial
+            except Exception as exc:  # noqa: BLE001 — pyserial missing
+                self.line.emit(f"GPS tracking unavailable (pyserial): {exc}")
+                self.stopped.emit()
+                return
+            gps = None
+            last = None
+            try:
+                gps = serial.Serial(self._gps_port, self._gps_baud, timeout=0.5)
+                self.line.emit(f"GPS tracking started on {self._gps_port} — waiting for a fix")
+                while not self._stop:
+                    try:
+                        gl = gps.readline().decode("ascii", "replace").strip()
+                    except Exception:  # noqa: BLE001 — a bad line must not kill the reader
+                        gl = ""
+                    if gl:
+                        self.session.update_gps(gl)
+                    fix = self.session.fix
+                    has = bool(fix and fix.has_fix)
+                    cur = (round(fix.lat, 6), round(fix.lon, 6)) if has else None
+                    if cur != last:
+                        self.location.emit(fix.lat if has else 0.0, fix.lon if has else 0.0, has)
+                        last = cur
+            except Exception as exc:  # noqa: BLE001 — port busy/denied/unplugged
+                self.line.emit(f"GPS tracking error: {exc}")
+            finally:
+                if gps is not None:
+                    try:
+                        gps.close()
+                    except Exception:  # noqa: BLE001
+                        pass
+                self.line.emit("GPS tracking stopped")
+                self.stopped.emit()
+
     class FlockHeatmapTab(QWidget):
         """A heatmap of located ALPR cameras from a Flock scan's GeoJSON. Offscreen-renderable."""
 
@@ -381,7 +435,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._chk_mylocation.setToolTip("When a GPS is streaming (during a live scan), drop a 'you are here' "
                                             "marker at your real-world position. Off by default; needs a GPS fix.")
             self._chk_mylocation.setChecked(False)
-            self._chk_mylocation.stateChanged.connect(lambda _s: self._draw_location_marker())
+            self._chk_mylocation.stateChanged.connect(lambda _s: self._on_mylocation_toggled())
             self._chk_follow = QCheckBox("Follow")
             self._chk_follow.setToolTip("Keep the map centred on your GPS position as it updates (like a car "
                                         "sat-nav). Needs 'My location (GPS)' on.")
@@ -424,6 +478,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._my_location = None
             self._location_marker = None
             self._gps_live = True
+            self._gps_worker = None      # standalone NMEA reader (F3) — GPS tracking without a full scan
 
             self.set_geojson({"type": "FeatureCollection", "features": []})
 
@@ -509,6 +564,47 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 return
             x, y = world_px(*self._my_location)
             self._view.centerOn(x, y)
+
+        # ── standalone GPS tracking (F3: "My location" without a full scan) ──
+        def _on_mylocation_toggled(self) -> None:
+            """Toggling 'My location (GPS)' on/off: draw or hide the pin, and start/stop a standalone GPS
+            reader so the pin works even when no Flock scan is running."""
+            if self._chk_mylocation.isChecked():
+                self._draw_location_marker()
+                self._maybe_start_gps_tracking()
+            else:
+                self._stop_gps_tracking()
+                self._draw_location_marker()          # removes the pin
+
+        def _maybe_start_gps_tracking(self) -> None:
+            """Start the standalone GPS reader IF the toggle is on, a GPS port is selected, none is already
+            running, and no full scan is streaming GPS (that would double-open the same port)."""
+            if self._gps_worker is not None or self._live_worker is not None:
+                return
+            if not self._chk_mylocation.isChecked():
+                return
+            port = self._gps_combo.currentText().strip()
+            if not port:
+                self._live_log.appendPlainText("My location: pick a GPS port to track without a scan.")
+                return
+            self._gps_worker = _GpsWorker(port, 9600)
+            self._gps_worker.location.connect(self._on_location_fix)
+            self._gps_worker.line.connect(self._on_live_line)
+            self._gps_worker.stopped.connect(self._on_gps_tracking_stopped)
+            self._gps_worker.start()
+
+        def _stop_gps_tracking(self) -> None:
+            """Ask the standalone GPS reader to stop + wait for its finally-block to release the port (so a
+            following scan can open it). Safe if none is running."""
+            w = self._gps_worker
+            if w is not None:
+                w.stop()
+                w.wait(1500)
+                self._gps_worker = None
+
+        def _on_gps_tracking_stopped(self) -> None:
+            self._gps_worker = None
+            self.mark_gps_stale()                     # GPS feed ended -> grey the last pin
 
         def _draw_location_marker(self) -> None:
             """(Re)draw the 'you are here' marker at ``self._my_location``. Removes any existing one first;
@@ -664,6 +760,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self._live_status.setText("Pick the Flock device port first.")
                 return
             gps = self._gps_combo.currentText().strip()
+            self._stop_gps_tracking()                    # a full scan opens the GPS port — release the standalone reader first
             self._live_worker = _FlockWorker(gps, 9600, dev, 115200, self._default_checkpoint_path())
             self._live_worker.updated.connect(self._on_live_update)
             self._live_worker.status.connect(self._on_live_status)
@@ -701,6 +798,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._btn_live.setText("Start scan")
             self._live_status.setText("Idle")
             self.mark_gps_stale()            # GPS feed ended -> grey the last-known pin so it doesn't look live
+            if self._chk_mylocation.isChecked():
+                self._maybe_start_gps_tracking()   # resume standalone GPS tracking now the scan freed the port
 
         # ── wake/sleep: keep recording while hidden, catch the map up on show ──
         def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
@@ -728,6 +827,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             if w is not None:
                 w.stop()
                 w.wait()
+            self._stop_gps_tracking()        # also tear down the standalone GPS reader + free its port
 
         # ── load button (dialog; not unit-tested) ─────────────────────
         def _on_load(self) -> None:

@@ -144,6 +144,9 @@ def test_zoom_step_notches():
 pytest.importorskip("PyQt5.QtWidgets")
 from PyQt5.QtWidgets import QApplication  # noqa: E402
 
+from PyQt5.QtCore import QThread, pyqtSignal  # noqa: E402
+
+import src.ui.qt.flock_heatmap_tab as _fh  # noqa: E402
 from src.core.flock import FlockSession  # noqa: E402
 from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab  # noqa: E402
 
@@ -477,3 +480,113 @@ def test_open_data_folder_opens_the_canonical_dir(qapp, tmp_path, monkeypatch):
     assert w._btn_folder.text() == "Open data folder"       # the discoverability button exists
     w._open_data_folder()                                    # must not launch a real file manager (mocked)
     assert captured["path"].replace("\\", "/").rstrip("/").endswith(".cyber-controller/flock")
+
+
+# ── F3: standalone GPS tracking (My location without a full scan) ──────────────
+class _FakeGpsWorker(QThread):
+    """A _GpsWorker stand-in: records lifecycle calls, never launches a thread or opens a serial port."""
+    location = pyqtSignal(float, float, bool)
+    line = pyqtSignal(str)
+    stopped = pyqtSignal()
+
+    def __init__(self, port, baud=9600):
+        super().__init__()
+        self.port, self.baud = port, baud
+        self.started_flag = self.stopped_flag = self.waited = False
+
+    def start(self, *a, **k):     # deliberately does NOT call super().start() -> no thread, no serial
+        self.started_flag = True
+
+    def stop(self):
+        self.stopped_flag = True
+
+    def wait(self, *a, **k):
+        self.waited = True
+        return True
+
+
+def _widget_with_fake_gps(monkeypatch, port="COM9"):
+    monkeypatch.setattr(_fh, "_GpsWorker", _FakeGpsWorker)
+    w = FlockHeatmapTab()
+    w._gps_combo.addItem(port)
+    w._gps_combo.setCurrentText(port)
+    return w
+
+
+def test_gps_worker_wraps_a_live_session(qapp):
+    # the standalone reader owns a real FlockSession, so the NMEA it reads produces a live fix
+    w = _fh._GpsWorker("COM-none")
+    assert w.session.fix is None or not w.session.fix.has_fix
+    w.session.update_gps(FIX_A)
+    assert w.session.fix.has_fix
+    assert w.session.fix.lat == pytest.approx(48.117, abs=1e-2)
+
+
+def test_mylocation_toggle_starts_standalone_gps(qapp, monkeypatch):
+    w = _widget_with_fake_gps(monkeypatch, "COM9")
+    assert w._gps_worker is None
+    w._chk_mylocation.setChecked(True)             # opt in, GPS port selected, no scan running
+    assert isinstance(w._gps_worker, _FakeGpsWorker)
+    assert w._gps_worker.started_flag and w._gps_worker.port == "COM9"
+
+
+def test_standalone_gps_not_started_without_a_port(qapp, monkeypatch):
+    monkeypatch.setattr(_fh, "_GpsWorker", _FakeGpsWorker)
+    w = FlockHeatmapTab()
+    w._gps_combo.setCurrentIndex(-1)               # no GPS port selected
+    w._chk_mylocation.setChecked(True)
+    assert w._gps_worker is None                   # nothing to open -> no worker (a hint is logged instead)
+
+
+def test_standalone_gps_not_started_during_a_scan(qapp, monkeypatch):
+    w = _widget_with_fake_gps(monkeypatch, "COM9")
+    w._live_worker = object()                      # a full scan already streams GPS
+    w._chk_mylocation.setChecked(True)
+    assert w._gps_worker is None                   # guard: never double-open the GPS port
+
+
+def test_mylocation_toggle_off_stops_standalone_gps(qapp, monkeypatch):
+    w = _widget_with_fake_gps(monkeypatch, "COM9")
+    w._chk_mylocation.setChecked(True)
+    worker = w._gps_worker
+    assert worker is not None
+    w._chk_mylocation.setChecked(False)            # opt out -> tear the reader down + free the port
+    assert worker.stopped_flag and worker.waited
+    assert w._gps_worker is None
+
+
+def test_scan_start_releases_standalone_gps(qapp, monkeypatch):
+    w = _widget_with_fake_gps(monkeypatch, "COM9")
+    w._chk_mylocation.setChecked(True)
+    worker = w._gps_worker
+    w._stop_gps_tracking()                         # exactly what _toggle_live calls before opening the scan
+    assert worker.stopped_flag and worker.waited
+    assert w._gps_worker is None
+
+
+def test_scan_end_resumes_standalone_gps_when_opted_in(qapp, monkeypatch):
+    w = _widget_with_fake_gps(monkeypatch, "COM9")
+    w._chk_mylocation.setChecked(True)
+    w._stop_gps_tracking()                         # scan took the port
+    assert w._gps_worker is None
+    w._on_live_stopped()                           # scan ends -> standalone tracking resumes
+    assert isinstance(w._gps_worker, _FakeGpsWorker) and w._gps_worker.started_flag
+
+
+def test_gps_tracking_stopped_greys_the_pin(qapp, monkeypatch):
+    w = _widget_with_fake_gps(monkeypatch, "COM9")
+    w._chk_mylocation.setChecked(True)
+    w.set_my_location(48.0, 11.0)
+    assert w._location_marker.brush().color().name() == "#22d3ee"   # live
+    w._on_gps_tracking_stopped()                   # the reader thread finished
+    assert w._gps_worker is None
+    assert w._location_marker.brush().color().name() == "#6e7681"   # greyed
+
+
+def test_shutdown_stops_standalone_gps(qapp, monkeypatch):
+    w = _widget_with_fake_gps(monkeypatch, "COM9")
+    w._chk_mylocation.setChecked(True)
+    worker = w._gps_worker
+    w.shutdown()                                   # app closing
+    assert worker.stopped_flag and worker.waited
+    assert w._gps_worker is None
