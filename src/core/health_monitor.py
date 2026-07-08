@@ -164,9 +164,10 @@ class HealthMonitor:
         """Get health metrics for a specific device.
 
         If a live serial connection is available for the port, refreshes
-        ``last_seen``/``status`` from its connection state; otherwise returns the
-        cached data. ``firmware_version``/``uptime``/``signal_strength`` are not yet
-        queried over serial and stay at their registered defaults.
+        ``last_seen``/``status`` from its connection state and reads ``firmware_version``
+        from the Device's connect-time handshake; otherwise returns the cached data.
+        ``uptime``/``signal_strength`` are not yet queried over serial and stay at their
+        registered defaults.
 
         Args:
             port: Serial port identifier.
@@ -177,6 +178,7 @@ class HealthMonitor:
         with self._lock:
             cached = self._device_health.get(port, {})
             conn = self._device_connections.get(port)
+            dm = self._dm
 
         if not cached:
             return {
@@ -188,12 +190,34 @@ class HealthMonitor:
                 "status": "not_registered",
             }
 
-        # If we have a connection, try to update firmware_version
+        # Surface the firmware banner + probe health from the registered Device (set by the
+        # connect-time handshake), so the panel shows the real firmware instead of a permanent
+        # "unknown". The DeviceManager stand-in used by some tests has no get_device -> guard it.
+        dev = None
+        get_device = getattr(dm, "get_device", None)
+        if callable(get_device):
+            try:
+                dev = get_device(port)
+            except Exception:
+                dev = None
+        if dev is not None:
+            fw = getattr(dev, "firmware", "") or getattr(dev, "fw_banner", "")
+            if fw:
+                cached["firmware_version"] = fw
+        dev_health = getattr(dev, "health", "unknown") if dev is not None else "unknown"
+
+        # Status/last_seen must reflect whether the FIRMWARE answered, not merely that the port is
+        # open. A hung or mis-flashed board keeps its CDC link open but never replies ("no-reply"):
+        # report that honestly (non-green) and FREEZE last_seen so it stops ticking. Any other live
+        # link (alive / no-cli / not-yet-probed) reads connected and refreshes last_seen.
         if conn is not None:
             try:
                 if hasattr(conn, "is_connected") and conn.is_connected:
-                    cached["last_seen"] = datetime.now(timezone.utc).isoformat()
-                    cached["status"] = "connected"
+                    if dev_health == "no-reply":
+                        cached["status"] = "no-reply"
+                    else:
+                        cached["status"] = "connected"
+                        cached["last_seen"] = datetime.now(timezone.utc).isoformat()
                 else:
                     cached["status"] = "disconnected"
             except Exception:

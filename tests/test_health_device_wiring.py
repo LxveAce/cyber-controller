@@ -119,6 +119,53 @@ def test_poll_refresh_reflects_link_opened_after_detection():
     assert info["last_seen"], "last_seen must be refreshed once the device is live"
 
 
+class _FakeDMWithDevices(_FakeDM):
+    """_FakeDM that also answers get_device(port) -> the registered Device, mirroring
+    DeviceManager.get_device so health can read the real firmware/probe-health."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.by_port: dict = {}
+
+    def get_device(self, port: str):
+        return self.by_port.get(port)
+
+
+def test_health_surfaces_firmware_and_flags_silent_board():
+    from src.models.device import Device
+
+    hm = HealthMonitor()
+    dm = _FakeDMWithDevices()
+    hm.attach_device_manager(dm)
+
+    # An alive Marauder on an open link: the real firmware surfaces (not "unknown"),
+    # status is connected, and last_seen refreshes.
+    alive = Device(port="COM7", name="M", firmware="marauder")
+    alive.health = "alive"
+    dm.by_port["COM7"] = alive
+    dm.conns["COM7"] = SimpleNamespace(is_connected=True)
+    dm.fire_connected(alive)
+    hm._refresh_device_health()
+    info = hm.get_all_device_health()["COM7"]
+    assert info["firmware_version"] == "marauder", "firmware must come from the handshake, not stay 'unknown'"
+    assert info["status"] == "connected"
+    assert info["last_seen"]
+
+    # A hung / mis-flashed board keeps its CDC link open but never replies ("no-reply"):
+    # it must NOT read as a green "connected", and last_seen must FREEZE (stop ticking).
+    dead = Device(port="COM9", name="D")
+    dead.health = "no-reply"
+    dm.by_port["COM9"] = dead
+    dm.conns["COM9"] = SimpleNamespace(is_connected=True)
+    dm.fire_connected(dead)
+    hm._refresh_device_health()
+    first = hm.get_all_device_health()["COM9"]
+    assert first["status"] == "no-reply", "silent firmware must not read as connected"
+    frozen = first["last_seen"]
+    hm._refresh_device_health()
+    assert hm.get_all_device_health()["COM9"]["last_seen"] == frozen, "last_seen must freeze while silent"
+
+
 # ── GUI integration: the real window must wire the monitor to its DeviceManager ──
 
 pytest.importorskip("PyQt5.QtWidgets")

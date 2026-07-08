@@ -16,6 +16,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   device-info macro's `device_info` is now recognized in the command catalog, and the mislabeled GhostESP "BLE spam"
   template was removed (GhostESP has no BLE-spam command; that capability lives on Marauder/ESP32-DIV). A new test
   validates every bundled macro against its firmware's real command set so this can't drift again.
+- **Device Health panel now tells the truth.** Firmware showed a permanent "unknown", and a board whose USB port
+  stayed open but whose firmware had gone silent (hung or mid-flash / mis-flashed) still read as a green "connected"
+  with a ticking Last Seen. Health now reads the real firmware from the connect-time handshake, and a silent board
+  reads "no-reply" with its Last Seen frozen instead of a false green.
 
 ## [1.6.6] — 2026-07-08
 
