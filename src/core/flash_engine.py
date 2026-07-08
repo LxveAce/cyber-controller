@@ -1033,6 +1033,29 @@ class FlashEngine:
             on_line(f"[sd] target {device} is busy with another flash/backup/erase — aborted.")
             return False
 
+    # ── Board detection (CYD probe) ──────────────────────────────────
+
+    def detect_cyd(self, port: str, *, flash_probe: bool = True,
+                   read_secs: float = 6.0, progress: Callable[[str], None] | None = None):
+        """Detect the CYD panel on *port* (flash the bundled probe, read its report).
+
+        Reserves *port* in the SAME busy-guard as flash/backup/erase so a Detect can't race a
+        concurrent esptool run onto one port — two serial ops fighting a port is a known brick
+        path, and the probe-flash used to run raw esptool with no reservation. Raises
+        :class:`_PortBusy` if the port is already mid flash/backup/erase, so the caller can surface
+        "port busy" instead of launching a second, colliding esptool. Returns a ``CydResult``.
+        """
+        from src.core.cyd_detect import detect_cyd as _detect_cyd
+        with self._port_guard(port):
+            with self._lock:
+                self._status = FlashStatus.FLASHING
+            try:
+                return _detect_cyd(port, flash_probe=flash_probe,
+                                   read_secs=read_secs, progress=progress)
+            finally:
+                with self._lock:
+                    self._status = FlashStatus.DONE
+
     # ── Backup ───────────────────────────────────────────────────────
 
     def backup(

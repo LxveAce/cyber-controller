@@ -30,6 +30,7 @@ from src.core.firmware_vault import FirmwareVault, configured_vault_dir
 from src.core.flash_engine import (
     FirmwareProfile,
     FlashEngine,
+    _PortBusy,
     chip_match,
     supported_boards_text,
 )
@@ -112,22 +113,28 @@ class _VariantLoader(QThread):
 
 
 class _DetectWorker(QThread):
-    """Flash the CYD probe and read back the panel identity, off the UI thread."""
+    """Flash the CYD probe and read back the panel identity, off the UI thread.
+
+    Runs through ``FlashEngine.detect_cyd`` so the probe-flash reserves the port in the same
+    busy-guard as flash/backup/erase — a Detect can no longer race a concurrent esptool onto one
+    port (a brick path). If the port is already busy the guard raises and we surface it cleanly.
+    """
 
     progress = pyqtSignal(str)
     done = pyqtSignal(object)  # CydResult
     failed = pyqtSignal(str)
 
-    def __init__(self, port: str) -> None:
+    def __init__(self, engine: FlashEngine, port: str) -> None:
         super().__init__()
+        self._engine = engine
         self._port = port
 
     def run(self) -> None:
         try:
-            from src.core.cyd_detect import detect_cyd
-
-            result = detect_cyd(self._port, progress=self.progress.emit)
+            result = self._engine.detect_cyd(self._port, progress=self.progress.emit)
             self.done.emit(result)
+        except _PortBusy:
+            self.failed.emit(f"port {self._port} is busy with another flash/backup/erase")
         except Exception as exc:  # noqa: BLE001 — surface as a log line, never crash the UI
             self.failed.emit(str(exc))
 
@@ -571,22 +578,27 @@ class FlashTab(QWidget):
             self._log("Detection cancelled.")
             return
         self._log(f"Detecting board on {port}…")
-        self._btn_detect.setEnabled(False)
-        self._btn_flash.setEnabled(False)
-        self._detect_worker = _DetectWorker(port)
+        # Detect flashes the probe over serial — disable every button that would launch a second
+        # esptool/serial op on the same port (flash, backup, erase) until it finishes. The engine's
+        # port-guard is the real safety net; this just keeps the UI from inviting the collision.
+        self._set_detect_busy(True)
+        self._detect_worker = _DetectWorker(self._fe, port)
         self._detect_worker.progress.connect(self._log)
         self._detect_worker.done.connect(self._on_detect_done)
         self._detect_worker.failed.connect(self._on_detect_failed)
         self._detect_worker.start()
 
+    def _set_detect_busy(self, busy: bool) -> None:
+        """Toggle the buttons that would start a competing serial op while detect runs."""
+        for btn in (self._btn_detect, self._btn_flash, self._btn_backup, self._btn_erase):
+            btn.setEnabled(not busy)
+
     def _on_detect_failed(self, msg: str) -> None:
         self._log(f"Detection failed: {msg}")
-        self._btn_detect.setEnabled(True)
-        self._btn_flash.setEnabled(True)
+        self._set_detect_busy(False)
 
     def _on_detect_done(self, result) -> None:
-        self._btn_detect.setEnabled(True)
-        self._btn_flash.setEnabled(True)
+        self._set_detect_busy(False)
         self._log(result.summary)
         if not getattr(result, "is_cyd", False) or not result.variant:
             return

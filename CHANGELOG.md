@@ -8,6 +8,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Fixed
+- **"Detect board (CYD)" can no longer collide with a flash/backup/erase on the same port.** The detection probe-flash
+  ran esptool directly without reserving the port, so starting a Backup, Erase, or Flash while detection was running
+  could put two esptool processes on one UART — a brick path. Detection now goes through the same per-port busy-guard as
+  flashing: it's refused if the port is already in use, it blocks the other operations while it runs, and the
+  Backup/Erase buttons are disabled for the duration.
 - **SD-card write verification now reflects the physical card and works from a non-root shell (Linux).** The read-back
   opened the block device buffered, so a verify could pass by reading the just-written data straight from the Linux
   page cache (RAM) rather than the card — a corrupted write could be reported as verified. It also read with an
