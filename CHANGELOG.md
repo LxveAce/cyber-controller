@@ -49,6 +49,11 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   the read-back showed only the single NVS/RF-calibration sector the restored firmware rewrites on boot, app untouched).
 
 ### Fixed
+- **Starting a Flock scan while "My location (GPS)" was tracking no longer briefly greys your position pin.** The
+  standalone GPS reader's "stopped" notification is delivered across threads, so it could land just after a scan had
+  taken over the GPS feed and grey the pin the scan was actively updating (and, in a rarer race, drop the handle to a
+  freshly-started reader). The handler now only greys the pin when nothing else is feeding it and only clears the reader
+  it actually owns.
 - **HaleHound's OTA update image is no longer offered as a full flash.** The profile matched every `.bin` release
   asset and treated it as a merged image written at 0x0 — including the app-only OTA update image, which belongs to the
   running firmware's over-the-air update path, not a cold esptool flash at the bootloader offset. The OTA image is now

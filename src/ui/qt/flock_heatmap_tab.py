@@ -597,7 +597,9 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._gps_worker = _GpsWorker(port, 9600)
             self._gps_worker.location.connect(self._on_location_fix)
             self._gps_worker.line.connect(self._on_live_line)
-            self._gps_worker.stopped.connect(self._on_gps_tracking_stopped)
+            # Bind the emitting worker into the slot so a superseded worker's late (queued cross-thread)
+            # 'stopped' can be told apart from the current one — see _on_gps_tracking_stopped.
+            self._gps_worker.stopped.connect(lambda w=self._gps_worker: self._on_gps_tracking_stopped(w))
             self._gps_worker.start()
 
         def _stop_gps_tracking(self) -> None:
@@ -609,9 +611,15 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 w.wait(1500)
                 self._gps_worker = None
 
-        def _on_gps_tracking_stopped(self) -> None:
-            self._gps_worker = None
-            self.mark_gps_stale()                     # GPS feed ended -> grey the last pin
+        def _on_gps_tracking_stopped(self, worker: "Optional[object]" = None) -> None:
+            # `stopped` is a queued cross-thread signal, so a superseded reader's stop can land AFTER a scan
+            # or a fresh reader has taken over. Only clear the handle if THIS is still the tracked worker, and
+            # only grey the pin when nothing else is feeding it — otherwise a stale stop would orphan the live
+            # reader or briefly grey a pin that a running scan/new reader is actively updating.
+            if worker is None or worker is self._gps_worker:
+                self._gps_worker = None
+            if self._gps_worker is None and self._live_worker is None:
+                self.mark_gps_stale()                 # GPS feed ended -> grey the last pin
 
         def _draw_location_marker(self) -> None:
             """(Re)draw the 'you are here' marker at ``self._my_location``. Removes any existing one first;

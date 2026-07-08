@@ -590,3 +590,28 @@ def test_shutdown_stops_standalone_gps(qapp, monkeypatch):
     w.shutdown()                                   # app closing
     assert worker.stopped_flag and worker.waited
     assert w._gps_worker is None
+
+
+def test_late_stop_from_superseded_worker_keeps_pin_live_during_scan(qapp, monkeypatch):
+    # `stopped` is a queued cross-thread signal: a superseded reader's stop can land AFTER a scan took over.
+    # It must NOT grey a pin the running scan is actively feeding (the handler used to grey unconditionally).
+    w = _widget_with_fake_gps(monkeypatch, "COM9")
+    w._chk_mylocation.setChecked(True)
+    w.set_my_location(48.0, 11.0)
+    assert w._gps_live and w._location_marker.brush().color().name() == "#22d3ee"
+    old_worker = w._gps_worker
+    w._live_worker = object()                      # a full scan now streams GPS
+    w._gps_worker = None                           # scan-start released the standalone reader
+    w._on_gps_tracking_stopped(old_worker)         # the old reader's late 'stopped' arrives
+    assert w._gps_live                                             # NOT greyed — the scan owns the pin
+    assert w._location_marker.brush().color().name() == "#22d3ee"  # still cyan
+
+
+def test_late_stop_does_not_orphan_a_newer_reader(qapp, monkeypatch):
+    # If a fresh reader is already running, a superseded worker's late 'stopped' must not null the new handle.
+    monkeypatch.setattr(_fh, "_GpsWorker", _FakeGpsWorker)
+    w = FlockHeatmapTab()
+    old_worker, new_worker = _FakeGpsWorker("COM9"), _FakeGpsWorker("COM9")
+    w._gps_worker = new_worker
+    w._on_gps_tracking_stopped(old_worker)         # stale stop from the OLD worker
+    assert w._gps_worker is new_worker             # new reader NOT orphaned
