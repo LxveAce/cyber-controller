@@ -53,9 +53,15 @@ class CrossCommHub:
         self.pool = pool if pool is not None else TargetPool(self.bus)
 
         # Feeds parsed APs/clients from each connected device into the shared pool, completing the loop:
-        # a scan on device A -> target.added -> AutoRouter -> a command on device B. A UI's device tab
-        # attaches this ingestor per-connection; the hub just owns the one instance everyone shares.
+        # a scan on device A -> target.added -> AutoRouter -> a command on device B. The hub owns the one
+        # instance everyone shares AND auto-attaches it to every connection the moment it opens (below).
         self.ingestor = TargetIngestor(self.pool)
+
+        # Attach the ingestor to EVERY connection the DeviceManager opens — Devices-tab Connect, Wardrive,
+        # Broadcast, or an injected NodeLink — so a scan on ANY opened device feeds the pool, not only a
+        # Devices-tab Connect (which was the sole attach site before, leaving the Targets tab empty during
+        # wardriving/broadcasting). Re-attach is idempotent (TargetIngestor dedups per port).
+        self.dm.on_connection_opened(self._attach_ingestor)
 
         # Routing rules engine — subscribes to target.added and dispatches via our own send sink.
         self.router = AutoRouter(self.bus, self.send_to_port)
@@ -74,6 +80,18 @@ class CrossCommHub:
             log.info("ActionResolver initialized")
         except Exception:  # noqa: BLE001 — optional layer; app runs without it
             log.warning("ActionResolver unavailable — actions disabled", exc_info=True)
+
+    def _attach_ingestor(self, port: str, conn) -> None:
+        """Attach the shared TargetIngestor to a newly-opened *conn*, parsing with the device's own
+        firmware protocol (default 'marauder', matching the Devices tab) so its scans feed the pool."""
+        from src.protocols import get_protocol
+
+        dev = self.dm.get_device(port)
+        fw = (getattr(dev, "firmware", "") if dev else "") or "marauder"
+        try:
+            self.ingestor.attach(conn, get_protocol(fw))
+        except Exception:
+            log.exception("cross-comm: ingestor auto-attach failed for %s", port)
 
     def send_to_port(self, port: str, command: str) -> None:
         """Deliver a command to a connected device (the AutoRouter / Network-tab send sink).

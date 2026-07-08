@@ -67,6 +67,11 @@ class DeviceManager:
         # Callbacks
         self._on_connected: list[DeviceCallback] = []
         self._on_disconnected: list[DeviceCallback] = []
+        # Fired with (port, conn) when a live connection becomes available for a port — a fresh
+        # open_connection OR an injected link via attach_connection. The cross-comm hub subscribes here to
+        # auto-attach the TargetIngestor, so a scan on ANY opened device feeds the shared pool (not only a
+        # Devices-tab Connect).
+        self._on_conn_opened: list = []
 
         self._hotplug: HotPlugMonitor | None = None
 
@@ -79,6 +84,12 @@ class DeviceManager:
     def on_device_disconnected(self, cb: DeviceCallback) -> None:
         """Register a callback fired when a device is removed."""
         self._on_disconnected.append(cb)
+
+    def on_connection_opened(self, cb) -> None:
+        """Register ``cb(port, conn)`` fired when a live connection becomes available for a port — a fresh
+        :meth:`open_connection` or an injected link via :meth:`attach_connection`. The cross-comm hub uses
+        this to auto-attach the TargetIngestor so any opened device feeds the shared pool."""
+        self._on_conn_opened.append(cb)
 
     # ── Device registry ──────────────────────────────────────────────
 
@@ -222,6 +233,10 @@ class DeviceManager:
                 to_close.disconnect()  # outside the lock (disconnect joins the reader thread)
             if removed:
                 raise KeyError(f"Device on port {port} was removed during connect")
+            # A NEW live connection for this port — announce it OUTSIDE the state lock (the cross-comm hub
+            # attaches the TargetIngestor here). Reusers of an already-open port don't re-fire: the port was
+            # announced when first opened, and re-attach is idempotent, so nothing double-parses.
+            self._fire_conn_opened(port, conn)
             return conn
 
     def close_connection(self, port: str, owner: str | None = None) -> None:
@@ -299,6 +314,7 @@ class DeviceManager:
             if owner:
                 self._conn_owners.setdefault(port, set()).add(owner)
         self._fire_connected(device)
+        self._fire_conn_opened(port, conn)
         return conn
 
     def probe(self, port: str, *, timeout: float = 0.8):
@@ -403,6 +419,13 @@ class DeviceManager:
                 cb(device)
             except Exception:
                 log.exception("on_disconnected callback error")
+
+    def _fire_conn_opened(self, port: str, conn: Any) -> None:
+        for cb in self._on_conn_opened:
+            try:
+                cb(port, conn)
+            except Exception:
+                log.exception("on_connection_opened callback error")
 
     # ── Cleanup ──────────────────────────────────────────────────────
 

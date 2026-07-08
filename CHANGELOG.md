@@ -25,6 +25,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   latch was mis-identified as a 2-USB ST7789 (wrong build → blank screen) and silently pre-selected. Detect now spots
   that unsupported fallback guess, reports it as low-confidence, and warns you to verify the variant (naming the ILI9341
   and Guition alternatives) instead of presenting a guess as a sure thing.
+- **Targets tab now populates from any scan, not just a Devices-tab Connect.** Discovered APs/clients only reached
+  the shared Targets pool when you connected a board on the Devices tab — wardriving or broadcasting scanned fine but
+  left Targets empty. The ingestor now attaches automatically to every connection the app opens, so any device's scan
+  feeds Targets (and the cross-device AutoRouter) no matter which tab opened the link.
 
 ## [1.6.6] — 2026-07-08
 

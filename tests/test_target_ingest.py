@@ -43,6 +43,28 @@ def _wire():
     return conn, pool, routed
 
 
+def test_opened_connection_auto_feeds_pool_via_hub():
+    # Regression for "the Targets tab doesn't populate with AP's": the pool was fed ONLY when the Devices
+    # tab called ingestor.attach on Connect — every other opener (Wardrive, Broadcast, an injected link)
+    # left Targets empty while scans ran. CrossCommHub now auto-attaches the ingestor to every connection
+    # the DeviceManager opens, so a scan line on ANY opened device lands in the pool with no Devices-tab
+    # Connect. attach_connection is the injected-link path and it fires the same connection-opened hook.
+    from src.core.cross_comm_hub import CrossCommHub
+    from src.core.device_manager import DeviceManager
+    from src.models.device import Device
+
+    dm = DeviceManager()
+    hub = CrossCommHub(dm)  # subscribes to on_connection_opened
+    dev = Device(port="COM_W", name="Wardrive board", firmware="marauder")
+    conn = _FakeConn("COM_W")
+    dm.attach_connection(dev, conn)  # opens the link -> fires the hook -> hub attaches the ingestor
+
+    assert hub.pool.count == 0
+    conn.feed(_AP_LINE)  # a scan line arrives with NO Devices-tab Connect ever happening
+    macs = [t.mac.lower() for t in hub.pool.all()]
+    assert "de:ad:be:ef:00:11" in macs, "an opened device's scan must feed the shared pool automatically"
+
+
 def test_parser_line_actually_matches():
     # Guard: confirm the test fixture line parses to an ap_found (so a regex drift fails loudly here).
     ev = get_protocol("marauder").parse_line(_AP_LINE)
