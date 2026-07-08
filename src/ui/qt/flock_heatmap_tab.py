@@ -408,8 +408,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._btn_folder = QPushButton("Open data folder")
             self._btn_folder.setToolTip("Open the folder where live Flock scans are saved (~/.cyber-controller/flock).")
             self._btn_folder.clicked.connect(self._open_data_folder)
+            self._btn_export = QPushButton("Export CSV…")
+            self._btn_export.setToolTip("Save the cameras currently on the map as a spreadsheet-friendly CSV "
+                                        "(lat, lon, MAC, SSID, RSSI, channel, first/last seen, count).")
+            self._btn_export.clicked.connect(self._on_export_csv)
             file_row.addWidget(self._btn_load)
             file_row.addWidget(self._btn_folder)
+            file_row.addWidget(self._btn_export)
             file_row.addStretch(1)
             root.addLayout(file_row)
 
@@ -856,6 +861,32 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 w.stop()
                 w.wait()
             self._stop_gps_tracking()        # also tear down the standalone GPS reader + free its port
+
+        # ── export (the write is unit-tested; the dialog wrapper is not) ──
+        def export_csv_to(self, path: str) -> int:
+            """Write the cameras CURRENTLY on the map to *path* as CSV. Returns the row count written.
+            SSIDs are untrusted broadcast strings, so the shared converter neutralizes CSV formula injection."""
+            gj = {"type": "FeatureCollection", "features": list(self._features)}
+            with open(path, "w", encoding="utf-8", newline="") as fh:
+                fh.write(flock.cameras_geojson_to_csv(gj))
+            return len(self._features)
+
+        def _on_export_csv(self) -> None:
+            from PyQt5.QtWidgets import QFileDialog
+            from pathlib import Path
+            if not self._features:
+                self._legend.setText("No cameras to export yet — load or run a scan first.")
+                return
+            path, _ = QFileDialog.getSaveFileName(
+                self, "Export cameras to CSV", str(Path(self._flock_data_dir()) / "flock-cameras.csv"),
+                "CSV (*.csv);;All files (*)")
+            if not path:
+                return
+            try:
+                n = self.export_csv_to(path)
+                self._legend.setText(f"Exported {n} camera(s) to CSV.")
+            except OSError as exc:
+                self._legend.setText(f"Could not write CSV: {exc}")
 
         # ── load button (dialog; not unit-tested) ─────────────────────
         def _on_load(self) -> None:

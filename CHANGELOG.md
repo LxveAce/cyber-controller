@@ -8,6 +8,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Added
+- **Export the Flock map to CSV.** An **Export CSV…** button on the Flock map saves the cameras currently shown — whether
+  from a live scan or a loaded `cameras.geojson` — as a spreadsheet-friendly CSV (MAC, lat, lon, SSID, RSSI, channel,
+  frequency, first/last seen, count). GeoJSON is great for mapping but awkward in a spreadsheet; this lets you sort,
+  filter, and cross-reference located cameras in Excel/Calc or feed them to another tool. SSIDs are untrusted broadcast
+  text, so the export neutralizes spreadsheet formula injection (a name like `=…` can't run on open).
 - **Backups now save a self-documenting sidecar.** Each flash backup writes a small `<backup>.meta` next to the `.bin`
   recording the chip, port, flash size (and whether that size was actually *detected* or a 4 MB guess), a SHA-256, and a
   timestamp. So a backup is no longer an opaque blob you can't identify weeks later, and a restore/listing flow can read

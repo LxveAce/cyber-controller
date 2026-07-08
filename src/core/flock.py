@@ -80,6 +80,49 @@ class CameraDetection:
         }
 
 
+_CSV_COLUMNS = ("mac", "lat", "lon", "ssid", "oui", "detection_method", "rssi",
+                "channel", "frequency", "utc", "first_seen", "last_seen", "count")
+_CSV_NUMERIC = frozenset({"rssi", "channel", "frequency", "count"})
+
+
+def cameras_geojson_to_csv(geojson: dict) -> str:
+    """Render a located-camera GeoJSON FeatureCollection (as produced by :meth:`FlockSession.to_geojson`,
+    or loaded from a saved ``cameras.geojson``) as a spreadsheet-friendly CSV — one row per camera, lat/lon
+    pulled out of the GeoJSON ``[lon, lat]`` geometry. Robust to a missing/odd shape: non-dict features and
+    features with no usable coordinate pair are skipped, missing properties become blank.
+
+    ``ssid``/``oui`` are UNTRUSTED broadcast strings, so every TEXT field is neutralized against spreadsheet
+    formula injection via the shared :func:`wardrive._csv_field` (OWASP CSV-injection). Numeric fields are
+    emitted as-is — routing them through ``_csv_field`` would quote-prefix a legitimate negative RSSI.
+    """
+    from src.core.wardrive import _csv_field
+    rows = [",".join(_CSV_COLUMNS)]
+    feats = geojson.get("features") if isinstance(geojson, dict) else None
+    for feat in feats or []:
+        if not isinstance(feat, dict):
+            continue
+        geom = feat.get("geometry") or {}
+        coords = geom.get("coordinates") if isinstance(geom, dict) else None
+        if not (isinstance(coords, (list, tuple)) and len(coords) >= 2):
+            continue  # a camera with no location isn't a map/CSV row
+        lon, lat = coords[0], coords[1]
+        props = feat.get("properties")
+        props = props if isinstance(props, dict) else {}
+        cells = []
+        for col in _CSV_COLUMNS:
+            if col == "lat":
+                cells.append(f"{lat:.6f}" if isinstance(lat, (int, float)) and not isinstance(lat, bool) else "")
+            elif col == "lon":
+                cells.append(f"{lon:.6f}" if isinstance(lon, (int, float)) and not isinstance(lon, bool) else "")
+            elif col in _CSV_NUMERIC:
+                v = props.get(col, "")
+                cells.append(str(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else "")
+            else:  # untrusted text (mac/ssid/oui/detection_method/utc/first_seen/last_seen)
+                cells.append(_csv_field(str(props.get(col, ""))))
+        rows.append(",".join(cells))
+    return "\n".join(rows) + "\n"
+
+
 def _merge_camera(a: CameraDetection, b: CameraDetection) -> CameraDetection:
     """Merge two observations of the SAME camera (same MAC) into one, using the exact dedup rule
     ``FlockSession.observe`` uses: the location + rssi + channel/frequency come from the STRONGER real

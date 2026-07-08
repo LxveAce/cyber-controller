@@ -617,6 +617,24 @@ def test_late_stop_does_not_orphan_a_newer_reader(qapp, monkeypatch):
     assert w._gps_worker is new_worker             # new reader NOT orphaned
 
 
+def test_export_csv_to_writes_the_displayed_cameras(qapp, tmp_path):
+    # The Export CSV… action writes exactly the cameras currently on the map, via the injection-safe converter.
+    w = FlockHeatmapTab()
+    w.set_geojson({
+        "type": "FeatureCollection",
+        "features": [
+            {"type": "Feature", "geometry": {"type": "Point", "coordinates": [11.5, 48.1]},
+             "properties": {"mac": "aa:bb:cc:dd:ee:ff", "ssid": "CamNet", "rssi": -40, "count": 2}},
+        ],
+    })
+    out = tmp_path / "cams.csv"
+    assert w.export_csv_to(str(out)) == 1
+    lines = out.read_text(encoding="utf-8").strip().splitlines()
+    assert lines[0].startswith("mac,lat,lon,ssid")
+    assert lines[1].startswith("aa:bb:cc:dd:ee:ff,48.100000,11.500000,CamNet,")
+    assert ",-40," in lines[1]
+
+
 def test_fix_status_text_shows_position_and_quality():
     # The live-scan status text: position always, with a sats/HDOP suffix only when the receiver reports them.
     from src.core.wardrive import GpsFix
