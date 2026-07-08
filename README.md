@@ -37,7 +37,7 @@ and folds every Flock capture into one findable data folder. The reviews it buil
 access gate on corrupt configs, a local-only duress-wipe counter, vendored same-origin web assets, an
 engine-layer per-port flash guard, and pinned OS-signature verification, plus the wireless **Nodes** groundwork
 (AES-256-GCM framing + anti-replay), a **Flock / ALPR** awareness map, and M5Stick / M5Cardputer / CYD flashing
-+ autodetect fixes. It sits on 1.5.x's security-hardening + reliability passes (31 firmware profiles across five
++ autodetect fixes. It sits on 1.5.x's security-hardening + reliability passes (32 firmware profiles across five
 flash backends, the violet identity across all four UIs).
 
 That builds on v1.4.0, which added smart, version-aware startup. On launch the app checks its config against
