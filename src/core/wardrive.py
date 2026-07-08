@@ -141,6 +141,17 @@ def channel_to_frequency(ch: int) -> int:
 
 _MAC_RE = re.compile(r"([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})")
 _RSSI_RE = re.compile(r"RSSI[:=]?\s*(-?\d+)", re.I)
+# Marauder v1.12.3 `scanall` prints each AP as "<rssi> Ch: <n> <bssid> ESSID: <name> ..." with the RSSI as a
+# BARE leading signed int and NO "RSSI" label (confirmed on real hardware, COM16). Without this fallback the
+# accumulator never sees an RSSI on those lines and drops EVERY AP a live scan reports. A real Wi-Fi RSSI is
+# negative 2-3 digits and only this format puts a signed number immediately before "Ch", so the match is
+# unambiguous; it is consulted only when the labelled RSSI_RE above did not match (legacy lines unaffected).
+_RSSI_LEAD_RE = re.compile(r"(-\d{2,3})\s+Ch\b", re.I)
+# In that same scanall form the ESSID runs to end-of-line followed by TWO short numeric metadata columns
+# (e.g. "SpectrumSetup-7272 11 15" / "DIRECT-50-HP Smart Tank 5100 11 05"), so a to-EOL SSID capture drags
+# them into the name. Strip that trailing pair ONLY on scanall lines — SSIDs with spaces/interior digits
+# are preserved, and legacy/GhostESP lines (bounded by a token or '|') never reach this branch.
+_SCANALL_SSID_TAIL_RE = re.compile(r"\s+\d{1,2}\s+\d{1,2}$")
 _CH_RE = re.compile(r"\bCh(?:annel)?[:=]?\s*(\d+)", re.I)
 # SSID capture is BOUNDED: the non-greedy value stops at the next key token (BSSID/SSID/Ch/RSSI) or a
 # '|' delimiter, not just at end-of-line. Without that bound a space-separated single-line record with
@@ -163,15 +174,24 @@ def _extract_ap_fields(line: str) -> Dict[str, object]:
     m = _MAC_RE.search(line)
     if m:
         fields["bssid"] = m.group(1).lower()
+    scanall_form = False
     rm = _RSSI_RE.search(line)
     if rm:
         fields["rssi"] = int(rm.group(1))
+    else:
+        rl = _RSSI_LEAD_RE.search(line)   # Marauder scanall's bare leading "<rssi> Ch:" form
+        if rl:
+            fields["rssi"] = int(rl.group(1))
+            scanall_form = True
     cm = _CH_RE.search(line)
     if cm:
         fields["channel"] = int(cm.group(1))
     sm = _SSID_RE.search(line)
     if sm:
-        fields["ssid"] = sm.group(1).strip()
+        ssid = sm.group(1).strip()
+        if scanall_form:                  # drop the two trailing metadata columns scanall appends
+            ssid = _SCANALL_SSID_TAIL_RE.sub("", ssid).strip()
+        fields["ssid"] = ssid
     am = _AUTH_RE.search(line)
     if am:
         tok = am.group(1).upper()

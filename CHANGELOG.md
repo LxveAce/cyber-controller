@@ -72,6 +72,14 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   the read-back showed only the single NVS/RF-calibration sector the restored firmware rewrites on boot, app untouched).
 
 ### Fixed
+- **A live Marauder AP scan now actually logs its access points (was silently dropping every one).** Found during a
+  real-hardware SniffAP test: modern Marauder (v1.12.3+) `scanall` prints each AP as `-71 Ch: 2 <bssid> ESSID: <name>`,
+  with the signal strength as a bare leading number and no `RSSI:` label. The scan-line reader only recognized a labelled
+  `RSSI:` field, so it never saw a signal value and — because an AP is only recorded once both a BSSID and an RSSI are
+  known — discarded every AP a real scan reported, leaving an empty wardrive/WiGLE capture. The reader now also reads that
+  leading `-NN Ch:` form, and strips the two trailing metadata columns `scanall` appends so the network name is clean
+  (`SpectrumSetup-7272`, not `SpectrumSetup-7272 11 15`) while names containing spaces or digits are preserved. Verified
+  end-to-end against a physical Marauder (25-30 real APs parsed per scan). Labelled and pipe-delimited formats are unchanged.
 - **A GPS position is no longer thrown away when the receiver reports a garbled altitude.** The GGA parser read the
   altitude field without its own guard, so a non-numeric altitude raised an error that discarded the entire fix — even
   though latitude, longitude and fix-quality were perfectly good. Altitude (like the satellite count and HDOP) is now

@@ -269,3 +269,38 @@ def test_wardrive_summary_cli(tmp_path, capsys):
 
     assert wd.wardrive_summary_cli(str(tmp_path / "nope.csv")) == 1
     assert "no such file" in capsys.readouterr().out
+
+
+# ── real-hardware Marauder scanall format (regression: found on COM16, 2026-07-08) ──
+# These are VERBATIM lines captured from a physical Marauder v1.12.3 `scanall`. The RSSI is a bare leading
+# signed int with NO "RSSI:" label; before the _RSSI_LEAD_RE fix the accumulator saw no RSSI and emitted 0
+# APs, so a real Wi-Fi scan produced an EMPTY wardrive CSV.
+_REAL_SCANALL_LINES = [
+    "-71 Ch: 2 0e:73:be:f8:72:74 ESSID: SpectrumSetup-7272 11 15",
+    "-85 Ch: 2 a0:8a:06:a7:d1:51 ESSID: SpectrumSetup-D154 31 14",
+    "-74 Ch: 2 b4:bf:e9:11:19:ad ESSID: ESP_1119AD 21 04",
+    "-54 Ch: 6 00:04:ea:7b:f7:ee ESSID: DIRECT-50-HP Smart Tank 5100 11 05",
+]
+
+
+def test_ap_accumulator_parses_real_marauder_scanall_lines():
+    acc = wd._ApAccumulator()
+    aps = [o for o in (acc.feed(ln) for ln in _REAL_SCANALL_LINES) if o]
+    assert len(aps) == 4                                    # every real AP line emits (was 0 before the fix)
+    assert aps[0].bssid == "0e:73:be:f8:72:74"
+    assert aps[0].rssi == -71 and aps[0].channel == 2
+    assert aps[0].ssid == "SpectrumSetup-7272"              # trailing "11 15" metadata columns stripped
+    # an SSID containing spaces AND an interior number is preserved; only the trailing metadata pair goes
+    assert aps[3].bssid == "00:04:ea:7b:f7:ee" and aps[3].rssi == -54
+    assert aps[3].ssid == "DIRECT-50-HP Smart Tank 5100"
+
+
+def test_extract_ap_fields_leading_rssi_and_labelled_still_work():
+    f = wd._extract_ap_fields("-64 Ch: 6 00:04:ea:7b:f7:ee ESSID: MyNet")
+    assert f["rssi"] == -64 and f["channel"] == 6 and f["bssid"] == "00:04:ea:7b:f7:ee"
+    # the labelled legacy form is unaffected (RSSI_RE matches first, the leading fallback isn't consulted)
+    f2 = wd._extract_ap_fields("SSID: Net BSSID: aa:bb:cc:dd:ee:ff Ch: 6 RSSI: -40")
+    assert f2["rssi"] == -40
+    # a channel number must NOT be mistaken for a leading RSSI (no bare signed int before 'Ch')
+    f3 = wd._extract_ap_fields("BSSID: aa:bb:cc:dd:ee:ff Ch: 11")
+    assert "rssi" not in f3
