@@ -93,6 +93,22 @@ def zoom_step(angle_delta: int, base: float = 1.2) -> float:
     return base ** (angle_delta / 120.0)
 
 
+def clamped_zoom_factor(cur_scale: float, factor: float, min_scale: float, max_scale: float) -> float:
+    """Wheel-zoom factor to actually apply, given the view's current transform scale. Blocks a notch ONLY
+    when the view is already at/past a limit AND the notch would push further past it — so a fit-scale that
+    lands OUTSIDE [min,max] can still be zoomed back toward the band. Returns 1.0 (no-op) when blocked.
+
+    This fixes "I can't scroll to zoom": the scene spans the whole world, so ``fitInView`` on a wide camera
+    set (a city spans well under 1/1000th of it) — and especially with the world basemap on — settles at a
+    scale far BELOW ``min_scale``. The old clamp rejected ANY result outside [min,max], which trapped that
+    case in BOTH directions (zoom-in still landed below min, zoom-out went further below) => zoom dead."""
+    if factor > 1.0 and cur_scale >= max_scale:
+        return 1.0
+    if factor < 1.0 and cur_scale <= min_scale:
+        return 1.0
+    return factor
+
+
 # The full web-mercator world [0,1]^2 mapped to a fixed pixel square, so every layer — the cameras now,
 # the world basemap next — lives in ONE shared coordinate space that stays aligned at any pan/zoom. The
 # constant is Earth's equatorial circumference in metres, so scene units are ~metres near the equator.
@@ -248,11 +264,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
 
         def wheelEvent(self, ev) -> None:  # noqa: N802 (Qt override)
-            f = zoom_step(ev.angleDelta().y())
-            new = self.transform().m11() * f
-            if new < self._MIN_SCALE or new > self._MAX_SCALE:
-                return                                              # clamp: ignore the notch at the limit
-            self.scale(f, f)
+            f = clamped_zoom_factor(self.transform().m11(), zoom_step(ev.angleDelta().y()),
+                                    self._MIN_SCALE, self._MAX_SCALE)
+            if f != 1.0:
+                self.scale(f, f)
+            ev.accept()   # consume the notch so it can't fall through to the scrollbars as a pan
 
     class _FlockWorker(QThread):
         """Drive a live Flock scan on its own thread: read GPS + the Flock-You device serial, feed them

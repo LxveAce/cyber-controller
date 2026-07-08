@@ -12,6 +12,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   anything — so you can see what's stale before deciding to refresh a profile.
 
 ### Fixed
+- **Flock map: scroll-to-zoom works again.** On a map with a lot of cameras — or with the world basemap on —
+  "Reset view" frames the whole set at a zoom level well below the map's minimum, and the old zoom limiter then
+  refused *every* wheel notch in both directions, so the wheel did nothing ("I can't scroll to zoom"). The limiter
+  now only blocks a notch that would push *further* past a limit, so you can always scroll back toward a normal zoom.
+  The wheel notch is also consumed so it can't leak through to the scrollbars as a stray pan.
 - **"Check for firmware updates" now only checks firmware you actually have.** The update check walked the *entire* 30-plus
   profile catalog and hit GitHub once per profile — so it made ~30 network calls even when the vault was empty, and it
   reported every never-downloaded firmware as an "available update." It now checks only the profiles you've cached (one

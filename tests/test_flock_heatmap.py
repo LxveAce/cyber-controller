@@ -14,6 +14,7 @@ import pytest
 from src.ui.qt.flock_heatmap_tab import (
     MercatorFit,
     basemap_paths,
+    clamped_zoom_factor,
     heat_color,
     load_world_basemap,
     web_mercator,
@@ -137,6 +138,29 @@ def test_zoom_step_notches():
     assert abs(zoom_step(-120) - 1.0 / 1.2) < 1e-9           # one notch down -> zoom out
     assert abs(zoom_step(240) - 1.2 ** 2) < 1e-9             # two notches compound
     assert zoom_step(120) * zoom_step(-120) == pytest.approx(1.0)  # in then out -> identity
+
+
+def test_clamped_zoom_factor_in_band_passes_through():
+    # comfortably inside [MIN,MAX]: both directions apply unchanged
+    assert clamped_zoom_factor(1.0, 1.2, 0.15, 60.0) == 1.2
+    assert clamped_zoom_factor(1.0, 1.0 / 1.2, 0.15, 60.0) == 1.0 / 1.2
+
+
+def test_clamped_zoom_factor_blocks_only_further_past_a_limit():
+    # already at/above MAX -> zoom-IN blocked; zoom-OUT still allowed (can come back down)
+    assert clamped_zoom_factor(60.0, 1.2, 0.15, 60.0) == 1.0
+    assert clamped_zoom_factor(60.0, 1.0 / 1.2, 0.15, 60.0) == 1.0 / 1.2
+    # already at/below MIN -> zoom-OUT blocked; zoom-IN still allowed (can climb back up)
+    assert clamped_zoom_factor(0.15, 1.0 / 1.2, 0.15, 60.0) == 1.0
+    assert clamped_zoom_factor(0.15, 1.2, 0.15, 60.0) == 1.2
+
+
+def test_clamped_zoom_factor_not_trapped_below_min():
+    # THE BUG: a wide camera set / the world basemap fits at a scale FAR below MIN. The old clamp rejected
+    # any out-of-band RESULT, so zoom-in (0.05*1.2=0.06, still < MIN) was blocked too -> "can't scroll to
+    # zoom". The fix must let a below-MIN view zoom IN (toward the band) while still blocking zoom-OUT.
+    assert clamped_zoom_factor(0.05, 1.2, 0.15, 60.0) == 1.2         # zoom in: allowed (was blocked)
+    assert clamped_zoom_factor(0.05, 1.0 / 1.2, 0.15, 60.0) == 1.0   # zoom out: blocked (would go further out)
 
 
 # ── the offscreen widget ─────────────────────────────────────────────
@@ -322,6 +346,37 @@ def test_widget_wheel_zoom_clamp_respects_limits(qapp):
     v.scale(*([zoom_step(120)] * 2))                        # a further zoom-in the guard would block in wheelEvent
     # (direct .scale bypasses the guard; the point is the guard's threshold math is what wheelEvent uses)
     assert v._MAX_SCALE > 0 and before == pytest.approx(v._MAX_SCALE)
+
+
+class _FakeWheel:
+    """Minimal stand-in for a QWheelEvent: wheelEvent only reads angleDelta().y() and calls accept()."""
+    def __init__(self, dy):
+        self._dy = dy
+        self.accepted = False
+
+    def angleDelta(self):  # noqa: N802
+        dy = self._dy
+        return type("_D", (), {"y": lambda self: dy})()
+
+    def accept(self):
+        self.accepted = True
+
+
+def test_widget_wheel_zoom_not_trapped_below_min(qapp):
+    # Regression for "I can't scroll to zoom": fitInView on a wide camera set (or the world basemap) settles
+    # BELOW _MIN_SCALE. The old wheelEvent rejected any out-of-band result, so BOTH directions were dead.
+    w = FlockHeatmapTab()
+    v = w._view
+    v.resetTransform()
+    v.scale(v._MIN_SCALE * 0.3, v._MIN_SCALE * 0.3)         # below the min (a wide fit / world basemap on)
+    before = v.transform().m11()
+    ev = _FakeWheel(120)
+    v.wheelEvent(ev)                                        # zoom IN one notch
+    assert v.transform().m11() > before                    # not trapped: it zoomed in toward the band
+    assert ev.accepted                                     # the notch is consumed, not passed to scrollbars
+    at = v.transform().m11()
+    v.wheelEvent(_FakeWheel(-120))                          # zoom OUT from below-min is still blocked
+    assert v.transform().m11() == pytest.approx(at)
 
 
 def test_widget_set_geojson_filters_invalid(qapp):
