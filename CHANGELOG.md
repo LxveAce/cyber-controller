@@ -7,12 +7,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [1.6.4] — 2026-07-07
 
-A six-round exhaustive adversarial debug and hardening pass on top of the 1.6.1–1.6.3 security reviews. Where
+A ten-round exhaustive adversarial debug and hardening pass on top of the 1.6.1–1.6.3 security reviews. Where
 those reviews swept the security surface, these rounds went over the whole tool one failure class at a time —
 round 1 correctness, round 2 silent failures, round 3 concurrency and resource handling, round 4 security,
-round 5 integration wiring, round 6 the flash/serial path — and folded in a hardware-validated CYD connect fix
-and a single canonical Flock data folder. Every fix is guarded by a test. No firmware changes; no breaking
-changes to profiles or the CLI.
+round 5 integration wiring, round 6 the flash/serial path, round 7 edge cases and junk input, round 8
+state-persistence durability, round 9 honest functionality (every advertised control actually does something),
+and round 10 test quality — and folded in a hardware-validated CYD connect fix and a single canonical Flock data
+folder. Every fix is guarded by a test. No firmware changes; no breaking changes to profiles or the CLI.
 
 ### Security
 - **Changing the admin password no longer locks you out of the vault.** A password change committed the new
@@ -53,6 +54,23 @@ changes to profiles or the CLI.
   (Marauder, ESP32-DIV) needs a boot chain at per-file offsets the vault can't store; caching it would let an
   offline flash write an app image at 0x0 with no boot chain and brick the board. That firmware is now refused
   for caching (fail closed).
+- **The vault survives a power loss mid-write.** The vault header (`vault.hdr.json`, the only wrapped copy of the
+  data-encryption key and salt) and the vault blob (`vault.enc`, every node key and the secure-container key) were
+  rewritten in place with a truncate-then-write; a crash between the truncate and the finished write left a 0-byte
+  or partial file, and with no second copy that permanently destroyed every key. Both now write atomically (temp
+  file + fsync + `os.replace`), so a crash leaves either the old complete file or the new one — never a torn hybrid.
+- **A stale-stolen node-provision lock can't delete its successor.** The provisioning lock released by filename, so
+  a lock stolen as stale and recreated by another process was then unlinked by the original holder — collapsing
+  mutual exclusion and opening an AES-GCM nonce/epoch reuse window on a concurrent reservation. The lock now removes
+  only the exact file it created, matched by device and inode.
+- **A corrupt vault header fails closed instead of crashing management commands.** A truncated, empty, or non-object
+  `vault.hdr.json` raised a raw `JSONDecodeError`/`KeyError` out of no-auth commands like `--gate-status`. An
+  unreadable or incomplete header (including one missing its `salt`) is now treated as empty — the encrypted data
+  stays sealed and the caller sees a clean state rather than a stack trace.
+- **The physical-key password change can't wedge.** Changing the admin password tried to unwrap with the USB key
+  even when the vault had no key slot (a gate/vault drift), which skipped the current-password fallback and
+  permanently blocked the change while the key was inserted. It now uses the key only when it is genuinely a vault
+  factor.
 
 ### Fixed
 - **Connecting to a CYD no longer blanks its screen.** On CYD panels without the auto-reset transistor pair
@@ -128,6 +146,44 @@ changes to profiles or the CLI.
   broadcast to mixed-firmware ports re-stamps each port's line terminator so a CR-only Flipper isn't sent an
   ignored LF; the Tk auto-connect-on-detection toggle is consumed; F5 refresh and Ctrl+Tab tab traversal are
   wired in the Tk UI; and RayHunter install fails instead of reporting success when a config/init push fails.
+- **Corrupt or hand-edited config no longer crashes the app.** A `null`/non-list `firmwares` or `hardware` in a
+  saved loadout, a `null` settings section (`serial`/`ui`), a vault index that is valid JSON of the wrong type, and
+  a non-object web-socket payload are now coerced or failed-open on the way in instead of raising `TypeError` /
+  `AttributeError`.
+- **Firmware images with an uppercase extension flash again.** Image discovery matched extensions
+  case-insensitively but decompression didn't, so an asset like `Foo.IMG.XZ` was discovered, offered, and fully
+  downloaded, then failed only at the decompress step — advertised as flashable but never flashable. Both sides now
+  match case-insensitively.
+- **The cache index, settings, and in-flight downloads survive an interrupted write.** The firmware cache index
+  (`vault_index.json`), `settings.json`, and streamed firmware downloads now write atomically (temp + fsync +
+  `os.replace`); previously a crash mid-write could discard the whole cache catalog, corrupt settings, or leave a
+  torn image in the shared cache path.
+- **Saving Settings no longer reverts a change made elsewhere.** The Settings save re-reads the file on disk and
+  overlays only its own widget-backed keys, so a concurrently-persisted choice (update-suppression, interface mode,
+  loadout) isn't rolled back; the access-gate config and factor writes are likewise hardened against clobbering a
+  concurrent failed-attempt counter.
+- **The Batch Queue's "Flash Queue" now flashes the queue.** The Batch Queue card and the in-app How-To advertised
+  sequential multi-device flashing, but there was no control or logic to run it — you could add jobs and never flash
+  them. A **Flash Queue** button now flashes each queued (port, profile) one at a time down the exact single-flash
+  path.
+- **The Firmware Vault directory and Default Port settings are honored.** The Settings ▸ Vault directory reached
+  `settings.json` but every vault still used the hardcoded default (which itself pointed at a folder the code never
+  used), and the Tk Default Port was saved but the Flash tab always preselected the first enumerated port. Both are
+  now read and applied.
+- **Inert Cross-Comm toggles replaced with the truth.** The "Auto-share discoveries" and "De-duplicate by MAC"
+  checkboxes had no consumer — unchecking either did nothing. That behavior is intrinsic and always on (targets are
+  keyed by `type:mac`), so the toggles are gone and the card now says so plainly.
+- **"Deauth this client / AP" target actions resolve.** The Marauder, ESP32-DIV, and GhostESP scan parsers didn't
+  tag discovered stations/APs with the discovery-order index those actions select on, so the actions were silently
+  dropped. The parsers now assign the index — and where a firmware genuinely emits no client event (GhostESP), that
+  limit is documented rather than faked.
+- **OS-image signature checks defer to the hash when the key isn't imported.** A detached/clear-signed GPG check
+  hard-refused a genuine image when the pinned key simply wasn't in the keyring (the normal first-run state); it now
+  returns "undetermined" and falls through to the SHA-256 check, while a real bad signature still hard-refuses.
+- **The Targets tab's actions clear the safety gate,** matching the Devices and Network tabs — an attack action
+  floors to a lab-only confirmation before it runs.
+- **Macros capture commands driven from the Device View and Remote tabs,** which bypassed the recorder before and
+  were silently lost on replay.
 
 ### Added
 - **SD-card imaging for the Raspberry-Pi profiles** (Pwnagotchi / RaspyJack / Kali ARM) via `discover_sd_images`
