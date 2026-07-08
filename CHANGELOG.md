@@ -5,6 +5,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Fixed
+- **Flock map: you can now zoom back out.** v1.6.6 fixed zoom-*in* but left the zoom-*out* floor at a fixed value the
+  map often sits below (a real camera spread, or the world basemap, frames below it), so the wheel refused to zoom out.
+  The zoom-out floor is now "fit the whole scene," so you can always pull back to see everything.
+
 ## [1.6.6] — 2026-07-08
 
 A performance + quality patch driven by hands-on use of the v1.6.5 Flock map. With a large camera set the map now

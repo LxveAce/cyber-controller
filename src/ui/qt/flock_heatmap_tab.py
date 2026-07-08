@@ -268,7 +268,12 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
         static fit. Total zoom is clamped to the transform scale so the scene can't be flung off-screen or
         zoomed into the void; the clamp reads the live transform, so fitInView()/reset compose cleanly."""
 
-        _MIN_SCALE, _MAX_SCALE = 0.15, 60.0
+        # _MAX_SCALE caps zoom-IN. The zoom-OUT floor is NOT a fixed number — it's whatever scale makes the
+        # whole scene fit (_min_zoom), so you can always pull back to see everything (the world with the
+        # basemap on; the cameras + margin without). _MIN_SCALE is only a hard numerical floor / the fallback
+        # when the view isn't sized yet. (A fixed 0.15 floor used to TRAP zoom-out: a real camera spread — and
+        # the world basemap — fits BELOW 0.15, so every zoom-out notch was rejected: "I can't zoom out.")
+        _MIN_SCALE, _MAX_SCALE = 1e-6, 60.0
 
         def __init__(self, scene) -> None:
             super().__init__(scene)
@@ -276,9 +281,18 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)  # zoom toward the cursor
             self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
 
+        def _min_zoom(self) -> float:
+            """Zoom-OUT floor: the scale at which the whole scene rect fits the viewport, so you can pull all
+            the way back to see everything but not zoom out into empty space beyond it. Falls back to the hard
+            floor when the scene/viewport isn't sized yet."""
+            sr, vp = self.sceneRect(), self.viewport().rect()
+            if sr.width() > 0 and sr.height() > 0 and vp.width() > 0 and vp.height() > 0:
+                return max(self._MIN_SCALE, min(vp.width() / sr.width(), vp.height() / sr.height()))
+            return self._MIN_SCALE
+
         def wheelEvent(self, ev) -> None:  # noqa: N802 (Qt override)
             f = clamped_zoom_factor(self.transform().m11(), zoom_step(ev.angleDelta().y()),
-                                    self._MIN_SCALE, self._MAX_SCALE)
+                                    self._min_zoom(), self._MAX_SCALE)
             if f != 1.0:
                 self.scale(f, f)
             ev.accept()   # consume the notch so it can't fall through to the scrollbars as a pan

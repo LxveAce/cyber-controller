@@ -382,21 +382,24 @@ class _FakeWheel:
         self.accepted = True
 
 
-def test_widget_wheel_zoom_not_trapped_below_min(qapp):
-    # Regression for "I can't scroll to zoom": fitInView on a wide camera set (or the world basemap) settles
-    # BELOW _MIN_SCALE. The old wheelEvent rejected any out-of-band result, so BOTH directions were dead.
+def test_widget_wheel_zoom_out_not_trapped(qapp):
+    # Regression for "I can't zoom out": the zoom-OUT floor is now the scale that fits the whole scene (the
+    # world with the basemap on), NOT a fixed 0.15. reset_view frames a real camera spread BELOW 0.15, and
+    # from there the wheel must still zoom OUT toward the whole-scene view. (The old fixed floor rejected
+    # every zoom-out notch: "I can't zoom out.") It must still zoom back IN afterwards.
     w = FlockHeatmapTab()
+    w.set_geojson(_TWO_CAMS)                                # basemap default on -> scene rect = whole world
     v = w._view
     v.resetTransform()
-    v.scale(v._MIN_SCALE * 0.3, v._MIN_SCALE * 0.3)         # below the min (a wide fit / world basemap on)
+    v.scale(0.05, 0.05)                                     # where reset_view lands for a real spread (< old 0.15)
     before = v.transform().m11()
-    ev = _FakeWheel(120)
-    v.wheelEvent(ev)                                        # zoom IN one notch
-    assert v.transform().m11() > before                    # not trapped: it zoomed in toward the band
-    assert ev.accepted                                     # the notch is consumed, not passed to scrollbars
+    ev = _FakeWheel(-120)
+    v.wheelEvent(ev)                                        # zoom OUT
+    assert v.transform().m11() < before                    # not trapped anymore (was == before under the bug)
+    assert ev.accepted
     at = v.transform().m11()
-    v.wheelEvent(_FakeWheel(-120))                          # zoom OUT from below-min is still blocked
-    assert v.transform().m11() == pytest.approx(at)
+    v.wheelEvent(_FakeWheel(120))                           # ...and zoom IN from there still works
+    assert v.transform().m11() > at
 
 
 _TWO_CAMS = {"type": "FeatureCollection", "features": [
