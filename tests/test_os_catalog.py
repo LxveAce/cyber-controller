@@ -192,6 +192,23 @@ def test_flash_bad_signature_refuses(img, monkeypatch):
                           sig_path=path + ".sig", confirmed=True)
 
 
+def test_flash_no_anchor_warns_unverified_before_writing(img, monkeypatch):
+    # SAFETY INVARIANT: an image with NO verifiable anchor at all (no sha256, no signature, no checksums)
+    # must never be written silently — the user gets a loud UNVERIFIED warning FIRST. The write itself still
+    # proceeds (same posture as any HTTPS-only flasher, and the user already confirmed the drive erase); the
+    # warning is the guarantee this locks so a refactor can't drop it and write an unchecked image quietly.
+    path, _sha = img
+    wrote = {"x": False}
+    monkeypatch.setattr(oc.sd, "write_image", lambda *a, **k: wrote.__setitem__("x", True) or 0)
+    monkeypatch.setattr(oc.sd, "verify_write", lambda *a, **k: True)
+    lines: list = []
+    r = _resolved_image_sig("arch", None)  # no sha256, and no sig/checksums passed -> nothing to verify
+    rc = oc.flash_os_image(oc.get_image("arch"), r, path, r"\\.\PhysicalDrive9",
+                           lines.append, confirmed=True)
+    assert any("UNVERIFIED" in ln for ln in lines), lines   # the warning must be emitted...
+    assert rc == 0 and wrote["x"] is True                   # ...and only then does the write proceed
+
+
 def test_flash_checksums_sig_kali_success(img, monkeypatch):
     path, sha = img
     monkeypatch.setattr(oc.sd, "write_image", lambda *a, **k: 0)
