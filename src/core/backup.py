@@ -192,13 +192,87 @@ def list_backups(backup_dir: Optional[str] = None):
             continue
         path = os.path.join(d, f)
         meta = {"file": f, "path": path, "size": os.path.getsize(path)}
+        meta.update(_read_meta(path))
+        backups.append(meta)
+    return backups
 
-        meta_path = path + ".meta"
-        if os.path.isfile(meta_path):
+
+def _read_meta(backup_path: str) -> dict:
+    """Parse a backup's sidecar ``<backup>.meta`` (``key=value`` lines) into a dict; empty if it's
+    absent or unreadable. Shared by :func:`list_backups` and :func:`verify_backup_integrity`."""
+    meta: dict = {}
+    meta_path = backup_path + ".meta"
+    if os.path.isfile(meta_path):
+        try:
             with open(meta_path, encoding="utf-8") as mf:
                 for line in mf:
                     if "=" in line:
                         k, v = line.strip().split("=", 1)
                         meta[k] = v
-        backups.append(meta)
-    return backups
+        except OSError:
+            pass
+    return meta
+
+
+def verify_backup_integrity(backup_path: str) -> dict:
+    """Re-hash a backup ``.bin`` and compare it to the SHA-256 recorded in its ``.meta`` sidecar, so on-disk
+    corruption or truncation is caught BEFORE the backup is relied on to restore a board.
+
+    Returns a dict whose ``status`` is one of:
+      * ``ok`` — the file hashes to the recorded sha256 (safe to restore);
+      * ``mismatch`` — the file has CHANGED since backup (corrupt/truncated/tampered — do NOT restore);
+      * ``no_meta`` — no sidecar, so there is nothing to check against;
+      * ``no_sha`` — the sidecar carries no ``sha256`` line;
+      * ``unreadable`` — the ``.bin`` could not be read;
+      * ``missing`` — no such backup file.
+    Never raises. Echoes ``size`` and the recorded ``size_detected`` so a truncated-backup caveat carries through.
+    """
+    result: dict = {"path": backup_path, "status": "missing", "recorded": None, "actual": None}
+    if not os.path.isfile(backup_path):
+        return result
+    result["size"] = os.path.getsize(backup_path)
+    meta = _read_meta(backup_path)
+    if not meta:
+        result["status"] = "no_meta"
+        return result
+    result["size_detected"] = meta.get("size_detected")
+    recorded = meta.get("sha256")
+    if not recorded:
+        result["status"] = "no_sha"
+        return result
+    result["recorded"] = recorded
+    try:
+        actual = _sha256_file(backup_path)
+    except OSError:
+        result["status"] = "unreadable"
+        return result
+    result["actual"] = actual
+    result["status"] = "ok" if actual == recorded else "mismatch"
+    return result
+
+
+_INTEGRITY_MESSAGES = {
+    "ok": "intact - the file matches its recorded SHA-256; safe to restore.",
+    "mismatch": "CORRUPT - the file no longer matches its recorded SHA-256. Do NOT restore from it; re-take the backup.",
+    "no_meta": "no .meta sidecar - cannot check integrity (an older backup, or the sidecar was removed).",
+    "no_sha": "the .meta sidecar records no SHA-256 - cannot check integrity.",
+    "unreadable": "the backup file could not be read.",
+    "missing": "no such backup file.",
+}
+
+
+def verify_backup_cli(backup_path: str) -> int:
+    """CLI for ``--verify-backup``: print a backup's integrity against its ``.meta`` SHA-256. Returns 0 when
+    the file is intact, 1 otherwise (mismatch / missing / uncheckable) so it's usable in a script."""
+    r = verify_backup_integrity(backup_path)
+    print(f"[verify-backup] {backup_path}")
+    if r.get("size") is not None:
+        caveat = ("  (flash size was ASSUMED, not detected — may be truncated)"
+                  if r.get("size_detected") == "False" else "")
+        print(f"  size: {r['size']} bytes{caveat}")
+    if r.get("recorded"):
+        print(f"  recorded sha256: {r['recorded']}")
+    if r.get("actual"):
+        print(f"  actual   sha256: {r['actual']}")
+    print(f"  => {_INTEGRITY_MESSAGES.get(r['status'], r['status'])}")
+    return 0 if r["status"] == "ok" else 1

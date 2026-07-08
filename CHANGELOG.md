@@ -8,6 +8,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Added
+- **Check a backup's integrity from the command line.** `cyber-controller --verify-backup <backup.bin>` re-hashes a
+  firmware backup and compares it to the SHA-256 recorded in its `.meta` sidecar, so on-disk corruption or truncation is
+  caught *before* you rely on that backup to restore a board. It prints the verdict (intact / corrupt / uncheckable),
+  carries through the "flash size was assumed" caveat, and exits non-zero unless the file is intact — so a restore
+  script can gate on it.
 - **Export the Flock map to CSV.** An **Export CSV…** button on the Flock map saves the cameras currently shown — whether
   from a live scan or a loaded `cameras.geojson` — as a spreadsheet-friendly CSV (MAC, lat, lon, SSID, RSSI, channel,
   frequency, first/last seen, count). GeoJSON is great for mapping but awkward in a spreadsheet; this lets you sort,

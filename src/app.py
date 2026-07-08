@@ -114,6 +114,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--os-image", default=None, help="Path to a local OS image (.iso/.img) for --flash-os (skips download).")
     parser.add_argument("--os-sig", default=None, help="Path to a detached OpenPGP .sig for --flash-os (image_sig OSes).")
     parser.add_argument("--offline", action="store_true", help="For --flash-os: use the bundled (pinned) version instead of resolving the latest online.")
+    parser.add_argument("--verify-backup", default=None, metavar="PATH", help="Re-hash a firmware backup .bin against its .meta sidecar and report whether it's intact, then exit.")
     return parser.parse_args(argv)
 
 
@@ -378,6 +379,11 @@ def main(argv: list[str] | None = None) -> int:
         from src.core.os_catalog import run_os_flash_cli
         return run_os_flash_cli(args.flash_os, target=args.target, image=args.os_image,
                                 sig=args.os_sig, assume_yes=args.yes, offline=args.offline)
+
+    # Firmware-backup integrity check (read-only) — re-hash a .bin against its .meta sidecar, then exit.
+    if args.verify_backup:
+        from src.core.backup import verify_backup_cli
+        return verify_backup_cli(args.verify_backup)
 
     # Single-instance lock guards ONLY the interactive launch (GUI/TUI/web) — never the headless one-shot
     # CLI subcommands handled above. Those (--deadman-setup, --flash-os, --flash-tails, gate mutations, ...)
