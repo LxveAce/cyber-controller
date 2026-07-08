@@ -5,7 +5,7 @@ freely — and re-dock seamlessly back onto the tab strip, or just close it (clo
 a working panel is never lost). This is the foundation for the per-firmware "Device View" pop-outs and for
 multi-monitor cyberdeck ops.
 
-Design (see command-center/projects/cc-device-view-PLAN.md §2): a thin ``DetachableTabWidget(QTabWidget)``
+Design (see the internal device-view notes §2): a thin ``DetachableTabWidget(QTabWidget)``
 plus a ``PopoutWindow(QWidget)``. The rest of the app is untouched — and because the app navigates tabs by
 *widget reference* (``setCurrentWidget(self._flash_tab)``), removing/re-inserting a page never breaks a
 stored reference. Works under ``QT_QPA_PLATFORM=offscreen`` so it stays unit-testable with no display.

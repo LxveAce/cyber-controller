@@ -1,6 +1,6 @@
 """BlueJammer-V2 remote controller — UART-first (no AP/IP), with the Wi-Fi web UI as an option.
 
-The device exposes two control surfaces (see command-center/projects/cc-bluejammer-reverse-eng-PLAN.md):
+The device exposes two control surfaces (see the internal reverse-engineering notes):
 
 * **UART (primary, no AP/IP):** the inter-board link the BW16 uses to command the ESP32 (115200, with a
   handshake/ack envelope). A USB-TTL adapter on that wire lets Cyber Controller send the same frames — no

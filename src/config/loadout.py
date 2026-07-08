@@ -11,7 +11,7 @@ under ``interface.loadout``. Firmware-level filtering (``firmware_visible()`` / 
 is pure logic that no picker consumes yet: wiring it into the Flash firmware list, the Device View
 firmware chooser and the command-palette firmware entries is a tracked follow-up (the same
 surface-granularity tradeoff as the per-sub-tab gating noted in ``TAB_REQUIREMENTS``).
-See command-center/projects/cc-loadout-PLAN.md.
+See the internal loadout design notes.
 """
 
 from __future__ import annotations

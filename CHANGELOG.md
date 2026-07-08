@@ -521,7 +521,7 @@ Installer-UX + reliability fixes.
   visual feedback**, so users saw nothing for 15+ seconds and assumed it failed. Added a **PyInstaller
   splash screen** (the cc logo) that appears within ~1–2 s of launch and is closed by `launch_qt()` once
   the main window is ready (`pyi_splash.close()`). Verified end-to-end: splash visible at t≈2 s →
-  clean hand-off to the GUI. (Full diagnosis: command-center `cc-installer-investigation.md`.)
+  clean hand-off to the GUI. (Full diagnosis captured in the internal engineering notes.)
 - **MinigotchiV3 profile crashed the Flash UI.** Its resolver pointed at `dj1ch/minigotchi-V3`, which
   upstream renamed to `dj1ch/minigotchi-ESP32` (the old path now 404s) and — unlike the other
   source-only profiles — had no `on_error` fallback, so resolving it raised an uncaught HTTP 404.

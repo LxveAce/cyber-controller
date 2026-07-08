@@ -1925,7 +1925,7 @@ class MinigotchiV3Profile(FirmwareProfile):
 # Reproduces the hardcoded FirmwareProfile subclasses above from a JSON config +
 # a small named-resolver registry (modeled on os_catalog._RESOLVERS), so adding a
 # firmware/board becomes "drop a JSON". The golden-locked base flash_assets() is
-# REUSED UNCHANGED. See command-center/projects/flasher-stage1-DESIGN.md. The old
+# REUSED UNCHANGED. See the internal flasher stage-1 design notes. The old
 # subclasses remain the equivalence ORACLE (tests/test_generic_equiv.py) until the
 # registry swap — GenericProfile is additive and not yet wired into PROFILES.
 

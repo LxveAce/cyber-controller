@@ -553,7 +553,7 @@ class CyberControllerWindow(QMainWindow):
         self._tabs.addTab(self._network_surface, "Network")
 
         # (Mission Planner tab removed — was a non-functional "coming soon" placeholder; tracked as a
-        # real future feature in command-center/projects/cc-reformed-roadmap.md. Don't ship dead tabs.)
+        # real future feature in the internal roadmap notes. Don't ship dead tabs.)
 
         # Settings (persisted)
         self._settings_tab = SettingsTab()

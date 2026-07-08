@@ -4,7 +4,7 @@ This is a *characterization* test (a safety net), not a behavior change: it capt
 their titles, order, and the widget identity behind each tab exactly as they are today. The S4 GUI
 overhaul will regroup these tabs — when it does, this test fails loudly and forces an intentional,
 reviewed update of the expected structure rather than a silent drift. Pairs with the tab-grouping
-inventory + IA proposal in command-center/projects/cc-GUI-OVERHAUL-PROGRAM.md.
+inventory + IA proposal in the internal GUI-overhaul notes.
 
 Construction mirrors tests/test_dual_depth_ui.py::_make_window (offscreen Qt, real core objects).
 """

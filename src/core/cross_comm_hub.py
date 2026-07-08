@@ -12,8 +12,8 @@ The routed-command sink (:meth:`send_to_port`) lives here too — it is pure cor
 line terminator, write to its serial connection), with no Qt dependency, so it belongs on the spine rather
 than on a window.
 
-This is behavior-preserving: same parts, same wiring, just assembled once in core. See command-center
-``cc-rework-PLAN.md`` (stage S2).
+This is behavior-preserving: same parts, same wiring, just assembled once in core. See the internal
+cross-comm rework notes (stage S2).
 """
 
 from __future__ import annotations

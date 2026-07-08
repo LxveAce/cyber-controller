@@ -1,7 +1,7 @@
 """Golden regression net for the flash-command surface.
 
-Stage 0 of the flasher-consolidation (see command-center/projects/
-flasher-consolidation-PLAN.md). This LOCKS the per-profile, flash-critical
+Stage 0 of the flasher-consolidation (see the internal consolidation notes).
+This LOCKS the per-profile, flash-critical
 decisions so a future generic / JSON-driven profile rewrite (Stage 1) can be
 proven *argv-identical* to today's hardware-validated behavior before anything
 is shipped.

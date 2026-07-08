@@ -61,5 +61,5 @@ plan. Research + method: see `docs/RED-TEAM.md`.
   `textContent`.
 - Add **SRI** to any CDN script and **enforce HTTPS** on both Pages sites.
 
-> These are *planning* recommendations — say the word and I'll implement the ones in the website
-> repos (`LxveAce.github.io`, `esp32marauder.com`) directly.
+> These are *planning* recommendations. Apply the relevant items directly in the website
+> repos (`LxveAce.github.io`, `esp32marauder.com`) when the work is scheduled.

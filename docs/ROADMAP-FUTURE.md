@@ -1,7 +1,7 @@
 # Cyber Controller — Future Roadmap
 
-Where the flagship goes next. Grounded in the current shipped reality (v1.4.0: Qt/Tk/TUI/Web front-ends,
-5 flash backends, 9 protocol parsers, 26 profile JSONs, cross-comm AutoRouter, dead-man-switch submodule)
+Where the flagship goes next. Grounded in the current shipped reality (v1.6.4: Qt/Tk/TUI/Web front-ends,
+5 flash backends, 12 protocol parsers, 31 profile JSONs, cross-comm AutoRouter, dead-man-switch submodule)
 and the planned support advertised on cybercontroller.org. **Principle that governs every line below:
 reliability over reach — a target is only marketed as *supported* once it is validated on real hardware.**
 Code can land ahead of validation, but it ships flagged `HW-validation pending`, never as "supported."
@@ -12,9 +12,6 @@ Status legend: ✅ shipped · 🚧 in progress · 📋 planned · 🔬 needs har
 
 ## Near term — stabilize & release
 
-- 📋 **Cut v1.5.0.** ~57 commits (features + 20 reliability fixes + the violet identity theme) sit past
-  the v1.4.0 tag. Promote `[Unreleased]` → dated version, bump `src/version.py` + `pyproject`, tag,
-  let CI build the binaries + Inno installer. 🔑 owner picks the SemVer.
 - 📋 **Finish the reliability/consistency backlog:** bundle-manifest regression test (guard that every
   `resource_path()` target exists and matches a `build.py --add-data` entry — catches the next
   silent-frozen-crash and the stale `src/config/missions` line), remaining inline-style → `theme.colors`
@@ -70,4 +67,4 @@ closed-source binaries and validated on hardware before the count is advertised.
 ---
 
 *Reliability-first, honest counts, validate-before-you-claim. This roadmap is a plan, not a promise —
-items move only when they're real. See `docs/OVERHAUL-MARATHON.md` for the running work log.*
+items move only when they're real; each is tracked against the CHANGELOG as it ships.*

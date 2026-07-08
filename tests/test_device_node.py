@@ -1,6 +1,6 @@
 """DeviceNode enrichment (cross-comm rework, S1): a connected device surfaces its firmware capabilities as a
 node. Additive + read-only over the protocol capability map — the first building block of the comms rework
-(see command-center cc-rework-PLAN.md). No existing behavior changes; this just gives each node a capability view.
+(see the internal cross-comm rework notes). No existing behavior changes; this just gives each node a capability view.
 """
 from __future__ import annotations
 

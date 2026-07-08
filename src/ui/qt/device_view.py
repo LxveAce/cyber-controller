@@ -1,6 +1,6 @@
 """Device View — an on-screen replica of a firmware's on-board UI.
 
-This is the **RECONSTRUCTED_SKIN** tier (see command-center/projects/cc-device-view-PLAN.md): the ESP32
+This is the **RECONSTRUCTED_SKIN** tier (see the internal device-view notes): the ESP32
 firmwares render their TFT menu locally and only expose a serial CLI, so we faithfully *rebuild* the menu
 in Qt and bind each leaf to the firmware's real serial command. It is honestly a reconstruction, not a
 pixel mirror (only Flipper can be a true mirror) — the header carries a "SKIN" tag to say so.
