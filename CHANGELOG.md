@@ -5,9 +5,7 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
-## [1.6.5-beta.1] — 2026-07-07
-
-A hotfix for a navigation bug in 1.6.4, and the start of the 1.6.5 beta line.
+Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Fixed
 - **You're no longer trapped on the Connect ▸ Devices tab.** With a device selected, the 3-second sidebar
