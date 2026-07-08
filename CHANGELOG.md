@@ -5,6 +5,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.6] — 2026-07-08
+
+A performance + quality patch driven by hands-on use of the v1.6.5 Flock map. With a large camera set the map now
+stays smooth, frees its memory when you leave the tab, and scroll-to-zoom works again — plus a command-line check for
+firmware updates. (The one-click in-app updater — download & install a new release in place, keeping your data — is
+already built; this is the first release you can update *to* with it.)
+
 ### Added
 - **Check your cached firmware for updates from the command line.** `cyber-controller --check-firmware-updates` looks up
   the latest GitHub release for each firmware you've already downloaded into the vault and prints any that have a newer
