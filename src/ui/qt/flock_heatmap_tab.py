@@ -198,6 +198,18 @@ def _flock_pump(session: Any, gps_line: str, dev_line: str, checkpoint_path: str
     return added
 
 
+def _fix_status_text(fix: Any, has: bool) -> str:
+    """One-line GPS status for the live-scan readout: ``'<lat>, <lon>  ·  N sats · HDOP x.x'`` (the quality
+    suffix is shown only when the receiver reports it — 0/0 on an RMC-only or older receiver), or ``'No Fix'``.
+    Pure + unit-tested; the worker loops that build this run under serial I/O and are not covered."""
+    if not has or fix is None:
+        return "No Fix"
+    txt = f"{fix.lat:.5f}, {fix.lon:.5f}"
+    if fix.sats or fix.hdop:
+        txt += f"  ·  {fix.sats} sats · HDOP {fix.hdop:.1f}"
+    return txt
+
+
 # ── Qt widget (the pure core above stays Qt-free; the widget is optional) ──
 
 try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even without PyQt5
@@ -275,6 +287,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 return
             gps = dev = None
             last = ("", -1)
+            last_pos = None   # position-only dedup for the marker, kept separate from the status text (which
+                              # also carries GPS quality) so sat-count/HDOP noise doesn't churn the pin
             try:
                 if self._gps_port:
                     gps = serial.Serial(self._gps_port, self._gps_baud, timeout=0.5)
@@ -296,20 +310,19 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                         self.line.emit(f"+ camera ({self.session.camera_count} located)")
                     fix = self.session.fix
                     has = bool(fix and fix.has_fix)
-                    # Show GPS quality alongside the position so a weak/degraded fix is visible at a glance
-                    # (sats + HDOP come from the GGA sentence; both read 0 on an RMC-only or older receiver).
-                    if has:
-                        ftxt = f"{fix.lat:.5f}, {fix.lon:.5f}"
-                        if fix.sats or fix.hdop:
-                            ftxt += f"  ·  {fix.sats} sats · HDOP {fix.hdop:.1f}"
-                    else:
-                        ftxt = "No Fix"
-                    cur = (ftxt, self.session.camera_count)
-                    if cur != last:
+                    # Status shows position + GPS quality (sats/HDOP) and re-emits whenever any of that changes.
+                    ftxt = _fix_status_text(fix, has)
+                    status_cur = (ftxt, self.session.camera_count)
+                    if status_cur != last:
                         self.status.emit(ftxt, self.session.camera_count)
-                        # feed the live fix to the "you are here" marker (host-side toggle decides if it shows)
+                        last = status_cur
+                    # The "you are here" marker only cares about POSITION, so dedup its feed separately — a
+                    # stationary receiver whose sat count / HDOP flickers must not churn the pin (or, with
+                    # Follow on, keep re-centring). Host-side toggle decides whether the marker is shown.
+                    pos_cur = (round(fix.lat, 6), round(fix.lon, 6), True) if has else (None, None, False)
+                    if pos_cur != last_pos:
                         self.location.emit(fix.lat if has else 0.0, fix.lon if has else 0.0, has)
-                        last = cur
+                        last_pos = pos_cur
             except Exception as exc:  # noqa: BLE001
                 self.line.emit(f"flock scan error: {exc}")
             finally:

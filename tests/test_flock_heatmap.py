@@ -615,3 +615,14 @@ def test_late_stop_does_not_orphan_a_newer_reader(qapp, monkeypatch):
     w._gps_worker = new_worker
     w._on_gps_tracking_stopped(old_worker)         # stale stop from the OLD worker
     assert w._gps_worker is new_worker             # new reader NOT orphaned
+
+
+def test_fix_status_text_shows_position_and_quality():
+    # The live-scan status text: position always, with a sats/HDOP suffix only when the receiver reports them.
+    from src.core.wardrive import GpsFix
+    f = GpsFix(48.117, 11.517, 0.0, True, "", 8, 0.9)
+    assert _fh._fix_status_text(f, True) == "48.11700, 11.51700  ·  8 sats · HDOP 0.9"
+    rmc = GpsFix(48.0, 11.0, 0.0, True, "", 0, 0.0)     # RMC-only / older receiver: no sats/HDOP reported
+    assert _fh._fix_status_text(rmc, True) == "48.00000, 11.00000"
+    assert _fh._fix_status_text(None, False) == "No Fix"   # no fix
+    assert _fh._fix_status_text(f, False) == "No Fix"      # has=False overrides even a populated fix
