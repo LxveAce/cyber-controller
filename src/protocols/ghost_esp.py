@@ -219,7 +219,7 @@ class GhostESPProtocol(BaseProtocol):
             # System
             CommandInfo("chipinfo", "System", "Device / chip info"),
             CommandInfo("reboot", "System", "Reboot device"),
-            CommandInfo("gps info", "System", "GPS status"),
+            CommandInfo("gpsinfo", "System", "GPS status"),
             CommandInfo("sd info", "System", "SD card info"),
             CommandInfo("led set <r> <g> <b>", "System", "Set LED colour", "r,g,b"),
             CommandInfo("settings", "System", "Show settings"),

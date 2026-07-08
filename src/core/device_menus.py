@@ -98,7 +98,7 @@ def ghostesp_menu() -> "list[MenuNode]":
         ]),
         M("Device", children=[
             M("Info", command="chipinfo"),
-            M("GPS Info", command="gps info"),
+            M("GPS Info", command="gpsinfo"),
             M("SD Info", command="sd info"),
             M("Settings", command="settings"),
             M("Reboot", command="reboot"),

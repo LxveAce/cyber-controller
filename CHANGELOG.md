@@ -36,6 +36,9 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   (logs stay in memory for the session; wardrive CSVs are plaintext by design). The description and checkbox now
   state what's genuinely protected — your saved macros — so you aren't misled into thinking logs or captures are
   encrypted. The encryption itself (AES-256-GCM, gate-keyed) is unchanged.
+- **GhostESP's GPS command now works.** The command palette and the Device menu sent "gps info" (two tokens), but
+  GhostESP's command is the single token "gpsinfo" — the board treated "gps" as an unknown command and never
+  returned GPS status. Both now send "gpsinfo", matching the token the app's own wardrive macro already uses.
 
 ## [1.6.4] — 2026-07-07
 
