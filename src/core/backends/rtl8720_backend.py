@@ -674,13 +674,25 @@ def flash_ambd(port: str, bundle_dir: str, tool: Optional[str] = None,
     *auto* True the tool toggles DTR/RTS to enter download mode automatically (proven to work
     on the BW16); with *auto* False it gives a 5s countdown for a manual BOOT+RESET. Success is
     detected from the tool's output ("done." with no "failed"), since the ImageTool exits 0
-    regardless. Raises :class:`AmbdToolNotFound` (a :class:`RtlToolNotFound` subclass) if the ImageTool
-    is missing and :class:`FileNotFoundError` if the bundle/loader is incomplete (so we never start a
-    destructive op on a bad bundle).
+    regardless. Raises :class:`AmbdToolNotFound` (a :class:`RtlToolNotFound` subclass) only when the
+    ImageTool is genuinely absent — nothing configured and nothing discovered. A *configured* path
+    (an explicit ``tool=`` or ``CYBERC_AMEBAD_TOOL``) that does not exist raises a plain
+    :class:`FileNotFoundError` naming that path, and an incomplete bundle/loader also raises
+    :class:`FileNotFoundError` (so we never start a destructive op on a bad bundle).
     """
     on_line = on_line or (lambda _s: None)
     resolved = find_ambd_tool(tool)
     if not resolved:
+        # Distinguish "the ImageTool is genuinely absent" (nothing configured, nothing discovered ->
+        # AmbdToolNotFound with install guidance) from "a path WAS configured but does not exist" (an
+        # explicit tool= arg or the CYBERC_AMEBAD_TOOL env pointing at a typo'd / moved file). The generic
+        # not-found message tells the user to obtain the tool and set the env var — misleading for someone
+        # who already did exactly that, so name the bad path in a distinct, accurate error instead.
+        configured = tool or os.environ.get("CYBERC_AMEBAD_TOOL")
+        if configured and not os.path.isfile(configured):
+            raise FileNotFoundError(
+                f"AmebaD ImageTool path does not exist: {configured}. Check the path passed as "
+                "tool= (or set in CYBERC_AMEBAD_TOOL); unset it to auto-discover the tool instead.")
         raise AmbdToolNotFound()
 
     missing = [f for f in AMBD_BUNDLE_FILES

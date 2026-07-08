@@ -786,3 +786,45 @@ def test_flash_ambd_done_plus_real_failure_is_still_failure(tmp_path, monkeypatc
     _install_fake_popen(monkeypatch, out_lines=["km0 done.", "sync timed out"], returncode=0)
     rc = rtl.flash_ambd("COM8", _make_bundle(tmp_path), on_line=_Collector())
     assert rc != 0
+
+
+def test_flash_ambd_bad_explicit_tool_path_is_precise_not_generic(tmp_path):
+    # A user who points flash_ambd at the WRONG ImageTool path (typo, moved/renamed file) must get a
+    # precise error that NAMES that path — not the generic "obtain the tool and set CYBERC_AMEBAD_TOOL"
+    # guidance, which misleads someone who DID configure a path. AmbdToolNotFound stays reserved for a
+    # tool that is genuinely absent (nothing configured, nothing discovered).
+    bundle = _make_bundle(tmp_path)
+    bad = str(tmp_path / "upload_image_tool_typo.exe")  # deliberately does not exist
+    assert not os.path.isfile(bad)
+    with pytest.raises(FileNotFoundError) as ei:
+        rtl.flash_ambd("COM8", bundle, tool=bad)
+    # The precise error names the bad path the user actually supplied...
+    assert bad in str(ei.value)
+    # ...and is NOT the generic tool-not-found (whose message is static install guidance).
+    assert not isinstance(ei.value, rtl.AmbdToolNotFound)
+
+
+def test_flash_ambd_bad_env_tool_path_is_precise_not_generic(tmp_path, monkeypatch):
+    # Same imprecision via the documented config channel: CYBERC_AMEBAD_TOOL points at a path that no
+    # longer exists. The error must name that path (so the user fixes their env var), not tell them to
+    # go set the env var they already set.
+    bundle = _make_bundle(tmp_path)
+    bad = str(tmp_path / "no_such_image_tool")
+    monkeypatch.setenv("CYBERC_AMEBAD_TOOL", bad)
+    monkeypatch.setattr(rtl, "_realtek_tool_dirs", lambda: [])
+    monkeypatch.setattr(rtl.shutil, "which", lambda name: None)
+    with pytest.raises(FileNotFoundError) as ei:
+        rtl.flash_ambd("COM8", bundle)
+    assert bad in str(ei.value)
+    assert not isinstance(ei.value, rtl.AmbdToolNotFound)
+
+
+def test_flash_ambd_genuinely_absent_tool_still_raises_ambd_not_found(tmp_path, monkeypatch):
+    # The narrowing must NOT over-reach: with NOTHING configured (no tool=, no env) and nothing
+    # discovered, the tool is genuinely absent and the precise AmbdToolNotFound (install guidance) is
+    # exactly right.
+    monkeypatch.delenv("CYBERC_AMEBAD_TOOL", raising=False)
+    monkeypatch.setattr(rtl, "_realtek_tool_dirs", lambda: [])
+    monkeypatch.setattr(rtl.shutil, "which", lambda name: None)
+    with pytest.raises(rtl.AmbdToolNotFound):
+        rtl.flash_ambd("COM8", _make_bundle(tmp_path))
