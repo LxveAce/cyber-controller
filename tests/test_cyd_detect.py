@@ -13,25 +13,42 @@ cyd_detect = pytest.importorskip("src.core.cyd_detect")
 from src.core.cyd_detect import PROBE_BIN, parse_report  # noqa: E402
 
 
-def _block(cyd, conf, ctrl, touch, variant, alive, ldr):
+def _block(cyd, conf, ctrl, touch, variant, alive, ldr, r04="0x00000000", cap="0x00"):
     return (
         "\n=====CYD_PROBE=====\n"
         f"CYD={cyd} CONF={conf} CONTROLLER={ctrl} TOUCH={touch}\n"
         f"VARIANT={variant}\n"
-        f"D3=0x00000000 04=0x00000000 09=0x00610000 alive={alive} cap_i2c=0x00 LDR={ldr}\n"
+        f"D3=0x00000000 04={r04} 09=0x00610000 alive={alive} cap_i2c={cap} LDR={ldr}\n"
         "=====END=====\n"
     )
 
 
 def test_parse_2usb_st7789_cyd():
-    raw = _block("yes", "high", "ST7789", "resistive", "cyd_2432S028_2usb", 1, 2368) * 2
+    # A real 2-USB board carries the ST7789 register signature (04 high byte 0x85), so it stays a
+    # confident, unambiguous identification.
+    raw = _block("yes", "high", "ST7789", "resistive", "cyd_2432S028_2usb", 1, 2368, r04="0x85000000") * 2
     r = parse_report(raw)
     assert r.is_cyd
     assert r.confidence == "high"
+    assert not r.ambiguous
     assert r.controller == "ST7789"
     assert r.variant == "cyd_2432S028_2usb"
     assert "ST7789" in r.label and "2-USB" in r.label
     assert r.ldr == 2368
+
+
+def test_unsupported_st7789_guess_is_ambiguous():
+    # The owner's bug: a 2.8" ILI9341 whose 0xD3 read-ID fails to latch falls into the probe's ST7789
+    # fallback with NO 04 register signature and NO capacitive touch, so the probe DEFAULTS to 2-USB and
+    # (from liveness+LDR alone) still stamps CONF=high. Flashing that 2-USB build blanks the ILI9341 panel.
+    # The host must re-derive an honest LOW confidence + ambiguous flag so the UI warns instead of silently
+    # pre-selecting the wrong variant.
+    raw = _block("yes", "high", "ST7789", "resistive", "cyd_2432S028_2usb", 1, 2100, r04="0x00000000", cap="0x00")
+    r = parse_report(raw)
+    assert r.is_cyd
+    assert r.ambiguous is True
+    assert r.confidence == "low", "an unsupported ST7789 guess must not keep the probe's CONF=high"
+    assert "verify" in r.summary.lower() or "not positively" in r.summary.lower()
 
 
 def test_parse_bare_esp32_is_not_a_cyd():
@@ -44,10 +61,13 @@ def test_parse_bare_esp32_is_not_a_cyd():
 
 
 def test_parse_ili9341_and_st7796():
+    # Positive read-ID matches (0x9341 / 0x7796) stay confident and unambiguous — no downgrade.
     r1 = parse_report(_block("yes", "high", "ILI9341", "resistive", "cyd_2432S028", 1, 2100))
     assert r1.variant == "cyd_2432S028" and "ILI9341" in r1.label
+    assert r1.confidence == "high" and not r1.ambiguous
     r2 = parse_report(_block("yes", "high", "ST7796", "resistive", "cyd_3_5_inch", 1, 1900))
     assert r2.variant == "cyd_3_5_inch" and "3.5" in r2.label
+    assert r2.confidence == "high" and not r2.ambiguous
 
 
 def test_parse_uses_last_complete_block():

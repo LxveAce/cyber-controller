@@ -40,6 +40,8 @@ class CydResult:
 
     is_cyd: bool = False
     confidence: str = "none"     # high / medium / low / none
+    ambiguous: bool = False      # True when the panel controller was NOT positively identified (the
+                                 # ST7789 fallback bucket) so the exact variant is a guess, not a read
     controller: str = "none"     # ILI9341 / ST7796 / ST7789 / none
     touch: str = ""              # resistive / capacitive
     variant: str = ""            # marauder variant key ("" when not a CYD)
@@ -61,6 +63,11 @@ class CydResult:
             )
         if not self.is_cyd:
             return "No CYD display detected on this board (looks like a bare ESP32)."
+        if self.ambiguous:
+            return (
+                f"Best guess {self.label or self.variant}  —  confidence: {self.confidence} "
+                "(panel controller not positively identified; verify the variant before flashing)."
+            )
         return f"Detected {self.label or self.variant}  —  confidence: {self.confidence}"
 
 
@@ -83,9 +90,31 @@ def parse_report(raw: str) -> CydResult:
         variant = ""
     ldr_vals = re.findall(r"LDR=(-?\d+)", block)
     ldr = int(ldr_vals[-1]) if ldr_vals else -1
+
+    # The probe sets CONF from liveness+LDR alone, so it can report high/medium confidence even when the
+    # panel controller was NOT positively identified: id 0x9341/0x7796 are real read-ID matches, but a
+    # "ST7789" controller is only ever the fallback the probe reaches when 0xD3 returned no known id
+    # (tools/cyd_probe/src/main.cpp). A 2.8" ILI9341 whose read-ID fails to latch therefore lands here as
+    # an ST7789 2-USB/Guition GUESS at CONF=high — exactly the wrong-panel/blank-screen case. Re-derive an
+    # honest confidence from the raw '04' register the report already prints so the UI can warn instead of
+    # silently pre-selecting a wrong variant.
+    ambiguous = False
+    if is_cyd and ctrl == "ST7789":
+        r04 = int(_grab(block, r"04=0x([0-9A-Fa-f]+)", "0"), 16)
+        r04hi = (r04 >> 24) & 0xFF or (r04 >> 16) & 0xFF  # matches the probe's r04hi derivation
+        cap = int(_grab(block, r"cap_i2c=0x([0-9A-Fa-f]+)", "0"), 16)
+        # The probe's ST7789 branch splits by the '04' register signature (0x85 -> 2-USB, 0x81 -> Guition)
+        # or, failing that, by capacitive touch (present -> Guition). With NO register signature AND NO cap
+        # touch it just DEFAULTS to 2-USB — and that unsupported default is exactly how a 2.8" ILI9341 with
+        # a failed read-ID gets mis-called a 2-USB board (blank screen). Flag only that unsupported guess.
+        if r04hi not in (0x85, 0x81) and cap == 0:
+            ambiguous = True
+            conf = "low"
+
     return CydResult(
         is_cyd=is_cyd,
         confidence=conf,
+        ambiguous=ambiguous,
         controller=ctrl,
         touch=touch,
         variant=variant,

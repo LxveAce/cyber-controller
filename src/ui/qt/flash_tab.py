@@ -610,10 +610,21 @@ class FlashTab(QWidget):
             self._profile_combo.setCurrentIndex(idx)  # triggers _reload_variants -> applied on load
         elif not self._select_variant(result.variant):
             pass  # not in the current list yet; _on_variants_loaded will add + select it
-        self._log(
-            f"Pre-selected variant '{result.variant}'. Pick Marauder firmware and click Flash to "
-            "install the correct build."
-        )
+        if getattr(result, "ambiguous", False) or result.confidence == "low":
+            # The panel controller wasn't positively identified (ST7789 fallback bucket), so the exact
+            # variant is a guess — don't present it as certain. Pre-select the best guess but warn, and
+            # name the alternatives so a blank screen has an obvious next step instead of a dead end.
+            self._log(
+                f"⚠ Could not positively identify the panel — best guess '{result.variant}'. If the screen "
+                "is blank or wrong after flashing, it's likely the wrong panel: try the other ST7789 build "
+                "(cyd_2432S028_2usb <-> cyd_2432S024_guition) or the 2.8\" ILI9341 (cyd_2432S028), back up "
+                "first, then re-flash."
+            )
+        else:
+            self._log(
+                f"Pre-selected variant '{result.variant}'. Pick Marauder firmware and click Flash to "
+                "install the correct build."
+            )
 
     def _select_variant(self, key: str) -> bool:
         """Select the variant whose data == key. Returns True if found (and clears the pending key)."""

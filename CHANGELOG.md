@@ -20,6 +20,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   stayed open but whose firmware had gone silent (hung or mid-flash / mis-flashed) still read as a green "connected"
   with a ticking Last Seen. Health now reads the real firmware from the connect-time handshake, and a silent board
   reads "no-reply" with its Last Seen frozen instead of a false green.
+- **"Detect board" no longer presents a wrong-panel guess as certain.** The CYD display probe stamps high confidence
+  from a liveness check even when it couldn't read the panel's controller ID, so a 2.8" ILI9341 whose read-ID fails to
+  latch was mis-identified as a 2-USB ST7789 (wrong build → blank screen) and silently pre-selected. Detect now spots
+  that unsupported fallback guess, reports it as low-confidence, and warns you to verify the variant (naming the ILI9341
+  and Guition alternatives) instead of presenting a guess as a sure thing.
 
 ## [1.6.6] — 2026-07-08
 
