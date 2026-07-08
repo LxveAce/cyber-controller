@@ -2384,6 +2384,11 @@ _PROFILE_FILES = (
     # Assets verified live 2026-07-03: Devsur11/M5Gotchi v0.7 (cardputer.bin + m5stick.bin, both S3) and
     # 0ct0sec/M5PORKCHOP v0.1.8b-PSTH (the *_m5burner.bin merged image). Flash offset pending Stage-5 HW gate.
     "m5gotchi.json", "porkchop.json",
+    # ESP32 WiFi Penetration Tool (risinek) — classic-ESP32 WiFi attack/recon toolkit (deauth, PMKID + WPA
+    # handshake capture over a web UI). Multi-file ESP-IDF release; offsets taken from the repo README's own
+    # flash command (2026-07-08, v1.0): bootloader@0x1000, partition-table@0x8000, app@0x10000; SHA-256 pinned
+    # from the downloaded assets (24016/3072/723248 B). Deauth gated/labelled by the safety layer, never operated.
+    "esp32_wifi_pentest.json",
 )
 
 

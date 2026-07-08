@@ -7,6 +7,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
+### Added
+- **New firmware profile: ESP32 WiFi Penetration Tool (`risinek/esp32-wifi-penetration-tool`).** A classic-ESP32 WiFi
+  attack/recon toolkit (deauth, PMKID + WPA handshake capture, PCAP, all over a self-hosted web UI). Multi-file
+  ESP-IDF release flashed at the offsets the upstream README documents — bootloader @0x1000, partition-table @0x8000,
+  app @0x10000 — with all three assets SHA-256-pinned from the v1.0 release. Deauth capability is labelled/gated by the
+  safety layer and never operated by the app; authorized testing only. **32 firmware profiles** now ship.
+
 ### Fixed
 - **HaleHound's OTA update image is no longer offered as a full flash.** The profile matched every `.bin` release
   asset and treated it as a merged image written at 0x0 — including the app-only OTA update image, which belongs to the
