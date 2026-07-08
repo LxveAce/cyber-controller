@@ -157,6 +157,12 @@ class DetachableTabWidget(QTabWidget):
 
     # ── re-dock ──────────────────────────────────────────────────────
     def _redock_page(self, page: QWidget) -> None:
+        # Deliberate: re-dock ALWAYS restores the surface to the strip and does NOT consult the active loadout.
+        # An explicit re-dock is treated as user intent to bring the surface back, which outranks the loadout's
+        # visibility set — silently vanishing a tab the user just chose to re-dock would be the more surprising
+        # behaviour. If the active loadout hides this surface, it is removed again on the loadout's next apply
+        # (MainWindow.apply_loadout), so the two systems reconcile without data loss. Whether the loadout should
+        # instead win over an explicit re-dock is a UX call parked for the owner (audit finding [14]).
         win = self._popouts.pop(page, None)
         if win is None:
             return
