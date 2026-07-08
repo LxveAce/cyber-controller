@@ -46,6 +46,24 @@ _RE_SD = re.compile(r"SD:\s*(.*)", re.IGNORECASE)
 class GhostESPProtocol(BaseProtocol):
     """Parser and command formatter for GhostESP firmware."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        # Discovery-order AP ordinal. GhostESP's scan stream prints no index, but `select -a <n>`
+        # addresses the AP list by position, so we assign an ordinal by discovery order (deduped by
+        # BSSID) — the same approach as the Marauder parser. Without it the per-AP "Deauth AP" action
+        # (gated on `select -a {index}`) is dropped by the resolver and never offered.
+        self._ap_index = 0
+        self._ap_indices: dict[str, int] = {}
+
+    def _assign_ap_index(self, bssid: str) -> int:
+        existing = self._ap_indices.get(bssid)
+        if existing is not None:
+            return existing
+        idx = self._ap_index
+        self._ap_indices[bssid] = idx
+        self._ap_index += 1
+        return idx
+
     @property
     def protocol_name(self) -> str:
         return "ghost-esp"
@@ -62,13 +80,15 @@ class GhostESPProtocol(BaseProtocol):
         # AP found
         m = _RE_AP.search(line)
         if m:
+            bssid = m.group(2)
             return ParsedEvent(
                 event_type="ap_found",
                 data={
                     "ssid": m.group(1).strip(),
-                    "bssid": m.group(2),
+                    "bssid": bssid,
                     "channel": int(m.group(3)),
                     "rssi": int(m.group(4)),
+                    "index": self._assign_ap_index(bssid),
                 },
                 raw=line,
             )

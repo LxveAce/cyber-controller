@@ -122,3 +122,27 @@ def test_tk_terminal_send_captures_into_recording(tmp_path):
     assert [s.command for s in macro.steps] == ["scanap", "stopscan"], (
         "each command sent from the Tk terminal must be captured as a macro step"
     )
+
+
+def test_tk_device_view_send_captures_into_recording(tmp_path):
+    """The Tk Device View / Remote send bridge must also feed the recorder — dropping those commands was
+    silent data loss: a macro recorded while tapping Device View / Remote buttons replayed incomplete."""
+    pytest.importorskip("tkinter")
+    import src.ui.tk.app as tkapp
+    from src.core.macro_recorder import MacroRecorder
+
+    app = tkapp.TkLightApp.__new__(tkapp.TkLightApp)
+    recorder = MacroRecorder(macros_dir=tmp_path)
+    app._macro_recorder = recorder
+    app._active_conn = _Conn()
+    app._append_serial = lambda *_a, **_k: None
+
+    recorder.start_recording("COM1")
+    for cmd in ("scanap", "stopscan"):
+        tkapp.TkLightApp._device_view_send(app, cmd)
+    macro = recorder.stop_recording(name="rec")
+
+    assert app._active_conn.sent == ["scanap", "stopscan"], "commands must still reach the wire"
+    assert [s.command for s in macro.steps] == ["scanap", "stopscan"], (
+        "each command sent from the Device View / Remote tab must be captured as a macro step"
+    )

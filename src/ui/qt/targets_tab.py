@@ -486,6 +486,28 @@ class TargetsTab(QWidget):
         """Execute a resolved action against a target on a specific device port."""
         action_name = getattr(action, "name", str(action))
         try:
+            # A right-click target action here (Deauth AP / Karma Clone / Probe Flood / Rickroll Beacon)
+            # is a real attack send, so it must clear the SAME "Confirm before dangerous commands" gate
+            # every sibling send surface uses (device_tab._on_send, network_tab._run_target_action) —
+            # otherwise the Targets tab silently bypasses the marketed safety toggle. Classify the rendered
+            # command AND its pre-commands (worst wins) and floor an ATTACK-category action at lab-only, so
+            # a keyword-free attack template is still gated. Inside the try -> a gate error fails closed.
+            from src.config.settings import load_settings
+            from src.core import safety
+            from src.models.action import ActionCategory
+            _cmds = [getattr(action, "command_template", "") or ""]
+            _cmds += list(getattr(action, "pre_commands", None) or [])
+            _danger = safety.worst_of(*(safety.classify(c) for c in _cmds))
+            if getattr(action, "category", None) == ActionCategory.ATTACK:
+                _danger = safety.worst_of(_danger, safety.LAB_ONLY)
+            if safety.should_confirm(_danger, load_settings()):
+                reply = QMessageBox.warning(
+                    self, "Confirm dangerous command",
+                    safety.lab_only_warning_text(getattr(action, "command_template", ""), _danger),
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
+                )
+                if reply != QMessageBox.Yes:
+                    return
             # Prefer the proper execute_action function from the action_resolver module.
             if _HAS_ACTION_RESOLVER and _execute_action_fn is not None and self._dm is not None:
                 success = _execute_action_fn(

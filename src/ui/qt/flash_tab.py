@@ -26,7 +26,7 @@ from PyQt5.QtWidgets import (
 
 from src.config.settings import load_settings
 from src.core.device_manager import DeviceManager
-from src.core.firmware_vault import FirmwareVault
+from src.core.firmware_vault import FirmwareVault, configured_vault_dir
 from src.core.flash_engine import (
     FirmwareProfile,
     FlashEngine,
@@ -190,7 +190,7 @@ class FlashTab(QWidget):
         super().__init__()
         self._dm = dm
         self._fe = fe
-        self._vault = vault or FirmwareVault()
+        self._vault = vault or FirmwareVault(configured_vault_dir())
         self._worker: _FlashWorker | None = None
         self._variant_loader: _VariantLoader | None = None
         self._detect_worker: _DetectWorker | None = None
@@ -199,6 +199,12 @@ class FlashTab(QWidget):
         # itself on its finished signal.
         self._bg_workers: "set[QThread]" = set()
         self._op_worker: _OpWorker | None = None
+        # Batch-queue sequential-flash state (see _on_flash_queue). Jobs are flashed one at a time by
+        # chaining each _FlashWorker's finished signal to the next, reusing the exact single-flash path.
+        self._batch_worker: _FlashWorker | None = None
+        self._batch_jobs: list[tuple[str, str]] = []
+        self._batch_idx = 0
+        self._batch_ok = 0
         self._pending_variant: str | None = None  # variant to select once the async list lands
         self._profiles: dict[str, Path] = {}  # display name -> path
         self._profile_objs: dict[str, FirmwareProfile] = {}  # display name -> loaded profile
@@ -363,6 +369,9 @@ class FlashTab(QWidget):
         btn_add = QPushButton("Add to Queue")
         btn_add.clicked.connect(self._add_to_queue)
         queue_layout.addWidget(btn_add)
+        self._btn_flash_queue = QPushButton("Flash Queue")
+        self._btn_flash_queue.clicked.connect(self._on_flash_queue)
+        queue_layout.addWidget(self._btn_flash_queue)
         btn_clear = QPushButton("Clear Queue")
         btn_clear.clicked.connect(self._queue_list.clear)
         queue_layout.addWidget(btn_clear)
@@ -797,6 +806,81 @@ class FlashTab(QWidget):
             item = QListWidgetItem(f"{port} -> {profile_name}")
             item.setData(Qt.UserRole, (port, profile_name))
             self._queue_list.addItem(item)
+
+    def _on_flash_queue(self) -> None:
+        """Flash every queued (port, profile) sequentially — the behavior the Batch Queue card and the
+        in-app How-To advertise. Reuses the single-flash worker/engine one job at a time (chained on each
+        finished signal) so it stays on the exact, proven flash path instead of a second implementation."""
+        if self._batch_jobs or (self._batch_worker is not None and self._batch_worker.isRunning()):
+            self._log("Batch flash already in progress.")
+            return
+        jobs: list[tuple[str, str]] = []
+        for i in range(self._queue_list.count()):
+            data = self._queue_list.item(i).data(Qt.UserRole)
+            if data:
+                jobs.append((data[0], data[1]))
+        if not jobs:
+            self._log("Batch queue is empty — add port + profile combos first.")
+            return
+        self._batch_jobs = jobs
+        self._batch_idx = 0
+        self._batch_ok = 0
+        self._btn_flash_queue.setEnabled(False)
+        self._btn_flash.setEnabled(False)
+        self._log(f"Batch: flashing {len(jobs)} queued device(s) sequentially...")
+        self._flash_next_in_batch()
+
+    def _flash_next_in_batch(self) -> None:
+        if self._batch_idx >= len(self._batch_jobs):
+            total = len(self._batch_jobs)
+            self._log(f"Batch complete: {self._batch_ok}/{total} succeeded.")
+            self._batch_jobs = []
+            self._batch_idx = 0
+            self._batch_worker = None
+            self._btn_flash_queue.setEnabled(True)
+            self._btn_flash.setEnabled(True)
+            return
+        port, profile_name = self._batch_jobs[self._batch_idx]
+        profile_path = self._profiles.get(profile_name)
+        if not profile_path:
+            self._log(f"Batch [{self._batch_idx + 1}]: no profile '{profile_name}' — skipping.")
+            self._advance_batch(False)
+            return
+        try:
+            profile = self._fe.load_profile(profile_path)
+        except Exception as exc:  # noqa: BLE001 — a bad profile skips its job, never aborts the batch
+            self._log(f"Batch [{self._batch_idx + 1}]: invalid profile {Path(profile_path).name}: {exc}")
+            self._advance_batch(False)
+            return
+        # Honor the user-configured Flash Baud (parity with _on_flash) and the offline vault fallback.
+        try:
+            cfg_baud = load_settings().get("flash", {}).get("flash_baud")
+            if cfg_baud:
+                profile.baud = int(cfg_baud)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            cached = self._vault.get_cached(profile.id)
+            if cached:
+                profile.offline_fallback_path = str(cached)
+        except Exception:  # noqa: BLE001
+            log.debug("vault get_cached lookup failed", exc_info=True)
+        self._log(f"Batch [{self._batch_idx + 1}/{len(self._batch_jobs)}]: flashing {profile.name} "
+                  f"to {port} at {profile.baud} baud...")
+        self._batch_worker = _FlashWorker(self._fe, port, profile)
+        self._batch_worker.progress.connect(self._on_progress)
+        self._batch_worker.finished.connect(self._on_batch_item_done)
+        self._batch_worker.start()
+
+    def _on_batch_item_done(self, success: bool) -> None:
+        self._log(f"Batch [{self._batch_idx + 1}]: {'succeeded' if success else 'FAILED'}.")
+        self._advance_batch(success)
+
+    def _advance_batch(self, success: bool) -> None:
+        if success:
+            self._batch_ok += 1
+        self._batch_idx += 1
+        self._flash_next_in_batch()
 
     # ── Progress / completion ────────────────────────────────────────
 

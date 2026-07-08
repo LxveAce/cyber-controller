@@ -41,7 +41,9 @@ DEFAULTS: dict[str, Any] = {
         "dedup_by_mac": True,
     },
     "vault": {
-        "dir": str(Path.home() / ".cyber-controller" / "firmware"),
+        # Must match firmware_vault._DEFAULT_VAULT_DIR — the firmware cache actually lives in
+        # ".cyber-controller/firmware_vault"; the old ".../firmware" default never matched the code.
+        "dir": str(Path.home() / ".cyber-controller" / "firmware_vault"),
     },
     # Safety / disclaimer system (see src/core/safety.py). These LABEL and warn;
     # they never remove or block a capability — "Yes, proceed" is always available,

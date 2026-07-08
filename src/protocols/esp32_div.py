@@ -87,6 +87,36 @@ _RE_SAVE = re.compile(r"(?:Saved|SD:)\s*(.*)", re.IGNORECASE)
 class Esp32DivProtocol(BaseProtocol):
     """Parser and command formatter for ESP32-DIV firmware."""
 
+    def __init__(self) -> None:
+        super().__init__()
+        # Discovery-order scan ordinals. The DIV stream prints no per-entry index, but its own
+        # `select ap <n>` / `select sta <n>` address the scan list by position — so, exactly like the
+        # Marauder parser, we assign an ordinal by discovery order (deduped by MAC, so a re-seen entry
+        # keeps its first position). Without this the AP's Deauth / PMKID / Handshake actions and the
+        # client's Deauth action (all pre-gated on `select ... {index}`) are dropped by the resolver.
+        self._ap_index = 0
+        self._ap_indices: dict[str, int] = {}
+        self._sta_index = 0
+        self._sta_indices: dict[str, int] = {}
+
+    def _assign_ap_index(self, bssid: str) -> int:
+        existing = self._ap_indices.get(bssid)
+        if existing is not None:
+            return existing
+        idx = self._ap_index
+        self._ap_indices[bssid] = idx
+        self._ap_index += 1
+        return idx
+
+    def _assign_sta_index(self, mac: str) -> int:
+        existing = self._sta_indices.get(mac)
+        if existing is not None:
+            return existing
+        idx = self._sta_index
+        self._sta_indices[mac] = idx
+        self._sta_index += 1
+        return idx
+
     @property
     def protocol_name(self) -> str:
         return "esp32-div"
@@ -102,26 +132,30 @@ class Esp32DivProtocol(BaseProtocol):
 
         m = _RE_AP.search(line) or _RE_AP_ALT.search(line)
         if m:
+            bssid = m.group(2)
             return ParsedEvent(
                 event_type="ap_found",
                 data={
                     "ssid": m.group(1).strip(),
-                    "bssid": m.group(2),
+                    "bssid": bssid,
                     "channel": int(m.group(3)),
                     "rssi": int(m.group(4)),
                     "encryption": (m.group(5) or "").strip(),
+                    "index": self._assign_ap_index(bssid),
                 },
                 raw=line,
             )
 
         m = _RE_STA.search(line) or _RE_STA_ALT.search(line)
         if m:
+            mac = m.group(1)
             return ParsedEvent(
                 event_type="client_found",
                 data={
-                    "mac": m.group(1),
+                    "mac": mac,
                     "bssid": m.group(2),
                     "rssi": int(m.group(3)),
+                    "index": self._assign_sta_index(mac),
                 },
                 raw=line,
             )

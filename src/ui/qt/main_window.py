@@ -39,7 +39,7 @@ from src.core.cross_comm import EventBus, TargetPool
 from src.core.cross_comm_hub import CrossCommHub
 from src.core.deadman_auth import DeadManAuth
 from src.core.device_manager import DeviceManager
-from src.core.firmware_vault import FirmwareVault
+from src.core.firmware_vault import FirmwareVault, configured_vault_dir
 from src.core.flash_engine import FlashEngine
 from src.core.health_monitor import HealthMonitor
 from src.core.macro_recorder import MacroRecorder
@@ -140,7 +140,7 @@ class CyberControllerWindow(QMainWindow):
         self._fe = flash_engine
         self._bus = event_bus
         self._pool = target_pool
-        self._vault = firmware_vault or FirmwareVault()
+        self._vault = firmware_vault or FirmwareVault(configured_vault_dir())
         self._health = health_monitor or HealthMonitor()
         self._macro = macro_recorder or MacroRecorder()
         # The cross-comm layer is now assembled in one place — the CrossCommHub spine (src/core/

@@ -33,6 +33,25 @@ _MAX_FIRMWARE_BYTES = 64 * 1024 * 1024  # 64 MB cap — abort oversized / MITM-s
 _MAX_REDIRECTS = 6
 
 
+def configured_vault_dir() -> Path:
+    """Resolve the firmware-cache directory from ``settings['vault']['dir']``.
+
+    The Settings tab persists this path, so every FirmwareVault construction routes through here — a user
+    who points the vault at, say, ``D:\\fw`` and saves actually caches firmware there instead of the
+    hardcoded default. A blank/missing setting (or any read error) falls back to :data:`_DEFAULT_VAULT_DIR`.
+    The import is lazy to avoid a settings<->vault import cycle.
+    """
+    raw = None
+    try:
+        from src.config.settings import load_settings
+        raw = (load_settings().get("vault") or {}).get("dir")
+    except Exception:  # noqa: BLE001 - never let a settings hiccup break vault construction
+        raw = None
+    if raw and str(raw).strip():
+        return Path(str(raw).strip()).expanduser()
+    return _DEFAULT_VAULT_DIR
+
+
 def _safe_version_key(version: str) -> str:
     """Sanitize a version/tag string into the filesystem- and index-safe key.
 

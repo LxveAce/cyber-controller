@@ -166,9 +166,18 @@ class MarauderProtocol(BaseProtocol):
         # Client discovered
         m = _RE_CLIENT.search(line)
         if m:
+            ap_mac = m.group(2)
+            data = {"client_mac": m.group(1), "ap_mac": ap_mac}
+            # "Deauth Client" runs `select -a {index}` — Marauder can only deauth by AP, so the client is
+            # acted on through its own AP's scan ordinal. Attach it only when that AP was seen this scan
+            # (so the index is real); an unknown AP leaves it unset and the resolver drops the action
+            # rather than firing `select -a` on a guessed/wrong AP.
+            ap_idx = self._ap_indices.get(ap_mac)
+            if ap_idx is not None:
+                data["index"] = ap_idx
             return ParsedEvent(
                 event_type="client_found",
-                data={"client_mac": m.group(1), "ap_mac": m.group(2)},
+                data=data,
                 raw=line,
             )
 

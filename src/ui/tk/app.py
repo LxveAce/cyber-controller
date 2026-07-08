@@ -546,6 +546,11 @@ class TkLightApp:
         if not self._active_conn:
             raise ConnectionError("no active connection — connect a device on the Devices tab")
         self._active_conn.write(command)          # SerialConnection.write rejects control chars
+        # Feed the just-sent command into an in-progress macro recording (no-op when not recording), so a
+        # macro recorded while driving the Device View / Remote tabs captures those commands too — the
+        # terminal path already does this, and dropping them here was silent data loss on replay.
+        if self._macro_recorder is not None:
+            self._macro_recorder.record_command(command)
         self._append_serial(f"> {command}")
 
     def _build_remote_tab(self) -> None:
@@ -1076,12 +1081,43 @@ class TkLightApp:
         if self._profiles:
             self._flash_profile.current(0)
 
+    def _configured_port(self) -> str:
+        """The serial port the user set as their Default Port in Settings (falls back to the persisted
+        value, then ''). Consumed by _refresh_ports to preselect that port instead of the first enumerated
+        one — without this the Default Port control was inert (set/get only inside the Settings handlers,
+        the Flash tab always jumped to index 0)."""
+        widget = getattr(self, "_settings_port", None)
+        if widget is not None:
+            try:
+                val = widget.get()
+                if val:
+                    return val
+            except tk.TclError:
+                pass
+        if _HAS_SETTINGS:
+            try:
+                return str(load_settings().get("serial", {}).get("default_port", "") or "")
+            except Exception:
+                pass
+        return ""
+
     def _refresh_ports(self) -> None:
         ports = self._dm.scan_ports()
         port_labels = [f"{d.port} - {d.name}" for d in ports]
         self._flash_port["values"] = port_labels
-        if port_labels:
-            self._flash_port.current(0)
+        if not port_labels:
+            return
+        # Consume the Settings 'Default Port': preselect the enumerated port whose name matches it, else
+        # fall back to the first port. Without this the Default Port setting reached disk but nothing read
+        # it, so the Flash tab always preselected index 0 regardless of the user's choice.
+        want = self._configured_port()
+        idx = 0
+        if want:
+            for i, d in enumerate(ports):
+                if d.port == want:
+                    idx = i
+                    break
+        self._flash_port.current(idx)
 
     # ── Flash actions ───────────────────────────────────────────────
 

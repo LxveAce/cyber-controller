@@ -237,6 +237,44 @@ def test_verify_gpg_detached_no_fingerprint_defers_not_trusts(monkeypatch):
     assert oc.verify_gpg_detached("img", "sig", None, _silent) is None
 
 
+def test_verify_gpg_detached_missing_pubkey_defers_to_sha(monkeypatch):
+    # The normal fresh-box case: gpg is installed but the pinned signing key is NOT in the keyring, so it
+    # emits NO_PUBKEY/ERRSIG with no VALIDSIG. That must return None (defer to SHA-256), NOT False —
+    # otherwise a genuine download is hard-refused with a misleading "signature is NOT valid" for every
+    # user who never imported the key.
+    _mock_gpg_status(monkeypatch, "[GNUPG:] ERRSIG 0123 1 8 00 1\n[GNUPG:] NO_PUBKEY 0123456789ABCDEF\n")
+    assert oc.verify_gpg_detached("img", "sig", _PARROT_FPR, _silent) is None
+
+
+def test_verify_gpg_detached_bad_signature_still_refuses(monkeypatch):
+    # A genuinely bad/forged signature (BADSIG, no missing-key marker) must still hard-refuse (False),
+    # so the missing-pubkey relaxation does not weaken tamper detection.
+    _mock_gpg_status(monkeypatch, f"[GNUPG:] BADSIG {_PARROT_FPR} signer\n")
+    assert oc.verify_gpg_detached("img", "sig", _PARROT_FPR, _silent) is False
+
+
+def test_verify_clearsigned_missing_pubkey_defers_to_sha(monkeypatch):
+    _mock_gpg_status(monkeypatch, "[GNUPG:] ERRSIG 0123 1 8 00 1\n[GNUPG:] NO_PUBKEY 0123456789ABCDEF\n")
+    assert oc.verify_gpg_clearsigned("hashes.txt", _PARROT_FPR, _silent) is None
+
+
+def test_flash_kali_missing_pubkey_falls_to_sha_with_note(img, monkeypatch):
+    # End to end: with the Kali signing key absent from the keyring, the SHA256SUMS .gpg check returns
+    # None (not False), so flash_os_image reaches its SHA-256 fallback and writes the genuine image with
+    # an honest note instead of aborting with "SHA256SUMS signature is NOT valid".
+    path, sha = img
+    _mock_gpg_status(monkeypatch, "[GNUPG:] NO_PUBKEY 0123456789ABCDEF\n")
+    monkeypatch.setattr(oc.sd, "write_image", lambda *a, **k: 0)
+    monkeypatch.setattr(oc.sd, "verify_write", lambda *a, **k: True)
+    r = oc.Resolved(image_id="kali", version="2026.2", image_url="https://x", image_type="iso",
+                    verify_model="checksums_sig", sha256=sha, gpg_fingerprint=_PARROT_FPR)
+    msgs: list[str] = []
+    rc = oc.flash_os_image(oc.get_image("kali"), r, path, r"\\.\PhysicalDrive9", msgs.append,
+                           checksums_path=path, checksums_sig_path=path + ".gpg", confirmed=True)
+    assert rc == 0
+    assert any("was not verified" in m for m in msgs), msgs
+
+
 def test_verify_clearsigned_good_matching_fingerprint(monkeypatch):
     _mock_gpg_status(monkeypatch, f"[GNUPG:] VALIDSIG {_PARROT_FPR}\n[GNUPG:] GOODSIG\n")
     assert oc.verify_gpg_clearsigned("hashes.txt", _PARROT_FPR, _silent) is True

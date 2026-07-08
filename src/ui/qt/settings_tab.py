@@ -102,15 +102,20 @@ class SettingsTab(QWidget):
         root.addWidget(flash_card)
 
         # ── Cross-Comm ───────────────────────────────────────────────
+        # The old "Auto-share discoveries" / "De-duplicate targets by MAC" checkboxes were inert — nothing
+        # read them, so unchecking either changed nothing. Rather than ship toggles that lie, describe the
+        # real, always-on behavior honestly (removal mirrors how the inert serial.timeout / flash.* controls
+        # were handled). De-dup by MAC is intrinsic to the pool: targets are keyed by type:mac.
         self._comm_card, comm_outer = _make_card("Cross-Communication")
         comm_card = self._comm_card
-        comm_form = QFormLayout()
-        comm_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
-        self._auto_share_check = QCheckBox("Auto-share discoveries to the shared target pool")
-        self._dedup_check = QCheckBox("De-duplicate targets by MAC")
-        comm_form.addRow(self._auto_share_check)
-        comm_form.addRow(self._dedup_check)
-        comm_outer.addLayout(comm_form)
+        comm_desc = QLabel(
+            "Every device's scan discoveries are shared into one target pool and de-duplicated by MAC, so "
+            "an AP found by one radio is actionable from another. This is always on — there is nothing to "
+            "configure here."
+        )
+        comm_desc.setObjectName("muted")
+        comm_desc.setWordWrap(True)
+        comm_outer.addWidget(comm_desc)
         root.addWidget(comm_card)
 
         # ── Updates ──────────────────────────────────────────────────
@@ -197,7 +202,7 @@ class SettingsTab(QWidget):
         vault_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
         dir_row = QHBoxLayout()
         self._vault_dir_edit = QLineEdit()
-        self._vault_dir_edit.setPlaceholderText("~/.cyber-controller/firmware")
+        self._vault_dir_edit.setPlaceholderText("~/.cyber-controller/firmware_vault")
         self._vault_dir_edit.setMinimumWidth(150)
         self._vault_browse_btn = QPushButton("Browse...")
         dir_row.addWidget(self._vault_dir_edit, stretch=1)
@@ -255,10 +260,6 @@ class SettingsTab(QWidget):
         flash = settings.get("flash", {})
         self._set_combo_text(self._flash_baud_combo, str(flash.get("flash_baud", 921600)))
 
-        comm = settings.get("cross_comm", {})
-        self._auto_share_check.setChecked(bool(comm.get("auto_share", True)))
-        self._dedup_check.setChecked(bool(comm.get("dedup_by_mac", True)))
-
         sec = settings.get("safety", {})
         self._confirm_dangerous_check.setChecked(bool(sec.get("confirm_dangerous", True)))
         # Set the suppress box WITHOUT triggering its acknowledgement dialog.
@@ -291,18 +292,14 @@ class SettingsTab(QWidget):
         disk = load_settings()
         return {
             # Only widget-backed keys are gathered; the other keys DEFAULTS carries for these sections
-            # (serial.timeout, flash.verify/auto_backup/mode) had no consumer in the Qt app, so their
-            # inert controls were removed — save_settings' deep-merge still restores those keys from
-            # DEFAULTS, keeping the on-disk schema stable.
+            # (serial.timeout, flash.verify/auto_backup/mode, cross_comm.auto_share/dedup_by_mac) had no
+            # consumer in the Qt app, so their inert controls were removed — save_settings' deep-merge
+            # still restores those keys from DEFAULTS, keeping the on-disk schema stable.
             "serial": {
                 "default_baud": self._parse_int(self._baud_combo.currentText(), 115200),
             },
             "flash": {
                 "flash_baud": self._parse_int(self._flash_baud_combo.currentText(), 921600),
-            },
-            "cross_comm": {
-                "auto_share": self._auto_share_check.isChecked(),
-                "dedup_by_mac": self._dedup_check.isChecked(),
             },
             "vault": {
                 "dir": self._vault_dir_edit.text().strip(),

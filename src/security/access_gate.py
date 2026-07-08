@@ -200,9 +200,20 @@ def clear_cli() -> int:
     pk.clear_admin_password()
     pk.remove_physical_key()
     pk.disarm_duress_wipe()  # a gate clear must also remove the opt-in destructive threshold (not just factors)
+    if vault.exists():
+        # The gate factors are gone, but an encrypted vault still on disk makes the NEXT launch fail
+        # closed: enforce() refuses to start when a vault exists with no configured gate (the anti-tamper
+        # branch). So we must NOT promise a prompt-free start here — that would be false for every normally
+        # provisioned gate (set-admin-password / create-physical-key / the Qt dialog all write the vault
+        # first). Tell the owner the truth and exactly what remains to finish the clear.
+        print("Access-gate factors cleared (admin password, physical key, and duress threshold removed).")
+        print("IMPORTANT: an encrypted vault is still present, so the app will stay LOCKED on the next "
+              "launch (fail-closed) until the vault is also removed. To finish clearing the gate, delete:")
+        print(f"    {vault._data_path()}")
+        print(f"    {vault._hdr_path()}")
+        print("The vault stays encrypted until then; once removed, the app starts without prompting.")
+        return 0
     print("Access gate cleared — the app will start without prompting.")
-    print("NOTE: the encrypted vault file is left in place (its data stays encrypted). Delete "
-          f"{vault._data_path()} / {vault._hdr_path()} manually to destroy it.")
     return 0
 
 

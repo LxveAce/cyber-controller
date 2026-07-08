@@ -332,7 +332,7 @@ def verify_gpg_detached(target_path: str, sig_path: str, fingerprint: Optional[s
         return None
     status = proc.stdout + proc.stderr
     flat = status.replace(" ", "")
-    good = ("VALIDSIG" in status or "GOODSIG" in status)
+    have_good = ("VALIDSIG" in status or "GOODSIG" in status)
     if not fingerprint:
         # A good signature from an UNPINNED key proves nothing about authenticity — ANY key in the local
         # keyring (including one an attacker planted) satisfies VALIDSIG. Don't rubber-stamp it as trusted:
@@ -341,7 +341,19 @@ def verify_gpg_detached(target_path: str, sig_path: str, fingerprint: Optional[s
         on_line("[os] no pinned key fingerprint for this image — a GPG signature alone can't prove "
                 "authenticity; deferring to the SHA-256 check.")
         return None
-    good = good and fingerprint.replace(" ", "") in flat
+    if not have_good:
+        # No good signature came back. Tell apart "can't establish authenticity" from "the signature is
+        # bad". The normal case for a fresh box is that the pinned signing key simply isn't in the keyring
+        # (we never auto-import one), so gpg emits NO_PUBKEY/ERRSIG with no VALIDSIG. That is NOT a forged
+        # signature — treat it like a missing gpg and defer to the SHA-256 anchor (None) so a genuine image
+        # still flashes. Only a real bad/forged signature (BADSIG, no missing-key marker) hard-refuses.
+        if "NO_PUBKEY" in flat or "ERRSIG" in flat:
+            on_line("[os] the pinned signing key isn't in your keyring — can't verify the GPG signature; "
+                    "deferring to the SHA-256 check (import the pinned key for full PGP assurance).")
+            return None
+        on_line("[os] GPG signature NOT valid for the expected key")
+        return False
+    good = fingerprint.replace(" ", "") in flat
     on_line("[os] GPG signature " + ("VALID" if good else "NOT valid for the expected key"))
     return good
 
@@ -371,7 +383,17 @@ def verify_gpg_clearsigned(clearsigned_path: str, fingerprint: Optional[str],
         return None
     status = proc.stdout + proc.stderr
     flat = status.replace(" ", "")
-    good = ("VALIDSIG" in status or "GOODSIG" in status) and fingerprint.replace(" ", "") in flat
+    have_good = ("VALIDSIG" in status or "GOODSIG" in status)
+    if not have_good:
+        # Same trichotomy as verify_gpg_detached: a missing pinned key (NO_PUBKEY/ERRSIG) can't establish
+        # authenticity and defers to SHA-256 (None); a genuinely bad clearsign hard-refuses (False).
+        if "NO_PUBKEY" in flat or "ERRSIG" in flat:
+            on_line("[os] the pinned signing key isn't in your keyring — can't verify the clearsigned "
+                    "hashes; deferring to the SHA-256 check (import the pinned key for full assurance).")
+            return None
+        on_line("[os] clearsigned hashes NOT valid for the expected key")
+        return False
+    good = fingerprint.replace(" ", "") in flat
     on_line("[os] clearsigned hashes " + ("VALID" if good else "NOT valid for the expected key"))
     return good
 
