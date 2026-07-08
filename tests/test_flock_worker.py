@@ -61,7 +61,7 @@ def test_worker_constructs_and_stops(qapp):
     from src.ui.qt.flock_heatmap_tab import _FlockWorker
     w = _FlockWorker("", 9600, "COM_DOES_NOT_EXIST", 115200, "")
     assert w.session.camera_count == 0 and w._stop is False
-    for sig in ("status", "updated", "line", "stopped"):
+    for sig in ("status", "updated", "location", "line", "stopped"):
         assert hasattr(w, sig), f"missing signal {sig}"
     w.stop()
     assert w._stop is True
@@ -190,6 +190,7 @@ def test_live_scan_line_signal_is_surfaced(qapp, monkeypatch):
     class _FakeWorker(QObject):
         status = pyqtSignal(str, int)
         updated = pyqtSignal(dict)
+        location = pyqtSignal(float, float, bool)   # matches _FlockWorker (drives the "you are here" marker)
         line = pyqtSignal(str)
         stopped = pyqtSignal()
 

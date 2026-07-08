@@ -226,6 +226,48 @@ def test_widget_basemap_only_no_cameras_is_safe(qapp):
     assert w.camera_count == 0
     assert w._basemap_group is not None                     # the globe still draws on an empty map
     assert _has_non_bg_pixel(w.render_native())             # something (the coastline) is on screen
+
+
+def test_widget_my_location_marker_toggle(qapp):
+    from PyQt5.QtWidgets import QGraphicsItem
+    w = FlockHeatmapTab()
+    assert not w._chk_mylocation.isChecked()                # off by default (owner: opt-in)
+    # a location set while the toggle is OFF is remembered but nothing is drawn
+    w.set_my_location(48.117, 11.517)
+    assert w._my_location == (48.117, 11.517)
+    assert w._location_marker is None
+    # turning the toggle on draws the pin at the shared-plane world_px position, on top + fixed-size
+    w._chk_mylocation.setChecked(True)
+    assert w._location_marker is not None
+    px = world_px(48.117, 11.517)
+    assert (w._location_marker.pos().x(), w._location_marker.pos().y()) == pytest.approx(px)
+    assert w._location_marker.zValue() > 1000               # above dots + basemap
+    assert w._location_marker.flags() & QGraphicsItem.ItemIgnoresTransformations   # a real map pin
+    # the pin survives a full rebuild (new cameras arriving) at the same world position
+    w.set_session(_session_two_cameras())
+    assert w._location_marker is not None
+    assert (w._location_marker.pos().x(), w._location_marker.pos().y()) == pytest.approx(px)
+    # toggling off removes it
+    w._chk_mylocation.setChecked(False)
+    assert w._location_marker is None
+
+
+def test_widget_location_fix_signal_respects_toggle(qapp):
+    w = FlockHeatmapTab()
+    # a live GPS fix with the toggle OFF: remembered, not drawn
+    w._on_location_fix(40.0, -74.0, True)
+    assert w._my_location == (40.0, -74.0)
+    assert w._location_marker is None
+    # a no-fix event is ignored (no crash, position unchanged)
+    w._on_location_fix(0.0, 0.0, False)
+    assert w._my_location == (40.0, -74.0)
+    # once the user opts in, the remembered fix appears
+    w._chk_mylocation.setChecked(True)
+    assert w._location_marker is not None
+    # clear_my_location drops both the position and the pin
+    w.clear_my_location()
+    assert w._my_location is None
+    assert w._location_marker is None
     w.set_geojson({"type": "FeatureCollection", "features": []})
     w.reset_view()                                          # ...nor on an empty scene
 

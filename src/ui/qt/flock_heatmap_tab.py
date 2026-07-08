@@ -201,6 +201,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
     from PyQt5.QtWidgets import (
         QCheckBox,
         QComboBox,
+        QGraphicsItem,
         QGraphicsItemGroup,
         QGraphicsPathItem,
         QGraphicsScene,
@@ -244,6 +245,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
         """
         status = pyqtSignal(str, int)     # gps-fix text, camera count
         updated = pyqtSignal(dict)        # cameras GeoJSON, emitted on each new/relocated camera
+        location = pyqtSignal(float, float, bool)  # gps lat, lon, has_fix -> drives the "you are here" marker
         line = pyqtSignal(str)
         stopped = pyqtSignal()
 
@@ -288,10 +290,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                         self.updated.emit(self.session.to_geojson())
                         self.line.emit(f"+ camera ({self.session.camera_count} located)")
                     fix = self.session.fix
-                    ftxt = f"{fix.lat:.5f}, {fix.lon:.5f}" if (fix and fix.has_fix) else "No Fix"
+                    has = bool(fix and fix.has_fix)
+                    ftxt = f"{fix.lat:.5f}, {fix.lon:.5f}" if has else "No Fix"
                     cur = (ftxt, self.session.camera_count)
                     if cur != last:
                         self.status.emit(ftxt, self.session.camera_count)
+                        # feed the live fix to the "you are here" marker (host-side toggle decides if it shows)
+                        self.location.emit(fix.lat if has else 0.0, fix.lon if has else 0.0, has)
                         last = cur
             except Exception as exc:  # noqa: BLE001
                 self.line.emit(f"flock scan error: {exc}")
@@ -367,8 +372,14 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                          "in real-world context. Zoom/pan out to see it; toggle off for a plain map.")
             self._chk_basemap.setChecked(True)
             self._chk_basemap.stateChanged.connect(lambda _s: self._rebuild())
+            self._chk_mylocation = QCheckBox("My location (GPS)")
+            self._chk_mylocation.setToolTip("When a GPS is streaming (during a live scan), drop a 'you are here' "
+                                            "marker at your real-world position. Off by default; needs a GPS fix.")
+            self._chk_mylocation.setChecked(False)
+            self._chk_mylocation.stateChanged.connect(lambda _s: self._draw_location_marker())
             map_row.addWidget(self._btn_reset_view)
             map_row.addWidget(self._chk_basemap)
+            map_row.addWidget(self._chk_mylocation)
             map_row.addStretch(1)
             root.addLayout(map_row)
 
@@ -391,6 +402,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             # layer just doesn't draw. self._basemap_group holds the current QGraphicsItemGroup (or None).
             self._basemap_rings = basemap_paths(load_world_basemap())
             self._basemap_group = None
+
+            # "You are here" GPS marker: last known (lat,lon) + its scene item (recreated each _rebuild since
+            # scene.clear() drops it). Fed by the live worker's `location` signal; only drawn when the toggle is on.
+            self._my_location = None
+            self._location_marker = None
 
             self.set_geojson({"type": "FeatureCollection", "features": []})
 
@@ -448,10 +464,42 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._scene.addItem(group)
             self._basemap_group = group
 
+        # ── "you are here" GPS marker ────────────────────────────────
+        def set_my_location(self, lat: float, lon: float) -> None:
+            """Record the live GPS position and (if the toggle is on) draw/move the 'you are here' marker.
+            Public so the live worker's `location` signal and tests can drive it without a serial port."""
+            self._my_location = (float(lat), float(lon))
+            self._draw_location_marker()
+
+        def clear_my_location(self) -> None:
+            """Forget the GPS position and remove the marker (e.g. GPS lost / scan stopped)."""
+            self._my_location = None
+            self._draw_location_marker()
+
+        def _draw_location_marker(self) -> None:
+            """(Re)draw the 'you are here' marker at ``self._my_location``. Removes any existing one first;
+            no-op if the toggle is off or no fix is known. Uses ItemIgnoresTransformations so the marker stays
+            a fixed on-screen size (a real map pin) at any zoom, drawn above the dots + basemap."""
+            if self._location_marker is not None:
+                self._scene.removeItem(self._location_marker)
+                self._location_marker = None
+            if self._my_location is None or not self._chk_mylocation.isChecked():
+                return
+            x, y = world_px(*self._my_location)
+            r = 8.0
+            item = self._scene.addEllipse(
+                -r, -r, 2 * r, 2 * r,
+                QPen(QColor("#ffffff"), 3), QBrush(QColor("#22d3ee")))   # white ring + cyan core, distinct from heat
+            item.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)  # fixed screen size = a map pin
+            item.setZValue(10000)                                         # above every other layer
+            item.setPos(x, y)
+            self._location_marker = item
+
         def _rebuild(self) -> None:
             self._scene.clear()
             self._camera_items = []
             self._basemap_group = None
+            self._location_marker = None                       # scene.clear() dropped it; redraw below
             show_base = self._chk_basemap.isChecked() and bool(self._basemap_rings)
             if show_base:
                 self._draw_basemap()
@@ -463,6 +511,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 else:
                     self._scene.setSceneRect(0, 0, _CANVAS_W, _CANVAS_H)
                     self._legend.setText("No detections loaded. Blue = few sightings · red = many.")
+                self._draw_location_marker()                   # marker can show over an empty/basemap-only map
                 return
             counts = [_as_count(f.get("properties")) for f in self._features]
             maxc = max(counts)
@@ -502,6 +551,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._legend.setText(
                 f"{len(self._features)} camera(s) · blue = few sightings · red = many (up to {maxc}){base_note}. "
                 f"Drag to pan · scroll to zoom.")
+            self._draw_location_marker()                       # keep the "you are here" pin above the redraw
 
         def reset_view(self) -> None:
             """Re-frame the CAMERAS: drop any pan/zoom and fit the whole camera set into the view (so the
@@ -581,6 +631,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._live_worker = _FlockWorker(gps, 9600, dev, 115200, self._default_checkpoint_path())
             self._live_worker.updated.connect(self._on_live_update)
             self._live_worker.status.connect(self._on_live_status)
+            self._live_worker.location.connect(self._on_location_fix)
             self._live_worker.line.connect(self._on_live_line)
             self._live_worker.stopped.connect(self._on_live_stopped)
             self._live_worker.start()
@@ -596,6 +647,12 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
         def _on_live_status(self, fix_text: str, count: int) -> None:
             self._live_status.setText(f"Fix: {fix_text} · {count} camera(s)")
+
+        def _on_location_fix(self, lat: float, lon: float, has_fix: bool) -> None:
+            # Drive the "you are here" marker from the live GPS fix. set_my_location honours the toggle, so
+            # this is a no-op on screen until the user turns "My location (GPS)" on.
+            if has_fix:
+                self.set_my_location(lat, lon)
 
         def _on_live_line(self, msg: str) -> None:
             # Surface every worker diagnostic (esp. the failure paths) so a scan that never starts —
