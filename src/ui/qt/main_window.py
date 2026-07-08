@@ -1146,7 +1146,15 @@ class CyberControllerWindow(QMainWindow):
             self._sidebar_device_list.addItem(item)
 
             if dev.port == current_port:
+                # Block the list's selection signal for this programmatic re-selection. Otherwise
+                # setCurrentItem fires currentItemChanged -> _on_sidebar_device_selected -> device_selected
+                # -> _focus_device_in_devices_tab, which force-switches the main tabs to Connect > Devices.
+                # This refresh runs on the 3s sidebar timer, so a selected device yanked the user back to
+                # the Devices tab every 3 seconds — you could not stay on any other tab. Real user clicks on
+                # the list still emit normally (they happen outside this refresh).
+                self._sidebar_device_list.blockSignals(True)
                 self._sidebar_device_list.setCurrentItem(item)
+                self._sidebar_device_list.blockSignals(False)
 
         total = len(devices)
         self._device_count_label.setText(

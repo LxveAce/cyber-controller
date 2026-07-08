@@ -5,6 +5,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.5-beta.1] — 2026-07-07
+
+A hotfix for a navigation bug in 1.6.4, and the start of the 1.6.5 beta line.
+
+### Fixed
+- **You're no longer trapped on the Connect ▸ Devices tab.** With a device selected, the 3-second sidebar
+  refresh re-selected it in the device list, and that programmatic re-selection fired the same signal a real
+  click does — so the main view snapped back to Connect ▸ Devices a couple seconds after you switched to any
+  other tab. The refresh now re-selects silently; navigating away sticks.
+
 ## [1.6.4] — 2026-07-07
 
 A ten-round exhaustive adversarial debug and hardening pass on top of the 1.6.1–1.6.3 security reviews. Where
