@@ -5,6 +5,19 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Added
+- **Check your cached firmware for updates from the command line.** `cyber-controller --check-firmware-updates` looks up
+  the latest GitHub release for each firmware you've already downloaded into the vault and prints any that have a newer
+  version than what you have cached (name, cached version, latest version). Read-only — it never downloads or flashes
+  anything — so you can see what's stale before deciding to refresh a profile.
+
+### Fixed
+- **"Check for firmware updates" now only checks firmware you actually have.** The update check walked the *entire* 30-plus
+  profile catalog and hit GitHub once per profile — so it made ~30 network calls even when the vault was empty, and it
+  reported every never-downloaded firmware as an "available update." It now checks only the profiles you've cached (one
+  call each, none if nothing is cached), which is both correct and far faster. (This was dead code with no caller before;
+  it's now wired to the new `--check-firmware-updates` command.)
+
 ## [1.6.5] — 2026-07-08
 
 The 1.6.4 hands-on + real-hardware testing batch: Flock map/GeoJSON work, a wardrive/backup CLI toolkit, and fixes for

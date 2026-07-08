@@ -117,6 +117,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--verify-backup", default=None, metavar="PATH", help="Re-hash a firmware backup .bin against its .meta sidecar and report whether it's intact, then exit.")
     parser.add_argument("--list-backups", nargs="?", const="", default=None, metavar="DIR", help="List firmware backups (.bin + .meta) in DIR, or the default backups folder if DIR is omitted, then exit.")
     parser.add_argument("--wardrive-summary", default=None, metavar="CSV", help="Print headline stats (networks, encryption mix, bands, channels, RSSI) for a WiGLE wardrive CSV, then exit.")
+    parser.add_argument("--check-firmware-updates", action="store_true", help="Check GitHub for newer releases of your cached firmware (one call per cached profile), print any updates, then exit.")
     return parser.parse_args(argv)
 
 
@@ -392,6 +393,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.wardrive_summary:
         from src.core.wardrive import wardrive_summary_cli
         return wardrive_summary_cli(args.wardrive_summary)
+    if args.check_firmware_updates:
+        from src.core.firmware_vault import check_updates_cli
+        return check_updates_cli()
 
     # Single-instance lock guards ONLY the interactive launch (GUI/TUI/web) — never the headless one-shot
     # CLI subcommands handled above. Those (--deadman-setup, --flash-os, --flash-tails, gate mutations, ...)

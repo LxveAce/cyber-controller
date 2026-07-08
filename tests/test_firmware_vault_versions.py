@@ -108,3 +108,48 @@ def test_check_updates_reports_genuinely_new_sanitized_tag(vault, monkeypatch):
     ups = vault.check_updates()
     assert ups and ups[0]["cached_version"] == "2024.1_deb"
     assert ups[0]["latest_version"] == "2024.2+deb"
+
+
+def test_check_updates_ignores_uncached_profiles(vault, monkeypatch):
+    # Only CACHED profiles are checked. A catalog entry you never downloaded has nothing to "update", so it
+    # must be skipped AND must trigger NO GitHub call (else check_updates would make one request per catalog
+    # entry and report every never-downloaded firmware as an "update").
+    vault._index = {"cached_p": {"v1.0": {"downloaded_at": "2024-01-01T00:00:00+00:00"}}}
+    calls = {"n": 0}
+
+    def fake_api(url):
+        calls["n"] += 1
+        return {"tag_name": "v2.0"}
+
+    monkeypatch.setattr(vault, "list_profiles",
+                        lambda: [{"id": "cached_p", "name": "Cached"}, {"id": "uncached_p", "name": "Uncached"}])
+    monkeypatch.setattr(vault, "_load_profile", lambda pid: {"firmware_urls": {"latest": _GH}})
+    monkeypatch.setattr(fwv, "_safe_api_get_json", fake_api)
+
+    ups = vault.check_updates()
+    assert [u["profile_id"] for u in ups] == ["cached_p"]   # uncached_p skipped entirely
+    assert calls["n"] == 1                                  # exactly ONE call (per cached profile, not per catalog)
+    assert ups[0]["cached_version"] == "v1.0"               # a real cached version, never "none"
+
+
+def test_check_updates_empty_vault_makes_no_calls(vault, monkeypatch):
+    calls = {"n": 0}
+    monkeypatch.setattr(fwv, "_safe_api_get_json", lambda url: calls.__setitem__("n", calls["n"] + 1) or {})
+    assert vault.check_updates() == []
+    assert calls["n"] == 0                                  # nothing cached -> no network at all
+
+
+def test_check_updates_cli_reports_updates(monkeypatch, capsys):
+    class _FakeVault:
+        def check_updates(self):
+            return [{"profile_id": "marauder", "name": "Marauder", "cached_version": "v1.0", "latest_version": "v1.2"}]
+    monkeypatch.setattr(fwv, "FirmwareVault", lambda *a, **k: _FakeVault())
+    assert fwv.check_updates_cli() == 0
+    out = capsys.readouterr().out
+    assert "1 cached profile(s)" in out and "Marauder (marauder)" in out and "v1.0 -> latest v1.2" in out
+
+
+def test_check_updates_cli_nothing_to_report(monkeypatch, capsys):
+    monkeypatch.setattr(fwv, "FirmwareVault", lambda *a, **k: type("V", (), {"check_updates": lambda s: []})())
+    assert fwv.check_updates_cli() == 0
+    assert "up to date" in capsys.readouterr().out

@@ -440,17 +440,21 @@ class FirmwareVault:
     # ── Update checking ──────────────────────────────────────────────
 
     def check_updates(self) -> list[dict[str, str]]:
-        """Check GitHub for newer releases than what's cached.
+        """Check GitHub for newer releases than the firmware you have CACHED.
 
-        Returns:
-            List of dicts with keys: ``profile_id``, ``cached_version``,
-            ``latest_version``, ``name``.
+        Only profiles with at least one cached version are checked — an uncached profile has nothing to
+        "update", and checking the whole catalog would make one API call per profile (and report every
+        never-downloaded firmware as an "update"). So this costs one API call per CACHED profile. Returns
+        a list of dicts with keys: ``profile_id``, ``cached_version``, ``latest_version``, ``name``.
         """
         updates: list[dict[str, str]] = []
-        profiles = self.list_profiles()
+        with self._lock:
+            cached_pids = [pid for pid, entries in self._index.items() if entries]
+        if not cached_pids:
+            return updates
+        name_by_id = {p["id"]: p["name"] for p in self.list_profiles()}
 
-        for prof in profiles:
-            pid = prof["id"]
+        for pid in cached_pids:
             profile_data = self._load_profile(pid)
             if not profile_data:
                 continue
@@ -492,7 +496,7 @@ class FirmwareVault:
                 )
                 updates.append({
                     "profile_id": pid,
-                    "name": prof["name"],
+                    "name": name_by_id.get(pid, pid),
                     "cached_version": cached_str,
                     "latest_version": latest_tag,
                 })
@@ -540,3 +544,18 @@ class FirmwareVault:
                     if p.exists():
                         total += p.stat().st_size
         return total
+
+
+def check_updates_cli() -> int:
+    """CLI for ``--check-firmware-updates``: list cached firmware profiles that have a newer upstream
+    release, then exit. Read-only; makes one GitHub call per CACHED profile (none if the vault is empty).
+    Exit 0 always -- "everything current" and "nothing cached" are normal outcomes, not errors. ASCII only."""
+    updates = FirmwareVault().check_updates()
+    if not updates:
+        print("[firmware] no cached firmware to check, or every cached profile is up to date.")
+        return 0
+    print(f"[firmware] {len(updates)} cached profile(s) have a newer release:")
+    for u in updates:
+        print(f"  {u['name']} ({u['profile_id']}): cached {u['cached_version']} -> latest {u['latest_version']}")
+    print("  Update via the Firmware vault (Flash tab) or re-download the profile.")
+    return 0
