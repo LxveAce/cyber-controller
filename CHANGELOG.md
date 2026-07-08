@@ -12,6 +12,11 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   refresh re-selected it in the device list, and that programmatic re-selection fired the same signal a real
   click does — so the main view snapped back to Connect ▸ Devices a couple seconds after you switched to any
   other tab. The refresh now re-selects silently; navigating away sticks.
+- **Flashing no longer crashes with `OSError: [Errno 22]` in the installed (windowed) build.** The packaged app
+  runs esptool as a child of itself, and a windowed build has no console — so esptool's progress `print()` wrote
+  to an invalid stdout and crashed, masking the real connect result (e.g. a board that needs BOOT held). The
+  esptool dispatcher now binds valid output streams before running esptool, so its progress and errors reach the
+  flash log instead of taking the whole flash down.
 
 ## [1.6.4] — 2026-07-07
 
