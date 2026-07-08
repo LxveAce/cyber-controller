@@ -8,6 +8,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Added
+- **List your firmware backups from the command line.** `cyber-controller --list-backups [DIR]` prints the backups in a
+  folder (the default backups folder, or any `DIR` you point it at) with the chip, size, date, and recorded SHA-256 read
+  from each `.meta` sidecar — flagging any whose flash size was only assumed. Pairs with `--verify-backup` so you can
+  inventory, then integrity-check, a backup you're about to restore from.
 - **Check a backup's integrity from the command line.** `cyber-controller --verify-backup <backup.bin>` re-hashes a
   firmware backup and compares it to the SHA-256 recorded in its `.meta` sidecar, so on-disk corruption or truncation is
   caught *before* you rely on that backup to restore a board. It prints the verdict (intact / corrupt / uncheckable),

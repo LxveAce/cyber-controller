@@ -115,6 +115,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--os-sig", default=None, help="Path to a detached OpenPGP .sig for --flash-os (image_sig OSes).")
     parser.add_argument("--offline", action="store_true", help="For --flash-os: use the bundled (pinned) version instead of resolving the latest online.")
     parser.add_argument("--verify-backup", default=None, metavar="PATH", help="Re-hash a firmware backup .bin against its .meta sidecar and report whether it's intact, then exit.")
+    parser.add_argument("--list-backups", nargs="?", const="", default=None, metavar="DIR", help="List firmware backups (.bin + .meta) in DIR, or the default backups folder if DIR is omitted, then exit.")
     return parser.parse_args(argv)
 
 
@@ -384,6 +385,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.verify_backup:
         from src.core.backup import verify_backup_cli
         return verify_backup_cli(args.verify_backup)
+    if args.list_backups is not None:  # "" (flag, no dir) -> default folder; a value -> that folder
+        from src.core.backup import list_backups_cli
+        return list_backups_cli(args.list_backups or None)
 
     # Single-instance lock guards ONLY the interactive launch (GUI/TUI/web) — never the headless one-shot
     # CLI subcommands handled above. Those (--deadman-setup, --flash-os, --flash-tails, gate mutations, ...)

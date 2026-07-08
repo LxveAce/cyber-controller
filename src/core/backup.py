@@ -276,3 +276,25 @@ def verify_backup_cli(backup_path: str) -> int:
         print(f"  actual   sha256: {r['actual']}")
     print(f"  => {_INTEGRITY_MESSAGES.get(r['status'], r['status'])}")
     return 0 if r["status"] == "ok" else 1
+
+
+def list_backups_cli(backup_dir: Optional[str] = None) -> int:
+    """CLI for ``--list-backups``: print the saved firmware backups in *backup_dir* (or the default backups
+    folder) with their ``.meta`` metadata, then exit 0. Integrity is NOT re-checked here (that re-hashes each
+    file) — run ``--verify-backup <path>`` for that. ASCII-only output for console safety."""
+    d = backup_dir or _data_dir()
+    rows = list_backups(backup_dir)
+    if not rows:
+        print(f"[backups] none found in {d}")
+        return 0
+    print(f"[backups] {len(rows)} backup(s) in {d}:")
+    for r in rows:
+        mb = r.get("size", 0) / (1024 * 1024)
+        caveat = "  (size ASSUMED - may be truncated)" if r.get("size_detected") == "False" else ""
+        sha = r.get("sha256", "")
+        sha_disp = (sha[:16] + "...") if sha else "(no sha256 recorded)"
+        print(f"  {r['file']}")
+        print(f"    chip={r.get('chip', '?')}  size={mb:.2f} MB{caveat}  "
+              f"taken={r.get('timestamp', '?')}  sha256={sha_disp}")
+    print("  (run  cyber-controller --verify-backup <path>  to check a backup's integrity)")
+    return 0

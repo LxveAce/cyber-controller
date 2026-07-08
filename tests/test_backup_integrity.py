@@ -76,3 +76,15 @@ def test_verify_backup_cli_exit_codes(tmp_path, capsys):
 def test_verify_backup_cli_missing_returns_1(tmp_path, capsys):
     assert backup.verify_backup_cli(str(tmp_path / "nope.bin")) == 1
     assert "no such backup" in capsys.readouterr().out
+
+
+def test_list_backups_cli_empty_and_populated(tmp_path, capsys):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert backup.list_backups_cli(str(empty)) == 0
+    assert "none found" in capsys.readouterr().out
+
+    _make_backup(tmp_path)  # tmp_path/bk.bin + .meta
+    assert backup.list_backups_cli(str(tmp_path)) == 0
+    out = capsys.readouterr().out
+    assert "1 backup(s)" in out and "bk.bin" in out and "chip=esp32" in out
