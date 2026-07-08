@@ -93,6 +93,75 @@ def test_concurrent_failed_attempts_are_not_lost(temp_gate):
     assert pk.lockout_status()["failed_attempts"] == n
 
 
+def test_save_config_is_atomic_a_failed_commit_keeps_the_gate_openable(temp_gate, monkeypatch):
+    """A crash while rewriting access_gate.json (the hot failed-attempt path) must NOT brick the gate.
+    save_config now writes a temp file + fsync + os.replace, so a failure at the atomic rename leaves
+    the previous COMPLETE config on disk — the gate still reads clean and does not fail closed. The old
+    in-place O_TRUNC rewrite left a 0-length/partial file, which load_config flags corrupt and the gate
+    refuses to start (owner locked out with only manual recovery)."""
+    import os
+
+    pk.set_admin_password("secret")
+    pk.set_policy("password")
+    pk.check_access(password="wrong")   # one legit failure recorded to disk
+
+    real_replace = os.replace
+
+    def boom(*_a, **_k):
+        raise OSError("simulated power loss at commit")
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(OSError):
+        pk.record_failed_attempt()      # the next counter write crashes at commit
+
+    # load_config/check_access only READ, so the still-patched os.replace does not matter here — but
+    # check_access records a fresh (successful) unlock, which needs a working os.replace, so restore it.
+    monkeypatch.setattr(os, "replace", real_replace)
+    assert pk.config_is_corrupt() is False          # config not truncated/corrupted
+    ok, _ = pk.check_access(password="secret")
+    assert ok is True                               # gate still opens with the correct password
+
+
+def test_factor_write_does_not_roll_back_a_concurrent_counter_increment(temp_gate, monkeypatch):
+    """SEC lost-update: set_admin_password rebuilds and rewrites the WHOLE gate config. It must take the
+    same lock the counter mutators use, or a concurrent record_failed_attempt increment is clobbered by
+    the factor writer's stale snapshot — rolling the brute-force counter back mid-attack. With the fix,
+    both serialize under _locked_config_update and the increment survives while the new password lands."""
+    import threading
+    import time
+
+    pk.set_admin_password("orig")
+    pk.set_policy("password")
+    pk.record_successful_unlock()   # counter -> 0
+
+    real_save = pk.save_config
+
+    def slow_save(cfg):
+        time.sleep(0.3)             # widen the load->save window so an unlocked writer interleaves
+        return real_save(cfg)
+
+    monkeypatch.setattr(pk, "save_config", slow_save)
+
+    start = threading.Barrier(2)
+
+    def do_increment():
+        start.wait()
+        pk.record_failed_attempt()
+
+    def do_set_password():
+        start.wait()
+        pk.set_admin_password("new")
+
+    ta = threading.Thread(target=do_increment)
+    tb = threading.Thread(target=do_set_password)
+    ta.start(); tb.start()
+    ta.join(); tb.join()
+
+    # load_config / verify_admin_password only READ, so the slow_save patch is irrelevant here.
+    assert int(pk.load_config().get("failed_attempts", 0)) == 1   # the increment was NOT rolled back
+    assert pk.verify_admin_password("new") is True                # and the new factor still landed
+
+
 def test_corrupt_gate_config_fails_closed(temp_gate):
     """SEC-C2: a present-but-unreadable gate config must NOT be treated as 'no gate configured'
     (which grants access). It must fail closed — otherwise corrupting the file bypasses the gate."""

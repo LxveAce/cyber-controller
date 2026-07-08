@@ -184,6 +184,54 @@ def test_factors_on_non_dict_header_fails_closed(v):
     assert v.factors() == []
 
 
+def test_vault_save_is_atomic_a_failed_commit_keeps_old_data(v, monkeypatch):
+    """A crash at the vault.enc write must NOT destroy the existing store. Vault.save now writes a
+    temp file + fsync + os.replace, so a failure at the atomic rename (simulated power loss) leaves the
+    previous complete ciphertext intact — every node key + the container key survive. The old O_TRUNC
+    in-place rewrite truncated vault.enc to 0 first, so the same crash lost EVERYTHING (raised
+    'corrupt or tampered' on next open)."""
+    import os
+
+    v.set_factor("password", b"pw")
+    v.open_vault({"password": b"pw"}).set("a", 1)
+
+    def boom(*_a, **_k):
+        raise OSError("simulated power loss at commit")
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(OSError):
+        v.open_vault({"password": b"pw"}).set("b", 2)   # commit fails mid-save
+
+    # open_vault only READS, so the still-patched os.replace does not matter here.
+    reopened = v.open_vault({"password": b"pw"})
+    assert reopened is not None                          # vault.enc not truncated/corrupted
+    data = reopened.load()
+    assert data.get("a") == 1                            # prior data preserved
+    assert "b" not in data                               # the failed write did not partially land
+
+
+def test_save_hdr_is_atomic_a_failed_commit_keeps_the_vault_openable(v, monkeypatch):
+    """A crash while rewriting vault.hdr.json (e.g. a password re-key) must NOT brick the vault. The
+    header is the only wrapped copy of the DEK; the atomic temp+replace leaves the previous header
+    intact on a failed commit, so the old factor still opens the vault. The old in-place O_TRUNC would
+    leave a partial header and make the DEK unrecoverable by every factor."""
+    import os
+
+    v.set_factor("password", b"old")
+    v.open_vault({"password": b"old"}).set("k", "v")
+
+    def boom(*_a, **_k):
+        raise OSError("simulated power loss at commit")
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(OSError):
+        v.set_factor("password", b"new", unlock_with={"password": b"old"})   # re-key crashes
+
+    # factors()/open_vault only READ, so the still-patched os.replace does not matter here.
+    assert v.factors() == ["password"]                   # header not corrupted
+    assert v.open_vault({"password": b"old"}).get("k") == "v"   # still opens with the old secret
+
+
 def test_set_factor_on_header_missing_salt_raises_need_existing(v):
     """A valid-JSON header missing 'salt' must surface as NeedExistingFactor out of set_factor,
     not a raw KeyError that set_password_cli doesn't catch."""

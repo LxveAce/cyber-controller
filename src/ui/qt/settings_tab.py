@@ -278,7 +278,17 @@ class SettingsTab(QWidget):
         self._updates_enabled_check.setChecked(bool(updates.get("enabled", True)))
 
     def _gather(self) -> dict:
-        """Read the current UI state into a settings dict."""
+        """Read the current UI state into a settings dict.
+
+        Carry-forward sections this tab owns no widgets for (interface / updates bookkeeping / the
+        one-time acks) are read FRESH from disk here, not from the long-lived self._settings snapshot
+        taken on show. Another in-process flow (a 'Check now' that suppresses an update prompt, a
+        Ctrl+M interface-mode / loadout change) can write settings.json AFTER this tab was shown — a
+        modal over the already-visible tab fires no showEvent, so the snapshot goes stale. Overlaying
+        only the widget-backed keys onto the current on-disk state stops a plain Save from silently
+        reverting that concurrent write.
+        """
+        disk = load_settings()
         return {
             # Only widget-backed keys are gathered; the other keys DEFAULTS carries for these sections
             # (serial.timeout, flash.verify/auto_backup/mode) had no consumer in the Qt app, so their
@@ -307,21 +317,21 @@ class SettingsTab(QWidget):
             # Preserve the one-time disclaimer ack: _gather rebuilds the whole dict,
             # so without carrying it forward a Save would reset it to False and
             # re-show the first-run disclaimer on next launch.
-            "_disclaimer_ack": self._settings.get("_disclaimer_ack", False),
+            "_disclaimer_ack": disk.get("_disclaimer_ack", False),
             # Same hazard for the interface section (Simple/Pro mode + the de-bloat loadout) and its
             # first-run ack — this tab owns no widgets for them, so rebuilding the dict without
             # carrying them forward makes save_settings' deep-merge reset mode to 'pro', DROP the
             # loadout, and reset _interface_mode_ack to False: a plain Save silently undoes the Simple
             # choice + loadout and re-arms both first-run choosers on the next launch.
-            "interface": self._settings.get("interface", {}),
-            "_interface_mode_ack": self._settings.get("_interface_mode_ack", False),
+            "interface": disk.get("interface", {}),
+            "_interface_mode_ack": disk.get("_interface_mode_ack", False),
             # CRITICAL carry-forward: this tab owns only the `enabled` toggle for `updates`, but _gather
             # rebuilds the WHOLE settings dict. Without preserving the rest of the section, a plain Save
             # would wipe the suppression bookkeeping (suppressed / suppressed_at_behind / dismissed_version
-            # / offline_error_suppressed / last_seen_latest / last_check_iso). Start from the stored block
+            # / offline_error_suppressed / last_seen_latest / last_check_iso). Start from the on-disk block
             # and overlay only the widget-backed `enabled`.
             "updates": {
-                **self._settings.get("updates", {}),
+                **disk.get("updates", {}),
                 "enabled": self._updates_enabled_check.isChecked(),
             },
         }

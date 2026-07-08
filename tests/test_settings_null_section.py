@@ -35,3 +35,35 @@ def test_load_settings_survives_null_section(tmp_path, monkeypatch):
     # the null section is a usable dict again, so serial.get(...) can't AttributeError downstream
     assert isinstance(loaded["serial"], dict)
     assert loaded["serial"]["default_baud"] == S.DEFAULTS["serial"]["default_baud"]
+
+
+def test_save_settings_fsyncs_temp_file_before_replace(tmp_path, monkeypatch):
+    """save_settings must flush the temp file's data to stable storage BEFORE os.replace, else an
+    abrupt power loss can leave settings.json pointing at unflushed/zero-filled blocks and load_settings
+    silently resets every preference to defaults. Assert the durable fsync happens on the temp fd that
+    is then renamed into place (the atomic os.replace alone guarantees only the metadata swap)."""
+    import os
+
+    path = tmp_path / "settings.json"
+    monkeypatch.setattr(S, "SETTINGS_PATH", path)
+    monkeypatch.setattr(S, "SETTINGS_DIR", tmp_path)
+
+    fsynced: list[int] = []
+    real_fsync = os.fsync
+    monkeypatch.setattr(os, "fsync", lambda fd: (fsynced.append(fd), real_fsync(fd))[1])
+
+    replaced: dict[str, bool] = {"ok": False}
+    real_replace = os.replace
+
+    def tracking_replace(src, dst):
+        # the fsync must have already happened by the time we commit the rename
+        assert fsynced, "temp file was not fsync'd before os.replace"
+        replaced["ok"] = True
+        return real_replace(src, dst)
+
+    monkeypatch.setattr(os, "replace", tracking_replace)
+
+    S.save_settings({"serial": {"default_baud": 9600}})
+    assert replaced["ok"] is True
+    assert fsynced, "save_settings did not fsync the temp file"
+    assert S.load_settings()["serial"]["default_baud"] == 9600

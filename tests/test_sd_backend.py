@@ -190,3 +190,38 @@ def test_get_pi_profile_known_and_unknown():
 
 def test_max_sd_bytes_is_256_gib():
     assert sd._MAX_SD_BYTES == 256 * (1 << 30)
+
+
+# ── download_image atomicity ──────────────────────────────────────────────
+def test_download_image_streams_to_temp_not_the_shared_dest(tmp_path, monkeypatch):
+    """download_image writes a DETERMINISTIC basename into a process-wide shared cache dir, so two
+    concurrent images of the same asset would truncate-interleave the one shared path and silently
+    corrupt a bare .img. The fix streams to a unique temp file then os.replace's it into place — so the
+    final dest never exists as a partial/torn file. Assert the shared dest does not appear mid-stream
+    and the completed file is the full download."""
+    url = "https://github.com/o/r/releases/download/v1/pi.img"
+    dest = tmp_path / "pi.img"
+    seen = {"dest_existed_mid_stream": None}
+
+    class FakeResp:
+        is_redirect = False
+        is_permanent_redirect = False
+        headers = {"content-length": "6"}
+
+        def raise_for_status(self):
+            pass
+
+        def iter_content(self, chunk_size=1):
+            for c in (b"abc", b"def"):
+                # with the old open(dest,'wb') the shared dest exists (0+ bytes) the moment writing
+                # begins; the atomic version writes to a temp file, so dest must NOT exist yet.
+                seen["dest_existed_mid_stream"] = dest.exists()
+                yield c
+
+    monkeypatch.setattr(sd.requests, "get", lambda *a, **k: FakeResp())
+
+    out = sd.download_image(url, str(tmp_path), _noline)
+
+    assert out == str(dest)
+    assert dest.read_bytes() == b"abcdef"            # complete, uncorrupted download
+    assert seen["dest_existed_mid_stream"] is False  # streamed to a temp file, not the shared dest

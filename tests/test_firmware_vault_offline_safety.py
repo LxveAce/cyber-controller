@@ -83,3 +83,31 @@ def test_non_dict_index_starts_fresh(tmp_path, payload):
     # The consumers that previously blew up now degrade cleanly.
     assert v.list_cached() == {}
     assert v.get_cached("marauder") is None
+
+
+def test_save_index_is_atomic_a_failed_commit_keeps_the_old_index(tmp_path, monkeypatch):
+    """A power loss while persisting vault_index.json must NOT discard the whole cache catalog.
+    _save_index now writes a temp file + fsync + os.replace, so a failure at the atomic rename leaves
+    the previous COMPLETE index on disk. The old bare write_text truncated the file at open, so the
+    same crash left a partial/empty index and _load_index started fresh — silently losing every cached
+    entry while the .bin dirs lingered (invisible to get_cached, unreachable by a catalog-wide
+    clear_cache)."""
+    import os
+
+    v = fwv.FirmwareVault(vault_dir=tmp_path)
+    v._index = {"marauder": {"version": "v1", "path": "x.bin"}}
+    v._save_index()   # first, good write lands atomically
+
+    v._index = {"marauder": {"version": "v1", "path": "x.bin"},
+                "ghostesp": {"version": "v2", "path": "y.bin"}}
+
+    def boom(*_a, **_k):
+        raise OSError("simulated power loss at commit")
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(OSError):
+        v._save_index()
+    monkeypatch.undo()
+
+    reloaded = fwv.FirmwareVault(vault_dir=tmp_path)
+    assert reloaded._index == {"marauder": {"version": "v1", "path": "x.bin"}}  # old index intact, not lost

@@ -61,9 +61,10 @@ def _lock_dir() -> Path:
     return Path(os.environ.get("CC_VAULT_DIR") or (Path.home() / ".cyber-controller"))
 
 
-def _acquire_file_lock(timeout: float = 10.0, stale: float = 30.0) -> Optional[int]:
-    """Best-effort exclusive lock via O_CREAT|O_EXCL (works on Windows + POSIX). Returns an fd, or None if
-    the lock directory can't be used (then the in-process lock is the only guard — fine for single-process)."""
+def _acquire_file_lock(timeout: float = 10.0, stale: float = 30.0) -> Optional[tuple]:
+    """Best-effort exclusive lock via O_CREAT|O_EXCL (works on Windows + POSIX). Returns a handle
+    ``(fd, path, ident)`` where *ident* is the created file's ``(st_dev, st_ino)``, or None if the lock
+    directory can't be used (then the in-process lock is the only guard — fine for single-process)."""
     try:
         d = _lock_dir()
         d.mkdir(parents=True, exist_ok=True)
@@ -73,7 +74,7 @@ def _acquire_file_lock(timeout: float = 10.0, stale: float = 30.0) -> Optional[i
     deadline = time.monotonic() + timeout
     while True:
         try:
-            return os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         except FileExistsError:
             try:  # steal a lock left behind by a crashed holder
                 if time.time() - os.path.getmtime(path) > stale:
@@ -84,15 +85,33 @@ def _acquire_file_lock(timeout: float = 10.0, stale: float = 30.0) -> Optional[i
             if time.monotonic() > deadline:
                 raise NodeProvisionError("could not acquire node-provision lock (another op holds it)")
             time.sleep(0.02)
+        else:
+            # Record the created file's identity so release only removes OUR lockfile. If another
+            # process stole this lock as stale and recreated it, that successor's file has a different
+            # inode — deleting it BY NAME here would collapse mutual exclusion and let a third opener in.
+            try:
+                st = os.fstat(fd)
+                ident = (st.st_dev, st.st_ino)
+            except OSError:
+                ident = None
+            return (fd, str(path), ident)
 
 
-def _release_file_lock(fd: Optional[int]) -> None:
-    if fd is None:
+def _release_file_lock(handle: Optional[tuple]) -> None:
+    if handle is None:
         return
+    fd, path, ident = handle
     with contextlib.suppress(OSError):
         os.close(fd)
-    with contextlib.suppress(OSError):
-        os.unlink(_lock_dir() / _LOCK_NAME)
+    # Release BY IDENTITY, not by name: only unlink the lockfile if it is still the exact file we
+    # created. After a stale-steal a successor may have unlinked+recreated it; removing that live file
+    # would drop the guard against a concurrent reservation (AES-GCM epoch/nonce reuse).
+    try:
+        cur = os.stat(path)
+        if ident is None or (cur.st_dev, cur.st_ino) == ident:
+            os.unlink(path)
+    except OSError:
+        pass
 
 
 @contextlib.contextmanager

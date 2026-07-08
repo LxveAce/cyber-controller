@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import logging
+import os
 import re
 import shutil
+import tempfile
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -159,11 +162,24 @@ class FirmwareVault:
         return {}
 
     def _save_index(self) -> None:
+        # Atomic write: a bare write_text truncates vault_index.json at open, so a power loss mid-write
+        # (the vault exists for offline/field flashing, where power blips are normal) leaves it partial;
+        # _load_index then starts fresh and the ENTIRE cache index is lost while the .bin dirs linger on
+        # disk (invisible to get_cached and unreachable by clear_cache()). Temp + fsync + os.replace so a
+        # crash leaves either the old complete index or the new one — never a truncated file.
         path = self._index_path()
-        path.write_text(
-            json.dumps(self._index, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        data = json.dumps(self._index, indent=2, sort_keys=True).encode("utf-8")
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+        try:
+            with os.fdopen(fd, "wb") as fh:
+                fh.write(data)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
 
     # ── Profile loading ──────────────────────────────────────────────
 

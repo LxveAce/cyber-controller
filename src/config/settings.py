@@ -168,6 +168,13 @@ def save_settings(settings: dict[str, Any]) -> None:
     tmp_path = SETTINGS_PATH.with_suffix(".json.tmp")
     with open(tmp_path, "w", encoding="utf-8") as fh:
         json.dump(merged, fh, indent=2)
+        # Flush the temp file's data to stable storage BEFORE the rename. os.replace is atomic for the
+        # metadata swap, but the rename can commit before the data blocks do, so an abrupt power loss (a
+        # battery-powered Pi 5 cyberdeck browned-out mid-save) can otherwise leave settings.json pointing
+        # at unflushed/zero-filled blocks — load_settings then silently resets every preference to
+        # defaults. fsync closes that ordering window; mirrors audit_trail / flock.
+        fh.flush()
+        os.fsync(fh.fileno())
     # Tighten perms to owner read/write only (best-effort; no-op semantics on
     # platforms that don't honor POSIX mode bits, but harmless there).
     try:

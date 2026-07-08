@@ -201,12 +201,29 @@ def download_image(url: str, dest_dir: str, on_line: Line,
     resp.raise_for_status()
     total = int(resp.headers.get("content-length", 0))
     written = 0
-    with open(dest, "wb") as f:
-        for chunk in resp.iter_content(chunk_size=_CHUNK):
-            f.write(chunk)
-            written += len(chunk)
-            if on_progress and total > 0:
-                on_progress(min(written / total, 1.0))
+    # Atomic download: dest is a DETERMINISTIC basename in a process-wide shared cache dir, so two
+    # concurrent images of the same asset (two app instances / different-card parallel writes) would
+    # both open the same path 'wb' and interleave-truncate it — corrupting a bare .img that then
+    # streams to the card and passes the self-referential write-verify as a silent success. Stream to
+    # a UNIQUE temp file in the same dir, fsync, then os.replace atomically into place, so the final
+    # cache file is always one complete download and never a torn cross-process write.
+    fd, tmp = tempfile.mkstemp(dir=real_dir, prefix=name + ".", suffix=".part")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=_CHUNK):
+                f.write(chunk)
+                written += len(chunk)
+                if on_progress and total > 0:
+                    on_progress(min(written / total, 1.0))
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, dest)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
     on_line(f"[download] {written} bytes -> {dest}")
     return dest
 

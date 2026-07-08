@@ -30,6 +30,7 @@ import logging
 import os
 import secrets
 import string
+import tempfile
 import threading
 from pathlib import Path
 from typing import Optional
@@ -113,15 +114,27 @@ def save_config(cfg: dict) -> None:
     cfg = {k: v for k, v in cfg.items() if k != "__corrupt__"}
     path = _config_path()
     secure_dir(path.parent)
-    fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # access_gate.json is the single copy of the password/key verifiers, policy, and lockout counters,
+    # and this is the HOT failed-attempt path (every wrong local/web unlock rewrites it). A plain
+    # O_TRUNC rewrite interrupted by power loss / an OS kill leaves it 0-length/partial; load_config
+    # then flags it corrupt and the gate fails CLOSED, bricking the owner out with only manual recovery.
+    # Write atomically (temp + fsync + os.replace) so a torn write can't happen — mirrors settings.py.
+    data = json.dumps(cfg, indent=2).encode("utf-8")
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(cfg, fh, indent=2)
-    finally:
-        try:
-            os.chmod(path, 0o600)
-        except OSError:
-            pass
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
     restrict_to_current_user(path)
 
 
@@ -385,17 +398,21 @@ def get_policy() -> str:
 def set_policy(policy: str) -> None:
     if policy not in POLICIES:
         raise ValueError(f"policy must be one of {POLICIES}")
-    cfg = load_config()
-    # Refuse an exclusive policy whose required factor is not configured — otherwise _evaluate_policy
-    # can never grant, and because every gate mutation runs enforce() first, the owner is locked out
-    # of the app AND of correcting the policy in-app (recovery = deleting the gate config + vault =
-    # data loss). 'both'/'either' stay allowed: _evaluate_policy only requires factors that exist.
-    if policy == "key" and not cfg.get("key"):
-        raise ValueError("cannot set policy 'key': no physical key is configured — create one first")
-    if policy == "password" and not cfg.get("password"):
-        raise ValueError("cannot set policy 'password': no admin password is set — set one first")
-    cfg["policy"] = policy
-    save_config(cfg)
+    # Route through _locked_config_update (both locks) so this whole-config rewrite can't clobber a
+    # concurrent lockout-counter increment with a stale snapshot (SEC lost-update) — see the note at
+    # _locked_config_update. The factor-existence checks run inside the lock against the FRESH config.
+    def _set(cfg):
+        # Refuse an exclusive policy whose required factor is not configured — otherwise
+        # _evaluate_policy can never grant, and because every gate mutation runs enforce() first, the
+        # owner is locked out of the app AND of correcting the policy in-app (recovery = deleting the
+        # gate config + vault = data loss). 'both'/'either' stay allowed: _evaluate_policy only requires
+        # factors that exist.
+        if policy == "key" and not cfg.get("key"):
+            raise ValueError("cannot set policy 'key': no physical key is configured — create one first")
+        if policy == "password" and not cfg.get("password"):
+            raise ValueError("cannot set policy 'password': no admin password is set — set one first")
+        cfg["policy"] = policy
+    _locked_config_update(_set)
 
 
 # ── admin password factor ────────────────────────────────────────────
@@ -403,15 +420,15 @@ def set_policy(policy: str) -> None:
 def set_admin_password(password: str) -> None:
     if not password:
         raise ValueError("password must not be empty")
-    cfg = load_config()
-    cfg["password"] = _make_verifier(password.encode("utf-8"))
-    save_config(cfg)
+    # Compute the (slow) scrypt verifier BEFORE taking the lock, then apply it under
+    # _locked_config_update so this whole-config rewrite can't roll back a concurrent lockout-counter
+    # increment with a stale snapshot (SEC lost-update).
+    ver = _make_verifier(password.encode("utf-8"))
+    _locked_config_update(lambda cfg: cfg.__setitem__("password", ver))
 
 
 def clear_admin_password() -> None:
-    cfg = load_config()
-    cfg["password"] = None
-    save_config(cfg)
+    _locked_config_update(lambda cfg: cfg.__setitem__("password", None))
 
 
 def has_admin_password() -> bool:
@@ -455,20 +472,18 @@ def create_physical_key(usb_dir: str | Path, key_id: Optional[str] = None) -> st
             os.chmod(key_file, 0o600)
         except OSError:
             pass
-    cfg = load_config()
-    ver = _make_verifier(secret)
+    ver = _make_verifier(secret)  # slow scrypt — done before the lock
     ver["key_id"] = kid
-    cfg["key"] = ver
-    save_config(cfg)
+    # Apply under _locked_config_update so this whole-config rewrite can't clobber a concurrent
+    # lockout-counter increment with a stale snapshot (SEC lost-update).
+    _locked_config_update(lambda cfg: cfg.__setitem__("key", ver))
     log.info("Physical key %s created on %s", kid, usb)
     return kid
 
 
 def remove_physical_key() -> None:
     """Forget the configured key (does not wipe the USB file)."""
-    cfg = load_config()
-    cfg["key"] = None
-    save_config(cfg)
+    _locked_config_update(lambda cfg: cfg.__setitem__("key", None))
 
 
 def has_physical_key() -> bool:

@@ -198,6 +198,33 @@ def test_reservation_lockfile_is_released(tmp_path, monkeypatch):
     assert not (tmp_path / NP._LOCK_NAME).exists()   # lock released after the op
 
 
+def test_release_only_removes_its_own_lockfile(tmp_path, monkeypatch):
+    """The advisory lock must be released BY IDENTITY, not by name. If a holder is stale-stolen (its
+    lockfile unlinked+recreated by a successor), releasing by name would delete the SUCCESSOR's live
+    lockfile and collapse mutual exclusion — permitting a duplicate epoch reservation (AES-GCM nonce
+    reuse). _release_file_lock must leave a differently-identified lockfile in place."""
+    import os
+
+    monkeypatch.setenv("CC_VAULT_DIR", str(tmp_path))
+    lockpath = tmp_path / NP._LOCK_NAME
+
+    # Positive: a holder releasing its OWN lockfile removes it (identity matches).
+    handle = NP._acquire_file_lock()
+    assert lockpath.exists()
+    NP._release_file_lock(handle)
+    assert not lockpath.exists()
+
+    # Negative: if the on-disk lockfile is NOT the one this holder created — a successor stole the
+    # (assumed-stale) lock and recreated it, a DIFFERENT identity — release must leave that live file
+    # in place. Simulate the successor's file by handing release a handle with a mismatched identity.
+    handle = NP._acquire_file_lock()
+    fd, path, ident = handle
+    mismatched = (fd, path, (ident[0], ident[1] + 1) if ident else (0, 1))
+    NP._release_file_lock(mismatched)   # must NOT unlink a lockfile it did not create
+    assert lockpath.exists(), "release-by-name deleted a lockfile the holder did not create"
+    os.unlink(lockpath)                 # cleanup (fd already closed by _release_file_lock)
+
+
 def test_open_forwards_role_and_seeds_rx_state():
     v = FakeVault()
     NP.provision_node(v, 6, key=FAKE_KEY, role="node")

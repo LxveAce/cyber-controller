@@ -16,9 +16,11 @@ its config is deleted, the data in the vault remains encrypted and unreadable wi
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
+import tempfile
 import threading
 from pathlib import Path
 from typing import Optional
@@ -78,6 +80,31 @@ def _scrypt(secret: bytes, salt: bytes) -> bytes:
     return hashlib.scrypt(secret, salt=salt, n=_N, r=_R, p=_P, dklen=_DKLEN, maxmem=_MAXMEM)
 
 
+def _atomic_write(path: Path, data: bytes) -> None:
+    """Write *data* to *path* durably and atomically: a unique temp file in the SAME directory,
+    fsync'd, then ``os.replace``d into place.
+
+    The header (wrapped DEK + salt) and the data blob are each a single all-or-nothing object, so a
+    plain ``O_TRUNC`` rewrite that is interrupted by power loss / an OS kill between the truncate and
+    the completed write leaves a 0-length or partial file — and because there is no second copy, that
+    permanently destroys every node key and the secure-container key. os.replace is atomic within a
+    filesystem, so a crash leaves EITHER the old file or the complete new one, never a torn hybrid;
+    the fsync flushes the data blocks before the rename commits. Mirrors flock.checkpoint /
+    settings.save_settings, which already write this way. The temp file is created 0600.
+    """
+    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp)
+        raise
+
+
 def _wrap(dek: bytes, kek: bytes) -> dict:
     nonce = os.urandom(12)
     return {"nonce": nonce.hex(), "ct": AESGCM(kek).encrypt(nonce, dek, None).hex()}
@@ -123,9 +150,9 @@ def _load_hdr() -> dict:
 def _save_hdr(hdr: dict) -> None:
     p = _hdr_path()
     secure_dir(p.parent)
-    fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        json.dump(hdr, fh, indent=2)
+    # vault.hdr.json is the ONLY wrapped copy of the DEK + salt; a torn write makes the whole vault
+    # permanently unopenable by every factor, so it must be written atomically (temp + fsync + replace).
+    _atomic_write(p, json.dumps(hdr, indent=2).encode("utf-8"))
     try:
         os.chmod(p, 0o600)
     except OSError:
@@ -241,9 +268,10 @@ class Vault:
         secure_dir(p.parent)
         nonce = os.urandom(12)
         ct = AESGCM(self._dek).encrypt(nonce, json.dumps(data).encode("utf-8"), None)
-        fd = os.open(str(p), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(nonce + ct)
+        # vault.enc holds every node key + the secure-container key as one all-or-nothing GCM blob.
+        # A plain O_TRUNC rewrite interrupted mid-write (power loss / OS kill) would leave it 0-length
+        # or partial and permanently unrecoverable, so write it atomically (temp + fsync + replace).
+        _atomic_write(p, nonce + ct)
         try:
             os.chmod(p, 0o600)
         except OSError:
