@@ -8,6 +8,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Fixed
+- **RayHunter now downloads on Intel Macs.** The ADB firmware picker mapped an Intel Mac's `x86_64` architecture to
+  asset names containing `x86_64`/`x64`, but RayHunter's macOS builds are named `macos-intel` — so Intel-Mac users
+  matched no asset and the install silently found nothing. `intel` is now a recognized token for x86_64/amd64 (Apple
+  Silicon already worked via `arm`).
 - **A merged firmware built for a bigger flash chip now warns instead of silently leaving a dead board.** Flashing a
   merged-single-bin build (say a 16 MB Bruce build) onto a smaller board (a 4 MB ESP32) wrote and verified fine, then
   reported "Flash complete" — but the board just bootlooped, because the image's own bootloader still claimed 16 MB of

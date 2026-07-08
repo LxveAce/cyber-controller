@@ -359,10 +359,12 @@ def _pick_platform_asset(assets: List[Dict]) -> Optional[Dict]:
     system = platform.system().lower()
     machine = platform.machine().lower()
 
-    # map platform.machine() -> rayhunter's naming convention
+    # map platform.machine() -> rayhunter's naming convention. NOTE macOS assets are named
+    # "macos-intel" / "macos-arm" (NOT x86_64/arm64), so an Intel Mac (machine=x86_64) needs
+    # "intel" in its token list or it matches no asset; Apple Silicon already matches via "arm".
     arch_map: Dict[str, List[str]] = {
-        "x86_64": ["x86_64", "x64"],
-        "amd64": ["x86_64", "x64"],
+        "x86_64": ["x86_64", "x64", "intel"],
+        "amd64": ["x86_64", "x64", "intel"],
         "aarch64": ["aarch64", "arm64", "arm"],
         "arm64": ["aarch64", "arm64", "arm"],
         "armv7l": ["armv7"],

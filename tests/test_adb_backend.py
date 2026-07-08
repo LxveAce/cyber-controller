@@ -71,6 +71,43 @@ def test_pick_asset_empty_list(monkeypatch):
     assert adb._pick_platform_asset([]) is None
 
 
+# Real RayHunter v0.11.2 asset naming — macOS assets are "macos-intel"/"macos-arm", NOT x86_64/arm64.
+_RAYHUNTER_ASSETS = [
+    {"name": "rayhunter-v0.11.2-linux-aarch64.zip", "browser_download_url": "linux-aarch64"},
+    {"name": "rayhunter-v0.11.2-linux-armv7.zip", "browser_download_url": "linux-armv7"},
+    {"name": "rayhunter-v0.11.2-linux-x64.zip", "browser_download_url": "linux-x64"},
+    {"name": "rayhunter-v0.11.2-macos-arm.zip", "browser_download_url": "macos-arm"},
+    {"name": "rayhunter-v0.11.2-macos-intel.zip", "browser_download_url": "macos-intel"},
+    {"name": "rayhunter-v0.11.2-windows-x86_64.zip", "browser_download_url": "windows-x86_64"},
+]
+
+
+def test_pick_asset_intel_mac_gets_macos_intel(monkeypatch):
+    # REGRESSION (BUGHUNT-0708 #4): an Intel Mac reports machine=x86_64, but the asset is named
+    # "macos-intel" — before the fix this matched nothing and Intel Macs got no firmware.
+    _set_platform(monkeypatch, "Darwin", "x86_64")
+    got = adb._pick_platform_asset(_RAYHUNTER_ASSETS)
+    assert got is not None and got["browser_download_url"] == "macos-intel"
+
+
+def test_pick_asset_apple_silicon_gets_macos_arm(monkeypatch):
+    _set_platform(monkeypatch, "Darwin", "arm64")
+    got = adb._pick_platform_asset(_RAYHUNTER_ASSETS)
+    assert got is not None and got["browser_download_url"] == "macos-arm"
+
+
+def test_pick_asset_windows_x64_gets_windows(monkeypatch):
+    _set_platform(monkeypatch, "Windows", "AMD64")  # platform.machine() -> "AMD64" on Windows
+    got = adb._pick_platform_asset(_RAYHUNTER_ASSETS)
+    assert got is not None and got["browser_download_url"] == "windows-x86_64"
+
+
+def test_pick_asset_linux_x64_gets_linux_x64(monkeypatch):
+    _set_platform(monkeypatch, "Linux", "x86_64")
+    got = adb._pick_platform_asset(_RAYHUNTER_ASSETS)
+    assert got is not None and got["browser_download_url"] == "linux-x64"
+
+
 # ── check_version compare (installed vs latest) ────────────────────────────
 def _patch_versions(monkeypatch, installed, latest_tag):
     monkeypatch.setattr(adb, "installed_version", lambda *a, **k: installed)
