@@ -86,3 +86,74 @@ def test_no_warning_when_either_size_unknown():
     assert flash_core.flash_size_mismatch_warning(None, 4) is None
     assert flash_core.flash_size_mismatch_warning(16, None) is None
     assert flash_core.flash_size_mismatch_warning(None, None) is None
+
+
+# ── flash_engine glue (covers BOTH the download and local_path merged flash paths) ────────────
+from src.core.flash_engine import FlashEngine  # noqa: E402
+
+
+def test_engine_warns_on_mismatch_and_does_not_say_flash_complete():
+    """The shared glue used by both flash paths: a merged image demanding 16MB on a 4MB board
+    (esptool prints "Detected flash size: 4MB" during the write) warns and drops "Flash complete"."""
+    eng = FlashEngine()
+    lines: list[str] = []
+    progress: list[tuple[int, str]] = []
+
+    def run(capture):
+        capture("Detected flash size: 4MB")  # what esptool prints mid-write
+        return 0
+
+    ret = eng._flash_with_size_warning(16, lines.append, lambda p, m: progress.append((p, m)), run)
+    assert ret is True  # the write itself succeeded
+    assert any("FLASH-SIZE MISMATCH" in ln for ln in lines)
+    assert progress and "likely won't boot" in progress[-1][1]
+    assert not any(msg == "Flash complete" for _, msg in progress)
+
+
+def test_engine_clean_complete_when_sizes_match():
+    eng = FlashEngine()
+    progress: list[tuple[int, str]] = []
+
+    def run(capture):
+        capture("Detected flash size: 16MB")
+        return 0
+
+    ret = eng._flash_with_size_warning(16, lambda ln: None, lambda p, m: progress.append((p, m)), run)
+    assert ret is True
+    assert progress[-1] == (100, "Flash complete")
+
+
+def test_engine_no_warning_when_declared_unknown():
+    eng = FlashEngine()
+    progress: list[tuple[int, str]] = []
+
+    def run(capture):
+        capture("Detected flash size: 4MB")
+        return 0
+
+    ret = eng._flash_with_size_warning(None, lambda ln: None, lambda p, m: progress.append((p, m)), run)
+    assert ret is True
+    assert progress[-1] == (100, "Flash complete")
+
+
+def test_engine_reports_failure_when_flash_fails():
+    eng = FlashEngine()
+    progress: list[tuple[int, str]] = []
+    ret = eng._flash_with_size_warning(16, lambda ln: None, lambda p, m: progress.append((p, m)),
+                                       lambda capture: 2)
+    assert ret is False
+    assert progress[-1] == (0, "Flash failed")
+
+
+def test_declared_merged_size_reads_a_local_merged_bin(tmp_path):
+    """The local_path path: a lone .bin is image_model=MERGED, so a 16MB-built local .bin is caught."""
+    p = tmp_path / "local.bin"
+    p.write_bytes(b"\xFF" * 0x1000 + bytes([0xE9, 0x02, 0x02, 0x4F]) + b"\x00" * 64)
+    eng = FlashEngine()
+    assert eng._declared_merged_size(flash_core.IMAGE_MERGED, str(p), "esp32") == 16
+
+
+def test_declared_merged_size_none_for_multifile_and_missing():
+    eng = FlashEngine()
+    assert eng._declared_merged_size(flash_core.IMAGE_MULTI, __file__, "esp32") is None
+    assert eng._declared_merged_size(flash_core.IMAGE_MERGED, "does_not_exist_xyz.bin", "esp32") is None

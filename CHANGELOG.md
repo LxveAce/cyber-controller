@@ -14,7 +14,8 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   flash (`--flash_size detect` only patches the header at the write offset, not one buried inside a merged image). The
   flasher now reads the size the image demands, compares it to the size esptool detects on your board, and if the image
   is too big it says so plainly ("built for 16 MB, your board has 4 MB — it likely won't boot") instead of claiming a
-  clean success. Multi-file firmwares (Marauder, most others) were never affected.
+  clean success. Multi-file firmwares (Marauder, most others) were never affected. The same check now also covers
+  flashing a local `.bin` you point the app at, not just downloaded firmware.
 - **You're no longer trapped on the Connect ▸ Devices tab.** With a device selected, the 3-second sidebar
   refresh re-selected it in the device list, and that programmatic re-selection fired the same signal a real
   click does — so the main view snapped back to Connect ▸ Devices a couple seconds after you switched to any

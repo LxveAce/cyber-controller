@@ -360,14 +360,19 @@ class FlashEngine:
                     progress(0, "Flash failed")
                 return False
 
-        # Local-file flash (explicit .bin) — merged image at 0x0 by default.
+        # Local-file flash (explicit .bin) — merged image at 0x0 by default, so it hits the same
+        # FLASH-MERGED-4MB trap as a downloaded merged image (a .bin built for a 16MB board boot-loops
+        # a 4MB one). Route it through the shared size-mismatch warning.
         if profile.local_path:
             custom = flash_core.get_profile("custom")
-            rc = custom.flash_local(port, chip, profile.local_path, on_line, baud=profile.baud,
-                                    extra_args=profile.extra_args or None)
-            if progress:
-                progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
-            return rc == 0
+            declared_mb = self._declared_merged_size(
+                getattr(custom, "image_model", None), profile.local_path, chip)
+            return self._flash_with_size_warning(
+                declared_mb, on_line, progress,
+                lambda capture: custom.flash_local(
+                    port, chip, profile.local_path, capture, baud=profile.baud,
+                    extra_args=profile.extra_args or None),
+            )
 
         # Download-and-flash via the proven per-profile logic in flash_core.
         core_id = profile.core_id if profile.core_id in flash_core.PROFILES else "custom"
@@ -442,32 +447,53 @@ class FlashEngine:
 
         app_offset = variant.get("offset") or core.app_offset(chip)
 
-        # FLASH-MERGED-4MB: a merged image carries its own bootloader, whose flash-size header
-        # `--flash_size detect` can't reach (it only patches the write offset, not 0x1000-in-blob).
-        # So a merged build for a 16MB board writes+verifies fine but boot-loops a 4MB board. Read
-        # the size the image DEMANDS, capture the size esptool DETECTS during the write, and warn
-        # honestly if they mismatch instead of reporting a clean "Flash complete". (Multi-file
-        # flashes are unaffected — their bootloader is a separate file esptool does patch. Auto-
-        # patching a merged header to the real size is a separate owner-gated change.)
-        declared_mb: int | None = None
-        if getattr(core, "image_model", None) == flash_core.IMAGE_MERGED:
-            try:
-                with open(app_path, "rb") as fh:
-                    declared_mb = flash_core.declared_flash_size_mb(fh.read(0x2004), chip)
-            except OSError:
-                declared_mb = None
+        # FLASH-MERGED-4MB: for a merged image, warn if it demands more flash than the board has
+        # (it writes+verifies fine but boot-loops) instead of reporting a clean "Flash complete".
+        declared_mb = self._declared_merged_size(getattr(core, "image_model", None), app_path, chip)
+        return self._flash_with_size_warning(
+            declared_mb, on_line, progress,
+            lambda capture: core.flash_assets(
+                port, chip, app_path, capture, mode=mode, baud=profile.baud,
+                support=support, app_offset=app_offset, extra_args=profile.extra_args or None,
+            ),
+        )
+
+    def _declared_merged_size(self, image_model: str | None, image_path: str, chip: str) -> int | None:
+        """Flash size (MB) a MERGED image's bootloader header demands, or None (not merged / unreadable).
+
+        Only merged-single-bin images carry the bootloader `--flash_size detect` can't reach; a multi-file
+        app image's own header is not the flash-size-governing one, so those return None and never warn."""
+        if image_model != flash_core.IMAGE_MERGED:
+            return None
+        try:
+            with open(image_path, "rb") as fh:
+                return flash_core.declared_flash_size_mb(fh.read(0x2004), chip)
+        except OSError:
+            return None
+
+    def _flash_with_size_warning(
+        self,
+        declared_mb: int | None,
+        on_line: Callable[[str], None],
+        progress: ProgressCallback | None,
+        run: Callable[[Callable[[str], None]], int],
+    ) -> bool:
+        """FLASH-MERGED-4MB: run a merged-image flash (`run(capture) -> rc`) and, when the image's
+        bootloader header demands MORE flash than the board has, warn honestly instead of reporting a
+        clean "Flash complete". A merged build for a 16MB board writes+verifies fine but boot-loops a
+        4MB board — `--flash_size detect` can't patch a bootloader buried at 0x1000-in-blob. Reads no
+        board state itself: it captures the size esptool detects during the write. Returns the bool the
+        flash path should return. (Auto-patching the header to the real size is a separate owner-gated
+        change; here we only warn — we never alter what bytes get written.)"""
         detected_mb: list[int | None] = [None]
 
-        def _capture(line: str) -> None:
+        def capture(line: str) -> None:
             mb = flash_core.parse_detected_flash_mb(line)
             if mb:
                 detected_mb[0] = mb
             on_line(line)
 
-        rc = core.flash_assets(
-            port, chip, app_path, _capture, mode=mode, baud=profile.baud,
-            support=support, app_offset=app_offset, extra_args=profile.extra_args or None,
-        )
+        rc = run(capture)
         warn = flash_core.flash_size_mismatch_warning(declared_mb, detected_mb[0]) if rc == 0 else None
         if warn:
             on_line(warn)
