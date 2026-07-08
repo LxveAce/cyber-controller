@@ -8,6 +8,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Fixed
+- **HaleHound's OTA update image is no longer offered as a full flash.** The profile matched every `.bin` release
+  asset and treated it as a merged image written at 0x0 — including the app-only OTA update image, which belongs to the
+  running firmware's over-the-air update path, not a cold esptool flash at the bootloader offset. The OTA image is now
+  excluded from the asset list, so only the full merged image is offered (mirroring the M5PORKCHOP profile's narrower
+  match). No current HaleHound release ships firmware `.bin` assets, so this is a latent fix.
 - **"Detect board (CYD)" can no longer collide with a flash/backup/erase on the same port.** The detection probe-flash
   ran esptool directly without reserving the port, so starting a Backup, Erase, or Flash while detection was running
   could put two esptool processes on one UART — a brick path. Detection now goes through the same per-port busy-guard as

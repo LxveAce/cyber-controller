@@ -53,7 +53,7 @@
     "repo": "https://github.com/JesseCHale/HaleHound-CYD",
     "latest": "https://github.com/JesseCHale/HaleHound-CYD/releases/latest"
   },
-  "note": "Fixed from HaleHound/HaleHound to JesseCHale/HaleHound-CYD (the real upstream; matches flash_core _HALEHOUND_API).",
+  "note": "Fixed from HaleHound/HaleHound to JesseCHale/HaleHound-CYD (the real upstream; matches flash_core _HALEHOUND_API). asset_match excludes OTA/ota .bins: the OTA update is an app-only image that must NOT be cold-flashed at 0x0 like the FULL merged image (it belongs to the running firmware's OTA path). exclude is case-sensitive so both casings are listed; current releases ship no .bin assets yet, so this is a latent guard.",
   "repo": "JesseCHale/HaleHound-CYD",
   "core_id": "halehound",
   "supports_suicide": false,
@@ -66,7 +66,7 @@
   "resolver_params": {
     "api_url": "https://api.github.com/repos/JesseCHale/HaleHound-CYD/releases/latest",
     "on_error": "source_only_empty",
-    "asset_match": {"include_suffixes": [".bin"]},
+    "asset_match": {"include_suffixes": [".bin"], "exclude_substrings": ["OTA", "ota"]},
     "chip_map": {"strategy": "fixed", "chip": "esp32"},
     "emit": {"offset": "0x0", "merged": true, "label_template": "HaleHound CYD", "label_suffix_rules": [["FULL", " (merged full)"], ["OTA", " (OTA update)"]]}
   }

@@ -1201,11 +1201,15 @@ class HaleHoundProfile(FirmwareProfile):
             name = a.get("name", "")
             if not name.endswith(".bin"):
                 continue
+            # The OTA update is an app-only image (it belongs to the running firmware's OTA path); it
+            # must NOT be cold-flashed at 0x0 like the FULL merged image. Mirror halehound.json's
+            # asset_match exclude_substrings — case-sensitive, both casings — so this oracle and the
+            # GenericProfile stay equivalent (see tests/test_generic_equiv.py).
+            if "OTA" in name or "ota" in name:
+                continue
             label = "HaleHound CYD"
             if "FULL" in name.upper():
                 label += " (merged full)"
-            elif "OTA" in name.upper():
-                label += " (OTA update)"
             assets.append({
                 "name": name,
                 "url": a.get("browser_download_url"),
