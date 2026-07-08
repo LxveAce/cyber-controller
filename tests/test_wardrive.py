@@ -35,6 +35,13 @@ def test_parse_nmea_gga_garbled_quality_keeps_the_fix():
     assert round(f.lat, 3) == 48.117 and f.sats == 0 and f.hdop == 0.0
 
 
+def test_parse_nmea_gga_garbled_altitude_keeps_the_fix():
+    # altitude is ancillary (the map uses lat/lon) — a garbled altitude must not discard a valid position
+    f = wd.parse_nmea("$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,GARBAGE,M,46.9,M,,*47")
+    assert f is not None and f.has_fix
+    assert round(f.lat, 3) == 48.117 and f.sats == 8 and f.hdop == 0.9 and f.alt == 0.0
+
+
 def test_parse_nmea_gga_nofix():
     f = wd.parse_nmea("$GPGGA,123519,,,,,0,00,,,M,,M,,*47")
     assert f is not None and not f.has_fix

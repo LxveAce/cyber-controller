@@ -90,9 +90,13 @@ def parse_nmea(line: str) -> Optional[GpsFix]:
             lat = _dm_to_dd(parts[2], parts[3])
             lon = _dm_to_dd(parts[4], parts[5])
             fix_q = parts[6]
-            alt = float(parts[9]) if parts[9] else 0.0
-            # Satellites (field 7) + HDOP (field 8) are guarded individually: a garbled quality field must
-            # never discard an otherwise-valid position fix, only leave the quality figure unknown (0).
+            # Altitude (field 9), satellites (field 7) and HDOP (field 8) are ancillary — each is guarded on
+            # its own so a garbled one never discards an otherwise-valid position fix, only leaves that figure
+            # unknown (0). Only lat/lon/fix-quality decide whether we have a usable position.
+            try:
+                alt = float(parts[9]) if parts[9] else 0.0
+            except ValueError:
+                alt = 0.0
             try:
                 sats = int(parts[7]) if parts[7] else 0
             except ValueError:
