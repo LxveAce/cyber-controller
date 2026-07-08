@@ -18,7 +18,9 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
 - **"My location (GPS)" on the Flock map.** A new toggle (off by default) drops a "you are here" pin at your real-world
   position while a GPS is streaming during a live scan. It reuses the scan's existing GPS feed — no second reader — and
   projects the live fix through the same map projection as the cameras, so your pin sits correctly among the detections
-  and the world basemap. The pin stays a fixed on-screen size as you zoom, like a real map marker.
+  and the world basemap. The pin stays a fixed on-screen size as you zoom, like a real map marker. A **Follow** toggle
+  keeps the map centred on you as the fix updates (like a car sat-nav), a **Center on me** button recentres on demand,
+  and the pin greys out once the scan stops so a stale position doesn't read as your live one.
 - **New firmware profile: ESP32 WiFi Penetration Tool (`risinek/esp32-wifi-penetration-tool`).** A classic-ESP32 WiFi
   attack/recon toolkit (deauth, PMKID + WPA handshake capture, PCAP, all over a self-hosted web UI). Multi-file
   ESP-IDF release flashed at the offsets the upstream README documents — bootloader @0x1000, partition-table @0x8000,

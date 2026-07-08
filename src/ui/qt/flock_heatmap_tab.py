@@ -98,6 +98,11 @@ def zoom_step(angle_delta: int, base: float = 1.2) -> float:
 # constant is Earth's equatorial circumference in metres, so scene units are ~metres near the equator.
 _WORLD_PX = 40_075_016.0
 
+# "You are here" GPS marker fill: bright cyan while the GPS is live-streaming a fix, muted grey once the fix
+# goes stale (the live scan stopped) so a stale position doesn't read as your current one.
+_GPS_LIVE_FILL = "#22d3ee"
+_GPS_STALE_FILL = "#6e7681"
+
 
 def world_px(lat: float, lon: float, world: float = _WORLD_PX) -> Tuple[float, float]:
     """Project (lat, lon) into the shared global-mercator pixel plane [0, world]. Pure + Qt-free — the
@@ -377,9 +382,19 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                             "marker at your real-world position. Off by default; needs a GPS fix.")
             self._chk_mylocation.setChecked(False)
             self._chk_mylocation.stateChanged.connect(lambda _s: self._draw_location_marker())
+            self._chk_follow = QCheckBox("Follow")
+            self._chk_follow.setToolTip("Keep the map centred on your GPS position as it updates (like a car "
+                                        "sat-nav). Needs 'My location (GPS)' on.")
+            self._chk_follow.setChecked(False)
+            self._chk_follow.stateChanged.connect(lambda _s: self.center_on_me())
+            self._btn_center = QPushButton("Center on me")
+            self._btn_center.setToolTip("Recentre the map on your GPS position once (after you've panned away).")
+            self._btn_center.clicked.connect(self.center_on_me)
             map_row.addWidget(self._btn_reset_view)
             map_row.addWidget(self._chk_basemap)
             map_row.addWidget(self._chk_mylocation)
+            map_row.addWidget(self._chk_follow)
+            map_row.addWidget(self._btn_center)
             map_row.addStretch(1)
             root.addLayout(map_row)
 
@@ -405,8 +420,10 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
             # "You are here" GPS marker: last known (lat,lon) + its scene item (recreated each _rebuild since
             # scene.clear() drops it). Fed by the live worker's `location` signal; only drawn when the toggle is on.
+            # _gps_live tracks whether the fix is currently streaming (bright) or stale after a scan stop (grey).
             self._my_location = None
             self._location_marker = None
+            self._gps_live = True
 
             self.set_geojson({"type": "FeatureCollection", "features": []})
 
@@ -466,20 +483,38 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
         # ── "you are here" GPS marker ────────────────────────────────
         def set_my_location(self, lat: float, lon: float) -> None:
-            """Record the live GPS position and (if the toggle is on) draw/move the 'you are here' marker.
-            Public so the live worker's `location` signal and tests can drive it without a serial port."""
+            """Record the live GPS position, mark the fix live, and (if the toggle is on) draw/move the
+            'you are here' marker — recentring on it when Follow is on. Public so the live worker's
+            `location` signal and tests can drive it without a serial port."""
             self._my_location = (float(lat), float(lon))
+            self._gps_live = True
             self._draw_location_marker()
+            if self._chk_follow.isChecked():
+                self.center_on_me()
 
         def clear_my_location(self) -> None:
             """Forget the GPS position and remove the marker (e.g. GPS lost / scan stopped)."""
             self._my_location = None
             self._draw_location_marker()
 
+        def mark_gps_stale(self) -> None:
+            """The live GPS feed stopped: keep the last position but grey the pin so a stale fix doesn't
+            read as your current one."""
+            self._gps_live = False
+            self._draw_location_marker()
+
+        def center_on_me(self) -> None:
+            """Recentre the view on the GPS marker. No-op if the toggle is off or no fix is known."""
+            if self._my_location is None or not self._chk_mylocation.isChecked():
+                return
+            x, y = world_px(*self._my_location)
+            self._view.centerOn(x, y)
+
         def _draw_location_marker(self) -> None:
             """(Re)draw the 'you are here' marker at ``self._my_location``. Removes any existing one first;
             no-op if the toggle is off or no fix is known. Uses ItemIgnoresTransformations so the marker stays
-            a fixed on-screen size (a real map pin) at any zoom, drawn above the dots + basemap."""
+            a fixed on-screen size (a real map pin) at any zoom, drawn above the dots + basemap. Cyan while the
+            fix is live, grey once it's stale (scan stopped)."""
             if self._location_marker is not None:
                 self._scene.removeItem(self._location_marker)
                 self._location_marker = None
@@ -487,9 +522,10 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 return
             x, y = world_px(*self._my_location)
             r = 8.0
+            fill = _GPS_LIVE_FILL if self._gps_live else _GPS_STALE_FILL
             item = self._scene.addEllipse(
                 -r, -r, 2 * r, 2 * r,
-                QPen(QColor("#ffffff"), 3), QBrush(QColor("#22d3ee")))   # white ring + cyan core, distinct from heat
+                QPen(QColor("#ffffff"), 3), QBrush(QColor(fill)))         # white ring + cyan/grey core
             item.setFlag(QGraphicsItem.ItemIgnoresTransformations, True)  # fixed screen size = a map pin
             item.setZValue(10000)                                         # above every other layer
             item.setPos(x, y)
@@ -664,6 +700,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._btn_live.setEnabled(True)
             self._btn_live.setText("Start scan")
             self._live_status.setText("Idle")
+            self.mark_gps_stale()            # GPS feed ended -> grey the last-known pin so it doesn't look live
 
         # ── wake/sleep: keep recording while hidden, catch the map up on show ──
         def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)

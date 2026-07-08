@@ -268,6 +268,43 @@ def test_widget_location_fix_signal_respects_toggle(qapp):
     w.clear_my_location()
     assert w._my_location is None
     assert w._location_marker is None
+
+
+def test_widget_follow_recenters_on_fix(qapp):
+    w = FlockHeatmapTab()
+    assert not w._chk_follow.isChecked()                    # Follow off by default
+    w._chk_mylocation.setChecked(True)
+    w.set_my_location(48.1, 11.1)                           # a known fix, Follow still OFF
+    calls = []
+    w.center_on_me = lambda: calls.append(1)                # spy on the recenter
+    # Follow OFF: a new fix updates the pin but does NOT recentre
+    w.set_my_location(48.2, 11.2)
+    assert calls == []
+    # turning Follow ON recentres immediately, then every subsequent fix recentres
+    w._chk_follow.setChecked(True)
+    assert calls == [1]                                     # the toggle-on recentre
+    w.set_my_location(48.3, 11.3)
+    assert calls == [1, 1]                                  # the fix recentre
+
+
+def test_widget_center_on_me_is_safe_without_fix(qapp):
+    w = FlockHeatmapTab()
+    w.center_on_me()                                        # no location, toggle off -> no-op, no crash
+    w._chk_mylocation.setChecked(True)
+    w.center_on_me()                                        # toggle on but still no fix -> no-op, no crash
+    w.set_my_location(40.0, -74.0)
+    w.center_on_me()                                        # a real fix -> recentres without crashing
+
+
+def test_widget_gps_stale_greys_the_pin(qapp):
+    w = FlockHeatmapTab()
+    w._chk_mylocation.setChecked(True)
+    w.set_my_location(48.0, 11.0)
+    assert w._location_marker.brush().color().name() == "#22d3ee"   # live fix -> cyan
+    w.mark_gps_stale()                                             # scan stopped / GPS feed ended
+    assert w._location_marker.brush().color().name() == "#6e7681"   # stale -> grey
+    w.set_my_location(48.0, 11.0)                                   # a fresh fix
+    assert w._location_marker.brush().color().name() == "#22d3ee"   # live again
     w.set_geojson({"type": "FeatureCollection", "features": []})
     w.reset_view()                                          # ...nor on an empty scene
 
