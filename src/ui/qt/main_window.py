@@ -62,6 +62,7 @@ from src.ui.qt.software_tab import SoftwareTab
 from src.ui.qt.targets_tab import TargetsTab
 from src.ui.qt.theme import apply_theme
 from src.ui.qt.wardrive_tab import WardriveTab
+from src.ui.qt.icons import label_icon
 from src.ui.qt.widgets.cc_icon import create_cc_icon
 from src.ui.qt.widgets.cc_logo import CCLogo
 from src.ui.qt.widgets.command_palette import CommandPalette
@@ -485,9 +486,9 @@ class CyberControllerWindow(QMainWindow):
         self._flash_tab = FlashTab(self._dm, self._fe, self._vault)
         self._software_tab = SoftwareTab()
         self._flash_surface = QTabWidget()
-        self._flash_surface.addTab(self._flash_tab, "Firmware")
-        self._flash_surface.addTab(self._software_tab, "Software OS")
-        self._tabs.addTab(self._flash_surface, "Flash")
+        self._flash_surface.addTab(self._flash_tab, label_icon("Firmware"), "Firmware")
+        self._flash_surface.addTab(self._software_tab, label_icon("Software OS"), "Software OS")
+        self._tabs.addTab(self._flash_surface, label_icon("Flash"), "Flash")
 
         # Connect surface (S4 GUI regroup) — the landing surface: Devices (device control + serial terminal)
         # leads, with Health (host + device-health gauges) alongside it. Both are RE-PARENTED into one inner
@@ -497,12 +498,12 @@ class CyberControllerWindow(QMainWindow):
         self._device_tab._dms_auth = self._dms_auth
         self._health_tab = HealthTab(self._health)
         self._connect_surface = QTabWidget()
-        self._connect_surface.addTab(self._device_tab, "Devices")
-        self._connect_surface.addTab(self._health_tab, "Health")
+        self._connect_surface.addTab(self._device_tab, label_icon("Devices"), "Devices")
+        self._connect_surface.addTab(self._health_tab, label_icon("Health"), "Health")
         # Wireless nodes (W1.1): manage provisioned per-node keys — gate-locked + key-free.
         self._nodes_tab = NodesTab(self._dm)
-        self._connect_surface.addTab(self._nodes_tab, "Nodes")
-        self._tabs.addTab(self._connect_surface, "Connect")
+        self._connect_surface.addTab(self._nodes_tab, label_icon("Nodes"), "Nodes")
+        self._tabs.addTab(self._connect_surface, label_icon("Connect"), "Connect")
 
         # Operate surface (S4 GUI regroup) — the action surface: discover Targets, fan a verb to every radio
         # (Broadcast), record/replay Macros, and GPS-log (Wardrive). All four are RE-PARENTED into one inner
@@ -520,18 +521,18 @@ class CyberControllerWindow(QMainWindow):
         from src.ui.qt.broadcast_tab import BroadcastBar
         self._broadcast_bar = BroadcastBar(self._broadcast, self._dm, self._bus)
         self._operate_surface = QTabWidget()
-        self._operate_surface.addTab(self._targets_tab, "Targets")
-        self._operate_surface.addTab(self._broadcast_bar, "Broadcast")
-        self._operate_surface.addTab(self._macro_tab, "Macros")
-        self._operate_surface.addTab(self._wardrive_tab, "Wardrive")
+        self._operate_surface.addTab(self._targets_tab, label_icon("Targets"), "Targets")
+        self._operate_surface.addTab(self._broadcast_bar, label_icon("Broadcast"), "Broadcast")
+        self._operate_surface.addTab(self._macro_tab, label_icon("Macros"), "Macros")
+        self._operate_surface.addTab(self._wardrive_tab, label_icon("Wardrive"), "Wardrive")
         from src.ui.qt.wardrive_multi_tab import WardriveMultiTab
         self._wardrive_multi_tab = WardriveMultiTab(device_manager=self._dm)  # F1: concurrent multi-board capture
-        self._operate_surface.addTab(self._wardrive_multi_tab, "Multi-Wardrive")
+        self._operate_surface.addTab(self._wardrive_multi_tab, label_icon("Multi-Wardrive"), "Multi-Wardrive")
         # FL F5: the located-ALPR-camera map is a real sub-tab now (it was a standalone Tools window with no
         # tab lifecycle). It sits next to Wardrive since both are GPS-tagged field-survey views.
         self._flock_heatmap = FlockHeatmapTab()
-        self._operate_surface.addTab(self._flock_heatmap, "Flock Map")
-        self._tabs.addTab(self._operate_surface, "Operate")
+        self._operate_surface.addTab(self._flock_heatmap, label_icon("Flock Map"), "Flock Map")
+        self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its
         # MAC/SSID/channel into the Macro tab's variable fields, so a discovery in one surface is
@@ -548,9 +549,9 @@ class CyberControllerWindow(QMainWindow):
         from src.ui.qt.network_tab import NetworkTab
         self._network_tab = NetworkTab(self._dm, self._pool, self._action_resolver, self._send_to_port)
         self._network_surface = QTabWidget()
-        self._network_surface.addTab(self._network_tab, "Graph")
-        self._network_surface.addTab(self._cross_comm_tab, "Cross-Comm")
-        self._tabs.addTab(self._network_surface, "Network")
+        self._network_surface.addTab(self._network_tab, label_icon("Graph"), "Graph")
+        self._network_surface.addTab(self._cross_comm_tab, label_icon("Cross-Comm"), "Cross-Comm")
+        self._tabs.addTab(self._network_surface, label_icon("Network"), "Network")
 
         # (Mission Planner tab removed — was a non-functional "coming soon" placeholder; tracked as a
         # real future feature in the internal roadmap notes. Don't ship dead tabs.)
@@ -559,7 +560,7 @@ class CyberControllerWindow(QMainWindow):
         self._settings_tab = SettingsTab()
         # The Settings tab's "Check now" button asks the window to run a manual (forced) update check.
         self._settings_tab.check_updates_requested.connect(lambda: self.check_for_updates(force=True))
-        self._tabs.addTab(self._settings_tab, "Settings")
+        self._tabs.addTab(self._settings_tab, label_icon("Settings"), "Settings")
 
         # How-To lives under the Help menu (see _on_howto), not the tab strip — keeps the top level at the
         # 5 working surfaces (Flash / Connect / Operate / Network / Settings) + Help.
@@ -628,7 +629,7 @@ class CyberControllerWindow(QMainWindow):
         for label in visible:
             w = reg.get(label)
             if w is not None and w not in popouts and self._tabs.indexOf(w) < 0:
-                self._tabs.addTab(w, label)
+                self._tabs.addTab(w, label_icon(label), label)   # keep the icon when a tab is restored
         # Restore the selection, or fall back to the Connect surface (a core surface, always present).
         if cur is not None and self._tabs.indexOf(cur) >= 0:
             self._tabs.setCurrentWidget(cur)

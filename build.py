@@ -166,6 +166,10 @@ def _build() -> int:
         "--hidden-import", "PyQt5.QtCore",
         "--hidden-import", "PyQt5.QtGui",
         "--hidden-import", "PyQt5.QtWidgets",
+        # QtSvg: the tab/window icons load from assets/icons/*.svg via QSvgRenderer (src/ui/qt/icons.py).
+        # Without this the module + its qsvg icon-engine plugin can be dropped from the frozen build and the
+        # icons render blank. Assets themselves already ship via --add-data assets above.
+        "--hidden-import", "PyQt5.QtSvg",
         # Tkinter (lightweight GUI)
         "--hidden-import", "tkinter",
         "--hidden-import", "tkinter.ttk",

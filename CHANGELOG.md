@@ -8,6 +8,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Added
+- **Tab icons across the whole app.** Every tab now carries its LxveLabs monochrome icon (Connect, Operate, Network,
+  Flash, Firmware, Devices, Flock Map, Wardrive, and the rest), tinted to the violet accent. The icons are the SVG set
+  already in the repo, loaded through a small `currentColor`-aware helper so a single set themes correctly and a popped-
+  out-then-restored tab keeps its icon. A missing icon file degrades to a text-only tab rather than crashing.
 - **The Flock camera heatmap is now a traversable map with a world basemap.** The map used to fit every camera into a
   fixed frame with no way to move around it. You can now **drag to pan and scroll to zoom** (zoom anchors under the
   cursor, like a slippy map), and a **Reset view** button re-frames all cameras after you've explored. A new **World
