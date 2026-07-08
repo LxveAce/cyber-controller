@@ -28,13 +28,17 @@
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
-**Status:** **v1.6.3** is the latest release — a **LxveLabs** project by LxveAce. Since 1.5.1 it adds three
-convergent adversarial security reviews (1.6.1 / 1.6.2 / 1.6.3, ~41 findings fixed and all closed: a
-fail-closed access gate on corrupt configs, a local-only duress-wipe counter, vendored same-origin web assets,
-an engine-layer per-port flash guard, and pinned OS-signature verification), the wireless **Nodes** groundwork
+**Status:** **v1.6.4** is the latest release — a **LxveLabs** project by LxveAce. It follows the three
+convergent adversarial security reviews (1.6.1 / 1.6.2 / 1.6.3, all closed) with a six-round exhaustive debug
+and hardening pass over the whole tool, one failure class per round: correctness, silent failures, concurrency
+and resource handling, security, integration wiring, and the flash/serial path (each fix guarded by a test). It
+also lands a hardware-validated CYD fix — connecting no longer blanks the screen and the CH340K is recognized —
+and folds every Flock capture into one findable data folder. The reviews it builds on delivered a fail-closed
+access gate on corrupt configs, a local-only duress-wipe counter, vendored same-origin web assets, an
+engine-layer per-port flash guard, and pinned OS-signature verification, plus the wireless **Nodes** groundwork
 (AES-256-GCM framing + anti-replay), a **Flock / ALPR** awareness map, and M5Stick / M5Cardputer / CYD flashing
-+ autodetect fixes. It builds on 1.5.x's security-hardening + reliability passes (each fix guarded by a test,
-31 firmware profiles across five flash backends, the violet identity across all four UIs).
++ autodetect fixes. It sits on 1.5.x's security-hardening + reliability passes (31 firmware profiles across five
+flash backends, the violet identity across all four UIs).
 
 That builds on v1.4.0, which added smart, version-aware startup. On launch the app checks its config against
 the running version. An upgrade is carried forward silently; a downgrade or overwrite prompts you to

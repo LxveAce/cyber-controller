@@ -5,6 +5,137 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.4] — 2026-07-07
+
+A six-round exhaustive adversarial debug and hardening pass on top of the 1.6.1–1.6.3 security reviews. Where
+those reviews swept the security surface, these rounds went over the whole tool one failure class at a time —
+round 1 correctness, round 2 silent failures, round 3 concurrency and resource handling, round 4 security,
+round 5 integration wiring, round 6 the flash/serial path — and folded in a hardware-validated CYD connect fix
+and a single canonical Flock data folder. Every fix is guarded by a test. No firmware changes; no breaking
+changes to profiles or the CLI.
+
+### Security
+- **Changing the admin password no longer locks you out of the vault.** A password change committed the new
+  gate verifier without re-keying the encrypted vault's `password` keyslot, so the new password passed the gate
+  but could no longer unwrap the vault — a permanent, silent lockout. The vault is now re-keyed first (with the
+  physical key or the current password) and the gate password is committed only if that succeeds; if the vault
+  can't be unlocked, nothing changes. Fixed in both the CLI (`--set-admin-password`) and the Qt gate dialog.
+- **No AES-256-GCM nonce reuse on a shared node link.** `NodeLink` sealed and wrote outbound frames without a
+  lock, so two threads writing the same link could seal under the identical (epoch, counter) and reuse a GCM
+  nonce. Seal-and-write is now serialized per link.
+- **A duress wipe only reports success when the secrets are actually gone.** `trigger_duress_wipe()` returned
+  True if it merely *attempted* a wipe; a file held open or read-only was silently skipped while the owner was
+  told their secrets were destroyed. It now verifies each target is gone and reports failure otherwise.
+- **Serial writes no longer echo secrets to the log.** `SerialConnection.write` — the single funnel for every
+  outbound command, including the Dead Man's Switch unlock password — logged the raw text at DEBUG and could
+  persist that password to any `--log-file`. It now logs only a byte count.
+- **Spreadsheet formula injection blocked in the wardrive export.** A Wi-Fi SSID beginning with `=` / `+` /
+  `-` / `@` (attacker-chosen) was written verbatim to the WiGLE CSV and would execute on open in Excel or Calc.
+  Leading formula triggers are now neutralized.
+- **The admin password is redacted from the adb command echo.** `--admin-password <value>` was printed to the
+  on-screen log the UI can export. The value is now masked.
+- **The audit trail is owner-only on POSIX too.** The persisted trail (web auth usernames, flash/connect/serial
+  records) was created world-readable off Windows, where the NTFS ACL is a no-op. It is now `0600` from the
+  first byte.
+- **A rogue board can't forge terminal markup.** Device serial output was appended to the Qt terminals as rich
+  text, so a board emitting `<span>` or `<b>` could spoof output — including a fake green `[DMS] Authenticated`
+  banner. Device lines are now escaped everywhere they're shown.
+- **The experimental Network tab's attack actions now clear the safety gate.** Deauth / Beacon Clone / Karma
+  actions fired with no confirmation, bypassing the arm gate the rest of the app enforces. They now go through
+  the same danger classifier and confirmation.
+- **OS and Tails metadata fetches re-validate every redirect hop.** A 302 could bounce a metadata fetch off the
+  host allowlist and let an attacker-chosen endpoint serve the SHA-256 the flow trusts. Redirects are now
+  followed manually and re-checked against the allowlist (SSRF), matching the download paths.
+- **The offensive-macro arm gate catches HaleHound's attack verbs.** Underscore-joined commands (`wifi_deauth`,
+  `ble_cinder`, `subghz_replay`, `mousejack`, `protokill`, `tag_disrupt`) slipped past the prefix list and
+  played without the arm prompt. They're now covered.
+- **The offline vault refuses to cache firmware it would flash wrong.** App-only, multi-file-offset firmware
+  (Marauder, ESP32-DIV) needs a boot chain at per-file offsets the vault can't store; caching it would let an
+  offline flash write an app image at 0x0 with no boot chain and brick the board. That firmware is now refused
+  for caching (fail closed).
+
+### Fixed
+- **Connecting to a CYD no longer blanks its screen.** On CYD panels without the auto-reset transistor pair
+  (2.8" 2-USB, Guition), opening the port with pyserial's default asserted DTR/RTS dropped the ESP32 into ROM
+  download mode the instant you connected — the firmware stopped and the display went dark until a power-cycle.
+  The port is now opened with DTR/RTS deasserted, on both the connect path and the enumeration probe, and the
+  **CH340K** (`1A86:7522`) on those newer boards is recognized as an ESP32/CYD instead of a generic USB device.
+  Hardware-validated.
+- **Flock scans now live in one place you can find.** The live-drive checkpoint, the Load dialog's start folder,
+  and a new **Open data folder** button all point at a single `~/.cyber-controller/flock` directory, so captures
+  stop scattering to wherever the OS last browsed.
+- **Firmware update checks stop crying "update available" forever.** A tag containing a character like `+` was
+  sanitized before caching but not before the "is it cached?" test, so a cached firmware was perpetually reported
+  as an available update. The comparison now sanitizes both sides.
+- **A successful RTL8720 write is no longer mislabeled a skipped no-op.** The SPI "unprotect" failure markers
+  were broad substrings that also matched the normal step name and the success word, so a good write reported as
+  skipped. The markers are now failure-specific.
+- **A missing-RSSI sighting can't hijack a mapped location.** Wardrive treated RSSI 0 (the parser's "no reading"
+  sentinel) as the strongest signal, letting a reading-less sighting overwrite a genuine strong one. Sentinel 0
+  now ranks below any real reading, in both the single- and multi-board sessions.
+- **ESP32-DIV deauth events capture the target MAC.** An optional trailing capture group let the lazy match
+  settle on empty, so the MAC was always `None`. A target-less deauth still registers; a targeted one now carries
+  the MAC.
+- **Auto-detect stops confusing Marauder with its siblings.** Marauder's fingerprint leaned on tokens GhostESP
+  and ESP32-DIV also print (`scanap`, `BSSID:`, `Deauth sent`), misidentifying them. It now keys only on
+  Marauder-specific tokens.
+- **Device View writes to GhostESP / ESP32-DIV again.** The skin-to-protocol map used the wrong names, so the
+  send silently refused. Corrected to the real protocol names.
+- **The Targets table sorts RSSI and Channel numerically** (1, 2, 10) instead of lexicographically ("1", "10",
+  "2").
+- **A requested erase that fails now fails the flash.** Both the batch flasher and the flash engine continued
+  after a skipped or failed `erase_first`, leaving stale NVS/SPIFFS behind under a "Flash complete". A failed
+  wipe now aborts the write.
+- **A stalled flasher or adb child can't hang the app.** `adb` and `rtltool` output is now drained on a side
+  thread so the wall-clock timeout fires even when a wedged child emits nothing and never exits — previously it
+  held the serial port until the next operation failed "port busy".
+- **Concurrent flashes of the same firmware can't corrupt the shared cache.** A second flash could truncate the
+  cache file mid-read of the first, flashing a corrupt/empty image while esptool still reported success.
+  Downloads are now serialized per path, written atomically, and reused.
+- **The audit chain survives concurrent writes.** Two threads appending at once could read the same predecessor
+  and mint two entries with an identical `prev_hash`, breaking the tamper-evident chain. `record()` is now
+  serialized.
+- **Node teardown persists a consistent replay cursor.** The link is now detached before its replay head is
+  read, so an epoch rotation mid-read can't persist a torn (epoch, highest) pair that spuriously rejects frames
+  after a restart.
+- **CYD detection reports "no response" instead of a false "bare ESP32".** A probe that produced no report block
+  was read as a confident bare-ESP32 result; it now surfaces as a distinct no-response outcome so the safeguard
+  isn't defeated.
+- **A failed Windows self-update surfaces instead of pretending it applied.** If the swap couldn't replace the
+  running binary, the helper now leaves the verified staged build in place, drops a breadcrumb the next launch
+  reports, and relaunches the old build. The swap script is also written in the console OEM code page, so an
+  accented Windows username no longer aborts the update after staging.
+- **The Health tab's Device Health table populates.** The monitor wasn't wired to the device lifecycle, so the
+  per-device table stayed permanently empty. It now registers and unregisters devices on connect/disconnect and
+  back-fills what's already attached.
+- **Macros recorded from the Devices tab and the Tk terminal capture their steps.** Neither send path notified
+  the recorder, so a recording made there captured nothing. Both now feed it. Tk macro playback also reports
+  completion and errors again (async playback had left the status reset and error dialog dead).
+- **Serial and flash baud settings are honored.** The Default Baud Rate (Settings ▸ Serial) and Flash Baud Rate
+  (Settings ▸ Flash) reached `settings.json` but no code read them, so lowering the baud for a marginal CH340K or
+  long-cable board did nothing. The Qt, Tk, and web connect/flash paths now use them, and inert Settings controls
+  with no consumer (connection timeout, flash mode, verify, auto-backup) were removed.
+- **Flash restores are byte-exact.** `restore_flash` wrote with `--flash_size detect`, which re-patched the
+  header byte on chips whose bootloader lives at 0x0 (S3 / C-series / H2) and tripped a spurious verify mismatch.
+  It now writes with `--flash_size keep`.
+- **A bad chip name is rejected loudly.** The Dead Man's Switch builder canonicalizes and validates the chip; an
+  unrecognized spelling of an S3/C3/C6/H2 part used to default silently to the classic 0x1000 bootloader offset
+  and soft-brick the board.
+- **The web Flash page accepts a plugged-in port.** A device present at server start was never hot-plug-
+  registered, so every port the page offered was rejected. The check now also accepts a live-scanned port.
+- **More wiring fixes:** a sidebar device pick now drives the Devices tab; Flock live-scan diagnostics (including
+  the busy/denied-port failures) show in a log pane instead of vanishing; the mode badge paints at launch; a
+  broadcast to mixed-firmware ports re-stamps each port's line terminator so a CR-only Flipper isn't sent an
+  ignored LF; the Tk auto-connect-on-detection toggle is consumed; F5 refresh and Ctrl+Tab tab traversal are
+  wired in the Tk UI; and RayHunter install fails instead of reporting success when a config/init push fails.
+
+### Added
+- **SD-card imaging for the Raspberry-Pi profiles** (Pwnagotchi / RaspyJack / Kali ARM) via `discover_sd_images`
+  / `flash_sd_image` — removable-target-only, read-back verified, and confirmation-gated (the whole drive is
+  erased). The serial Flash path only carries a port and can't drive this; these methods do.
+- **A 28-icon monochrome UI set** (`currentColor` line-art SVGs, generated) plus the LxveLabs contact rebrand
+  (Discord + Proton). Internal/branding only.
+
 ## [1.6.3] — 2026-07-06
 
 Four more adversarial review passes after 1.6.2 (six in total), each verifying the last. They closed a few
