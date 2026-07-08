@@ -413,6 +413,27 @@ class WardriveTab(QWidget):
         self._btn_start.setEnabled(True)
         self._btn_stop.setEnabled(False)
 
+    def shutdown(self) -> None:
+        """Stop an in-progress capture on app teardown.
+
+        A tab is a child widget, so it never gets its own closeEvent when the main window closes — without
+        this the firmware is left scanning (the STOP verb is never sent), the owner-aware port release is
+        skipped, and the WiGLE CSV isn't flushed/closed cleanly. The main window calls this from its
+        closeEvent, alongside the other worker-owning tabs.
+        """
+        if self._btn_stop.isEnabled():   # a capture is active
+            try:
+                self._on_stop()          # worker.stop(): firmware STOP verb + owner-aware port release + CSV close
+            except Exception:            # noqa: BLE001 — teardown must never raise
+                pass
+        # The _dm-less fallback worker is a QThread; join it so it isn't destroyed mid-run on exit.
+        w = getattr(self, "_worker", None)
+        try:
+            if w is not None and hasattr(w, "isRunning") and w.isRunning():
+                w.wait(3000)
+        except RuntimeError:
+            pass
+
     def _logmsg(self, msg: str) -> None:
         self._log.appendPlainText(msg)
         log.info("WardriveTab: %s", msg)

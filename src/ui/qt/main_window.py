@@ -1932,8 +1932,10 @@ class CyberControllerWindow(QMainWindow):
                 pass
         # SoftwareTab (OS-flash / resolve) and FlockHeatmapTab (live scan) own their own unparented worker
         # QThreads too, and don't route through the DeviceManager — join them the same way so nothing is
-        # destroyed mid-run (a cut-off USB write / leaked serial ports) on exit.
-        for _tab_attr in ("_software_tab", "_flock_heatmap"):
+        # destroyed mid-run (a cut-off USB write / leaked serial ports) on exit. The Wardrive tabs DO route
+        # through the DeviceManager, but dm.shutdown() only force-closes ports — it never sends the firmware
+        # STOP verb, so join their shutdown() here too or an ESP32 is left scanning after the GUI is gone.
+        for _tab_attr in ("_software_tab", "_flock_heatmap", "_wardrive_tab", "_wardrive_multi_tab"):
             _tab = getattr(self, _tab_attr, None)
             _shutdown = getattr(_tab, "shutdown", None)
             if callable(_shutdown):

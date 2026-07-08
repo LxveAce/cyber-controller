@@ -233,3 +233,15 @@ class WardriveMultiTab(QWidget):
     def _tick(self) -> None:
         if self._controller is not None:
             self._apply_snapshot(self._controller.snapshot())
+
+    def shutdown(self) -> None:
+        """Stop an in-progress multi-board capture on app teardown (see WardriveTab.shutdown).
+
+        Without it, the firmware on every ticked board is left scanning (no STOP verb) and the shared WiGLE
+        CSV isn't closed on exit. Called by the main window's closeEvent.
+        """
+        if self._btn_stop.isEnabled():   # a capture is active
+            try:
+                self._on_stop()          # controller.stop() (STOP verb per board) + CSV close
+            except Exception:            # noqa: BLE001 — teardown must never raise
+                pass

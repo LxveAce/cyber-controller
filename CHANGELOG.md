@@ -27,6 +27,10 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   stayed clickable and the batch guard never checked the single-flash worker — so starting a batch mid-flash
   launched a second, concurrent esptool run. Both flash buttons are now disabled for the duration of any flash,
   and each flash path refuses to start while the other is running.
+- **Quitting mid-wardrive now stops the scan instead of leaving the board scanning.** On exit, the Wardrive and
+  Multi-Board Wardrive tabs weren't shut down, so the ESP32 kept scanning, its serial ports weren't released
+  cleanly, and the WiGLE CSV wasn't closed. They now stop the capture — sending the firmware's stop command —
+  when the app closes.
 
 ## [1.6.4] — 2026-07-07
 
