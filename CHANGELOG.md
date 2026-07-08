@@ -13,6 +13,9 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   ESP-IDF release flashed at the offsets the upstream README documents — bootloader @0x1000, partition-table @0x8000,
   app @0x10000 — with all three assets SHA-256-pinned from the v1.0 release. Deauth capability is labelled/gated by the
   safety layer and never operated by the app; authorized testing only. **32 firmware profiles** now ship.
+  **Hardware-validated** on a real 4 MB ESP32 (COM19): backed up → flashed the 3 files → booted cleanly (the firmware's
+  `ManagementAP` + web server came up, no bootloop) → restored the original image (esptool write-verified; a byte diff of
+  the read-back showed only the single NVS/RF-calibration sector the restored firmware rewrites on boot, app untouched).
 
 ### Fixed
 - **HaleHound's OTA update image is no longer offered as a full flash.** The profile matched every `.bin` release
