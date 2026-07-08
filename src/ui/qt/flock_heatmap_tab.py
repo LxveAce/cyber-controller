@@ -93,6 +93,19 @@ def zoom_step(angle_delta: int, base: float = 1.2) -> float:
     return base ** (angle_delta / 120.0)
 
 
+# The full web-mercator world [0,1]^2 mapped to a fixed pixel square, so every layer — the cameras now,
+# the world basemap next — lives in ONE shared coordinate space that stays aligned at any pan/zoom. The
+# constant is Earth's equatorial circumference in metres, so scene units are ~metres near the equator.
+_WORLD_PX = 40_075_016.0
+
+
+def world_px(lat: float, lon: float, world: float = _WORLD_PX) -> Tuple[float, float]:
+    """Project (lat, lon) into the shared global-mercator pixel plane [0, world]. Pure + Qt-free — the
+    single projection both the camera layer and (Phase B) the world basemap are placed through."""
+    x, y = web_mercator(lat, lon)
+    return x * world, y * world
+
+
 def _valid_point(feature: Any) -> bool:
     try:
         if not isinstance(feature, dict):
@@ -360,25 +373,39 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self._scene.setSceneRect(0, 0, _CANVAS_W, _CANVAS_H)
                 self._legend.setText("No detections loaded. Blue = few sightings · red = many.")
                 return
-            pts = [(f["geometry"]["coordinates"][1], f["geometry"]["coordinates"][0]) for f in self._features]
-            fit = MercatorFit(pts, _CANVAS_W, _CANVAS_H)
             counts = [_as_count(f.get("properties")) for f in self._features]
             maxc = max(counts)
+            # Project every camera into the ONE shared global-mercator plane (world_px), so the (Phase B)
+            # world basemap will align with these dots at every zoom. Then find the set's extent.
+            proj: "List[Tuple[float, float, float]]" = []
             for feat, c in zip(self._features, counts):
-                lat = feat["geometry"]["coordinates"][1]
                 lon = feat["geometry"]["coordinates"][0]
-                x, y = fit.to_pixel(lat, lon)
+                lat = feat["geometry"]["coordinates"][1]
+                x, y = world_px(lat, lon)
                 t = (c - 1) / (maxc - 1) if maxc > 1 else 0.0     # normalized density
+                proj.append((x, y, t))
+            xs = [p[0] for p in proj]
+            ys = [p[1] for p in proj]
+            spanx, spany = max(xs) - min(xs), max(ys) - min(ys)
+            span = max(spanx, spany, 1.0)                          # floor avoids a zero-size dot/rect
+            # Position is absolute (world_px); the dot RADIUS scales with the set's extent so cameras stay
+            # visible whether the scan spans a city block or a continent. Hotter -> larger.
+            for x, y, t in proj:
                 r8, g8, b8 = heat_color(t)
-                radius = 6.0 + 12.0 * t                            # hotter -> larger dot
+                radius = span * (0.010 + 0.014 * t)
                 item = self._scene.addEllipse(
                     x - radius, y - radius, 2 * radius, 2 * radius,
                     QPen(Qt.NoPen), QBrush(QColor(r8, g8, b8)))
                 item.setOpacity(0.65)                              # semi-transparent -> overlaps accumulate
                 self._camera_items.append(item)
-            self._scene.setSceneRect(0, 0, _CANVAS_W, _CANVAS_H)
+            # Scene rect = the cameras' extent + breathing room + the max dot radius, so pan/zoom and
+            # fitInView (reset_view) have room and edge dots aren't clipped.
+            margin = span * (0.05 + 0.024)
+            self._scene.setSceneRect(min(xs) - margin, min(ys) - margin,
+                                     spanx + 2 * margin, spany + 2 * margin)
             self._legend.setText(
-                f"{len(self._features)} camera(s) · blue = few sightings · red = many (up to {maxc}).")
+                f"{len(self._features)} camera(s) · blue = few sightings · red = many (up to {maxc}). "
+                f"Drag to pan · scroll to zoom.")
 
         def reset_view(self) -> None:
             """Re-frame all cameras: drop any pan/zoom and fit the whole set into the view. Safe on an

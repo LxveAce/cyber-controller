@@ -11,7 +11,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
-from src.ui.qt.flock_heatmap_tab import MercatorFit, heat_color, web_mercator, zoom_step
+from src.ui.qt.flock_heatmap_tab import MercatorFit, heat_color, web_mercator, world_px, zoom_step
 
 # ── pure projection core (no Qt) ─────────────────────────────────────
 
@@ -56,6 +56,20 @@ def test_heat_color_ramp():
     assert heat_color(0.0)[0] < heat_color(1.0)[0]           # red rises with density
     assert heat_color(-5) == heat_color(0.0)                 # clamped
     assert heat_color(9) == heat_color(1.0)
+
+
+def test_world_px_shared_global_plane():
+    W = 1000.0
+    assert world_px(0.0, 0.0, W) == (500.0, 500.0)           # equator/prime-meridian -> center of the plane
+    assert abs(world_px(0.0, 180.0, W)[0] - 1000.0) < 1e-9   # antimeridian east -> x = world
+    assert abs(world_px(0.0, -180.0, W)[0] - 0.0) < 1e-9     # west -> x = 0
+    assert world_px(45.0, 0.0, W)[1] < 500.0                 # north -> smaller y (screen-up)
+    assert world_px(-45.0, 0.0, W)[1] > 500.0                # south -> larger y
+    # same lat -> same y; more-east -> larger x  (a real map plane, not a per-camera fit)
+    assert world_px(10.0, 20.0, W)[1] == pytest.approx(world_px(10.0, 60.0, W)[1])
+    assert world_px(10.0, 20.0, W)[0] < world_px(10.0, 60.0, W)[0]
+    # default world scale is Earth's equatorial circumference in metres (scene units ~= metres)
+    assert world_px(0.0, 0.0)[0] == pytest.approx(40_075_016.0 / 2)
 
 
 def test_zoom_step_notches():
