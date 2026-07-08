@@ -16,6 +16,7 @@ Pipeline (mirrors the Marauder/Biscuit flow):
 
 from __future__ import annotations
 
+import os
 import re
 import time
 from dataclasses import dataclass, field
@@ -454,3 +455,75 @@ def scan_commands_for(firmware: str) -> ScanCommands:
     if stop_cap is not None:
         stop = stop_cap[1]
     return ScanCommands(start, stop, line_ending)
+
+
+# ── wardrive run summary ─────────────────────────────────────────────
+
+def summarize_wigle_csv(text: str) -> dict:
+    """Summarize a WiGLE CSV (as written by :class:`WardriveSession`) into headline stats: network count,
+    open/WPA/WEP mix, 2.4 vs 5 GHz split, GPS-fix coverage, RSSI range and the busiest channels.
+
+    Pure + unit-tested. Tolerant: the ``WigleWifi`` pre-header, the column header, and any short/garbled data
+    row are skipped (only rows whose first field is a real MAC count), so a partial or hand-edited CSV can't
+    crash it. The RSSI 0 sentinel (a missing reading) is excluded from the strongest/weakest range.
+    """
+    import csv
+    import io
+    from collections import Counter
+
+    summary: dict = {
+        "networks": 0, "open": 0, "wpa": 0, "wep": 0,
+        "band_24ghz": 0, "band_5ghz": 0, "with_gps": 0,
+        "top_channels": [], "rssi_strongest": None, "rssi_weakest": None,
+    }
+    channels: "Counter[int]" = Counter()
+    rssis = []
+    for row in csv.reader(io.StringIO(text)):
+        if len(row) < 14 or not _MAC_RE.fullmatch(row[0].strip()):
+            continue  # skips the pre-header (too few cols), the "MAC,..." header, and non-data rows
+        summary["networks"] += 1
+        auth = row[2].upper()
+        if "WEP" in auth:
+            summary["wep"] += 1
+        elif "WPA" in auth:
+            summary["wpa"] += 1
+        else:
+            summary["open"] += 1
+        try:
+            ch = int(row[4])
+        except ValueError:
+            ch = 0
+        if ch:
+            channels[ch] += 1
+            summary["band_24ghz" if ch <= 14 else "band_5ghz"] += 1
+        try:
+            rssi = int(row[6])
+            if rssi != 0:
+                rssis.append(rssi)
+        except ValueError:
+            pass
+        if row[7].strip():   # a latitude present -> this network was logged with a GPS fix
+            summary["with_gps"] += 1
+    summary["top_channels"] = channels.most_common(5)
+    if rssis:
+        summary["rssi_strongest"], summary["rssi_weakest"] = max(rssis), min(rssis)
+    return summary
+
+
+def wardrive_summary_cli(csv_path: str) -> int:
+    """CLI for ``--wardrive-summary``: print headline stats for a WiGLE CSV, then exit (0 on success, 1 if
+    the file is missing). Read-only, ASCII-only output for console safety."""
+    if not os.path.isfile(csv_path):
+        print(f"[wardrive] no such file: {csv_path}")
+        return 1
+    with open(csv_path, "r", encoding="utf-8", errors="replace") as f:
+        s = summarize_wigle_csv(f.read())
+    print(f"[wardrive] {csv_path}")
+    print(f"  networks: {s['networks']}  (open {s['open']} / WPA {s['wpa']} / WEP {s['wep']})")
+    print(f"  band: 2.4GHz {s['band_24ghz']} / 5GHz {s['band_5ghz']}")
+    print(f"  logged with a GPS fix: {s['with_gps']}")
+    if s["rssi_strongest"] is not None:
+        print(f"  RSSI: strongest {s['rssi_strongest']} dBm / weakest {s['rssi_weakest']} dBm")
+    if s["top_channels"]:
+        print("  busiest channels: " + ", ".join(f"ch{ch} x{n}" for ch, n in s["top_channels"]))
+    return 0

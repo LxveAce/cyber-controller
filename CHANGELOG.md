@@ -8,6 +8,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Added
+- **Summarize a wardrive capture from the command line.** `cyber-controller --wardrive-summary <wigle.csv>` reads a WiGLE
+  CSV and prints the headline stats — how many networks, the open/WPA/WEP split, the 2.4 vs 5 GHz mix, how many were
+  logged with a GPS fix, the strongest/weakest signal, and the busiest channels — so you can see what a drive collected
+  without loading it into another tool. Tolerant of a partial or hand-edited CSV.
 - **List your firmware backups from the command line.** `cyber-controller --list-backups [DIR]` prints the backups in a
   folder (the default backups folder, or any `DIR` you point it at) with the chip, size, date, and recorded SHA-256 read
   from each `.meta` sidecar — flagging any whose flash size was only assumed. Pairs with `--verify-backup` so you can

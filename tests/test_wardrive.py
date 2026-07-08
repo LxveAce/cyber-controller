@@ -216,3 +216,56 @@ def test_multiline_scanall_dedup_keeps_strongest_rssi():
         s.observe(ln, now="2026-06-27 00:00:02")
     assert s.seen["aa:bb:cc:dd:ee:ab"] == -30
     assert s.ap_count == 1                                    # still one unique AP across all sightings
+
+
+# ── wardrive run summary ─────────────────────────────────────────────
+
+_SUMMARY_CSV = (
+    "WigleWifi-1.6,appRelease=1.0,model=CyberController,release=1.0,device=cyber-controller,"
+    "display=,board=,brand=LxveAce,star=Sol,body=3,subBody=0\n"
+    + wd.WIGLE_HEADER + "\n"
+    "AA:BB:CC:DD:EE:01,Open1,[ESS],2026-06-27 00:00:00,6,2437,-40,48.1,11.5,0.0,0,,,WIFI\n"
+    "AA:BB:CC:DD:EE:02,Secure2,[WPA2-PSK-CCMP][ESS],2026-06-27 00:00:01,6,2437,-55,48.1,11.5,0.0,0,,,WIFI\n"
+    "AA:BB:CC:DD:EE:03,Weak3,[WEP][ESS],2026-06-27 00:00:02,11,2462,-70,,,0.0,0,,,WIFI\n"
+    "AA:BB:CC:DD:EE:04,Fast4,[WPA2][ESS],2026-06-27 00:00:03,36,5180,-60,48.2,11.6,0.0,0,,,WIFI\n"
+)
+
+
+def test_summarize_wigle_csv():
+    s = wd.summarize_wigle_csv(_SUMMARY_CSV)
+    assert s["networks"] == 4
+    assert s["open"] == 1 and s["wpa"] == 2 and s["wep"] == 1
+    assert s["band_24ghz"] == 3 and s["band_5ghz"] == 1        # ch 6,6,11 vs ch 36
+    assert s["with_gps"] == 3                                  # the WEP row had no lat/lon
+    assert s["rssi_strongest"] == -40 and s["rssi_weakest"] == -70
+    assert s["top_channels"][0] == (6, 2)                      # channel 6 is busiest
+
+
+def test_summarize_wigle_csv_header_only_and_empty():
+    s = wd.summarize_wigle_csv("WigleWifi-1.6,x\n" + wd.WIGLE_HEADER + "\n")
+    assert s["networks"] == 0 and s["top_channels"] == [] and s["rssi_strongest"] is None
+    assert wd.summarize_wigle_csv("")["networks"] == 0        # totally empty must not crash
+
+
+def test_summarize_wigle_csv_skips_garbled_rows():
+    text = (
+        wd.WIGLE_HEADER + "\n"
+        "not,enough,cols\n"                                            # too few columns -> skipped
+        "NOTAMAC,x,[ESS],t,6,2437,-40,48.1,11.5,0.0,0,,,WIFI\n"        # first field isn't a MAC -> skipped
+        "AA:BB:CC:DD:EE:09,Ok,[ESS],t,6,2437,BADRSSI,48.1,11.5,0.0,0,,,WIFI\n"  # real row, unparseable RSSI
+    )
+    s = wd.summarize_wigle_csv(text)
+    assert s["networks"] == 1                # only the real-MAC row counts
+    assert s["rssi_strongest"] is None       # its RSSI didn't parse -> no range, but the row still counts
+    assert s["with_gps"] == 1
+
+
+def test_wardrive_summary_cli(tmp_path, capsys):
+    p = tmp_path / "w.csv"
+    p.write_text(_SUMMARY_CSV, encoding="utf-8")
+    assert wd.wardrive_summary_cli(str(p)) == 0
+    out = capsys.readouterr().out
+    assert "networks: 4" in out and "open 1" in out and "ch6 x2" in out
+
+    assert wd.wardrive_summary_cli(str(tmp_path / "nope.csv")) == 1
+    assert "no such file" in capsys.readouterr().out
