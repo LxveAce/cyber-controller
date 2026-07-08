@@ -8,6 +8,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Added
+- **Backups now save a self-documenting sidecar.** Each flash backup writes a small `<backup>.meta` next to the `.bin`
+  recording the chip, port, flash size (and whether that size was actually *detected* or a 4 MB guess), a SHA-256, and a
+  timestamp. So a backup is no longer an opaque blob you can't identify weeks later, and a restore/listing flow can read
+  the chip and warn you when an image may be truncated — instead of re-detecting or restoring blind. The sidecar is
+  best-effort: if it can't be written, the backup itself still succeeds.
 - **Tab icons across the whole app.** Every tab now carries its LxveLabs monochrome icon (Connect, Operate, Network,
   Flash, Firmware, Devices, Flock Map, Wardrive, and the rest), tinted to the violet accent. The icons are the SVG set
   already in the repo, loaded through a small `currentColor`-aware helper so a single set themes correctly and a popped-

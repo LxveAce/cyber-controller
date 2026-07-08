@@ -25,6 +25,7 @@ import re
 import shutil
 import string
 import threading
+import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from enum import Enum
@@ -1096,6 +1097,12 @@ class FlashEngine:
                 )
                 rc = flash_core._run_stream(argv, on_line)
                 ok = rc == 0
+                if ok:
+                    # Drop a self-documenting sidecar next to the .bin so the image isn't an opaque blob:
+                    # it records the chip, the flash size (and whether that was DETECTED or a 4 MB guess),
+                    # and a SHA-256 — enough for a listing/restore flow to identify and safely reuse it.
+                    self._write_backup_meta(str(output_path), chip=chip, port=port,
+                                            flash_size=size, size_detected=size_detected, on_line=on_line)
                 if progress_callback:
                     if ok and not size_detected:
                         progress_callback(100, "Backup complete — ⚠ flash size not detected (assumed 4 MB, "
@@ -1144,6 +1151,26 @@ class FlashEngine:
                 "LARGER than 4 MB, this backup will be TRUNCATED and cannot fully restore it. Re-run once "
                 "the board answers flash_id, or pass an explicit size.")
         return "0x400000", False
+
+    @staticmethod
+    def _write_backup_meta(backup_path: str, *, chip: str, port: str, flash_size: str,
+                           size_detected: bool, on_line: Callable[[str], None]) -> None:
+        """Write a sidecar ``<backup>.meta`` describing the dump — chip, port, flash size, whether that
+        size was DETECTED (vs a 4 MB guess), a SHA-256, and a timestamp — in the same ``key=value`` format
+        :mod:`src.core.backup` reads, so a listing/restore flow can identify and safely reuse the image
+        (and warn when ``size_detected=False`` means it may be truncated). Best-effort: a sidecar failure
+        never fails the backup — the ``.bin`` is the artifact that matters."""
+        try:
+            sha = flash_core._sha256_file(backup_path)
+            with open(backup_path + ".meta", "w", encoding="utf-8") as f:
+                f.write(f"chip={chip}\n")
+                f.write(f"port={port}\n")
+                f.write(f"flash_size={flash_size}\n")
+                f.write(f"size_detected={size_detected}\n")
+                f.write(f"sha256={sha}\n")
+                f.write(f"timestamp={time.strftime('%Y%m%d_%H%M%S')}\n")
+        except Exception as exc:  # noqa: BLE001 — the backup already succeeded; a sidecar must not undo it
+            on_line(f"[backup] note: could not write metadata sidecar ({exc})")
 
     def erase(
         self,

@@ -79,3 +79,48 @@ def test_engine_backup_honors_explicit_size(monkeypatch, tmp_path):
     a = captured["argv"]
     i = a.index("read_flash")
     assert a[i + 2] == "0x200000"
+
+
+def test_engine_backup_writes_a_self_documenting_meta_sidecar(monkeypatch, tmp_path):
+    """A successful backup drops a <backup>.meta so the image isn't an opaque blob — chip, flash size,
+    whether the size was detected, and a SHA-256 — the same key=value format src.core.backup reads."""
+    monkeypatch.setattr(flash_core, "detect_chip", lambda port, on_line: "esp32s3")
+
+    def fake_run_stream(argv, on_line):
+        if "flash_id" in argv:
+            on_line("Detected flash size: 8MB")
+        if "read_flash" in argv:
+            with open(argv[-1], "wb") as f:   # a real file so the sha256 can be computed
+                f.write(b"\xff" * 2048)
+        return 0
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run_stream)
+    out = tmp_path / "bk.bin"
+    assert FlashEngine().backup("COM5", out)
+    meta = tmp_path / "bk.bin.meta"
+    assert meta.is_file(), "backup must write a .meta sidecar"
+    text = meta.read_text(encoding="utf-8")
+    assert "chip=esp32s3" in text
+    assert "port=COM5" in text
+    assert "flash_size=0x800000" in text
+    assert "size_detected=True" in text
+    assert "sha256=" in text and len([ln for ln in text.splitlines() if ln.startswith("sha256=")]) == 1
+
+
+def test_engine_backup_meta_flags_an_undetected_size(monkeypatch, tmp_path):
+    """When the flash size was a 4 MB GUESS, the sidecar records size_detected=False so a later restore
+    can warn that a >4 MB board's image may be truncated."""
+    monkeypatch.setattr(flash_core, "detect_chip", lambda port, on_line: "esp32")
+
+    def fake_run_stream(argv, on_line):
+        if "read_flash" in argv:
+            with open(argv[-1], "wb") as f:
+                f.write(b"\x00" * 512)
+        return 0  # flash_id emits nothing parseable -> size is a guess
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run_stream)
+    out = tmp_path / "bk2.bin"
+    assert FlashEngine().backup("COM5", out)
+    text = (tmp_path / "bk2.bin.meta").read_text(encoding="utf-8")
+    assert "size_detected=False" in text
+    assert "flash_size=0x400000" in text
