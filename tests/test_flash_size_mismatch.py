@@ -157,3 +157,57 @@ def test_declared_merged_size_none_for_multifile_and_missing():
     eng = FlashEngine()
     assert eng._declared_merged_size(flash_core.IMAGE_MULTI, __file__, "esp32") is None
     assert eng._declared_merged_size(flash_core.IMAGE_MERGED, "does_not_exist_xyz.bin", "esp32") is None
+
+
+import types  # noqa: E402
+
+
+def test_offline_vault_fallback_warns_on_size_mismatch(tmp_path, monkeypatch):
+    """The offline-vault fallback path (the 3rd merged-flash path) must ALSO warn on a size mismatch,
+    not report a clean 'Flash complete (offline vault)' on a board it will bootloop. (Found by the
+    flash bug-hunt: the shipped FLASH-MERGED-4MB fix had wired download + local_path but not this one.)"""
+    blob = tmp_path / "cached.bin"
+    blob.write_bytes(b"\xFF" * 0x1000 + bytes([0xE9, 0x02, 0x02, 0x4F]) + b"\x00" * 64)  # 16MB header
+
+    class FakeCustom:
+        image_model = flash_core.IMAGE_MERGED
+
+        def flash_local(self, port, chip, path, on_line, baud=115200, extra_args=None):
+            on_line("Detected flash size: 4MB")  # what esptool prints for this 4MB board
+            on_line("Hash of data verified.")
+            return 0
+
+    monkeypatch.setattr(flash_core, "get_profile", lambda k: FakeCustom())
+    eng = FlashEngine()
+    prof = types.SimpleNamespace(offline_fallback_path=str(blob), baud=115200)
+    lines: list[str] = []
+    progress: list[tuple[int, str]] = []
+    ret = eng._flash_offline_fallback("COM_TEST", "esp32", prof,
+                                      lines.append, lambda p, m: progress.append((p, m)), "offline")
+    assert ret is True  # the write itself succeeded
+    assert any("FLASH-SIZE MISMATCH" in ln for ln in lines)
+    # must NOT claim a clean offline-vault success on a board that will bootloop
+    assert not any(msg == "Flash complete (offline vault)" for _, msg in progress)
+    assert progress and "likely won't boot" in progress[-1][1]
+
+
+def test_offline_vault_fallback_clean_when_sizes_match(tmp_path, monkeypatch):
+    """A matching-size cached image still reports the normal offline-vault success (no false warning)."""
+    blob = tmp_path / "cached.bin"
+    blob.write_bytes(b"\xFF" * 0x1000 + bytes([0xE9, 0x02, 0x02, 0x2F]) + b"\x00" * 64)  # 4MB header
+
+    class FakeCustom:
+        image_model = flash_core.IMAGE_MERGED
+
+        def flash_local(self, port, chip, path, on_line, baud=115200, extra_args=None):
+            on_line("Detected flash size: 4MB")
+            return 0
+
+    monkeypatch.setattr(flash_core, "get_profile", lambda k: FakeCustom())
+    eng = FlashEngine()
+    prof = types.SimpleNamespace(offline_fallback_path=str(blob), baud=115200)
+    progress: list[tuple[int, str]] = []
+    ret = eng._flash_offline_fallback("COM_TEST", "esp32", prof,
+                                      lambda ln: None, lambda p, m: progress.append((p, m)), "offline")
+    assert ret is True
+    assert progress[-1] == (100, "Flash complete (offline vault)")

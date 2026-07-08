@@ -477,6 +477,7 @@ class FlashEngine:
         on_line: Callable[[str], None],
         progress: ProgressCallback | None,
         run: Callable[[Callable[[str], None]], int],
+        ok_msg: str = "Flash complete",
     ) -> bool:
         """FLASH-MERGED-4MB: run a merged-image flash (`run(capture) -> rc`) and, when the image's
         bootloader header demands MORE flash than the board has, warn honestly instead of reporting a
@@ -502,7 +503,7 @@ class FlashEngine:
                               f"{declared_mb}MB, board has {detected_mb[0]}MB")
             return True
         if progress:
-            progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
+            progress(100 if rc == 0 else 0, ok_msg if rc == 0 else "Flash failed")
         return rc == 0
 
     def _flash_offline_fallback(
@@ -526,11 +527,16 @@ class FlashEngine:
             return None
         on_line(f"[vault] {reason}; flashing cached firmware from the offline vault: {path}")
         custom = flash_core.get_profile("custom")
-        rc = custom.flash_local(port, chip, path, on_line, baud=profile.baud)
-        if progress:
-            progress(100 if rc == 0 else 0,
-                     "Flash complete (offline vault)" if rc == 0 else "Flash failed")
-        return rc == 0
+        # FLASH-MERGED-4MB: the vault only ever caches merged-single-bin blobs written at 0x0, so this
+        # path is uniquely exposed to the size-mismatch bootloop. Route it through the same guard the
+        # download + local_path branches use, so a too-big cached image warns instead of reporting a
+        # clean "Flash complete (offline vault)" on a board it will bootloop.
+        declared_mb = self._declared_merged_size(getattr(custom, "image_model", None), path, chip)
+        return self._flash_with_size_warning(
+            declared_mb, on_line, progress,
+            lambda capture: custom.flash_local(port, chip, path, capture, baud=profile.baud),
+            ok_msg="Flash complete (offline vault)",
+        )
 
     def _resolve_variant(self, core, assets, chip, requested, on_line):
         """Pick the release asset to flash.
