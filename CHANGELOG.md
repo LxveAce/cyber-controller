@@ -17,6 +17,9 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   to an invalid stdout and crashed, masking the real connect result (e.g. a board that needs BOOT held). The
   esptool dispatcher now binds valid output streams before running esptool, so its progress and errors reach the
   flash log instead of taking the whole flash down.
+- **The flash progress bar now climbs 0→100% instead of jittering 0–9.** esptool reports progress as `X.Y%`
+  (e.g. `27.6%`) and the parser was grabbing the digit right before the `%` — the tenths (`.6` → 6) — because the
+  decimal point broke the digit run. It now reads the whole-percent integer, so a flash shows real progress.
 
 ## [1.6.4] — 2026-07-07
 

@@ -41,7 +41,11 @@ class _PortBusy(Exception):
 
 ProgressCallback = Callable[[int, str], None]  # (percent, message)
 
-_RE_PROGRESS = re.compile(r"(\d+)\s*%")
+# esptool prints flash progress as "X.Y%" (e.g. "27.6%"). A naive (\d+)% captures the digit right
+# BEFORE the "%" — i.e. the TENTHS ("27.6%" -> 6), because the "." breaks the digit run — so the flash
+# progress bar jittered 0-9 over and over instead of climbing 0->100. Match the optional ".frac" so
+# group(1) is the whole-percent integer.
+_RE_PROGRESS = re.compile(r"(\d+)(?:\.\d+)?\s*%")
 
 
 class FlashStatus(Enum):
