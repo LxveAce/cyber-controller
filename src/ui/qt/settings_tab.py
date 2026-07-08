@@ -177,21 +177,23 @@ class SettingsTab(QWidget):
         root.addWidget(gate_card)
 
         # ── Secure Container (Security) ──────────────────────────────
-        # When ON, app-internal saves (logs/sessions/captures) are encrypted at rest in a gate-keyed
-        # container and are unreadable while the access gate is locked. Off by default.
+        # When ON, saved macros are encrypted at rest in a gate-keyed AES-256-GCM container and are
+        # unreadable while the access gate is locked. Off by default. Only recorded macros currently write
+        # through the container (logs are in-memory/session-only; CSV exports are plaintext by design), so
+        # the copy names macros specifically instead of over-promising logs/sessions/captures encryption.
         self._secure_card, secure_outer = _make_card("Secure Container (Security)")
         secure_card = self._secure_card
         secure_desc = QLabel(
-            "Encrypt app-saved data (logs, sessions, captures) at rest in a gate-keyed container "
-            "(~/.cyber-controller/secure). The container is sealed — unreadable — whenever the access "
-            "gate is locked, so logs can't be recovered off-disk without unlocking. The encryption key "
-            "lives only inside the unlocked vault (never in the clear). Explicit exports you choose to "
-            "share (e.g. a WiGLE wardrive CSV) stay plaintext by design."
+            "Encrypt your saved macros at rest in a gate-keyed container (~/.cyber-controller/secure, "
+            "AES-256-GCM). The container is sealed — unreadable — whenever the access gate is locked, and "
+            "the encryption key lives only inside the unlocked vault (never in the clear). Logs are kept in "
+            "memory for the session and aren't written to disk; explicit exports you choose to share (e.g. a "
+            "WiGLE wardrive CSV) stay plaintext by design."
         )
         secure_desc.setObjectName("muted")
         secure_desc.setWordWrap(True)
         secure_outer.addWidget(secure_desc)
-        self._secure_container_check = QCheckBox("Store app logs/sessions/captures in the secure container")
+        self._secure_container_check = QCheckBox("Encrypt my saved macros in the secure container")
         secure_outer.addWidget(self._secure_container_check)
         root.addWidget(secure_card)
 

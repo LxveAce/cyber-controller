@@ -1,7 +1,10 @@
-"""Secure container for app-saved data (logs / sessions / captures).
+"""Secure container for app-saved macros (gate-keyed, encrypted at rest).
 
-When the ``security.secure_container`` setting is ON, app-internal saves are encrypted AT REST in a
-container under ``~/.cyber-controller/secure/`` and are unreadable while the access gate is locked.
+When the ``security.secure_container`` setting is ON, saved macros are encrypted AT REST in a container
+under ``~/.cyber-controller/secure/`` and are unreadable while the access gate is locked. The container is
+a general category-keyed store, but ``macros`` is currently its only writer (see macro_recorder) — logs are
+in-memory/session-only and shared exports (e.g. the WiGLE CSV) are plaintext by design, so this does NOT
+encrypt logs/sessions/captures despite earlier wording that implied it.
 
 Key source: a random per-install **container key** stored inside the gate-keyed AES-GCM vault
 (:mod:`src.security.vault`, opened at unlock via :func:`access_gate.get_current_vault`). So the
@@ -10,7 +13,7 @@ clear, which is what makes the data "can't be accessed" without the gate.
 
 Hardening: encryption happens in-process and :class:`SecureStorage.save` writes the ciphertext blob
 directly (AES-256-GCM, authenticated → tamper fails closed; 0600 + owner-only ACL). NO plaintext copy
-is ever written to disk, which closes the interception/recovery window for live log streams.
+is ever written to disk, which closes the interception/recovery window for the saved data.
 
 NOTE: explicit *exports* meant to be shared (e.g. a WiGLE wardrive CSV) deliberately do NOT go through
 the container — only app-internal saves do.

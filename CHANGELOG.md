@@ -31,6 +31,11 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   Multi-Board Wardrive tabs weren't shut down, so the ESP32 kept scanning, its serial ports weren't released
   cleanly, and the WiGLE CSV wasn't closed. They now stop the capture — sending the firmware's stop command —
   when the app closes.
+- **The Secure Container no longer claims to encrypt data it doesn't.** Its Settings copy advertised at-rest
+  encryption for "logs, sessions, captures", but only recorded macros are actually written through the container
+  (logs stay in memory for the session; wardrive CSVs are plaintext by design). The description and checkbox now
+  state what's genuinely protected — your saved macros — so you aren't misled into thinking logs or captures are
+  encrypted. The encryption itself (AES-256-GCM, gate-keyed) is unchanged.
 
 ## [1.6.4] — 2026-07-07
 
