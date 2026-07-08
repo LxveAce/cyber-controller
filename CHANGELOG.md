@@ -8,6 +8,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Fixed
+- **A firmware profile can no longer accidentally disable the flash-size safety check.** The engine forces
+  `--flash_size detect` (which patches a merged image's header to the board's real size). If a profile had put its own
+  `--flash_size` in `extra_args`, esptool's last-flag-wins would have silently overridden that safeguard and re-opened
+  the wrong-size bootloop. A profile `--flash_size` is now stripped from extra_args with a warning, so the engine's
+  `detect` always wins. No shipped profile did this — it's a latent-footgun fix.
 - **RayHunter now downloads on Intel Macs.** The ADB firmware picker mapped an Intel Mac's `x86_64` architecture to
   asset names containing `x86_64`/`x64`, but RayHunter's macOS builds are named `macos-intel` — so Intel-Mac users
   matched no asset and the install silently found nothing. `intel` is now a recognized token for x86_64/amd64 (Apple

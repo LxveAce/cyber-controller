@@ -211,3 +211,54 @@ def test_offline_vault_fallback_clean_when_sizes_match(tmp_path, monkeypatch):
                                       lambda ln: None, lambda p, m: progress.append((p, m)), "offline")
     assert ret is True
     assert progress[-1] == (100, "Flash complete (offline vault)")
+
+
+# ── strip_reserved_extra_args: a profile must not override the --flash_size detect safeguard ───
+def test_strip_reserved_extra_args_space_form():
+    lines: list[str] = []
+    out = flash_core.strip_reserved_extra_args(["--flash_size", "16MB", "--flash_mode", "dio"], lines.append)
+    assert out == ["--flash_mode", "dio"]  # value token dropped too
+    assert any("ignoring reserved flag" in ln for ln in lines)
+
+
+def test_strip_reserved_extra_args_equals_form():
+    lines: list[str] = []
+    out = flash_core.strip_reserved_extra_args(["--flash_size=16MB", "--flash_freq", "80m"], lines.append)
+    assert out == ["--flash_freq", "80m"]
+    assert any("ignoring reserved flag" in ln for ln in lines)
+
+
+def test_strip_reserved_extra_args_hyphen_variant():
+    lines: list[str] = []
+    out = flash_core.strip_reserved_extra_args(["--flash-size", "4MB"], lines.append)
+    assert out == []
+    assert lines
+
+
+def test_strip_reserved_extra_args_passthrough_no_warning():
+    lines: list[str] = []
+    out = flash_core.strip_reserved_extra_args(["--flash_mode", "dio", "--flash_freq", "80m"], lines.append)
+    assert out == ["--flash_mode", "dio", "--flash_freq", "80m"]
+    assert not lines
+
+
+def test_flash_assets_argv_keeps_detect_and_drops_extra_flash_size(tmp_path, monkeypatch):
+    """Integration: a profile's extra_args --flash_size cannot defeat the engine's --flash_size detect."""
+    app = tmp_path / "app.bin"
+    app.write_bytes(b"\xE9\x00\x00\x02" + b"\x00" * 128)
+    captured: dict = {}
+
+    def fake_run(argv, on_line):
+        captured["argv"] = argv
+        return 0
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run)
+    custom = flash_core.get_profile("custom")
+    rc = custom.flash_assets("COM_X", "esp32", str(app), lambda ln: None, mode="app", baud=115200,
+                             extra_args=["--flash_size", "16MB", "--flash_mode", "dio"])
+    assert rc == 0
+    argv = captured["argv"]
+    assert argv.count("--flash_size") == 1                    # only the engine's one survives
+    assert argv[argv.index("--flash_size") + 1] == "detect"   # ...and it's detect, not 16MB
+    assert "16MB" not in argv
+    assert "--flash_mode" in argv and "dio" in argv           # the legit extra_arg is preserved

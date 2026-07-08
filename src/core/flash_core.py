@@ -196,6 +196,34 @@ def flash_size_mismatch_warning(declared_mb: Optional[int], detected_mb: Optiona
     return None
 
 
+# Engine-owned write_flash flags a profile's `extra_args` must NOT be able to override. `--flash_size`
+# is safety-critical: the engine forces `--flash_size detect` to patch a merged image's header to the
+# board's real size (the FLASH-MERGED-4MB safeguard), so a profile that slipped a fixed `--flash_size`
+# into extra_args would silently re-open the wrong-size bootloop (esptool takes the LAST flag). Strip it.
+_RESERVED_EXTRA_FLAGS = frozenset({"--flash_size", "--flash-size"})
+
+
+def strip_reserved_extra_args(extra_args: List[str], on_line: Line) -> List[str]:
+    """Drop engine-owned flags (currently --flash_size and its value) from a profile's extra_args,
+    warning when one is present, so the engine's `--flash_size detect` safety patch always wins.
+    Handles both the space form (`--flash_size 16MB`) and the equals form (`--flash_size=16MB`)."""
+    out: List[str] = []
+    skip_value = False
+    for tok in extra_args:
+        if skip_value:
+            skip_value = False
+            continue
+        flag = str(tok).split("=", 1)[0].lower()
+        if flag in _RESERVED_EXTRA_FLAGS:
+            on_line(f"[warning] ignoring reserved flag {tok!r} in profile extra_args — the flasher "
+                    f"controls --flash_size (detect) to prevent a wrong-size bootloop.")
+            if "=" not in str(tok):
+                skip_value = True  # also drop the following value token in the space form
+            continue
+        out.append(tok)
+    return out
+
+
 # FlashFiles dir that holds bootloader+partitions for each chip family
 _SUPPORT_DIR = {
     "esp32": "MarauderV4",
@@ -728,7 +756,8 @@ class FirmwareProfile:
         if flash_freq:
             extra += ["--flash_freq", flash_freq]
         if extra_args:
-            extra += list(extra_args)
+            # A profile must not be able to override the engine's --flash_size detect safeguard.
+            extra += strip_reserved_extra_args(list(extra_args), on_line)
         argv = esptool_argv("--chip", chip, "--port", port, "--baud", str(baud),
                             "--before", "default_reset", "--after", "hard_reset",
                             "write_flash", "-z", "--flash_size", "detect", *extra, *files)
