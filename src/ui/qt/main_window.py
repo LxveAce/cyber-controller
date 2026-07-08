@@ -1275,9 +1275,19 @@ class CyberControllerWindow(QMainWindow):
         self._palette.open_palette()
 
     def _on_clear_terminal(self) -> None:
-        """Clear the device tab terminal output."""
-        if hasattr(self._device_tab, '_terminal'):
-            self._device_tab._terminal.clear()
+        """Clear the terminal output the user is actually looking at.
+
+        This used to clear ONLY the Devices sub-tab's terminal, so the palette's "Clear Terminal"
+        appeared to do nothing whenever the always-visible bottom panel (_pterm_output) was on screen —
+        which is most of the time. Clear both; they mirror each other, so clearing one alone would also
+        leave them out of sync.
+        """
+        pterm = getattr(self, "_pterm_output", None)
+        if pterm is not None:
+            pterm.clear()
+        dev_term = getattr(self._device_tab, "_terminal", None)
+        if dev_term is not None:
+            dev_term.clear()
 
     def _on_toggle_suicide_mode(self) -> None:
         """Toggle the Dead Man's Switch checkbox in the flash tab."""

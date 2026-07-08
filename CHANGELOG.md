@@ -20,6 +20,9 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
 - **The flash progress bar now climbs 0→100% instead of jittering 0–9.** esptool reports progress as `X.Y%`
   (e.g. `27.6%`) and the parser was grabbing the digit right before the `%` — the tenths (`.6` → 6) — because the
   decimal point broke the digit run. It now reads the whole-percent integer, so a flash shows real progress.
+- **"Clear Terminal" now clears the terminal you're actually looking at.** The command-palette "Clear Terminal"
+  only cleared the Devices tab's terminal, leaving the always-visible bottom terminal panel — the one on screen
+  most of the time — untouched, so it looked like it did nothing. It now clears both.
 
 ## [1.6.4] — 2026-07-07
 
