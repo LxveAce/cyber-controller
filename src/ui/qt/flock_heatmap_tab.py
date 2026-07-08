@@ -106,6 +106,49 @@ def world_px(lat: float, lon: float, world: float = _WORLD_PX) -> Tuple[float, f
     return x * world, y * world
 
 
+def basemap_paths(geojson: Any, world: float = _WORLD_PX) -> "List[List[Tuple[float, float]]]":
+    """Project a Polygon/MultiPolygon FeatureCollection's rings into shared-plane point lists — each inner
+    list is one closed ring's (x, y) world_px points, ready for a QPainterPath. Pure + Qt-free so the
+    basemap projection is unit-testable. GeoJSON coords are [lon, lat]; non-polygon / short / non-finite
+    rings are skipped (a hostile/partial world file can't crash the map)."""
+    rings: "List[List[Tuple[float, float]]]" = []
+    feats = geojson.get("features") if isinstance(geojson, dict) else None
+    for feat in feats or []:
+        geom = (feat or {}).get("geometry") or {}
+        gtype = geom.get("type")
+        coords = geom.get("coordinates")
+        if gtype == "Polygon":
+            polys = [coords]
+        elif gtype == "MultiPolygon":
+            polys = coords
+        else:
+            continue
+        for poly in polys or []:
+            for ring in poly or []:
+                pts: "List[Tuple[float, float]]" = []
+                for c in ring or []:
+                    if not (isinstance(c, (list, tuple)) and len(c) >= 2):
+                        continue
+                    lon, lat = c[0], c[1]
+                    if all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                           for v in (lat, lon)):
+                        pts.append(world_px(lat, lon, world))
+                if len(pts) >= 3:
+                    rings.append(pts)
+    return rings
+
+
+def load_world_basemap() -> dict:
+    """Load the bundled Natural Earth 110m world basemap (public domain). Returns an empty
+    FeatureCollection if it's missing/unreadable — the basemap layer simply won't draw."""
+    try:
+        from src.core.resources import resource_path
+        with open(resource_path("src", "config", "maps", "world_110m.geojson"), "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:  # noqa: BLE001
+        return {"type": "FeatureCollection", "features": []}
+
+
 def _valid_point(feature: Any) -> bool:
     try:
         if not isinstance(feature, dict):
@@ -153,10 +196,13 @@ def _flock_pump(session: Any, gps_line: str, dev_line: str, checkpoint_path: str
 # ── Qt widget (the pure core above stays Qt-free; the widget is optional) ──
 
 try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even without PyQt5
-    from PyQt5.QtCore import Qt, QThread, pyqtSignal
-    from PyQt5.QtGui import QBrush, QColor, QImage, QPainter, QPen
+    from PyQt5.QtCore import Qt, QThread, QRectF, pyqtSignal
+    from PyQt5.QtGui import QBrush, QColor, QImage, QPainter, QPainterPath, QPen
     from PyQt5.QtWidgets import (
+        QCheckBox,
         QComboBox,
+        QGraphicsItemGroup,
+        QGraphicsPathItem,
         QGraphicsScene,
         QGraphicsView,
         QHBoxLayout,
@@ -316,7 +362,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._btn_reset_view = QPushButton("Reset view")
             self._btn_reset_view.setToolTip("Re-frame all cameras (drag to pan · scroll to zoom).")
             self._btn_reset_view.clicked.connect(self.reset_view)
+            self._chk_basemap = QCheckBox("World basemap")
+            self._chk_basemap.setToolTip("Show a muted world-countries outline under the cameras, so a scan sits "
+                                         "in real-world context. Zoom/pan out to see it; toggle off for a plain map.")
+            self._chk_basemap.setChecked(True)
+            self._chk_basemap.stateChanged.connect(lambda _s: self._rebuild())
             map_row.addWidget(self._btn_reset_view)
+            map_row.addWidget(self._chk_basemap)
             map_row.addStretch(1)
             root.addLayout(map_row)
 
@@ -333,6 +385,12 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._live_log.setMaximumHeight(90)
             self._live_log.setPlaceholderText("Live scan messages appear here.")
             root.addWidget(self._live_log)
+
+            # World basemap (Natural Earth 110m, public domain): loaded + projected into the shared world_px
+            # plane ONCE here, reused every _rebuild. Empty FeatureCollection if the bundle is missing -> the
+            # layer just doesn't draw. self._basemap_group holds the current QGraphicsItemGroup (or None).
+            self._basemap_rings = basemap_paths(load_world_basemap())
+            self._basemap_group = None
 
             self.set_geojson({"type": "FeatureCollection", "features": []})
 
@@ -366,12 +424,45 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             return len(self._features)
 
         # ── render ────────────────────────────────────────────────────
+        def _draw_basemap(self) -> None:
+            """Draw the world-countries outline (self._basemap_rings, already projected into world_px) as a
+            muted background layer UNDER the cameras. No-op if the bundle didn't load. Cosmetic pen so the
+            coastline stays 1px on screen at any zoom (the rings span the whole 40M-unit world)."""
+            self._basemap_group = None
+            if not self._basemap_rings:
+                return
+            group = QGraphicsItemGroup()
+            group.setZValue(-1000)                              # firmly beneath the camera dots
+            pen = QPen(QColor("#30363d"))                       # muted land stroke (dark-theme border grey)
+            pen.setCosmetic(True)
+            brush = QBrush(QColor(23, 30, 40, 90))              # faint semi-transparent land fill
+            for ring in self._basemap_rings:
+                path = QPainterPath()
+                path.moveTo(ring[0][0], ring[0][1])
+                for x, y in ring[1:]:
+                    path.lineTo(x, y)
+                path.closeSubpath()
+                item = QGraphicsPathItem(path, group)           # parent=group -> travels with it
+                item.setPen(pen)
+                item.setBrush(brush)
+            self._scene.addItem(group)
+            self._basemap_group = group
+
         def _rebuild(self) -> None:
             self._scene.clear()
             self._camera_items = []
+            self._basemap_group = None
+            show_base = self._chk_basemap.isChecked() and bool(self._basemap_rings)
+            if show_base:
+                self._draw_basemap()
             if not self._features:
-                self._scene.setSceneRect(0, 0, _CANVAS_W, _CANVAS_H)
-                self._legend.setText("No detections loaded. Blue = few sightings · red = many.")
+                if show_base:
+                    self._scene.setSceneRect(0, 0, _WORLD_PX, _WORLD_PX)   # whole world, pannable
+                    self._legend.setText("World basemap · no detections loaded. Blue = few · red = many.")
+                    self._view.fitInView(self._scene.sceneRect(), Qt.KeepAspectRatio)   # frame the globe
+                else:
+                    self._scene.setSceneRect(0, 0, _CANVAS_W, _CANVAS_H)
+                    self._legend.setText("No detections loaded. Blue = few sightings · red = many.")
                 return
             counts = [_as_count(f.get("properties")) for f in self._features]
             maxc = max(counts)
@@ -398,29 +489,48 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                     QPen(Qt.NoPen), QBrush(QColor(r8, g8, b8)))
                 item.setOpacity(0.65)                              # semi-transparent -> overlaps accumulate
                 self._camera_items.append(item)
-            # Scene rect = the cameras' extent + breathing room + the max dot radius, so pan/zoom and
-            # fitInView (reset_view) have room and edge dots aren't clipped.
-            margin = span * (0.05 + 0.024)
-            self._scene.setSceneRect(min(xs) - margin, min(ys) - margin,
-                                     spanx + 2 * margin, spany + 2 * margin)
+            # Scene rect: with the basemap on, the whole world is the scene so you can pan/zoom out to it
+            # (reset_view still re-frames the cameras). Without it, just the cameras' extent + a margin so
+            # pan/zoom has room and edge dots aren't clipped.
+            if show_base:
+                self._scene.setSceneRect(0, 0, _WORLD_PX, _WORLD_PX)
+            else:
+                margin = span * (0.05 + 0.024)
+                self._scene.setSceneRect(min(xs) - margin, min(ys) - margin,
+                                         spanx + 2 * margin, spany + 2 * margin)
+            base_note = " · world basemap" if show_base else ""
             self._legend.setText(
-                f"{len(self._features)} camera(s) · blue = few sightings · red = many (up to {maxc}). "
+                f"{len(self._features)} camera(s) · blue = few sightings · red = many (up to {maxc}){base_note}. "
                 f"Drag to pan · scroll to zoom.")
 
         def reset_view(self) -> None:
-            """Re-frame all cameras: drop any pan/zoom and fit the whole set into the view. Safe on an
-            empty scene (nothing to fit → leaves the view as-is)."""
+            """Re-frame the CAMERAS: drop any pan/zoom and fit the whole camera set into the view (so the
+            world basemap, which spans the globe, doesn't hijack the framing). Falls back to the scene rect
+            when there are no cameras; safe on an empty scene (nothing valid to fit → view left as-is)."""
             self._view.resetTransform()
-            rect = self._scene.itemsBoundingRect()
+            if self._camera_items:
+                rect = QRectF()
+                for it in self._camera_items:
+                    rect = rect.united(it.sceneBoundingRect())
+            else:
+                rect = self._scene.sceneRect()
             if rect.isValid() and not rect.isEmpty():
                 self._view.fitInView(rect, Qt.KeepAspectRatio)
 
         def render_native(self, width: int = _CANVAS_W, height: int = _CANVAS_H) -> "QImage":
-            """Render the scene into a QImage — pure, offscreen-testable (no window needed)."""
+            """Render the scene into a QImage — pure, offscreen-testable (no window needed). Frames the
+            CAMERAS when present (so a snapshot shows the detections, not the whole globe once the basemap
+            makes the scene rect world-sized); otherwise renders the full scene rect."""
             img = QImage(width, height, QImage.Format_ARGB32)
             img.fill(_BG)
             p = QPainter(img)
-            self._scene.render(p)
+            src = QRectF()
+            for it in self._camera_items:
+                src = src.united(it.sceneBoundingRect())
+            if src.isValid() and not src.isEmpty():
+                self._scene.render(p, QRectF(0, 0, width, height), src)
+            else:
+                self._scene.render(p)                          # no cameras -> whole scene (globe or empty)
             p.end()
             return img
 

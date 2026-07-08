@@ -8,11 +8,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Added
-- **The Flock camera heatmap is now a traversable map.** The map used to fit every camera into a fixed frame with no way
-  to move around it. You can now **drag to pan and scroll to zoom** (zoom anchors under the cursor, like a slippy map),
-  and a **Reset view** button re-frames all cameras after you've explored. Loading a scan frames the fresh set; a live
-  scan keeps your current pan instead of yanking the view on every new detection. (First step of the heatmap rework — a
-  toggleable world base layer, a bundled DeFlock dataset, and an optional "update" button are coming next.)
+- **The Flock camera heatmap is now a traversable map with a world basemap.** The map used to fit every camera into a
+  fixed frame with no way to move around it. You can now **drag to pan and scroll to zoom** (zoom anchors under the
+  cursor, like a slippy map), and a **Reset view** button re-frames all cameras after you've explored. A new **World
+  basemap** toggle draws a muted world-countries outline (Natural Earth 1:110m, public domain — bundled with the app, no
+  download) beneath the detections, so a scan sits in real geographic context; zoom and pan out to see the whole globe,
+  or switch it off for a plain map. Loading a scan frames the fresh set; a live scan keeps your current pan instead of
+  yanking the view on every new detection. (A bundled DeFlock dataset and an optional "update" button are coming next.)
 - **New firmware profile: ESP32 WiFi Penetration Tool (`risinek/esp32-wifi-penetration-tool`).** A classic-ESP32 WiFi
   attack/recon toolkit (deauth, PMKID + WPA handshake capture, PCAP, all over a self-hosted web UI). Multi-file
   ESP-IDF release flashed at the offsets the upstream README documents — bootloader @0x1000, partition-table @0x8000,

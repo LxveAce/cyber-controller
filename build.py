@@ -88,6 +88,13 @@ def _build() -> int:
     if dms_parts_dir.is_dir():
         cmd.extend(["--add-data", f"{dms_parts_dir}{sep}src/config/dms_partitions"])
 
+    # Flock heatmap world basemap (Natural Earth 110m, public domain). load_world_basemap() reads
+    # resource_path("src","config","maps","world_110m.geojson") for the tab's toggleable world layer, so
+    # it must be bundled or the basemap silently won't draw in the frozen build. PyInstaller ignores .geojson.
+    maps_dir = _ROOT / "src" / "config" / "maps"
+    if maps_dir.is_dir():
+        cmd.extend(["--add-data", f"{maps_dir}{sep}src/config/maps"])
+
     # Device-View per-firmware skin palettes (DV3) — resource_path("src","ui","qt","skins") reads these in
     # the frozen build, so they must be bundled or every skin silently falls back to the default palette.
     skins_dir = _ROOT / "src" / "ui" / "qt" / "skins"

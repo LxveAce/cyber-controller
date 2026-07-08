@@ -11,7 +11,15 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
-from src.ui.qt.flock_heatmap_tab import MercatorFit, heat_color, web_mercator, world_px, zoom_step
+from src.ui.qt.flock_heatmap_tab import (
+    MercatorFit,
+    basemap_paths,
+    heat_color,
+    load_world_basemap,
+    web_mercator,
+    world_px,
+    zoom_step,
+)
 
 # ── pure projection core (no Qt) ─────────────────────────────────────
 
@@ -70,6 +78,57 @@ def test_world_px_shared_global_plane():
     assert world_px(10.0, 20.0, W)[0] < world_px(10.0, 60.0, W)[0]
     # default world scale is Earth's equatorial circumference in metres (scene units ~= metres)
     assert world_px(0.0, 0.0)[0] == pytest.approx(40_075_016.0 / 2)
+
+
+def test_basemap_paths_projects_rings_into_world_plane():
+    # a tiny two-country FeatureCollection (one Polygon, one MultiPolygon) -> both rings projected
+    gj = {
+        "type": "FeatureCollection",
+        "features": [
+            {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [
+                [[0.0, 0.0], [10.0, 0.0], [10.0, 10.0], [0.0, 10.0], [0.0, 0.0]]]}},
+            {"type": "Feature", "geometry": {"type": "MultiPolygon", "coordinates": [
+                [[[20.0, 20.0], [30.0, 20.0], [30.0, 30.0], [20.0, 20.0]]]]}},
+        ],
+    }
+    rings = basemap_paths(gj, 1000.0)
+    assert len(rings) == 2                                   # one ring per polygon
+    assert all(len(r) >= 3 for r in rings)                   # closed rings survive
+    # each vertex is a projected (x, y) in the shared plane; equator/prime-meridian point -> center
+    assert rings[0][0] == pytest.approx(world_px(0.0, 0.0, 1000.0))
+    # every projected point lies inside the world square
+    for ring in rings:
+        for x, y in ring:
+            assert 0.0 <= x <= 1000.0 and 0.0 <= y <= 1000.0
+
+
+def test_basemap_paths_skips_junk_and_short_rings():
+    gj = {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [1.0, 2.0]}},   # not a polygon
+        {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [
+            [[0.0, 0.0], [1.0, 1.0]]]}},                                                  # <3 pts -> dropped
+        {"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [
+            [[0.0, 0.0], [float("nan"), 1.0], [2.0, 2.0], [3.0, 3.0]]]}},                 # one bad vertex skipped
+        None,                                                                            # hostile null feature
+    ]}
+    rings = basemap_paths(gj, 1000.0)
+    assert len(rings) == 1                                   # only the last polygon yields a usable ring
+    assert len(rings[0]) == 3                                # the NaN vertex was dropped, 3 remain
+
+
+def test_basemap_paths_empty_on_bad_input():
+    assert basemap_paths({}, 1000.0) == []
+    assert basemap_paths({"features": None}, 1000.0) == []
+    assert basemap_paths("not a dict", 1000.0) == []
+
+
+def test_load_world_basemap_bundle_present():
+    # the bundled Natural Earth 110m world basemap must ship + parse into projectable rings
+    gj = load_world_basemap()
+    assert gj.get("type") == "FeatureCollection"
+    assert len(gj.get("features", [])) > 100                 # ~177 countries
+    rings = basemap_paths(gj)
+    assert len(rings) > 100                                  # every country contributes at least one ring
 
 
 def test_zoom_step_notches():
@@ -141,6 +200,32 @@ def test_widget_map_is_pannable_and_reset_view_is_safe(qapp):
     assert w._view.transformationAnchor() == QGraphicsView.AnchorUnderMouse
     w.set_session(_session_two_cameras())
     w.reset_view()                                          # frame-all must not crash with real items
+
+
+def test_widget_world_basemap_renders_under_cameras(qapp):
+    w = FlockHeatmapTab()
+    # the basemap toggle defaults on, the bundle loads, and a background group is drawn
+    assert w._chk_basemap.isChecked()
+    assert len(w._basemap_rings) > 100
+    w.set_session(_session_two_cameras())
+    assert w._basemap_group is not None                     # basemap layer present with cameras
+    assert w._basemap_group.zValue() < 0                    # ...and beneath the dots
+    assert len(w._camera_items) == 2                        # cameras still render alongside it
+    assert _has_non_bg_pixel(w.render_native())
+    # toggling the basemap off drops the layer but keeps the cameras
+    w._chk_basemap.setChecked(False)
+    assert w._basemap_group is None
+    assert len(w._camera_items) == 2
+    # ...and back on restores it
+    w._chk_basemap.setChecked(True)
+    assert w._basemap_group is not None
+
+
+def test_widget_basemap_only_no_cameras_is_safe(qapp):
+    w = FlockHeatmapTab()                                    # basemap on, zero cameras
+    assert w.camera_count == 0
+    assert w._basemap_group is not None                     # the globe still draws on an empty map
+    assert _has_non_bg_pixel(w.render_native())             # something (the coastline) is on screen
     w.set_geojson({"type": "FeatureCollection", "features": []})
     w.reset_view()                                          # ...nor on an empty scene
 
