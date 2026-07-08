@@ -295,6 +295,25 @@ def test_ap_accumulator_parses_real_marauder_scanall_lines():
     assert aps[3].ssid == "DIRECT-50-HP Smart Tank 5100"
 
 
+def test_ap_accumulator_ignores_interleaved_station_lines():
+    # Real Marauder scanall interleaves station/multicast rows ("N: ap: X -> sta: Y") between AP records.
+    # Those carry two MACs but no ESSID/RSSI/Ch; they must NOT emit a phantom AP (e.g. a multicast MAC) or
+    # corrupt the next real record. VERBATIM lines from the COM16 capture.
+    seq = [
+        "-71 Ch: 2 0e:73:be:f8:72:74 ESSID: SpectrumSetup-7272 11 15",
+        "1: ap: 0e:73:be:f8:72:74 -> sta: 01:00:5e:00:00:07",
+        " -71 Ch: 2 f0:7b:65:1a:36:76 ESSID: SpectrumSetup-3670 11 15",
+        "2: ap: 0e:73:be:f8:72:74 -> sta: 01:00:5e:7f:ff:fa",
+        "3: sta: 9c:f1:d4:48:6e:08 -> ap: 5c:fa:25:d6:21:d4",
+    ]
+    acc = wd._ApAccumulator()
+    aps = [o for o in (acc.feed(ln) for ln in seq) if o]
+    assert len(aps) == 2                                   # only the two real AP records emit
+    assert [a.bssid for a in aps] == ["0e:73:be:f8:72:74", "f0:7b:65:1a:36:76"]
+    assert all(not a.bssid.startswith("01:00:5e") for a in aps)   # never a multicast/station MAC as an AP
+    assert aps[0].ssid == "SpectrumSetup-7272" and aps[1].rssi == -71
+
+
 def test_extract_ap_fields_leading_rssi_and_labelled_still_work():
     f = wd._extract_ap_fields("-64 Ch: 6 00:04:ea:7b:f7:ee ESSID: MyNet")
     assert f["rssi"] == -64 and f["channel"] == 6 and f["bssid"] == "00:04:ea:7b:f7:ee"
