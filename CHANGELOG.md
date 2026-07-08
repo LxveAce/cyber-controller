@@ -39,6 +39,11 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
 - **GhostESP's GPS command now works.** The command palette and the Device menu sent "gps info" (two tokens), but
   GhostESP's command is the single token "gpsinfo" — the board treated "gps" as an unknown command and never
   returned GPS status. Both now send "gpsinfo", matching the token the app's own wardrive macro already uses.
+- **The in-app User Guide now matches the app.** Its "Available Settings" list advertised five controls that don't
+  exist (Auto-reconnect, Theme, Macro directory, Health polling interval, Cross-comm auto-routing) and left out the
+  real ones; the Performance section named a per-device "temperature" readout the Health table has no column for.
+  The guide now lists what Settings actually offers (serial/flash baud, updates, safety, Access Gate, Secure
+  Container, firmware vault) and describes the real Health columns.
 
 ## [1.6.4] — 2026-07-07
 
