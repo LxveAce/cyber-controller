@@ -59,6 +59,6 @@ def test_runtime_chokepoint_blocks_evil_api():
 
 def test_bundled_profiles_all_pass_url_validation():
     # Every shipped profile uses allowlisted hosts -> none rejected at load; registry intact.
-    # 28 = 18 original + trex/mclite/bit_pirate + hydra32 + flipper_roguemaster + m5stick_nemo +
-    # esp8266_deauther + m5gotchi/porkchop + esp32_wifi_pentest (all drop-in JSON, github.com hosts).
-    assert len(flash_core.PROFILES) == 28
+    # 29 = 18 original + trex/mclite/bit_pirate + hydra32 + flipper_roguemaster + m5stick_nemo +
+    # esp8266_deauther + m5gotchi/porkchop + esp32_wifi_pentest + wifi_duck (all drop-in JSON, github.com hosts).
+    assert len(flash_core.PROFILES) == 29

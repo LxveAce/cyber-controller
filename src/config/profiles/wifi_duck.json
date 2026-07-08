@@ -1,0 +1,30 @@
+{
+  "name": "WiFiDuck (Spacehuhn)",
+  "id": "wifi_duck",
+  "core_id": "wifi_duck",
+  "description": "SpacehuhnTech's WiFiDuck — a Wi-Fi-controlled BadUSB / keystroke-injection tool. This flashes the ESP8266 'Wi-Fi backpack' half (the web UI + serial CLI that stores and runs Ducky Script); on integrated boards (DSTIKE WiFi Duck, Malduino W) it drives a companion USB-HID microcontroller that types the injected keystrokes. *** Authorized testing on devices you own or are permitted to test ONLY — keystroke injection into a machine you don't control is unlawful in most jurisdictions. *** MIT. Cyber Controller flashes the pinned upstream release image and adds no capability of its own.",
+  "repo": "SpacehuhnTech/WiFiDuck",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "app_offset": "0x0",
+  "support_files": null,
+  "default_baud": 115200,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["dstike_wifi_duck_esp8266", "malduino_w_esp8266"]},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/SpacehuhnTech/WiFiDuck/releases/latest",
+    "asset_match": {"include_suffixes": [".bin"], "exclude_substrings": ["atsamd21", "atmega", "samd21"]},
+    "chip_map": {"strategy": "fixed", "chip": "esp8266"},
+    "emit": {"offset": "0x0", "merged": true}
+  },
+  "boards": [
+    {"name": "DSTIKE WiFi Duck (ESP8266 half)", "chip": "esp8266", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "40m"},
+    {"name": "Malduino W (ESP8266 half)", "chip": "esp8266", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "40m"}
+  ],
+  "firmware_urls": {"repo": "https://github.com/SpacehuhnTech/WiFiDuck", "latest": "https://github.com/SpacehuhnTech/WiFiDuck/releases/latest"},
+  "note": "ESP8266 'Wi-Fi backpack' single merged .bin flashed at 0x0 via esptool --chip esp8266 (same path as esp8266_deauther). Release assets verified live against v1.1.0 on 2026-07-08 (gh api): the release ships dstike_wifi_duck_esp8266_*.bin + malduino_w_esp8266_*.bin (the esp8266 halves) alongside atmega32u4 .hex + atsamd21 .bin/.uf2 for the HID companions — asset_match takes .bin and excludes the atsamd21/atmega assets so only the two esp8266 board images are offered. Dual-MCU tool: this flashes the Wi-Fi/UI half only; the USB-HID MCU that performs the keystroke injection is flashed separately with its own .hex/.uf2 (out of scope for esptool). --flash_size detect so a board's exact size need not be pre-known. Real-hardware flash pending real-hardware verification per the Stage-5 gate."
+}

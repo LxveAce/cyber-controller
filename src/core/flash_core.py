@@ -2389,6 +2389,12 @@ _PROFILE_FILES = (
     # flash command (2026-07-08, v1.0): bootloader@0x1000, partition-table@0x8000, app@0x10000; SHA-256 pinned
     # from the downloaded assets (24016/3072/723248 B). Deauth gated/labelled by the safety layer, never operated.
     "esp32_wifi_pentest.json",
+    # WiFiDuck (SpacehuhnTech) — Wi-Fi BadUSB / keystroke injection. Flashes the ESP8266 'Wi-Fi backpack' half
+    # (web UI + Ducky-Script CLI) as a single merged .bin @0x0 via esptool --chip esp8266, same path as
+    # esp8266_deauther. asset_match takes the two esp8266 board bins (dstike / malduino) and excludes the
+    # atsamd21/atmega HID-companion assets; verified live against SpacehuhnTech/WiFiDuck v1.1.0 (2026-07-08).
+    # Keystroke injection labelled/gated by the safety layer, never operated. Real-hw flash pending Stage-5 gate.
+    "wifi_duck.json",
 )
 
 

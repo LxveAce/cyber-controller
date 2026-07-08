@@ -28,6 +28,13 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   works **without a scan running**: turn it on with a GPS port selected and the map opens a light standalone GPS reader
   just to track your position — so you can use the Flock map as a plain live GPS map, then start a scan any time (the
   scan takes over the GPS port cleanly, and tracking resumes on its own when the scan ends).
+- **New firmware profile: WiFiDuck (`SpacehuhnTech/WiFiDuck`).** Fills a category the profile set didn't cover — a
+  Wi-Fi-controlled BadUSB / keystroke-injection tool (from the same author as the ESP8266 Deauther we already ship).
+  Cyber Controller flashes the **ESP8266 "Wi-Fi backpack" half** (the web UI + serial CLI that stores and runs Ducky
+  Script) as a single merged image at `0x0` via `esptool`, the same path as the ESP8266 Deauther. It offers the two
+  ESP8266 board images from the upstream release (DSTIKE WiFi Duck, Malduino W) and skips the ATmega/SAMD21 HID-companion
+  assets, which are flashed separately with their own `.hex`/`.uf2`. Keystroke injection is labelled/gated by the safety
+  layer and never performed by the app; authorized testing only. **33 firmware profiles** now ship.
 - **New firmware profile: ESP32 WiFi Penetration Tool (`risinek/esp32-wifi-penetration-tool`).** A classic-ESP32 WiFi
   attack/recon toolkit (deauth, PMKID + WPA handshake capture, PCAP, all over a self-hosted web UI). Multi-file
   ESP-IDF release flashed at the offsets the upstream README documents — bootloader @0x1000, partition-table @0x8000,
