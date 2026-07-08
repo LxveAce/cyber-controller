@@ -8,6 +8,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
 
 ### Fixed
+- **A merged firmware built for a bigger flash chip now warns instead of silently leaving a dead board.** Flashing a
+  merged-single-bin build (say a 16 MB Bruce build) onto a smaller board (a 4 MB ESP32) wrote and verified fine, then
+  reported "Flash complete" — but the board just bootlooped, because the image's own bootloader still claimed 16 MB of
+  flash (`--flash_size detect` only patches the header at the write offset, not one buried inside a merged image). The
+  flasher now reads the size the image demands, compares it to the size esptool detects on your board, and if the image
+  is too big it says so plainly ("built for 16 MB, your board has 4 MB — it likely won't boot") instead of claiming a
+  clean success. Multi-file firmwares (Marauder, most others) were never affected.
 - **You're no longer trapped on the Connect ▸ Devices tab.** With a device selected, the 3-second sidebar
   refresh re-selected it in the device list, and that programmatic re-selection fired the same signal a real
   click does — so the main view snapped back to Connect ▸ Devices a couple seconds after you switched to any

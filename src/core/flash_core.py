@@ -154,6 +154,48 @@ def _bootloader_offset(chip: str) -> str:
     return "0x0" if chip in _BOOTLOADER_0 else "0x1000"
 
 
+# ── flash-size header sanity (FLASH-MERGED-4MB) ───────────────────────────────
+# A merged-single-bin carries its own second-stage bootloader; that bootloader's ESP image
+# header (magic 0xE9; byte 3 high-nibble = flash-size code) tells the ROM how large the SPI
+# flash is. `write_flash --flash_size detect` only patches the header at the WRITE offset, NOT
+# a bootloader sitting DEEPER inside a merged blob (0x1000 on classic ESP32), so a merged image
+# built for a 16MB board writes+verifies fine yet BOOT-LOOPS a 4MB board with "Detected
+# size(4096k) smaller than the size in the binary image header(16384k)". These helpers detect
+# that mismatch so the flow can WARN honestly instead of reporting a clean "Flash complete".
+# (Auto-patching the header to the real size is a separate, owner-gated change.)
+_FLASH_SIZE_CODE_MB = {0x0: 1, 0x1: 2, 0x2: 4, 0x3: 8, 0x4: 16, 0x5: 32, 0x6: 64, 0x7: 128}
+_DETECTED_FLASH_RE = re.compile(r"detected flash size:\s*(\d+)\s*MB", re.I)
+
+
+def declared_flash_size_mb(image: bytes, chip: str) -> Optional[int]:
+    """Flash size (MB) declared in a MERGED image's bootloader header, or None if not found.
+
+    The bootloader sits at `_bootloader_offset(chip)` WITHIN the merged blob (0x1000 on classic
+    ESP32/S2, 0x0 on S3 / most RISC-V parts, 0x2000 on the C5). A valid ESP image header there
+    starts with magic byte 0xE9; the flash-size code is the high nibble of byte 3."""
+    off = int(_bootloader_offset(chip), 16)
+    if len(image) < off + 4 or image[off] != 0xE9:
+        return None
+    return _FLASH_SIZE_CODE_MB.get(image[off + 3] >> 4)
+
+
+def parse_detected_flash_mb(line: str) -> Optional[int]:
+    """Pull the board's real flash size (MB) from an esptool 'Detected flash size: 4MB' line."""
+    m = _DETECTED_FLASH_RE.search(line or "")
+    return int(m.group(1)) if m else None
+
+
+def flash_size_mismatch_warning(declared_mb: Optional[int], detected_mb: Optional[int]) -> Optional[str]:
+    """A warning when a merged image needs MORE flash than the board has (so it won't boot), else None."""
+    if declared_mb and detected_mb and declared_mb > detected_mb:
+        return (f"[warning] FLASH-SIZE MISMATCH: this firmware image was built for a {declared_mb}MB flash "
+                f"but this board has only {detected_mb}MB. The write succeeds and verifies, but the board "
+                f"will very likely NOT BOOT - it bootloops on 'Detected size({detected_mb * 1024}k) smaller "
+                f"than the size in the binary image header({declared_mb * 1024}k)'. Reflash a build that "
+                f"matches your board's {detected_mb}MB flash.")
+    return None
+
+
 # FlashFiles dir that holds bootloader+partitions for each chip family
 _SUPPORT_DIR = {
     "esp32": "MarauderV4",
