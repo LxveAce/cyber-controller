@@ -28,7 +28,11 @@ log = logging.getLogger(__name__)
 DEFAULTS: dict[str, Any] = {
     "serial": {
         "default_baud": 115200,
-        "timeout": 5,
+        # Effective serial read-timeout. No UI control writes this and device_manager builds SerialConnection
+        # without a timeout arg, so the port always uses SerialConnection's own default — this value only has to
+        # tell the truth about what's applied. (Kept in the schema for on-disk stability; see settings_tab
+        # _gather_settings.) test_serial_timeout_default_honesty ties it to that constructor default.
+        "timeout": 1.0,
     },
     "flash": {
         "flash_baud": 921600,
