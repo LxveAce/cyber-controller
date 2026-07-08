@@ -15,6 +15,7 @@ from src.ui.qt.flock_heatmap_tab import (
     MercatorFit,
     basemap_paths,
     clamped_zoom_factor,
+    dots_in_rect,
     heat_color,
     load_world_basemap,
     web_mercator,
@@ -163,6 +164,25 @@ def test_clamped_zoom_factor_not_trapped_below_min():
     assert clamped_zoom_factor(0.05, 1.0 / 1.2, 0.15, 60.0) == 1.0   # zoom out: blocked (would go further out)
 
 
+def test_dots_in_rect_returns_only_intersecting():
+    # The viewport cull that _CameraLayer.paint() uses: only dots whose bbox meets the rect are drawn.
+    dots = [
+        (0.0, 0.0, 1.0),        # 0: inside
+        (100.0, 100.0, 1.0),    # 1: far off to the lower-right -> culled
+        (10.0, 0.0, 2.0),       # 2: bbox x∈[8,12] straddles the right edge (10) -> kept
+        (0.0, -50.0, 1.0),      # 3: well above the top edge -> culled
+    ]
+    assert dots_in_rect(dots, -5.0, -5.0, 10.0, 10.0) == [0, 2]
+
+
+def test_dots_in_rect_small_viewport_over_a_dense_set():
+    # A tiny viewport over a big grid returns only the handful in view — this is the CPU/RAM win: thousands
+    # of off-screen cameras are never drawn.
+    dots = [(float(i), float(j), 0.4) for i in range(50) for j in range(50)]   # 2500 dots on a 50x50 grid
+    vis = dots_in_rect(dots, 0.0, 0.0, 2.0, 2.0)     # a 2x2 window at the corner
+    assert 0 < len(vis) < 20 and len(dots) == 2500   # only the corner few, not all 2500
+
+
 # ── the offscreen widget ─────────────────────────────────────────────
 
 pytest.importorskip("PyQt5.QtWidgets")
@@ -215,7 +235,7 @@ def test_widget_renders_cameras_from_session(qapp):
     w = FlockHeatmapTab()
     w.set_session(_session_two_cameras())
     assert w.camera_count == 2
-    assert len(w._camera_items) == 2                        # one scene dot per camera
+    assert len(w._camera_layer._dots) == 2                        # one scene dot per camera
     assert _has_non_bg_pixel(w.render_native())             # something was actually drawn
 
 
@@ -237,12 +257,12 @@ def test_widget_world_basemap_renders_under_cameras(qapp):
     w.set_session(_session_two_cameras())
     assert w._basemap_group is not None                     # basemap layer present with cameras
     assert w._basemap_group.zValue() < 0                    # ...and beneath the dots
-    assert len(w._camera_items) == 2                        # cameras still render alongside it
+    assert len(w._camera_layer._dots) == 2                        # cameras still render alongside it
     assert _has_non_bg_pixel(w.render_native())
     # toggling the basemap off drops the layer but keeps the cameras
     w._chk_basemap.setChecked(False)
     assert w._basemap_group is None
-    assert len(w._camera_items) == 2
+    assert len(w._camera_layer._dots) == 2
     # ...and back on restores it
     w._chk_basemap.setChecked(True)
     assert w._basemap_group is not None
@@ -390,16 +410,16 @@ def test_widget_unload_frees_scene_off_tab_and_rebuilds_on_return(qapp):
     w = FlockHeatmapTab()
     w.showEvent(QShowEvent())
     w.set_geojson(_TWO_CAMS)
-    assert len(w._camera_items) == 2
+    assert len(w._camera_layer._dots) == 2
     assert w._chk_unload.isChecked()                       # owner spec: free-when-idle is the default
 
     w.hideEvent(QHideEvent())                              # leave the tab
-    assert w._camera_items == [] and w._unloaded is True   # scene freed
+    assert w._camera_layer is None and w._unloaded is True   # scene freed
     assert len(w._scene.items()) == 0                      # nothing left costing paint/BSP cycles
     assert w.camera_count == 2                             # ...but the parsed data is retained
 
     w.showEvent(QShowEvent())                              # come back
-    assert len(w._camera_items) == 2 and w._unloaded is False  # rebuilt from the retained features
+    assert len(w._camera_layer._dots) == 2 and w._unloaded is False  # rebuilt from the retained features
 
 
 def test_widget_unload_toggle_off_keeps_scene_loaded(qapp):
@@ -408,7 +428,7 @@ def test_widget_unload_toggle_off_keeps_scene_loaded(qapp):
     w.set_geojson(_TWO_CAMS)
     w._chk_unload.setChecked(False)                        # user opted to keep it warm
     w.hideEvent(QHideEvent())
-    assert len(w._camera_items) == 2 and w._unloaded is False   # NOT freed
+    assert len(w._camera_layer._dots) == 2 and w._unloaded is False   # NOT freed
 
 
 def test_widget_gps_fix_while_unloaded_does_not_crash(qapp):

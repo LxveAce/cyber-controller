@@ -109,6 +109,19 @@ def clamped_zoom_factor(cur_scale: float, factor: float, min_scale: float, max_s
     return factor
 
 
+def dots_in_rect(dots, left, top, right, bottom):
+    """Indices of the ``(x, y, radius, ...)`` dots whose bounding box intersects the [left,top,right,bottom]
+    rect. This is the viewport cull: the camera layer paints only these, so with thousands of cameras the
+    off-screen ones cost nothing to draw. Pure + Qt-free so it's unit-testable without a scene."""
+    out = []
+    for i, d in enumerate(dots):
+        x, y, r = d[0], d[1], d[2]
+        if x + r < left or x - r > right or y + r < top or y - r > bottom:
+            continue
+        out.append(i)
+    return out
+
+
 # The full web-mercator world [0,1]^2 mapped to a fixed pixel square, so every layer — the cameras now,
 # the world basemap next — lives in ONE shared coordinate space that stays aligned at any pan/zoom. The
 # constant is Earth's equatorial circumference in metres, so scene units are ~metres near the equator.
@@ -270,6 +283,30 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self.scale(f, f)
             ev.accept()   # consume the notch so it can't fall through to the scrollbars as a pan
 
+    class _CameraLayer(QGraphicsItem):
+        """Every camera dot drawn as ONE scene item instead of N ellipse items. For a big scan (a nationwide
+        DeFlock export is tens of thousands of points) that means one entry in the scene's BSP index and only
+        a float list in memory, not thousands of QGraphicsItems. paint() draws only the dots inside the
+        exposed region, so QGraphicsView's own scroll/zoom repaint gives free viewport culling — off-screen
+        cameras are never processed. dots = list of (x, y, radius, QColor); bounds = full extent QRectF."""
+
+        def __init__(self, dots, bounds) -> None:
+            super().__init__()
+            self._dots = dots
+            self._bounds = bounds
+
+        def boundingRect(self):  # noqa: N802 (Qt override)
+            return self._bounds
+
+        def paint(self, painter, option, widget=None) -> None:  # noqa: N802 (Qt override)
+            e = option.exposedRect
+            painter.setPen(Qt.NoPen)
+            painter.setOpacity(0.65)                              # overlaps accumulate, as before
+            for i in dots_in_rect(self._dots, e.left(), e.top(), e.right(), e.bottom()):
+                x, y, r, color = self._dots[i]
+                painter.setBrush(color)
+                painter.drawEllipse(QRectF(x - r, y - r, 2 * r, 2 * r))
+
     class _FlockWorker(QThread):
         """Drive a live Flock scan on its own thread: read GPS + the Flock-You device serial, feed them
         through a FlockSession, checkpoint on each new/relocated camera, and emit the updated cameras GeoJSON
@@ -411,7 +448,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
         def __init__(self, parent: "Optional[QWidget]" = None) -> None:
             super().__init__(parent)
             self._features: "List[dict]" = []
-            self._camera_items: list = []
+            self._camera_layer = None             # the single QGraphicsItem holding every camera dot (or None)
+            self._camera_bounds = QRectF()        # full extent of the camera set, for reset_view/render framing
             self._live_worker = None
             self._latest_gj: "Optional[dict]" = None
             self._visible = False
@@ -685,7 +723,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
         def _rebuild(self) -> None:
             self._scene.clear()
-            self._camera_items = []
+            self._camera_layer = None
+            self._camera_bounds = QRectF()
             self._basemap_group = None
             self._location_marker = None                       # scene.clear() dropped it; redraw below
             show_base = self._chk_basemap.isChecked() and bool(self._basemap_rings)
@@ -718,14 +757,22 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             span = max(spanx, spany, 1.0)                          # floor avoids a zero-size dot/rect
             # Position is absolute (world_px); the dot RADIUS scales with the set's extent so cameras stay
             # visible whether the scan spans a city block or a continent. Hotter -> larger.
+            dots = []
+            minx = miny = float("inf")
+            maxx = maxy = float("-inf")
             for x, y, t in proj:
                 r8, g8, b8 = heat_color(t)
                 radius = span * (0.010 + 0.014 * t)
-                item = self._scene.addEllipse(
-                    x - radius, y - radius, 2 * radius, 2 * radius,
-                    QPen(Qt.NoPen), QBrush(QColor(r8, g8, b8)))
-                item.setOpacity(0.65)                              # semi-transparent -> overlaps accumulate
-                self._camera_items.append(item)
+                dots.append((x, y, radius, QColor(r8, g8, b8)))
+                minx = min(minx, x - radius); miny = min(miny, y - radius)
+                maxx = max(maxx, x + radius); maxy = max(maxy, y + radius)
+            # ONE item for the whole set: a single BSP entry + a float list in memory (not N QGraphicsItems),
+            # and _CameraLayer.paint() draws only the dots in the exposed viewport, so off-screen cameras cost
+            # nothing on pan/zoom. Radius still keys off the FULL set's span (computed above) so dots don't
+            # resize as you pan.
+            self._camera_bounds = QRectF(minx, miny, maxx - minx, maxy - miny)
+            self._camera_layer = _CameraLayer(dots, self._camera_bounds)
+            self._scene.addItem(self._camera_layer)
             # Scene rect: with the basemap on, the whole world is the scene so you can pan/zoom out to it
             # (reset_view still re-frames the cameras). Without it, just the cameras' extent + a margin so
             # pan/zoom has room and edge dots aren't clipped.
@@ -746,10 +793,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             world basemap, which spans the globe, doesn't hijack the framing). Falls back to the scene rect
             when there are no cameras; safe on an empty scene (nothing valid to fit → view left as-is)."""
             self._view.resetTransform()
-            if self._camera_items:
-                rect = QRectF()
-                for it in self._camera_items:
-                    rect = rect.united(it.sceneBoundingRect())
+            if self._camera_layer is not None and not self._camera_bounds.isEmpty():
+                rect = self._camera_bounds
             else:
                 rect = self._scene.sceneRect()
             if rect.isValid() and not rect.isEmpty():
@@ -762,9 +807,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             img = QImage(width, height, QImage.Format_ARGB32)
             img.fill(_BG)
             p = QPainter(img)
-            src = QRectF()
-            for it in self._camera_items:
-                src = src.united(it.sceneBoundingRect())
+            src = self._camera_bounds if self._camera_layer is not None else QRectF()
             if src.isValid() and not src.isEmpty():
                 self._scene.render(p, QRectF(0, 0, width, height), src)
             else:
@@ -864,7 +907,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             hidden) never calls removeItem() on an already-deleted C++ object. The parsed data
             (_features/_latest_gj), toggles, and the live worker all survive — showEvent rebuilds from them."""
             self._scene.clear()
-            self._camera_items = []
+            self._camera_layer = None
+            self._camera_bounds = QRectF()
             self._basemap_group = None
             self._location_marker = None
             self._unloaded = True

@@ -16,6 +16,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   to keep the map warm across tab switches.
 
 ### Fixed
+- **Flock map: big scans stay responsive.** The map now draws every camera through a single layer that renders only the
+  dots currently in view, instead of creating one scene item per camera. A large scan — a wide DeFlock export can be tens
+  of thousands of points — no longer bogs the map down: off-screen cameras cost nothing to pan or zoom past, and the map
+  holds a lightweight point list in memory rather than thousands of graphics items.
 - **Flock map: scroll-to-zoom works again.** On a map with a lot of cameras — or with the world basemap on —
   "Reset view" frames the whole set at a zoom level well below the map's minimum, and the old zoom limiter then
   refused *every* wheel notch in both directions, so the wheel did nothing ("I can't scroll to zoom"). The limiter
