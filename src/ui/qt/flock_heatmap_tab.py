@@ -415,6 +415,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._live_worker = None
             self._latest_gj: "Optional[dict]" = None
             self._visible = False
+            self._unloaded = False   # True while the scene is freed for a backgrounded tab (see hideEvent)
 
             root = QVBoxLayout(self)
             file_row = QHBoxLayout()
@@ -485,11 +486,17 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._btn_center = QPushButton("Center on me")
             self._btn_center.setToolTip("Recentre the map on your GPS position once (after you've panned away).")
             self._btn_center.clicked.connect(self.center_on_me)
+            self._chk_unload = QCheckBox("Unload when off-tab")
+            self._chk_unload.setToolTip("Free the map's memory (cameras + basemap) while you're on another tab, then "
+                                        "rebuild it when you return — so a big scan doesn't keep eating CPU/RAM in the "
+                                        "background. A live scan keeps recording either way. On by default.")
+            self._chk_unload.setChecked(True)
             map_row.addWidget(self._btn_reset_view)
             map_row.addWidget(self._chk_basemap)
             map_row.addWidget(self._chk_mylocation)
             map_row.addWidget(self._chk_follow)
             map_row.addWidget(self._btn_center)
+            map_row.addWidget(self._chk_unload)
             map_row.addStretch(1)
             root.addLayout(map_row)
 
@@ -851,16 +858,33 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self._maybe_start_gps_tracking()   # resume standalone GPS tracking now the scan freed the port
 
         # ── wake/sleep: keep recording while hidden, catch the map up on show ──
+        def _free_scene(self) -> None:
+            """Drop every QGraphicsItem so a backgrounded tab stops costing CPU/RAM. Resets the item handles
+            exactly like _rebuild's head, so a later _draw_location_marker (a live GPS fix can arrive while
+            hidden) never calls removeItem() on an already-deleted C++ object. The parsed data
+            (_features/_latest_gj), toggles, and the live worker all survive — showEvent rebuilds from them."""
+            self._scene.clear()
+            self._camera_items = []
+            self._basemap_group = None
+            self._location_marker = None
+            self._unloaded = True
+
         def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
             self._visible = True
             if self._latest_gj is not None:
-                self.set_geojson(self._latest_gj)
+                self.set_geojson(self._latest_gj)   # live: catch up to the newest data + rebuild the scene
+            elif self._unloaded:
+                self._rebuild()                       # loaded-from-file map: rebuild from the retained _features
+            self._unloaded = False
             super().showEvent(ev)
 
         def hideEvent(self, ev) -> None:  # noqa: N802 (Qt override)
             # Deliberately do NOT stop the worker: detections must keep accumulating and checkpointing while the
-            # tab is backgrounded. Only the expensive scene repaint pauses (see _on_live_update).
+            # tab is backgrounded (_on_live_update records into _latest_gj without repainting). With the toggle
+            # on (default), also FREE the scene so an idle Flock tab holding a big camera set drops CPU/RAM.
             self._visible = False
+            if self._chk_unload.isChecked():
+                self._free_scene()
             super().hideEvent(ev)
 
         # ── real shutdown (app close) — the ONE place the live worker is stopped ──

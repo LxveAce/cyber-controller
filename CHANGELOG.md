@@ -10,6 +10,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the latest GitHub release for each firmware you've already downloaded into the vault and prints any that have a newer
   version than what you have cached (name, cached version, latest version). Read-only — it never downloads or flashes
   anything — so you can see what's stale before deciding to refresh a profile.
+- **Flock map: free its memory while you're on another tab.** A new **Unload when off-tab** toggle (on by default) drops
+  the map's cameras and basemap when you leave the Flock tab and rebuilds them from the retained scan when you come back —
+  so a big camera set stops eating CPU/RAM in the background. A live scan keeps recording either way; turn the toggle off
+  to keep the map warm across tab switches.
 
 ### Fixed
 - **Flock map: scroll-to-zoom works again.** On a map with a lot of cameras — or with the world basemap on —

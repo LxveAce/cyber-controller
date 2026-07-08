@@ -379,6 +379,50 @@ def test_widget_wheel_zoom_not_trapped_below_min(qapp):
     assert v.transform().m11() == pytest.approx(at)
 
 
+_TWO_CAMS = {"type": "FeatureCollection", "features": [
+    {"type": "Feature", "geometry": {"type": "Point", "coordinates": [11.0, 48.0]}, "properties": {"count": 3}},
+    {"type": "Feature", "geometry": {"type": "Point", "coordinates": [11.1, 48.1]}, "properties": {"count": 5}},
+]}
+
+
+def test_widget_unload_frees_scene_off_tab_and_rebuilds_on_return(qapp):
+    from PyQt5.QtGui import QHideEvent, QShowEvent
+    w = FlockHeatmapTab()
+    w.showEvent(QShowEvent())
+    w.set_geojson(_TWO_CAMS)
+    assert len(w._camera_items) == 2
+    assert w._chk_unload.isChecked()                       # owner spec: free-when-idle is the default
+
+    w.hideEvent(QHideEvent())                              # leave the tab
+    assert w._camera_items == [] and w._unloaded is True   # scene freed
+    assert len(w._scene.items()) == 0                      # nothing left costing paint/BSP cycles
+    assert w.camera_count == 2                             # ...but the parsed data is retained
+
+    w.showEvent(QShowEvent())                              # come back
+    assert len(w._camera_items) == 2 and w._unloaded is False  # rebuilt from the retained features
+
+
+def test_widget_unload_toggle_off_keeps_scene_loaded(qapp):
+    from PyQt5.QtGui import QHideEvent
+    w = FlockHeatmapTab()
+    w.set_geojson(_TWO_CAMS)
+    w._chk_unload.setChecked(False)                        # user opted to keep it warm
+    w.hideEvent(QHideEvent())
+    assert len(w._camera_items) == 2 and w._unloaded is False   # NOT freed
+
+
+def test_widget_gps_fix_while_unloaded_does_not_crash(qapp):
+    # A live scan keeps running while the tab is hidden, so _on_location_fix -> set_my_location can fire after
+    # the scene was freed. _draw_location_marker must not removeItem() the deleted C++ marker.
+    from PyQt5.QtGui import QHideEvent
+    w = FlockHeatmapTab()
+    w._chk_mylocation.setChecked(True)
+    w.set_my_location(48.0, 11.0)
+    w.hideEvent(QHideEvent())                              # scene freed, _location_marker -> None
+    w.set_my_location(48.5, 11.5)                          # hidden GPS fix — must be a no-crash no-op redraw
+    assert w._unloaded is True
+
+
 def test_widget_set_geojson_filters_invalid(qapp):
     w = FlockHeatmapTab()
     gj = {"type": "FeatureCollection", "features": [
