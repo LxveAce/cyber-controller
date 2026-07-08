@@ -296,7 +296,14 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                         self.line.emit(f"+ camera ({self.session.camera_count} located)")
                     fix = self.session.fix
                     has = bool(fix and fix.has_fix)
-                    ftxt = f"{fix.lat:.5f}, {fix.lon:.5f}" if has else "No Fix"
+                    # Show GPS quality alongside the position so a weak/degraded fix is visible at a glance
+                    # (sats + HDOP come from the GGA sentence; both read 0 on an RMC-only or older receiver).
+                    if has:
+                        ftxt = f"{fix.lat:.5f}, {fix.lon:.5f}"
+                        if fix.sats or fix.hdop:
+                            ftxt += f"  ·  {fix.sats} sats · HDOP {fix.hdop:.1f}"
+                    else:
+                        ftxt = "No Fix"
                     cur = (ftxt, self.session.camera_count)
                     if cur != last:
                         self.status.emit(ftxt, self.session.camera_count)

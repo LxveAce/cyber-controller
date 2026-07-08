@@ -18,6 +18,21 @@ def test_parse_nmea_gga_fix():
     f = wd.parse_nmea("$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*47")
     assert f is not None and f.has_fix
     assert round(f.lat, 3) == 48.117 and round(f.lon, 3) == 11.517 and f.alt == 545.4
+    assert f.sats == 8 and f.hdop == 0.9          # GGA quality fields (7=sats, 8=HDOP) are captured
+
+
+def test_parse_nmea_rmc_has_no_quality_fields():
+    # RMC carries no satellite/HDOP fields -> they stay at the unknown defaults, position still parses
+    f = wd.parse_nmea("$GPRMC,123519,A,4807.038,N,01131.000,E,022.4,084.4,230394,003.1,W*6A")
+    assert f is not None and f.has_fix
+    assert f.sats == 0 and f.hdop == 0.0
+
+
+def test_parse_nmea_gga_garbled_quality_keeps_the_fix():
+    # a garbled sats/HDOP must leave the quality unknown (0), never discard an otherwise-valid position
+    f = wd.parse_nmea("$GPGGA,123519,4807.038,N,01131.000,E,1,XX,YY,545.4,M,46.9,M,,*47")
+    assert f is not None and f.has_fix
+    assert round(f.lat, 3) == 48.117 and f.sats == 0 and f.hdop == 0.0
 
 
 def test_parse_nmea_gga_nofix():

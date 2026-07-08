@@ -39,6 +39,8 @@ class GpsFix:
     alt: float = 0.0
     has_fix: bool = False
     utc: str = ""
+    sats: int = 0        # satellites in use (GGA field 7); 0 when unknown (e.g. an RMC-only fix)
+    hdop: float = 0.0    # horizontal dilution of precision (GGA field 8); 0.0 when unknown
 
 
 @dataclass
@@ -89,10 +91,20 @@ def parse_nmea(line: str) -> Optional[GpsFix]:
             lon = _dm_to_dd(parts[4], parts[5])
             fix_q = parts[6]
             alt = float(parts[9]) if parts[9] else 0.0
+            # Satellites (field 7) + HDOP (field 8) are guarded individually: a garbled quality field must
+            # never discard an otherwise-valid position fix, only leave the quality figure unknown (0).
+            try:
+                sats = int(parts[7]) if parts[7] else 0
+            except ValueError:
+                sats = 0
+            try:
+                hdop = float(parts[8]) if parts[8] else 0.0
+            except ValueError:
+                hdop = 0.0
             has_fix = bool(fix_q) and fix_q != "0" and lat is not None and lon is not None
             if lat is None or lon is None:
-                return GpsFix(0.0, 0.0, alt, False, utc)
-            return GpsFix(lat, lon, alt, has_fix, utc)
+                return GpsFix(0.0, 0.0, alt, False, utc, sats, hdop)
+            return GpsFix(lat, lon, alt, has_fix, utc, sats, hdop)
         if kind == "RMC" and len(parts) >= 7:
             utc = parts[1]
             status = parts[2]

@@ -28,6 +28,10 @@ Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 unt
   works **without a scan running**: turn it on with a GPS port selected and the map opens a light standalone GPS reader
   just to track your position — so you can use the Flock map as a plain live GPS map, then start a scan any time (the
   scan takes over the GPS port cleanly, and tracking resumes on its own when the scan ends).
+- **The Flock scan now shows GPS quality, not just position.** While a scan is running, the fix readout reports the
+  satellite count and HDOP (horizontal dilution of precision) next to your coordinates — so a weak or degraded fix is
+  obvious at a glance instead of looking identical to a strong one. The figures are parsed from the receiver's GGA
+  sentences (and read as unknown on an RMC-only or older receiver that doesn't send them).
 - **New firmware profile: WiFiDuck (`SpacehuhnTech/WiFiDuck`).** Fills a category the profile set didn't cover — a
   Wi-Fi-controlled BadUSB / keystroke-injection tool (from the same author as the ESP8266 Deauther we already ship).
   Cyber Controller flashes the **ESP8266 "Wi-Fi backpack" half** (the web UI + serial CLI that stores and runs Ducky
