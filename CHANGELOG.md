@@ -5,7 +5,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
-Fixes for issues found in 1.6.4 during hands-on testing. Version stays 1.6.4 until the batch is complete.
+## [1.6.5] — 2026-07-08
+
+The 1.6.4 hands-on + real-hardware testing batch: Flock map/GeoJSON work, a wardrive/backup CLI toolkit, and fixes for
+issues found by connecting real devices — including a Marauder AP scan that was silently logging nothing.
 
 ### Added
 - **Summarize a wardrive capture from the command line.** `cyber-controller --wardrive-summary <wigle.csv>` reads a WiGLE
