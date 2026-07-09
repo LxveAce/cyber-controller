@@ -6,14 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Changed
-- **Auto-detect now routes to a *probed* firmware's own parser, not always Marauder (1.7.0 multi-firmware).**
+- **Auto-detect now routes every firmware to its own parser, not always Marauder (1.7.0 multi-firmware).**
   With the firmware selector on "Auto-detect", the Devices tab used to parse every non-Flipper board with the
-  Marauder grammar — so a GhostESP / Bruce / HaleHound / ESP32-DIV / BW16 / Meshtastic device that had been
-  identified (by a Devices-tab probe or captured in its connect banner) still ran through the wrong parser and
-  wouldn't populate the target pool or expose its own command set. Auto-detect now prefers a real detected
-  firmware (from the device's detected id or its probe banner) and only falls back to the Flipper/Marauder
-  default when nothing was detected. (First connect to a never-probed board is unchanged — still Marauder for
-  ESP32; wiring a re-detect right after the on-connect handshake is the next step.)
+  Marauder grammar — so a GhostESP / Bruce / HaleHound / ESP32-DIV / BW16 / Meshtastic device ran through the
+  wrong parser and wouldn't populate the target pool or expose its own command set. Two parts: (1) auto-detect
+  now prefers a real detected firmware (from the device's detected id or its probe banner) over the Marauder
+  default; (2) on a never-probed board — where the parser is chosen at connect, before the reply comes back —
+  the connect-time handshake now **re-detects and hot-swaps the cross-comm ingest parser** to the firmware it
+  actually found, so scans start populating on the right firmware without the user pre-probing or picking
+  manually. An explicit (non-Auto) firmware choice is always honoured and never overridden.
 
 ### Added
 - **Scan-to-export: "Export CSV…" on the Targets tab (1.7.0).** A button in the Targets toolbar writes *every*

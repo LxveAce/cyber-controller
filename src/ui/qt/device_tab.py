@@ -108,6 +108,7 @@ class DeviceTab(QWidget):
         self._line_signal = _LineSignal()
         self._line_signal.line_received.connect(self._on_line_received)
         self._devtab_line_cbs: dict = {}  # port -> our on_line cb, so disconnect removes exactly it
+        self._ingest_proto: dict[str, str] = {}  # port -> protocol_name the ingestor is parsing with
         # CC-7: connect-time probe runs off-thread; this bridges its result back to the Qt thread.
         self._probe_signal = _ProbeSignal()
         self._probe_signal.probe_done.connect(self._on_probe_done)
@@ -451,7 +452,11 @@ class DeviceTab(QWidget):
             # the Marauder parser; a per-device firmware selector can refine this later.
             if self._ingestor is not None:
                 try:
-                    self._ingestor.attach(conn, self._selected_protocol())
+                    proto = self._selected_protocol()
+                    self._ingestor.attach(conn, proto)
+                    # Remember which parser this port is on, so the post-handshake re-detect (Auto-detect)
+                    # can tell whether it needs to swap the ingest parser to the firmware actually found.
+                    self._ingest_proto[port] = proto.protocol_name
                 except Exception as exc:
                     self._terminal.append(f"[cross-comm ingest attach failed: {exc}]")
             self._terminal.clear()
@@ -491,6 +496,7 @@ class DeviceTab(QWidget):
                         pass
             if self._ingestor is not None:
                 self._ingestor.detach(conn)
+        self._ingest_proto.pop(port, None)
         self._dm.close_connection(port, owner="devices_tab")
         self._active_conn = None
         self._terminal.append(f"[Disconnected from {port}]")
@@ -537,9 +543,72 @@ class DeviceTab(QWidget):
             self._probe_signal.probe_done.emit(port)
 
     def _on_probe_done(self, port: str) -> None:
-        """Qt-thread slot: the probe for *port* finished — refresh the health label if that port is shown."""
+        """Qt-thread slot: the probe for *port* finished — re-route the ingest parser to the firmware the
+        handshake actually identified (Auto-detect only), then refresh the health label if that port is shown."""
+        self._reautodetect_after_probe(port)
         if port == getattr(self, "_active_port", ""):
             self._update_health_label()
+
+    def _reautodetect_after_probe(self, port: str) -> None:
+        """After the connect-time handshake, on Auto-detect, swap the cross-comm ingest parser to the firmware
+        the probe identified — so a NEVER-PROBED board also routes to its own parser, not the provisional
+        Marauder default the connect chose before any reply came back.
+
+        Trusts the freshly-captured probe *banner*: ``dev.firmware`` may still hold the connect-time default
+        (which would mask detection), whereas ``fw_banner`` is the raw identifying line. Only acts when the
+        user left the selector on Auto-detect (an explicit pick is always honoured). Best-effort — a failure
+        here must never break the probe-done slot or the connection.
+        """
+        try:
+            if self._firmware_combo.currentText() != _AUTO_DETECT:
+                return
+            dev = self._dm.get_device(port)
+            if dev is None or not dev.connected:
+                return
+            banner = (getattr(dev, "fw_banner", "") or "").strip()
+            if not banner:
+                return
+            from src.core.device_detect import match_firmware
+            name = resolve_protocol_name((match_firmware(banner)[0] or "").strip())
+            if name is None:
+                return
+            proto = get_protocol(name)
+            if proto.protocol_name == self._ingest_proto.get(port):
+                return  # already parsing with the detected firmware — nothing to do
+            # Keep the resolver / broadcast / palette / capabilities in sync (all key off Device.firmware,
+            # which _selected_protocol() re-resolves), then swap the live ingest parser.
+            dev.firmware = proto.protocol_name
+            if not self._reattach_ingest(port, proto):
+                return
+            if port == getattr(self, "_active_port", ""):
+                self._update_bj_panel()  # -> _apply_line_ending + _update_capabilities off the new firmware
+                try:
+                    self._terminal.append(
+                        f"[auto-detected {proto.protocol_name} — cross-comm parser switched]"
+                    )
+                except Exception:  # noqa: BLE001
+                    pass
+        except Exception:  # noqa: BLE001 - purely a UX refinement; never disturb the probe-done slot
+            log.debug("re-autodetect after probe failed on %s", port, exc_info=True)
+
+    def _reattach_ingest(self, port: str, proto) -> bool:
+        """Swap the cross-comm ingest parser for *port* to *proto*. Returns True if the swap happened.
+
+        :meth:`TargetIngestor.attach` is idempotent (it drops the port's prior on_line before adding), so a
+        re-attach cleanly replaces the parser without double-parsing.
+        """
+        if self._ingestor is None:
+            return False
+        conn = self._dm.get_connection(port)
+        if conn is None:
+            return False
+        try:
+            self._ingestor.attach(conn, proto)
+        except Exception:  # noqa: BLE001
+            log.debug("re-attach ingest failed on %s", port, exc_info=True)
+            return False
+        self._ingest_proto[port] = proto.protocol_name
+        return True
 
     def _set_probing_label(self) -> None:
         if hasattr(self, "_health_label"):
