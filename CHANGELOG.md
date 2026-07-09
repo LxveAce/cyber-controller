@@ -5,6 +5,31 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.9] — 2026-07-08
+
+A bug-fix release that gets core scanning + provisioning working again: discovered APs now actually reach the Targets
+list, macros, Cross-Comm and the live network graph, and Dead Man's Switch provisioning works in the shipped app.
+
+### Fixed
+- **Scans now populate Targets, Macros, Cross-Comm and the graph.** The Marauder serial parser recognised only the
+  legacy `SSID:… BSSID:…` line and the multi-line ESSID/BSSID/RSSI form — not the real v1.12.3 `scanall` single-line
+  shape (a bare leading RSSI, a mid-line BSSID and trailing metadata columns, e.g. `-52 Ch: 6 aa:bb:cc:dd:ee:ff ESSID:
+  MyNet 11 15`). So every live scan produced only "info" lines, the shared target pool never filled, and the Targets
+  tab, macro target-fill, Cross-Comm shared view and the network graph all stayed empty. Because auto-detect routes
+  almost every board through the Marauder parser, this looked like "nothing populates, on any firmware." The parser now
+  handles that single-line form (including hidden-SSID APs and SSIDs with spaces), sharing the same field extractor the
+  wardrive logger already used so the two can't drift apart again.
+- **The network graph fills in live as you scan.** It used to read the target pool only when you clicked "Rebuild"; it
+  now refreshes automatically (debounced) as APs/clients are discovered, while preserving any layout you dragged.
+- **Dead Man's Switch provisioning works in the installed app.** "Provisioning failed: Could not find the NVS partition
+  generator (esp-idf-nvs-partition-gen)" — the ESP-IDF tool that bakes the guardcfg NVS image was neither a declared
+  dependency nor bundled, so the shipped executable couldn't find it. It's now a dependency and bundled into the build.
+
+### Known / next
+- BLE (`sniffbt`) scan lines still need a real-hardware capture to parse correctly — deferred to a bench-validated fix.
+- A "live view vs whole-session" toggle, scan-to-export for APs/devices, and deeper multi-firmware feature coverage are
+  planned for **1.7.0**.
+
 ## [1.6.8] — 2026-07-08
 
 A reliability patch for the one-click in-app updater. "Download & install" verified the new build but often came back on

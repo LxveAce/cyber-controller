@@ -28,7 +28,7 @@
 <!-- STATUS-ROADMAP:START -->
 ## Status & Roadmap
 
-**Status:** **v1.6.8** is the latest release — a **LxveLabs** project by LxveAce. It follows the three
+**Status:** **v1.6.9** is the latest release — a **LxveLabs** project by LxveAce. It follows the three
 convergent adversarial security reviews (1.6.1 / 1.6.2 / 1.6.3, all closed) with a six-round exhaustive debug
 and hardening pass over the whole tool, one failure class per round: correctness, silent failures, concurrency
 and resource handling, security, integration wiring, and the flash/serial path (each fix guarded by a test). It
