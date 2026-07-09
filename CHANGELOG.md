@@ -5,6 +5,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.7] — 2026-07-08
+
+A device-focused "rough edges" patch from hands-on v1.6.6 bench testing. The Flock map zooms back out, the
+Targets tab fills from any scan (not just a Devices-tab connect), the bundled starter macros use commands the
+firmware actually accepts, Device Health stops reading a silent board as a green "connected", "Detect board"
+stops presenting a wrong-panel guess as certain, and flashing Marauder no longer silently blanks a
+Cheap-Yellow-Display's screen.
+
 ### Fixed
 - **Flock map: you can now zoom back out.** v1.6.6 fixed zoom-*in* but left the zoom-*out* floor at a fixed value the
   map often sits below (a real camera spread, or the world basemap, frames below it), so the wheel refused to zoom out.
