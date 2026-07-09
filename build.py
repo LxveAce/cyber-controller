@@ -188,6 +188,18 @@ def _build() -> int:
     # dependency graph never saw it and left it out of the bundle entirely.
     cmd.extend(["--collect-all", "esptool"])
 
+    # esp-idf-nvs-partition-gen: the Dead Man's Switch provisioner (deadmans-switch/host/provision.py)
+    # imports this ESP-IDF tool DYNAMICALLY at runtime to bake the guardcfg NVS image, so PyInstaller's
+    # static analysis never sees it — the frozen app raised "Could not find the NVS partition generator"
+    # on Dead Man's Switch provisioning. Collect it fully when present. Guarded so a build env without it
+    # (the linux-arm --no-deps job) still builds; DMS NVS provisioning just isn't bundled there.
+    try:
+        import esp_idf_nvs_partition_gen  # noqa: F401
+        cmd.extend(["--collect-all", "esp_idf_nvs_partition_gen"])
+        print("Bundling esp_idf_nvs_partition_gen (Dead Man's Switch NVS provisioning).")
+    except ImportError:
+        print("note: esp_idf_nvs_partition_gen not installed — DMS NVS provisioning won't be bundled.")
+
     # Collect submodules for all UI variants
     cmd.extend([
         "--collect-submodules", "src.ui.qt",

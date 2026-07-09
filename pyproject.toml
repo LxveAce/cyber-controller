@@ -37,6 +37,11 @@ dependencies = [
     # cryptography is MANDATORY: SecureStorage uses authenticated AES-256-GCM and fails
     # closed (no XOR fallback). Do not move this to an optional group.
     "cryptography>=43",
+    # esp-idf-nvs-partition-gen: the Dead Man's Switch provisioner bakes the per-device guardcfg NVS
+    # image with this ESP-IDF tool (imported at runtime by deadmans-switch/host/provision.py). It is NOT
+    # bundled with esptool, so a frozen build (or a fresh env) failed DMS provisioning with "Could not
+    # find the NVS partition generator". Pure-Python; also --collect-all'd in build.py so it's frozen-bundled.
+    "esp-idf-nvs-partition-gen>=0.2",
 ]
 
 [project.optional-dependencies]
