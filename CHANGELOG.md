@@ -5,6 +5,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Added
+- **"Live view" toggle on the Targets tab (1.7.0).** A checkbox in the Targets toolbar. Off (default) the table shows
+  everything discovered this session, exactly as before. On, it filters down to targets seen in the last 45 seconds —
+  "what's currently in range" — and rows age out on their own as they go stale (the 3s refresh re-evaluates freshness).
+  It combines with the search box and never touches the shared pool: Cross-Comm, macros and the graph still see the
+  whole session; this only changes what *this* table displays.
+
 ## [1.6.9] — 2026-07-08
 
 A bug-fix release that gets core scanning + provisioning working again: discovered APs now actually reach the Targets

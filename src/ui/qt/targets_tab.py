@@ -14,12 +14,14 @@ action system).
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QCursor
 from PyQt5.QtWidgets import (
     QApplication,
+    QCheckBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -38,6 +40,10 @@ from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.models.target import Target, TargetType
 from src.ui.qt.widgets.signal_bars import SignalBarsDelegate
+
+# "Live view" window: a target seen within this many seconds counts as "currently in range". The Live-view
+# toggle filters the table down to just these; the shared pool always keeps the full session regardless.
+_LIVE_VIEW_WINDOW_S = 45.0
 
 # Graceful import for action system (created by a parallel agent).
 try:
@@ -187,6 +193,15 @@ class TargetsTab(QWidget):
         self._clear_btn.clicked.connect(self._on_clear)
         toolbar.addWidget(self._refresh_btn)
         toolbar.addWidget(self._clear_btn)
+        self._live_view = QCheckBox("Live view")
+        self._live_view.setToolTip(
+            "Live view: show only targets seen in the last "
+            f"{int(_LIVE_VIEW_WINDOW_S)}s — i.e. what's currently in range.\n"
+            "Off (default): show everything discovered this session. The shared pool always keeps every "
+            "target; this only filters what THIS table displays."
+        )
+        self._live_view.toggled.connect(lambda _checked: self._apply_filter())
+        toolbar.addWidget(self._live_view)
         root.addLayout(toolbar)
 
         # Table
@@ -271,30 +286,55 @@ class TargetsTab(QWidget):
             self._table.setItem(row, 4, chan_item)
             self._table.setItem(row, 5, QTableWidgetItem(t.device_source or ""))
             self._table.setItem(row, 6, QTableWidgetItem(t.encryption or ""))
-            self._table.setItem(row, 7, QTableWidgetItem(self._fmt_time(t.last_seen)))
+            seen_item = QTableWidgetItem(self._fmt_time(t.last_seen))
+            # Stash epoch seconds on the Last Seen cell so Live view can age rows out by freshness.
+            seen_item.setData(Qt.UserRole, self._epoch(t.last_seen))
+            self._table.setItem(row, 7, seen_item)
         self._table.setSortingEnabled(True)
 
         self._count_label.setText(f"{len(targets)} target{'s' if len(targets) != 1 else ''}")
         self._empty_hint.setVisible(len(targets) == 0)
 
-        # Re-apply any active filter
-        self._apply_filter(self._search_input.text())
+        # Re-apply search + Live-view filter (the 3s safety-net timer also ages Live-view rows out here).
+        self._apply_filter()
 
-    def _apply_filter(self, text: str) -> None:
-        """Show/hide table rows based on search text matching SSID, MAC, or Type."""
-        filter_text = text.strip().lower()
+    def _apply_filter(self, _text: Any = None) -> None:
+        """Show/hide rows: search text (Type/SSID/MAC) AND, when Live view is on, freshness.
+
+        Live view keeps only targets seen within the last :data:`_LIVE_VIEW_WINDOW_S` seconds ("what's
+        currently in range"); the shared pool still holds the whole session. The argument is ignored
+        (``textChanged`` passes it); search text and toggle state are read from the widgets.
+        """
+        filter_text = self._search_input.text().strip().lower()
+        live = self._live_view.isChecked()
+        now = time.time()
         for row in range(self._table.rowCount()):
-            if not filter_text:
-                self._table.setRowHidden(row, False)
-                continue
-            # Check Type (col 0), SSID (col 1), MAC (col 2)
-            match = False
-            for col in (0, 1, 2):
-                item = self._table.item(row, col)
-                if item and filter_text in (item.text() or "").lower():
-                    match = True
-                    break
+            match = True
+            if filter_text:
+                # Match against Type (col 0), SSID (col 1), MAC (col 2).
+                match = any(
+                    (self._table.item(row, col) is not None)
+                    and filter_text in (self._table.item(row, col).text() or "").lower()
+                    for col in (0, 1, 2)
+                )
+            if match and live:
+                seen_item = self._table.item(row, 7)
+                ts = seen_item.data(Qt.UserRole) if seen_item is not None else None
+                if ts is not None and (now - float(ts)) > _LIVE_VIEW_WINDOW_S:
+                    match = False
             self._table.setRowHidden(row, not match)
+
+    @staticmethod
+    def _epoch(last_seen: Any) -> "float | None":
+        """Best-effort epoch seconds for a target's last_seen (datetime / number / str), else None."""
+        try:
+            return float(last_seen.timestamp())  # tz-aware datetime
+        except (AttributeError, TypeError, ValueError, OSError):
+            pass
+        try:
+            return float(last_seen)  # already numeric
+        except (TypeError, ValueError):
+            return None
 
     def _on_clear(self) -> None:
         reply = QMessageBox.question(
