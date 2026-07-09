@@ -547,7 +547,8 @@ class CyberControllerWindow(QMainWindow):
         # self._network_tab use keeps working. Navigate into a sub-view via _show_subtab().
         self._cross_comm_tab = CrossCommTab(self._bus, self._pool, self._router, self._dm)
         from src.ui.qt.network_tab import NetworkTab
-        self._network_tab = NetworkTab(self._dm, self._pool, self._action_resolver, self._send_to_port)
+        self._network_tab = NetworkTab(self._dm, self._pool, self._action_resolver, self._send_to_port,
+                                       event_bus=self._bus)
         self._network_surface = QTabWidget()
         self._network_surface.addTab(self._network_tab, label_icon("Graph"), "Graph")
         self._network_surface.addTab(self._cross_comm_tab, label_icon("Cross-Comm"), "Cross-Comm")

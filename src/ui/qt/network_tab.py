@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 from typing import Callable, Optional
 
+from PyQt5.QtCore import QTimer, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QPainter, QPen
 from PyQt5.QtWidgets import (
     QGraphicsItem,
@@ -147,13 +148,18 @@ class _GraphView(QGraphicsView):
 class NetworkTab(QWidget):
     """The experimental network-graph tab."""
 
+    # Emitted (from any thread) when the shared TargetPool changes, so the graph auto-fills as a device
+    # scans instead of only on a manual Rebuild. Delivered queued to the GUI thread, then debounced.
+    _targets_changed = pyqtSignal()
+
     def __init__(self, device_manager=None, target_pool=None, action_resolver=None,
-                 send_cmd: "Optional[Callable[[str, str], None]]" = None) -> None:
+                 send_cmd: "Optional[Callable[[str, str], None]]" = None, event_bus=None) -> None:
         super().__init__()
         self._dm = device_manager
         self._pool = target_pool
         self._resolver = action_resolver
         self._send_cmd = send_cmd
+        self._bus = event_bus
         self._nodes: "dict[str, _Node]" = {}
 
         root = QVBoxLayout(self)
@@ -191,6 +197,26 @@ class NetworkTab(QWidget):
         root.addWidget(self._simple_notice, 1)
 
         self.rebuild()
+
+        # Live refresh: auto-rebuild when the shared TargetPool changes, so the graph fills in as a device
+        # scans (WiFi/BLE) instead of only on a manual Rebuild. The bus callback fires on the ingest thread,
+        # so it just emits a queued signal; a short single-shot debounce coalesces a burst of scan hits into
+        # one relayout (the graph preserves dragged positions). No bus → no auto-refresh (manual Rebuild only).
+        self._refresh_timer = QTimer(self)
+        self._refresh_timer.setSingleShot(True)
+        self._refresh_timer.setInterval(400)
+        self._refresh_timer.timeout.connect(self.rebuild)
+        self._targets_changed.connect(self._refresh_timer.start)  # queued → GUI thread restarts the timer
+        if self._bus is not None:
+            for topic in ("target.added", "target.updated", "target.removed", "target.cleared"):
+                try:
+                    self._bus.subscribe(topic, self._on_bus_target_event)
+                except Exception:  # noqa: BLE001 — never let bus wiring break tab construction
+                    pass
+
+    def _on_bus_target_event(self, _topic: str, _payload) -> None:
+        """EventBus callback (any thread) — request a debounced GUI-thread rebuild of the graph."""
+        self._targets_changed.emit()
 
     # ── interface mode (dual-depth Simple / Pro) ─────────────────────
     def set_ui_mode(self, mode: str) -> None:
