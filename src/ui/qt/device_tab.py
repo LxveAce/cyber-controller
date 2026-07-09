@@ -44,6 +44,7 @@ from src.protocols import (
     PROTOCOL_DISPLAY_NAMES,
     get_protocol,
     get_protocol_by_display,
+    resolve_protocol_name,
 )
 
 log = logging.getLogger(__name__)
@@ -596,9 +597,41 @@ class DeviceTab(QWidget):
         from src.models.device import BoardType
         port = getattr(self, "_active_port", None)
         dev = self._dm.get_device(port) if port else None
+        # Prefer a REAL prior detection over the ESP32-defaults-to-Marauder heuristic: a Devices-tab probe
+        # (scan_ports) or an earlier connect's handshake may have identified the actual firmware
+        # (dev.firmware, e.g. 'ghostesp') or captured an identifying banner (dev.fw_banner). Routing to that
+        # firmware's OWN parser is what lets a GhostESP / Bruce / HaleHound / DIV / BW16 / Meshtastic device
+        # populate the target pool + expose its own command set instead of being parsed as Marauder.
+        name = self._detected_protocol_name(dev)
+        if name is not None:
+            return get_protocol(name)
         if getattr(dev, "board_type", None) == BoardType.FLIPPER_ZERO:
             return get_protocol("flipper")
         return get_protocol("marauder")
+
+    @staticmethod
+    def _detected_protocol_name(dev) -> "str | None":
+        """A real, known firmware name from a device's detected identifier / banner, or None.
+
+        Returns None when nothing usable was detected (so the caller keeps its Flipper/Marauder default)
+        — the generic passthrough never counts as a match.
+        """
+        if dev is None:
+            return None
+        # 1) An explicit detected firmware identifier (match_firmware from scan_ports / handshake).
+        name = resolve_protocol_name(getattr(dev, "firmware", "") or "")
+        if name is not None:
+            return name
+        # 2) Otherwise mine an identifying banner captured on probe through the same signature matcher.
+        banner = (getattr(dev, "fw_banner", "") or "").strip()
+        if banner:
+            try:
+                from src.core.device_detect import match_firmware
+                fw = (match_firmware(banner)[0] or "").strip()
+            except Exception:  # noqa: BLE001
+                fw = ""
+            return resolve_protocol_name(fw)
+        return None
 
     def _persist_firmware(self) -> None:
         """Re-persist the firmware selection onto the active Device when it's connected, so a post-connect

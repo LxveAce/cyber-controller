@@ -5,6 +5,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Changed
+- **Auto-detect now routes to a *probed* firmware's own parser, not always Marauder (1.7.0 multi-firmware).**
+  With the firmware selector on "Auto-detect", the Devices tab used to parse every non-Flipper board with the
+  Marauder grammar — so a GhostESP / Bruce / HaleHound / ESP32-DIV / BW16 / Meshtastic device that had been
+  identified (by a Devices-tab probe or captured in its connect banner) still ran through the wrong parser and
+  wouldn't populate the target pool or expose its own command set. Auto-detect now prefers a real detected
+  firmware (from the device's detected id or its probe banner) and only falls back to the Flipper/Marauder
+  default when nothing was detected. (First connect to a never-probed board is unchanged — still Marauder for
+  ESP32; wiring a re-detect right after the on-connect handshake is the next step.)
+
 ### Added
 - **Scan-to-export: "Export CSV…" on the Targets tab (1.7.0).** A button in the Targets toolbar writes *every*
   target seen this session — APs, clients and BLE devices from the shared pool — to a CSV file

@@ -148,6 +148,30 @@ def get_protocol_by_display(display: str) -> BaseProtocol:
     return get_protocol(name)
 
 
+def resolve_protocol_name(name: str) -> str | None:
+    """Resolve a loose/detected firmware string to a REAL registered protocol name, or ``None``.
+
+    Unlike :func:`get_protocol` (which always returns *something*, falling back to the generic passthrough),
+    this returns ``None`` when *name* doesn't identify a known firmware — so a caller can tell "a real
+    firmware was detected" from "unknown, use my default heuristic". Matching is case-insensitive and
+    tolerant of separator drift (``ghost_esp`` / ``ghostesp`` / ``Ghost ESP`` all resolve to ``ghost-esp``).
+    The generic/raw passthrough entries never count as a real match.
+    """
+    if not name:
+        return None
+    key = name.strip().lower()
+    for candidate in (key, key.replace("_", "-")):
+        cls = PROTOCOLS.get(candidate)
+        if cls is not None and cls is not GenericProtocol:
+            return candidate
+    # Tolerate a missing/space separator: 'ghostesp' / 'Ghost ESP' vs the registry key 'ghost-esp'.
+    squashed = key.replace("_", "").replace("-", "").replace(" ", "")
+    for reg_name, cls in PROTOCOLS.items():
+        if cls is not GenericProtocol and reg_name.replace("-", "") == squashed:
+            return reg_name
+    return None
+
+
 def list_protocols() -> list[str]:
     """Return the list of registered internal protocol names."""
     return list(PROTOCOLS.keys())
@@ -245,6 +269,7 @@ __all__ = [
     "PROTOCOL_DISPLAY_NAMES",
     "get_protocol",
     "get_protocol_by_display",
+    "resolve_protocol_name",
     "get_protocol_module",
     "list_protocols",
     "capabilities_for",
