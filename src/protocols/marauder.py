@@ -8,6 +8,13 @@ from typing import Any
 from src.models.action import ActionCategory, TargetAction
 from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
+# Reuse the ONE tolerant AP-line extractor. The real Marauder v1.12.3 `scanall` prints each AP as a single
+# line with a BARE leading RSSI + mid-line BSSID + trailing metadata columns; that format was fixed in the
+# wardrive parser (commit 81a6896) but never here, so this parser emitted `info` (not `ap_found`) for live
+# scans and the shared TargetPool stayed empty (empty Targets / Macro-fill / Cross-Comm / network graph).
+# Sharing the extractor keeps the pool feed and the wardrive CSV on ONE parser so they can't drift again.
+# (wardrive imports only stdlib — no import cycle.)
+from src.core.wardrive import _RSSI_LEAD_RE, _extract_ap_fields
 
 # --- Regex patterns for Marauder serial output ---
 
@@ -162,6 +169,26 @@ class MarauderProtocol(BaseProtocol):
             return done if done is not None else ParsedEvent(
                 event_type="info", data={"message": line}, raw=line
             )
+
+        # AP discovered — real v1.12.3 `scanall` SINGLE-LINE form: "<rssi> Ch: <n> <bssid> ESSID: <name> <m> <m>"
+        # (bare leading RSSI, mid-line BSSID, NO field labels, trailing metadata columns). The legacy _RE_AP and
+        # the anchored multi-line branches above cannot match it, so this used to fall through to `info` and never
+        # reach the TargetPool. Guarded to require a BSSID plus either an SSID or the unambiguous bare-leading-RSSI
+        # signature, so Client/BLE/status lines (which also carry a MAC) never misfire as APs. Isolated multi-line
+        # ESSID:/BSSID: lines are handled by the branches above and never reach here.
+        if _RSSI_LEAD_RE.search(line) or "ESSID" in line.upper():
+            fields = _extract_ap_fields(line)
+            bssid = fields.get("bssid")
+            if bssid and ("ssid" in fields or "rssi" in fields):
+                data: dict[str, Any] = {
+                    "ssid": str(fields.get("ssid", "")),
+                    "bssid": str(bssid),
+                    "rssi": int(fields.get("rssi", 0)),  # type: ignore[arg-type]
+                    "index": self._assign_index(str(bssid)),
+                }
+                if "channel" in fields:
+                    data["channel"] = int(fields["channel"])  # type: ignore[arg-type]
+                return ParsedEvent(event_type="ap_found", data=data, raw=line)
 
         # Client discovered
         m = _RE_CLIENT.search(line)
