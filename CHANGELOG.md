@@ -5,6 +5,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.6.8] — 2026-07-08
+
+A reliability patch for the one-click in-app updater. "Download & install" verified the new build but often came back on
+the old version because the app didn't fully exit for the swap helper; it now installs and relaunches as intended.
+
 ### Fixed
 - **In-app updater now actually installs and relaunches.** "Download & install" downloaded and verified the new
   build but often came back on the OLD version. On Windows the app quit *gracefully*, which can stall on a live
