@@ -213,6 +213,7 @@ class FlashTab(QWidget):
         self._batch_idx = 0
         self._batch_ok = 0
         self._pending_variant: str | None = None  # variant to select once the async list lands
+        self._pending_flash_hint: str | None = None  # post-flash "screen blank? re-pick" hint (B2)
         self._profiles: dict[str, Path] = {}  # display name -> path
         self._profile_objs: dict[str, FirmwareProfile] = {}  # display name -> loaded profile
 
@@ -511,6 +512,12 @@ class FlashTab(QWidget):
             profile = FirmwareProfile.from_file(profile_path)
         except Exception:
             return
+        # B2 — honest Auto label. Marauder's per-chip Auto default is the generic ILI9341 build
+        # (flash_core old_hardware), the wrong display driver for most CYD panels (blank screen). Name
+        # that in the picker so "Auto" doesn't read as a safe default for a display board. Other
+        # firmwares keep the plain per-chip-default label.
+        if self._is_marauder(profile):
+            self._variant_combo.setItemText(0, "Auto — generic ILI9341 (wrong for most CYD panels)")
         self._variant_combo.addItem("Loading variants…", "")
         self._variant_combo.model().item(1).setEnabled(False)
         self._variant_loader = _VariantLoader(self._fe, profile)
@@ -668,6 +675,14 @@ class FlashTab(QWidget):
 
     # ── Actions ──────────────────────────────────────────────────────
 
+    @staticmethod
+    def _is_marauder(profile) -> bool:
+        """True for the ESP32 Marauder profile — whose per-chip Auto default resolves to the generic
+        ILI9341 ``old_hardware`` build, the wrong display driver for most CYD panels (blank screen).
+        Used to gate + relabel the Auto variant choice (B2)."""
+        return (getattr(profile, "id", "") or "").lower() == "marauder" or \
+               (getattr(profile, "protocol", "") or "").lower() == "marauder"
+
     def _on_flash(self) -> None:
         # Concurrency guard: refuse a single flash while a single flash OR a batch is already running.
         # _btn_flash is disabled during a flash, but this stops a second _FlashWorker from ever overwriting
@@ -739,6 +754,33 @@ class FlashTab(QWidget):
 
         variant = self._variant_combo.currentData() or ""
         profile.variant = variant
+        # B2 — flash-default honesty. Marauder with Auto (no explicit variant) resolves to the generic
+        # ILI9341 build (flash_core old_hardware), the wrong display driver for most CYD panels — their
+        # screen stays blank after a "successful" flash. Don't silently pick it: make the user confirm the
+        # generic guess or cancel to choose their panel / run Detect board first. Only gates Marauder+Auto;
+        # any explicit variant, or any other firmware, flashes straight through. (Mockable QMessageBox so
+        # the test drives both branches, like the Erase / Detect confirmations.)
+        self._pending_flash_hint = None
+        if variant == "" and self._is_marauder(profile):
+            from PyQt5.QtWidgets import QMessageBox
+            resp = QMessageBox.warning(
+                self, "Flash the generic display build?",
+                f"'{profile.name}' with Auto flashes the generic ILI9341 build (old_hardware). That is the "
+                "wrong display driver for most Cheap-Yellow-Display panels (2-USB ST7789, Guition, 3.5\" "
+                "ST7796) — the screen stays blank after flashing.\n\n"
+                "Pick your exact board under 'Board / variant' (or click 'Detect board (CYD)' first), or "
+                "flash the generic build anyway.",
+                QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+            )
+            if resp != QMessageBox.Yes:
+                self._log("Flash cancelled — pick your panel under 'Board / variant', or run "
+                          "'Detect board (CYD)' first, then flash.")
+                return
+            self._log("Flashing the generic ILI9341 build (old_hardware) at your confirmation.")
+            self._pending_flash_hint = (
+                "Flashed the generic ILI9341 build — if the screen is blank or wrong, that panel needs a "
+                "different build: pick your board under 'Board / variant' (or run Detect board) and re-flash."
+            )
         # Honor the user-configured Flash Baud Rate (Settings ▸ Flash ▸ flash.flash_baud). Without this the
         # flash always ran at the profile's own baud, so a user LOWERING the baud to make a marginal CH340K /
         # long-cable ESP32 flash reliably had NO effect — the value reached settings.json but no code read it.
@@ -934,8 +976,13 @@ class FlashTab(QWidget):
         if success:
             self._progress.setValue(100)
             self._log("Flash completed successfully.")
+            # B2 — after a generic-default Marauder flash, restate that the display build was a guess so a
+            # blank screen reads as "wrong build, re-pick" instead of a clean success with a dead screen.
+            if self._pending_flash_hint:
+                self._log(self._pending_flash_hint)
         else:
             self._log("Flash failed — see log for details.")
+        self._pending_flash_hint = None
 
     # ── Cleanup ──────────────────────────────────────────────────────
 

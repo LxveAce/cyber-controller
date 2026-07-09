@@ -29,6 +29,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the shared Targets pool when you connected a board on the Devices tab — wardriving or broadcasting scanned fine but
   left Targets empty. The ingestor now attaches automatically to every connection the app opens, so any device's scan
   feeds Targets (and the cross-device AutoRouter) no matter which tab opened the link.
+- **Flashing Marauder no longer silently picks a display build that leaves your screen blank.** With no board
+  chosen, "Auto" flashes Marauder's generic ILI9341 build (old_hardware) — the wrong display driver for most
+  Cheap-Yellow-Display panels (2-USB ST7789, Guition, 3.5" ST7796), so the screen stays dark after a flash that
+  otherwise reports success. "Auto" is now labeled for what it is (the generic ILI9341 guess), a blind
+  Marauder+Auto flash asks you to confirm the generic build or pick your exact panel (or run "Detect board")
+  first, and after such a flash the log reminds you to re-pick your variant and re-flash if the screen is blank.
 
 ## [1.6.6] — 2026-07-08
 

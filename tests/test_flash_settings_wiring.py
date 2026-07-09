@@ -67,6 +67,11 @@ def test_flash_uses_configured_flash_baud(qapp, flash_settings, monkeypatch):
     monkeypatch.setattr(FT._FlashWorker, "__init__", _spy_init)
     monkeypatch.setattr(FT._FlashWorker, "start", lambda self: None)
 
+    # A blind Marauder+Auto flash now confirms first (B2 flash-default honesty gate) — auto-accept it so
+    # this test exercises the baud path, not the dialog. See test_flash_default_variant_gate.py.
+    from PyQt5.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.Yes))
+
     tab._on_flash()
 
     assert captured.get("profile") is not None, "the plain flash path must construct a flash worker"
