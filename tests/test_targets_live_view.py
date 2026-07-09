@@ -87,3 +87,24 @@ def test_epoch_helper_handles_types():
     assert TargetsTab._epoch(1234.5) == 1234.5
     assert TargetsTab._epoch(None) is None
     assert TargetsTab._epoch("not-a-time") is None
+
+
+def test_export_csv_writes_whole_pool_ignoring_filters(_app, tmp_path):
+    bus = EventBus()
+    pool = TargetPool(bus)
+    tab = TargetsTab(pool, bus)
+
+    pool.add(_mk("CC:CC:CC:CC:CC:01", "FreshNet", age_s=1))
+    pool.add(_mk("CC:CC:CC:CC:CC:02", "StaleNet", age_s=_LIVE_VIEW_WINDOW_S + 60))
+    tab._refresh()
+
+    # Filter the *view* down to one row, then export — scan-to-export must still write the whole session.
+    tab._live_view.setChecked(True)
+    tab._search_input.setText("fresh")
+    assert _visible(tab) == {"FreshNet"}
+
+    out = tmp_path / "targets.csv"
+    n = tab.export_csv_to(str(out))
+    assert n == 2
+    body = out.read_text(encoding="utf-8")
+    assert "FreshNet" in body and "StaleNet" in body

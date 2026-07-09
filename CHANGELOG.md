@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Scan-to-export: "Export CSV…" on the Targets tab (1.7.0).** A button in the Targets toolbar writes *every*
+  target seen this session — APs, clients and BLE devices from the shared pool — to a CSV file
+  (type, SSID, MAC, RSSI, channel, device source, encryption, vendor, first/last seen). It exports the whole
+  pool regardless of the search box or the Live-view filter ("scan to export all"). Untrusted SSIDs/vendors are
+  run through the same OWASP CSV-injection guard the wardrive logger uses, so a malicious network name can't
+  smuggle a spreadsheet formula; numeric RSSI/channel stay raw. Empty pool shows a friendly "run a scan first".
 - **"Live view" toggle on the Targets tab (1.7.0).** A checkbox in the Targets toolbar. Off (default) the table shows
   everything discovered this session, exactly as before. On, it filters down to targets seen in the last 45 seconds —
   "what's currently in range" — and rows age out on their own as they go stale (the 3s refresh re-evaluates freshness).

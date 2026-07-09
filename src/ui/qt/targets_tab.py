@@ -22,6 +22,7 @@ from PyQt5.QtGui import QColor, QCursor
 from PyQt5.QtWidgets import (
     QApplication,
     QCheckBox,
+    QFileDialog,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -38,6 +39,7 @@ from PyQt5.QtWidgets import (
 
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
+from src.core.target_export import export_targets_csv
 from src.models.target import Target, TargetType
 from src.ui.qt.widgets.signal_bars import SignalBarsDelegate
 
@@ -188,10 +190,17 @@ class TargetsTab(QWidget):
         self._refresh_btn = QPushButton("Refresh")
         self._refresh_btn.setToolTip("Rebuild the table from the shared target pool now.")
         self._refresh_btn.clicked.connect(self._refresh)
+        self._export_btn = QPushButton("Export CSV…")
+        self._export_btn.setToolTip(
+            "Export EVERY target seen this session (APs, clients, BLE) to a CSV file.\n"
+            "Exports the whole shared pool — ignores the search box and the Live-view filter."
+        )
+        self._export_btn.clicked.connect(self._on_export_csv)
         self._clear_btn = QPushButton("Clear All")
         self._clear_btn.setToolTip("Remove every target from the shared pool (affects all tabs).")
         self._clear_btn.clicked.connect(self._on_clear)
         toolbar.addWidget(self._refresh_btn)
+        toolbar.addWidget(self._export_btn)
         toolbar.addWidget(self._clear_btn)
         self._live_view = QCheckBox("Live view")
         self._live_view.setToolTip(
@@ -346,6 +355,41 @@ class TargetsTab(QWidget):
         if reply == QMessageBox.Yes:
             self._pool.clear()
             self._refresh()
+
+    # ── Scan-to-export ───────────────────────────────────────────────
+
+    def export_csv_to(self, path: str) -> int:
+        """Write EVERY target in the shared pool (the whole session) to *path* as CSV; return the row count.
+
+        Exports the full pool regardless of the search box or the Live-view filter — "scan to export all".
+        The write itself is unit-tested via :func:`src.core.target_export.export_targets_csv`; the dialog
+        wrapper below is not.
+        """
+        return export_targets_csv(self._pool.all(), path)
+
+    def _on_export_csv(self) -> None:
+        targets = self._pool.all()
+        if not targets:
+            QMessageBox.information(
+                self, "Export CSV", "No targets to export yet — connect a device and run a scan first."
+            )
+            return
+        from pathlib import Path
+
+        default = str(Path.home() / "cyber-controller-targets.csv")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export targets to CSV", default, "CSV (*.csv);;All files (*)"
+        )
+        if not path:
+            return
+        try:
+            n = self.export_csv_to(path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export CSV", f"Could not write CSV:\n{exc}")
+            return
+        QMessageBox.information(
+            self, "Export CSV", f"Exported {n} target{'s' if n != 1 else ''} to:\n{path}"
+        )
 
     # ── Interface mode (dual-depth Simple / Pro) ─────────────────────
 
