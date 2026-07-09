@@ -17,8 +17,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 
 pytest.importorskip("PyQt5.QtWidgets")
-from PyQt5.QtWidgets import QApplication, QListWidgetItem  # noqa: E402
 from PyQt5.QtCore import Qt  # noqa: E402
+from PyQt5.QtWidgets import QApplication, QListWidgetItem  # noqa: E402
 
 from src.core.device_manager import DeviceManager  # noqa: E402
 from src.core.flash_engine import FlashEngine  # noqa: E402
@@ -64,6 +64,11 @@ def test_flash_queue_flashes_every_queued_job(qapp, isolated_settings, monkeypat
 
     flashed: list[str] = []
     _stub_worker(monkeypatch, flashed)
+
+    # These are Marauder+Auto on unidentified ports, so the batch now confirms once up front (B2 gate) —
+    # auto-accept it. See test_flash_default_variant_gate.py.
+    from PyQt5.QtWidgets import QMessageBox
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.Yes))
 
     tab._on_flash_queue()
 

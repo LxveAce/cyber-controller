@@ -29,12 +29,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the shared Targets pool when you connected a board on the Devices tab — wardriving or broadcasting scanned fine but
   left Targets empty. The ingestor now attaches automatically to every connection the app opens, so any device's scan
   feeds Targets (and the cross-device AutoRouter) no matter which tab opened the link.
-- **Flashing Marauder no longer silently picks a display build that leaves your screen blank.** With no board
-  chosen, "Auto" flashes Marauder's generic ILI9341 build (old_hardware) — the wrong display driver for most
-  Cheap-Yellow-Display panels (2-USB ST7789, Guition, 3.5" ST7796), so the screen stays dark after a flash that
-  otherwise reports success. "Auto" is now labeled for what it is (the generic ILI9341 guess), a blind
-  Marauder+Auto flash asks you to confirm the generic build or pick your exact panel (or run "Detect board")
-  first, and after such a flash the log reminds you to re-pick your variant and re-flash if the screen is blank.
+- **Flashing Marauder no longer silently blanks a display board's screen.** Marauder's "Auto" default is
+  per-chip, and on a classic ESP32 — which is every Cheap-Yellow-Display, and which a USB-serial bridge can't
+  tell apart from a plain ESP32 — that default is the generic ILI9341 build, the wrong display driver for most
+  CYD panels, so the screen stays dark after a flash that otherwise reports success. Now, when a Marauder "Auto"
+  flash lands on a board we can't positively identify, Cyber Controller asks you to confirm the generic build or
+  pick your exact panel (or run "Detect board") first, and reminds you to re-pick and re-flash if the screen
+  comes up blank. A board we *can* identify as an ESP32-S3/S2/C3 flashes its correct build with no prompt. The
+  Batch Queue now carries the board/variant you picked with each job (it used to drop it and fall back to the
+  generic default) and runs the same one-time check before a queued Marauder "Auto" flash.
 
 ## [1.6.6] — 2026-07-08
 

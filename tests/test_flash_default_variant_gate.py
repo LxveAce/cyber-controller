@@ -186,19 +186,110 @@ def test_non_marauder_auto_flashes_without_prompt(flash_tab_widget, monkeypatch)
     assert ft._worker is not None
 
 
-# ── the honest label ─────────────────────────────────────────────────
+# ── chip-awareness: a known S3/S2/C3 resolves Auto correctly, so no gate ─────
 
-def test_auto_label_names_ili9341_for_marauder(flash_tab_widget):
+class _FakeDev:
+    def __init__(self, port, board_type):
+        self.port = port
+        self.board_type = board_type
+        self.name = "fake"
+
+
+def test_marauder_auto_known_s3_chip_flashes_without_prompt(flash_tab_widget, monkeypatch):
+    """A Marauder v6/v7 (ESP32-S3) with Auto resolves to the correct multiboardS3 build — the gate must
+    NOT fire, or it would scare the user off a correct flash with a false 'generic ILI9341' claim."""
+    from src.models.device import BoardType
+    ft = flash_tab_widget
+    monkeypatch.setattr(ft._dm, "scan_ports", lambda: [_FakeDev("COM_S3", BoardType.ESP32_S3)])
+    ft._port_combo.addItem("COM_S3 — S3", "COM_S3")
+    ft._port_combo.setCurrentIndex(ft._port_combo.count() - 1)
+    ft._profile_combo.setCurrentText(_marauder_name(ft))
+    ft._variant_combo.setCurrentIndex(0)  # Auto
+
+    called = {"warning": False}
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        staticmethod(lambda *a, **k: called.__setitem__("warning", True) or QMessageBox.Cancel),
+    )
+    ft._worker = None
+    ft._on_flash()
+
+    assert called["warning"] is False, "a known S3 chip flashes its correct build — no false-ILI9341 gate"
+    assert ft._worker is not None
+
+
+# ── the honest label (no per-chip guess baked into the picker) ───────────────
+
+def test_auto_label_is_plain_for_marauder_and_others(flash_tab_widget):
+    ft = flash_tab_widget
+    for name in (_marauder_name(ft), _first_non_marauder_name(ft)):
+        ft._profile_combo.setCurrentText(name)
+        assert ft._variant_combo.itemText(0) == "Auto (default for chip)", (
+            "Auto keeps its honest per-chip-default label; the CYD risk is surfaced by the flash-time "
+            "gate, not a per-chip guess in the combo"
+        )
+        assert ft._variant_combo.itemData(0) == ""
+
+
+# ── batch queue carries the variant + shares the same honest gate ────────────
+
+def test_queue_carries_the_chosen_variant(flash_tab_widget):
+    from PyQt5.QtCore import Qt
     ft = flash_tab_widget
     ft._profile_combo.setCurrentText(_marauder_name(ft))
-    label = ft._variant_combo.itemText(0)
-    assert "ili9341" in label.lower()
-    assert "auto" in label.lower()
-    # index 0 still carries the empty "use the per-chip default" sentinel
-    assert ft._variant_combo.itemData(0) == ""
+    ft._variant_combo.addItem("CYD 2.8\" ILI9341  (cyd_2432S028)", "cyd_2432S028")
+    ft._variant_combo.setCurrentIndex(ft._variant_combo.count() - 1)
+    ft._port_combo.addItem("COM9 — fake", "COM9")
+    ft._port_combo.setCurrentIndex(ft._port_combo.count() - 1)
+
+    ft._add_to_queue()
+
+    data = ft._queue_list.item(ft._queue_list.count() - 1).data(Qt.UserRole)
+    assert data[2] == "cyd_2432S028", "the queued job must carry the picked variant (not drop it)"
 
 
-def test_auto_label_plain_for_non_marauder(flash_tab_widget):
+def test_batch_flashes_the_carried_variant(flash_tab_widget, monkeypatch):
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtWidgets import QListWidgetItem
     ft = flash_tab_widget
-    ft._profile_combo.setCurrentText(_first_non_marauder_name(ft))
-    assert ft._variant_combo.itemText(0) == "Auto (default for chip)"
+    mar = _marauder_name(ft)
+    it = QListWidgetItem(f"COM9 -> {mar} [cyd_2432S028]")
+    it.setData(Qt.UserRole, ("COM9", mar, "cyd_2432S028"))
+    ft._queue_list.addItem(it)
+
+    captured = {}
+    real_init = flash_tab._FlashWorker.__init__
+
+    def _spy(self, engine, port, profile, *a, **k):
+        captured["variant"] = profile.variant
+        real_init(self, engine, port, profile, *a, **k)
+
+    monkeypatch.setattr(flash_tab._FlashWorker, "__init__", _spy)
+    monkeypatch.setattr(flash_tab._FlashWorker, "start", lambda self: self.finished.emit(True))
+
+    ft._on_flash_queue()  # explicit variant -> no gate fires
+
+    assert captured.get("variant") == "cyd_2432S028", "the batch must flash the queued variant"
+
+
+def test_batch_marauder_auto_confirms_and_cancel_aborts(flash_tab_widget, monkeypatch):
+    from PyQt5.QtCore import Qt
+    from PyQt5.QtWidgets import QListWidgetItem
+    ft = flash_tab_widget
+    mar = _marauder_name(ft)
+    it = QListWidgetItem(f"COM_TEST -> {mar}")
+    it.setData(Qt.UserRole, ("COM_TEST", mar, ""))  # Auto, unidentified port
+    ft._queue_list.addItem(it)
+
+    called = {"warning": False}
+    monkeypatch.setattr(
+        QMessageBox, "warning",
+        staticmethod(lambda *a, **k: called.__setitem__("warning", True) or QMessageBox.Cancel),
+    )
+    ft._log_output.clear()
+
+    ft._on_flash_queue()
+
+    assert called["warning"] is True, "a Marauder+Auto batch confirms up front"
+    assert ft._batch_jobs == [], "cancel aborts the batch — no jobs started"
+    assert "cancelled" in ft._log_output.toPlainText().lower()

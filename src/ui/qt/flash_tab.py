@@ -209,7 +209,7 @@ class FlashTab(QWidget):
         # Batch-queue sequential-flash state (see _on_flash_queue). Jobs are flashed one at a time by
         # chaining each _FlashWorker's finished signal to the next, reusing the exact single-flash path.
         self._batch_worker: _FlashWorker | None = None
-        self._batch_jobs: list[tuple[str, str]] = []
+        self._batch_jobs: list[tuple[str, str, str]] = []  # (port, profile_name, variant)
         self._batch_idx = 0
         self._batch_ok = 0
         self._pending_variant: str | None = None  # variant to select once the async list lands
@@ -512,12 +512,9 @@ class FlashTab(QWidget):
             profile = FirmwareProfile.from_file(profile_path)
         except Exception:
             return
-        # B2 — honest Auto label. Marauder's per-chip Auto default is the generic ILI9341 build
-        # (flash_core old_hardware), the wrong display driver for most CYD panels (blank screen). Name
-        # that in the picker so "Auto" doesn't read as a safe default for a display board. Other
-        # firmwares keep the plain per-chip-default label.
-        if self._is_marauder(profile):
-            self._variant_combo.setItemText(0, "Auto — generic ILI9341 (wrong for most CYD panels)")
+        # (The "Auto" item keeps its honest "default for chip" label; the combo's tooltip already warns it
+        # can be wrong for display boards. The blank-CYD risk is surfaced at flash time by the chip-aware
+        # B2 gate in _on_flash — see _auto_risks_generic_ili9341 — not by a per-chip guess in the label.)
         self._variant_combo.addItem("Loading variants…", "")
         self._variant_combo.model().item(1).setEnabled(False)
         self._variant_loader = _VariantLoader(self._fe, profile)
@@ -677,11 +674,65 @@ class FlashTab(QWidget):
 
     @staticmethod
     def _is_marauder(profile) -> bool:
-        """True for the ESP32 Marauder profile — whose per-chip Auto default resolves to the generic
-        ILI9341 ``old_hardware`` build, the wrong display driver for most CYD panels (blank screen).
-        Used to gate + relabel the Auto variant choice (B2)."""
-        return (getattr(profile, "id", "") or "").lower() == "marauder" or \
-               (getattr(profile, "protocol", "") or "").lower() == "marauder"
+        """True for the ESP32 Marauder profile. ``str()`` guards a browsed profile whose ``id``/``protocol``
+        isn't a string (e.g. ``"id": 7``) — that would otherwise raise ``AttributeError`` inside this Qt
+        slot and, with no ``sys.excepthook`` installed, abort the whole app."""
+        return str(getattr(profile, "id", "") or "").lower() == "marauder" or \
+               str(getattr(profile, "protocol", "") or "").lower() == "marauder"
+
+    def _port_chip(self, port) -> str | None:
+        """The chip of the board on ``port`` IF unambiguously known from USB enumeration (native-USB
+        S3/S2/C3). ``None`` for the classic-ESP32 / shared-UART-bridge bucket — which includes every CYD,
+        and is exactly where Marauder's Auto default (the generic ILI9341 ``old_hardware`` build) can blank
+        a display. Mirrors the chip lookup in :meth:`_recolor_profiles`."""
+        if not port:
+            return None
+        for dev in self._dm.scan_ports():
+            if dev.port == port:
+                return _BOARDTYPE_CHIP.get(dev.board_type)
+        return None
+
+    def _loaded_or_none(self, profile_name: str):
+        """Load a profile by display name, or ``None`` if it's missing/unparseable (never raises)."""
+        path = self._profiles.get(profile_name)
+        if not path:
+            return None
+        try:
+            return self._fe.load_profile(path)
+        except Exception:  # noqa: BLE001 — a bad profile is a no-risk None, never a crash
+            return None
+
+    def _auto_risks_generic_ili9341(self, profile, variant: str, port) -> bool:
+        """True when a flash would fall to Marauder's classic-esp32 Auto default (the generic ILI9341
+        ``old_hardware`` build) on a board we CANNOT positively identify as a non-classic chip — i.e. the
+        one case that blanks most CYD panels. Marauder's Auto is per-chip (esp32 -> old_hardware; esp32s3
+        -> multiboardS3; esp32s2 -> flipper; esp32c5 -> its devkit build), so when the chip is known to be
+        S3/S2/C3 Auto resolves to the CORRECT build and there is nothing to warn about."""
+        return variant == "" and self._is_marauder(profile) and self._port_chip(port) is None
+
+    def _confirm_generic_ili9341(self, profile_name: str, *, count: int = 1) -> bool:
+        """Honest, mode-aware confirm for a Marauder Auto flash on an unidentified (classic-esp32-bucket)
+        board. Returns True to proceed. The remediation names controls that exist in the CURRENT interface
+        mode — Simple mode hides the variant picker + Detect, so it points at Ctrl+M / Pro instead. Phrased
+        conditionally ("if it's a CYD…") because we can't know the resolved build until flash time."""
+        from PyQt5.QtWidgets import QMessageBox
+
+        picker_visible = self._variant_combo.isVisibleTo(self)
+        how = ("pick your exact board under 'Board / variant' (or click 'Detect board (CYD)') first"
+               if picker_visible else
+               "switch to Pro mode (Ctrl+M) to pick your exact board first")
+        who = f"{count} queued Marauder job(s)" if count > 1 else f"'{profile_name}'"
+        text = (
+            f"{who} will flash with Auto. This board's chip isn't uniquely identified over USB, so if it's "
+            "a classic-ESP32 display board (a Cheap-Yellow-Display, M5, etc.) Auto flashes the generic "
+            "ILI9341 build — the wrong display driver for most such panels, leaving the screen blank.\n\n"
+            f"If you know your panel, {how}; otherwise flash the per-chip default."
+        )
+        resp = QMessageBox.warning(
+            self, "Flash the per-chip default build?", text,
+            QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
+        )
+        return resp == QMessageBox.Yes
 
     def _on_flash(self) -> None:
         # Concurrency guard: refuse a single flash while a single flash OR a batch is already running.
@@ -754,32 +805,22 @@ class FlashTab(QWidget):
 
         variant = self._variant_combo.currentData() or ""
         profile.variant = variant
-        # B2 — flash-default honesty. Marauder with Auto (no explicit variant) resolves to the generic
-        # ILI9341 build (flash_core old_hardware), the wrong display driver for most CYD panels — their
-        # screen stays blank after a "successful" flash. Don't silently pick it: make the user confirm the
-        # generic guess or cancel to choose their panel / run Detect board first. Only gates Marauder+Auto;
-        # any explicit variant, or any other firmware, flashes straight through. (Mockable QMessageBox so
-        # the test drives both branches, like the Erase / Detect confirmations.)
+        # B2 — flash-default honesty. Marauder's Auto default is per-chip; on the classic-esp32 bucket
+        # (every CYD, which we can't positively ID over a shared UART bridge) it's the generic ILI9341
+        # build, the wrong display driver for most such panels — their screen stays blank after a flash
+        # that reports success. Warn ONLY on that ambiguous case (a known S3/S2/C3 flashes its correct
+        # build with no nag), and phrase it conditionally. Cancel lets the user pick their panel first.
         self._pending_flash_hint = None
-        if variant == "" and self._is_marauder(profile):
-            from PyQt5.QtWidgets import QMessageBox
-            resp = QMessageBox.warning(
-                self, "Flash the generic display build?",
-                f"'{profile.name}' with Auto flashes the generic ILI9341 build (old_hardware). That is the "
-                "wrong display driver for most Cheap-Yellow-Display panels (2-USB ST7789, Guition, 3.5\" "
-                "ST7796) — the screen stays blank after flashing.\n\n"
-                "Pick your exact board under 'Board / variant' (or click 'Detect board (CYD)' first), or "
-                "flash the generic build anyway.",
-                QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
-            )
-            if resp != QMessageBox.Yes:
-                self._log("Flash cancelled — pick your panel under 'Board / variant', or run "
-                          "'Detect board (CYD)' first, then flash.")
+        if self._auto_risks_generic_ili9341(profile, variant, port):
+            if not self._confirm_generic_ili9341(profile.name):
+                self._log("Flash cancelled — pick your panel first (Board / variant, or Detect board), "
+                          "then flash.")
                 return
-            self._log("Flashing the generic ILI9341 build (old_hardware) at your confirmation.")
+            self._log("Flashing Marauder's per-chip Auto default at your confirmation "
+                      "(the generic ILI9341 build on a classic-ESP32 board).")
             self._pending_flash_hint = (
-                "Flashed the generic ILI9341 build — if the screen is blank or wrong, that panel needs a "
-                "different build: pick your board under 'Board / variant' (or run Detect board) and re-flash."
+                "If the screen is blank or wrong, this board took the generic ILI9341 build — pick your "
+                "exact panel under 'Board / variant' (or run Detect board) and re-flash."
             )
         # Honor the user-configured Flash Baud Rate (Settings ▸ Flash ▸ flash.flash_baud). Without this the
         # flash always ran at the profile's own baud, so a user LOWERING the baud to make a marginal CH340K /
@@ -880,8 +921,13 @@ class FlashTab(QWidget):
         port = self._port_combo.currentData()
         profile_name = self._profile_combo.currentText()
         if port and profile_name:
-            item = QListWidgetItem(f"{port} -> {profile_name}")
-            item.setData(Qt.UserRole, (port, profile_name))
+            # Capture the board/variant selection WITH the job so a queued flash uses the panel the user
+            # picked — the queue used to store only (port, profile) and silently drop the variant, so a
+            # batch flash always fell to the per-chip default (a generic ILI9341 blank screen on a CYD).
+            variant = self._variant_combo.currentData() or ""
+            label = f"{port} -> {profile_name}" + (f"  [{variant}]" if variant else "")
+            item = QListWidgetItem(label)
+            item.setData(Qt.UserRole, (port, profile_name, variant))
             self._queue_list.addItem(item)
 
     def _on_flash_queue(self) -> None:
@@ -896,13 +942,22 @@ class FlashTab(QWidget):
         if self._worker is not None and self._worker.isRunning():
             self._log("A single flash is already in progress — wait for it to finish.")
             return
-        jobs: list[tuple[str, str]] = []
+        jobs: list[tuple[str, str, str]] = []
         for i in range(self._queue_list.count()):
             data = self._queue_list.item(i).data(Qt.UserRole)
             if data:
-                jobs.append((data[0], data[1]))
+                # Back-compat: older/2-tuple items carry no variant.
+                jobs.append((data[0], data[1], data[2] if len(data) > 2 else ""))
         if not jobs:
             self._log("Batch queue is empty — add port + profile combos first.")
+            return
+        # B2 — same honest gate as a single flash, but ONCE up front (a modal mid-batch would stall the
+        # run). If any queued job is a Marauder Auto flash on a board we can't positively identify, confirm
+        # before starting the whole batch instead of silently flashing generic-ILI9341 to a CYD.
+        at_risk = sum(1 for (p, name, v) in jobs
+                      if self._auto_risks_generic_ili9341(self._loaded_or_none(name), v, p))
+        if at_risk and not self._confirm_generic_ili9341("", count=at_risk):
+            self._log("Batch cancelled — pick a panel for the Marauder job(s), then flash the queue.")
             return
         self._batch_jobs = jobs
         self._batch_idx = 0
@@ -922,7 +977,7 @@ class FlashTab(QWidget):
             self._btn_flash_queue.setEnabled(True)
             self._btn_flash.setEnabled(True)
             return
-        port, profile_name = self._batch_jobs[self._batch_idx]
+        port, profile_name, variant = self._batch_jobs[self._batch_idx]
         profile_path = self._profiles.get(profile_name)
         if not profile_path:
             self._log(f"Batch [{self._batch_idx + 1}]: no profile '{profile_name}' — skipping.")
@@ -934,6 +989,9 @@ class FlashTab(QWidget):
             self._log(f"Batch [{self._batch_idx + 1}]: invalid profile {Path(profile_path).name}: {exc}")
             self._advance_batch(False)
             return
+        # Flash the board/variant that was queued with this job (parity with _on_flash) — not the per-chip
+        # default. This is what makes a queued CYD flash its real panel instead of the generic ILI9341 build.
+        profile.variant = variant
         # Honor the user-configured Flash Baud (parity with _on_flash) and the offline vault fallback.
         try:
             cfg_baud = load_settings().get("flash", {}).get("flash_baud")
@@ -956,6 +1014,13 @@ class FlashTab(QWidget):
 
     def _on_batch_item_done(self, success: bool) -> None:
         self._log(f"Batch [{self._batch_idx + 1}]: {'succeeded' if success else 'FAILED'}.")
+        # B2 — if this job took Marauder's generic-ILI9341 Auto default (a display board we couldn't ID),
+        # restate the guess so a blank CYD reads as "wrong build, re-pick" instead of a green success.
+        if success and self._batch_idx < len(self._batch_jobs):
+            p, name, v = self._batch_jobs[self._batch_idx]
+            if self._auto_risks_generic_ili9341(self._loaded_or_none(name), v, p):
+                self._log("  ↳ if this board's screen is blank, it took the generic ILI9341 build — "
+                          "re-queue it with your exact panel picked.")
         self._advance_batch(success)
 
     def _advance_batch(self, success: bool) -> None:
