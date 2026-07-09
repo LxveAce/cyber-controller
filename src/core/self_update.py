@@ -237,11 +237,14 @@ def win_swap_script(pid: int, new_exe: str, cur_exe: str) -> str:
     via ``ping`` (no dependency on ``timeout.exe``, unavailable to a detached, console-less child);
     once the process is gone ``find`` fails and we fall through to the swap.
 
-    The swap is gated on ``move``'s ``errorlevel``: if the rename fails (exe dir not writable by a
-    non-elevated user, an AV/lock on the just-released binary), we DO NOT pretend the update took —
-    we drop a breadcrumb (:func:`failed_update_marker`) the next launch reads and leave the verified
-    ``*.new`` in place, then still relaunch the old exe so the app comes back. Only a successful move
-    clears any stale breadcrumb."""
+    The swap RETRIES before giving up. The just-released binary is very often still briefly locked —
+    antivirus scans an executable the instant its last handle closes, and a lingering child handle can
+    outlive the parent by a moment — so a single ``move`` spuriously fails and the old build sticks.
+    We retry the rename ~10× at ~1s each, which clears the common transient lock. Only if every attempt
+    fails (e.g. the exe dir is genuinely not writable by a non-elevated user — an app installed under
+    ``Program Files``) do we drop a breadcrumb (:func:`failed_update_marker`) the next launch reads and
+    leave the verified ``*.new`` in place; we still relaunch the old exe so the app comes back. A
+    successful move clears any stale breadcrumb."""
     marker = failed_update_marker(cur_exe)
     return (
         "@echo off\r\n"
@@ -251,13 +254,21 @@ def win_swap_script(pid: int, new_exe: str, cur_exe: str) -> str:
         "  ping -n 2 127.0.0.1 >nul\r\n"
         "  goto wait\r\n"
         ")\r\n"
+        "set /a tries=0\r\n"
+        ":try\r\n"
         f'move /Y "{new_exe}" "{cur_exe}" >nul\r\n'
-        "if errorlevel 1 (\r\n"
-        f'  >"{marker}" echo update did not apply - could not replace the running binary. '
-        f'staged update left at "{new_exe}"\r\n'
-        ") else (\r\n"
-        f'  del "{marker}" >nul 2>nul\r\n'
+        "if not errorlevel 1 goto swapped\r\n"
+        "set /a tries+=1\r\n"
+        "if %tries% lss 10 (\r\n"
+        "  ping -n 2 127.0.0.1 >nul\r\n"
+        "  goto try\r\n"
         ")\r\n"
+        f'>"{marker}" echo update did not apply - could not replace the running binary. '
+        f'staged update left at "{new_exe}"\r\n'
+        "goto relaunch\r\n"
+        ":swapped\r\n"
+        f'del "{marker}" >nul 2>nul\r\n'
+        ":relaunch\r\n"
         f'start "" "{cur_exe}"\r\n'
         'del "%~f0"\r\n'
     )

@@ -1786,18 +1786,24 @@ class CyberControllerWindow(QMainWindow):
         worker.start()
 
     def _finish_self_update(self, staged: str) -> None:
-        """Swap the verified binary in and restart. On Windows this spawns a detached helper and we
-        quit so the (now unlocked) exe can be replaced + relaunched; on Unix apply() re-execs and
-        never returns."""
-        from PyQt5.QtWidgets import QApplication
-
+        """Swap the verified binary in and restart. On Windows this spawns a detached helper that waits
+        for THIS process to exit, then replaces the (now-unlocked) exe and relaunches it — so we must
+        exit promptly and unconditionally. On Unix apply() re-execs and never returns."""
         from src.core import self_update
         try:
             self_update.apply(self_update.current_exe(), staged, self_update.platform_key())
         except Exception as exc:  # noqa: BLE001
             QMessageBox.warning(self, "Update failed", f"Could not apply the update:\n{exc}")
             return
-        QApplication.instance().quit()  # reached on Windows only (Unix apply() re-execs, no return)
+        # Reached on Windows only (Unix apply() re-execs and never returns). The detached swap helper
+        # is now waiting for this PID to disappear before it can replace the locked binary + relaunch.
+        # A graceful QApplication.quit() can stall indefinitely on live background threads (the health
+        # monitor, serial readers, the embedded web server) — the helper would then wait forever and
+        # the update would never apply (the "came back on the old version" report). The verified update
+        # is already staged on disk, so nothing here needs normal teardown: force an immediate exit so
+        # the helper's wait-loop falls through NOW.
+        import os
+        os._exit(0)
 
     def _on_device_view(self, firmware: str = "marauder") -> None:
         """Open a Device View — an on-screen reconstruction of a firmware's on-board UI.
@@ -2102,6 +2108,26 @@ def launch_qt(
             win.check_for_updates(force=False)
         except Exception:
             log.debug("startup update check kick failed", exc_info=True)
+        # If a prior self-update downloaded + verified a new binary but the swap couldn't replace the
+        # running exe (app installed under a non-writable dir like Program Files, or an AV lock that
+        # outlasted the retry window), the helper left a breadcrumb. Surface it once — otherwise the
+        # app silently comes back on the OLD build with no explanation — then clear it. Frozen only.
+        try:
+            from src.core import self_update as _su
+            if _su.is_frozen():
+                _failmsg = _su.read_failed_update()
+                if _failmsg:
+                    QMessageBox.warning(
+                        win, "Update didn't finish",
+                        "Cyber Controller downloaded and verified the update, but couldn't replace the "
+                        "running app:\n\n"
+                        f"{_failmsg}\n\n"
+                        "This usually means the app is in a folder that needs administrator rights "
+                        "(such as Program Files). Move Cyber Controller to a writable location (your "
+                        "user folder or Desktop) and update again, or reinstall from the release page.")
+                    _su.clear_failed_update()
+        except Exception:
+            log.debug("failed-update breadcrumb surfacing failed", exc_info=True)
 
     def _reveal() -> None:
         win.show()

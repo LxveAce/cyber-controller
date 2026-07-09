@@ -5,6 +5,17 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Fixed
+- **In-app updater now actually installs and relaunches.** "Download & install" downloaded and verified the new
+  build but often came back on the OLD version. On Windows the app quit *gracefully*, which can stall on a live
+  background thread (the health monitor, a serial reader, the embedded web server) — so the detached swap helper,
+  which waits for the app to exit before it can replace the locked binary, waited forever and never swapped or
+  relaunched. The app now exits immediately once the verified update is staged on disk, so the swap + relaunch always
+  proceed. The swap also **retries for ~10s** (the just-released exe is frequently locked for a moment by antivirus)
+  instead of giving up on the first attempt. And if it genuinely can't replace the binary — an app installed under
+  `Program Files` without admin rights — the next launch now surfaces a clear "update didn't finish, move me somewhere
+  writable" notice (previously dead code) instead of silently reverting to the old version.
+
 ## [1.6.7] — 2026-07-08
 
 A device-focused "rough edges" patch from hands-on v1.6.6 bench testing. The Flock map zooms back out, the

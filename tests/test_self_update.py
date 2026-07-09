@@ -122,17 +122,19 @@ def test_win_swap_script_content():
 
 
 def test_win_swap_script_gates_move_failure_with_breadcrumb():
-    # A failed swap must NOT silently relaunch the stale exe as if it updated: the script gates on
-    # move's errorlevel and drops a breadcrumb the next launch reads.
+    # A failed swap must NOT silently relaunch the stale exe as if it updated. The script RETRIES the
+    # move (transient AV / file locks on the just-released binary), and only after exhausting the
+    # retries drops a breadcrumb the next launch reads. A successful move clears any stale breadcrumb.
     cur, new = r"C:\app\cur.exe", r"C:\app\new.exe"
     s = su.win_swap_script(4242, new, cur)
     marker = su.failed_update_marker(cur)
     assert "move /Y" in s
-    assert "if errorlevel 1" in s                           # the swap result is checked
-    tail = s.split("if errorlevel 1", 1)[1]
-    assert f'>"{marker}"' in tail                           # failed move writes a breadcrumb...
-    assert f'staged update left at "{new}"' in tail         # ...that records the orphaned .new
-    assert f'del "{marker}"' in tail                        # a successful move clears a stale one
+    assert ":try" in s and "goto try" in s                  # the swap is retried, not one-shot
+    assert "lss 10" in s                                     # bounded retry count
+    assert "if not errorlevel 1 goto swapped" in s          # a successful move short-circuits out
+    assert f'>"{marker}" echo' in s                         # exhausted retries write a breadcrumb...
+    assert f'staged update left at "{new}"' in s            # ...that records the orphaned .new
+    assert f'del "{marker}"' in s                           # a successful move clears a stale one
     assert f'start "" "{cur}"' in s                         # app still comes back
     assert 'del "%~f0"' in s
 
