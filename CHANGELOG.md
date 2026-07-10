@@ -5,6 +5,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.7.0] — 2026-07-09
+
+_Beta. Multi-firmware release: the offline Wi-Fi crack pipeline + wordlist manager, the BlueStress and ESP-AT
+firmware integrations (36 profiles), the nRF BlueNullifier 2 study target, auto-detect per-firmware parser
+routing, and a full firmware-integration audit + honesty pass._
+
 ### Changed
 - **Auto-detect now routes every firmware to its own parser, not always Marauder (1.7.0 multi-firmware).**
   With the firmware selector on "Auto-detect", the Devices tab used to parse every non-Flipper board with the
