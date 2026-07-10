@@ -17,6 +17,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
   manually. An explicit (non-Auto) firmware choice is always honoured and never overridden.
 
 ### Added
+- **nRF BlueNullifier 2 — flash-and-study target (1.7.0).** New `nrf-bluenullifier2` profile flashes
+  wirebits/nrfBlueNullifier's nRF24L01 variant (a 2.4 GHz jammer — **LAB-ONLY, illegal to operate under FCC
+  47 U.S.C. 333**) as a study target, exactly like BlueJammer-V2: CC flashes and exposes **no operate/transmit
+  control**. The prebuilt bins are committed in the repo tree (no Release), so they're fetched **pinned to a
+  commit SHA** from raw.githubusercontent.com and **SHA-256-verified** before flashing, never vendored. It has
+  **no serial interface at all** (fire-on-boot), so the paired `nrf-bluenullifier2` parser is an honest no-op
+  (`controlmap` driver, empty command list) rather than a fabricated control surface. Gated `illegal-tx`
+  (label-never-block). Build/wiring guide lives in the private ops repo. Real-hardware flash pending the HW gate.
 - **WPA/WPA2 + PMKID offline-crack pipeline — core engine (1.7.0).** New `src.core.crack_pipeline`: the host-side
   offline half of the Wi-Fi audit flow that turns a capture you made (PMKID or a full 4-way handshake) into a
   recovered passphrase via your own installed hashcat (mode 22000) or aircrack-ng. **Dictionary-only** by design —

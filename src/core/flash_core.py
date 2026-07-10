@@ -2361,6 +2361,11 @@ _MARAUDER = MarauderProfile()
 _PROFILE_FILES = (
     "marauder.json", "esp32_div.json", "bruce.json", "ghost_esp.json", "halehound.json",
     "rtl8720.json", "bluejammer_esp32.json", "bluejammer_bw16.json", "meshtastic.json",
+    # nRF BlueNullifier 2 (wirebits, GPL-3.0) — 2.4 GHz nRF24L01 jammer, LAB-ONLY/illegal to operate,
+    # flash-and-study only (no serial control surface). Prebuilt bins are committed in the repo tree
+    # (no Release), so fetched pinned to commit 1dfc4d3 via raw.githubusercontent.com + SHA-256-verified
+    # (bl 18992 / part 3072 / app 1127184 B). Real-hardware flash pending the Stage-5 gate.
+    "nrf_bluenullifier2.json",
     "flock_you.json", "oui_spy.json", "sky_spy.json", "airtag_scanner.json", "cyt_ng.json",
     "minigotchi.json", "flipper_momentum.json", "flipper_unleashed.json", "custom.json",
     # RogueMaster — third Flipper CFW; identical qFlipper path to Momentum/Unleashed. Release assets

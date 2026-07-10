@@ -1,0 +1,54 @@
+{
+  "name": "nRF BlueNullifier 2 — nRF24L01 [LAB-ONLY / illegal to operate]",
+  "id": "nrf_bluenullifier2",
+  "core_id": "nrf_bluenullifier2",
+  "label": "nRF BlueNullifier 2 — nRF24L01 [LAB-ONLY / illegal to operate]",
+  "description": "wirebits/nrfBlueNullifier (GPL-3.0), variant nrfBlueNullifier-2-nrf24L01: a NodeMCU-32S (ESP32-WROOM-32) that drives 2x nRF24L01+ radios in continuous constant-carrier at max PA while hopping channels — a 2.4 GHz noise transmitter (jammer). *** LAB-ONLY / ILLEGAL TO OPERATE (FCC 47 U.S.C. 333). *** Cyber Controller FLASHES the pinned, SHA-256-verified image for study only. This firmware has NO serial interface (no Serial.begin, no command parser — it jams on power-up); CC exposes NO operate/transmit control and there is nothing on the wire to drive. Its only 'control' is the physical power switch.",
+  "backend": "esptool",
+  "protocol": "nrf-bluenullifier2",
+  "danger": "illegal-tx",
+  "boards": [
+    { "name": "NodeMCU-32S (ESP32-WROOM-32)", "chip": "esp32", "flash_size": "4MB", "board_id": "nodemcu-32s" }
+  ],
+  "default_baud": 921600,
+  "firmware_urls": {
+    "repo": "https://github.com/wirebits/nrfBlueNullifier",
+    "tree": "https://github.com/wirebits/nrfBlueNullifier/tree/main/nrfBlueNullifier-2-nrf24L01",
+    "note": "Prebuilt bins are committed in the repo tree (no GitHub Release). Fetched pinned to commit 1dfc4d3 from raw.githubusercontent.com and SHA-256-verified at flash time, never vendored."
+  },
+  "note": "esptool offsets bootloader@0x1000 / partitions@0x8000 / app@0x10000, NO boot_app0 @0xE000 (the repo ships only these 3 bins, same single-app flash set as BlueJammer-V2). Wire 2x nRF24L01+ (HSPI + VSPI) with a 10uF cap per module VCC/GND (brownout fix). CC flashes + verifies only — it never operates the transmitter and there is no serial control surface to operate.",
+  "repo": "wirebits/nrfBlueNullifier",
+  "supports_suicide": false,
+  "image_model": "multi-file-offsets",
+  "resolver": "pinned_release",
+  "app_offset": "0x10000",
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"},
+  "support_files": {
+    "source": "pinned",
+    "verify_sha256": true,
+    "include_boot_app0": false,
+    "pinned_files": {
+      "nrfBlueNullifier-2-nrf24L01-bootloader.bin": {"source": "repo", "offset": "0x1000", "sha256": "f2dfacdea6ae72d0aeeb7c30e525c4c6fc768a041849feac694cbb2ee2224448"},
+      "nrfBlueNullifier-2-nrf24L01-partitions.bin": {"source": "repo", "offset": "0x8000", "sha256": "148b959cbff1c38aa8e1d5c0ba9d612c54997b945e56a63f41223eef650653a1"}
+    }
+  },
+  "resolver_params": {
+    "tag": "commit-1dfc4d3",
+    "verify_sha256": true,
+    "url_sources": {
+      "repo": "https://raw.githubusercontent.com/wirebits/nrfBlueNullifier/1dfc4d38bc8b642734617f127391b00d2a2dad27/nrfBlueNullifier-2-nrf24L01"
+    },
+    "assets": [
+      {
+        "name": "nrfBlueNullifier-2-nrf24L01.bin",
+        "source": "repo",
+        "chip": "esp32",
+        "offset": "0x10000",
+        "merged": false,
+        "sha256": "8897422443852867ecad9ad2d83560bd11d6cc019281bebfaee00f34430cc243",
+        "label": "nRF BlueNullifier 2 ESP32 app image [LAB-ONLY / illegal to operate]"
+      }
+    ]
+  }
+}

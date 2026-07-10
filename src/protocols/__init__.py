@@ -33,6 +33,7 @@ from src.protocols.ghost_esp import GhostESPProtocol
 from src.protocols.halehound import HaleHoundProtocol
 from src.protocols.marauder import MarauderProtocol
 from src.protocols.meshtastic import MeshtasticProtocol
+from src.protocols.nrf_bluenullifier import NrfBlueNullifier2Protocol
 
 
 class GenericProtocol(BaseProtocol):
@@ -80,6 +81,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "esp32-div": Esp32DivProtocol,
     "bw16": BW16Protocol,
     "bluejammer": BlueJammerProtocol,
+    "nrf-bluenullifier2": NrfBlueNullifier2Protocol,
     "flock-you": FlockYouProtocol,
     # Fallbacks (both names map to the same passthrough class).
     "generic": GenericProtocol,
@@ -98,6 +100,7 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "esp32-div": "ESP32-DIV",
     "bw16": "BW16 (RTL8720DN)",
     "bluejammer": "BlueJammer-V2 (lab-only)",
+    "nrf-bluenullifier2": "nRF BlueNullifier 2 (lab-only)",
     "flock-you": "Flock-You (ALPR detector)",
     "generic": "Generic / Raw",
     "raw": "Generic / Raw",
@@ -224,6 +227,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "esp32-div": "src.protocols.esp32_div",
     "bw16": "src.protocols.bw16",
     "bluejammer": "src.protocols.bluejammer",
+    "nrf-bluenullifier2": "src.protocols.nrf_bluenullifier",
     "flock-you": "src.protocols.flock_you",
     "generic": "src.protocols",  # GenericProtocol lives in __init__
     "raw": "src.protocols",
@@ -263,6 +267,7 @@ __all__ = [
     "Esp32DivProtocol",
     "BW16Protocol",
     "BlueJammerProtocol",
+    "NrfBlueNullifier2Protocol",
     "FlockYouProtocol",
     "GenericProtocol",
     "PROTOCOLS",
