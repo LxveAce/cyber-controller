@@ -2400,6 +2400,13 @@ _PROFILE_FILES = (
     # atsamd21/atmega HID-companion assets; verified live against SpacehuhnTech/WiFiDuck v1.1.0 (2026-07-08).
     # Keystroke injection labelled/gated by the safety layer, never operated. Real-hw flash pending Stage-5 gate.
     "wifi_duck.json",
+    # BlueStress (LxveLabs, in-house) — ESP32 + 1-2x nRF24L01 2.4 GHz/BLE RF-disruption device, LAB-ONLY /
+    # illegal to operate on air (FCC 47 U.S.C. 333). Unlike the fire-on-boot upstream jammers it BOOTS IDLE
+    # and exposes a real gated serial CLI, so CC flashes + drives a GATED Flood/Off surface (never a no-op).
+    # Multi-file ESP32 offsets bl@0x1000 / part@0x8000 / app@0x10000, NO boot_app0; pinned_release +
+    # SHA-256-verified. STAGED: LxveAce/BlueStress repo/build not yet published — placeholder commit + SHA-256
+    # in the profile MUST be replaced with real build digests before any flash (verify_sha256 refuses a mismatch).
+    "bluestress.json",
 )
 
 

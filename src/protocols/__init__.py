@@ -24,6 +24,7 @@ import types
 
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 from src.protocols.bluejammer import BlueJammerProtocol
+from src.protocols.bluestress import BlueStressProtocol
 from src.protocols.bruce import BruceProtocol
 from src.protocols.bw16 import BW16Protocol
 from src.protocols.esp32_div import Esp32DivProtocol
@@ -82,6 +83,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "bw16": BW16Protocol,
     "bluejammer": BlueJammerProtocol,
     "nrf-bluenullifier2": NrfBlueNullifier2Protocol,
+    "bluestress": BlueStressProtocol,
     "flock-you": FlockYouProtocol,
     # Fallbacks (both names map to the same passthrough class).
     "generic": GenericProtocol,
@@ -101,6 +103,7 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "bw16": "BW16 (RTL8720DN)",
     "bluejammer": "BlueJammer-V2 (lab-only)",
     "nrf-bluenullifier2": "nRF BlueNullifier 2 (lab-only)",
+    "bluestress": "BlueStress (lab-only)",
     "flock-you": "Flock-You (ALPR detector)",
     "generic": "Generic / Raw",
     "raw": "Generic / Raw",
@@ -228,6 +231,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "bw16": "src.protocols.bw16",
     "bluejammer": "src.protocols.bluejammer",
     "nrf-bluenullifier2": "src.protocols.nrf_bluenullifier",
+    "bluestress": "src.protocols.bluestress",
     "flock-you": "src.protocols.flock_you",
     "generic": "src.protocols",  # GenericProtocol lives in __init__
     "raw": "src.protocols",
@@ -267,6 +271,7 @@ __all__ = [
     "Esp32DivProtocol",
     "BW16Protocol",
     "BlueJammerProtocol",
+    "BlueStressProtocol",
     "NrfBlueNullifier2Protocol",
     "FlockYouProtocol",
     "GenericProtocol",

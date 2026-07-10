@@ -97,6 +97,23 @@ _ILLEGAL_TX_KEYWORDS: tuple[str, ...] = (
     "jam_reader",
     "tag_disrupt",
     "protokill",
+    # BlueStress's operate verb. Its ``Flood`` CommandInfo already carries an explicit
+    # danger="illegal-tx" (authoritative), but a HAND-TYPED ``flood <band>`` that misses a
+    # CommandInfo lookup would otherwise fall through to a plain command-string scan and
+    # classify SAFE. Include "flood" here so any free-typed flood is gated regardless. NOTE:
+    # this is the COMMAND-STRING illegal set — the free-text DESCRIPTION scan deliberately
+    # EXCLUDES "flood" (see _DESC_ILLEGAL_TX_KEYWORDS), because inside a description "flood"
+    # qualifies a lab-only attack ("probe request flood", "beacon flood"), not §333 jamming.
+    "flood",
+)
+
+#: Illegal-tx substrings safe to match inside a free-text DESCRIPTION — the command-string
+#: illegal set MINUS "flood". As a standalone command token "flood" is BlueStress's illegal
+#: RF-disruption verb, but in a description it merely names a lab-only attack ("probe request
+#: flood"), so it must not upgrade a description past lab-only (which would over-flag deauth/
+#: beacon/probe-flood commands and break the description-scan invariants).
+_DESC_ILLEGAL_TX_KEYWORDS: tuple[str, ...] = tuple(
+    kw for kw in _ILLEGAL_TX_KEYWORDS if kw != "flood"
 )
 
 
@@ -166,7 +183,7 @@ def _description_level(desc: str) -> str:
     level = SAFE
     if any(kw in low for kw in _DESC_LAB_ONLY_KEYWORDS):
         level = LAB_ONLY
-    if any(kw in low for kw in _ILLEGAL_TX_KEYWORDS):
+    if any(kw in low for kw in _DESC_ILLEGAL_TX_KEYWORDS):
         level = ILLEGAL_TX
     return level
 

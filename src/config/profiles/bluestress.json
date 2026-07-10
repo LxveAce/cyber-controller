@@ -1,0 +1,54 @@
+{
+  "name": "BlueStress — ESP32 + nRF24L01 [LAB-ONLY / illegal to operate — FCC 47 U.S.C. 333]",
+  "id": "bluestress",
+  "core_id": "bluestress",
+  "label": "BlueStress — ESP32 + nRF24L01 [LAB-ONLY / illegal to operate — FCC 47 U.S.C. 333]",
+  "description": "LxveLabs BlueStress (in-house): an ESP32-WROOM-32 driving 1-2 nRF24L01+PA/LNA radios as a 2.4 GHz / BLE constant-carrier & sweep RF-disruption device. Built by SUBTRACTING the on-boot transmit from two source-available upstream nRF24 primitives (wirebits/nrfBlueNullifier, GPL-3.0; smoochiee 'Noisy-boy' as a behaviour/pin reference only) and ADDING a boot-idle control envelope: it BOOTS IDLE with the carrier de-asserted and NEVER transmits on power-up — a two-factor arm (serial ARM + physical button hold) is required before any TX. *** LAB-ONLY / ILLEGAL TO OPERATE ON AIR (FCC 47 U.S.C. 333). *** Cyber Controller FLASHES the pinned, SHA-256-verified image and exposes a GATED operate surface (Flood/Off behind an illegal-tx consent gate); it authors no transmit payload and adds no RF power (RF24_PA_MAX unchanged, sweep width/rate <= upstream). STAGED PROFILE: the LxveAce/BlueStress repo + build do not exist yet, so the pinned commit and SHA-256 digests below are placeholders that MUST be replaced with the real build values before ship (verify_sha256 refuses a mismatch, so it cannot be flashed until then).",
+  "backend": "esptool",
+  "protocol": "bluestress",
+  "danger": "illegal-tx",
+  "boards": [
+    { "name": "ESP32-WROOM-32 (NodeMCU / DevKit, 30-pin)", "chip": "esp32", "flash_size": "4MB", "board_id": "esp32-wroom-32" }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/LxveAce/BlueStress",
+    "tree": "https://github.com/LxveAce/BlueStress/tree/main/build",
+    "note": "In-house LxveLabs firmware, source-built (arduino-cli); the ESP32 bins are committed under build/. STAGED: the repo is not yet published — assets are fetched pinned to <commit> from raw.githubusercontent.com and SHA-256-verified at flash time, never vendored. The placeholder commit + digests MUST be replaced with real build values before ship."
+  },
+  "note": "esptool offsets bootloader@0x1000 / partitions@0x8000 / app@0x10000, NO boot_app0 @0xE000 (the source build ships only these 3 bins, same single-app flash set as nrf_bluenullifier2 / BlueJammer-V2). Wire 1-2x nRF24L01+PA/LNA over HSPI (CE 16 / CSN 15 / SCK 14 / MOSI 13 / MISO 12) + VSPI (CE 22 / CSN 21 / SCK 18 / MOSI 23 / MISO 19); install a 10uF (10-100uF) bulk cap directly across each nRF24 VCC/GND (PA/LNA brownout fix) BEFORE first power-on or you get phantom faults. TWO GATES guard transmit: the physical arm button (GPIO4, hold-to-arm) is the HARDWARE gate, and Cyber Controller's illegal-tx consent dialog is the SOFTWARE gate — neither alone keys the carrier. STAGED: placeholder commit/SHA-256 — replace with the real build digests before any flash (verify_sha256 will refuse a mismatch).",
+  "repo": "LxveAce/BlueStress",
+  "supports_suicide": false,
+  "image_model": "multi-file-offsets",
+  "resolver": "pinned_release",
+  "app_offset": "0x10000",
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"},
+  "support_files": {
+    "source": "pinned",
+    "verify_sha256": true,
+    "include_boot_app0": false,
+    "pinned_files": {
+      "bluestress.ino.bootloader.bin": {"source": "repo", "offset": "0x1000", "sha256": "<sha256@build — REPLACE before ship>"},
+      "bluestress.ino.partitions.bin": {"source": "repo", "offset": "0x8000", "sha256": "<sha256@build — REPLACE before ship>"}
+    }
+  },
+  "resolver_params": {
+    "tag": "commit-<REPLACE@build>",
+    "verify_sha256": true,
+    "url_sources": {
+      "repo": "https://raw.githubusercontent.com/LxveAce/BlueStress/<commit>/build"
+    },
+    "assets": [
+      {
+        "name": "bluestress.ino.bin",
+        "source": "repo",
+        "chip": "esp32",
+        "offset": "0x10000",
+        "merged": false,
+        "sha256": "<sha256@build — REPLACE before ship>",
+        "label": "BlueStress ESP32 app image [LAB-ONLY / illegal to operate — boots idle]"
+      }
+    ]
+  }
+}
