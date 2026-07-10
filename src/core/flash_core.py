@@ -2407,9 +2407,10 @@ _MARAUDER = MarauderProfile()
 
 # Stage 1 SWAP: PROFILES are built from the hybrid JSON profiles (GenericProfile), not the
 # hardcoded classes. Every GenericProfile was proven argv/release/variant-identical to its
-# oracle class before this swap. Only the 18 flash-core-backed profiles are built here (NOT
-# the sd/adb-only kali_arm/pwnagotchi/raspyjack/rayhunter, which carry no engine block) and
-# they are keyed by canonical core id (cfg.core_id or cfg.id).
+# oracle class before this swap. Only the flash-core-backed profiles (everything in
+# _PROFILE_FILES below — len(_PROFILE_FILES) of them) are built here; the sd/adb-only
+# kali_arm/pwnagotchi/raspyjack/rayhunter carry no engine block and are excluded. They are
+# keyed by canonical core id (cfg.core_id or cfg.id).
 _PROFILE_FILES = (
     "marauder.json", "esp32_div.json", "bruce.json", "ghost_esp.json", "halehound.json",
     "rtl8720.json", "bluejammer_esp32.json", "bluejammer_bw16.json", "meshtastic.json",

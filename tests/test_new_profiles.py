@@ -27,6 +27,12 @@ CASES = {
             {"name": "mclite_config_tool.html", "browser_download_url": "https://x/e"},
         ],
         "expect_bins": 2,  # the .html must be excluded
+        "default_fragment": "mclite-v",  # prefer_fragment must pick the T-Deck (mclite-v), not cands[0]
+        # longest_substring label_map must label each bin for its OWN device (never cross them):
+        "labels": {
+            "mclite-v0.4.1.bin": "LilyGo T-Deck Plus (SX1262 LoRa)",
+            "mclite-watch-v0.4.1.bin": "LilyGo T-Watch Ultra (SX1262 LoRa)",
+        },
     },
     "bit_pirate": {
         "assets": [
@@ -71,3 +77,8 @@ def test_new_profile_resolver(pid, monkeypatch):
     if c.get("default_fragment"):
         assert c["default_fragment"] in default["name"], \
             f"{pid}: default_variant must honor the prefer_fragment order"
+    if c.get("labels"):
+        by_name = {a["name"]: a for a in assets}
+        for name, want in c["labels"].items():
+            assert by_name[name].get("label") == want, \
+                f"{pid}: label_map must label {name!r} as {want!r} (never cross devices)"
