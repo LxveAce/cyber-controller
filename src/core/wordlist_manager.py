@@ -41,6 +41,11 @@ from .crack_pipeline import validate_wordlist  # BYO reuses the same non-empty-f
 
 Line = Callable[[str], None]
 
+# Pre-verification byte ceiling for downloads. Every catalog entry carries an expected size; we allow
+# 1.25x slack (mirror drift, minor upstream churn). Size-unknown specs fall back to this absolute
+# backstop so a misbehaving/oversized upstream cannot fill the disk before the hash check runs.
+_DOWNLOAD_HARD_CAP_BYTES = 20 * 1024**3  # 20 GiB
+
 # -- catalog ----------------------------------------------------------
 
 #: SecLists pinned to an immutable commit so the recorded sha256 matches for good. Raw URLs at a commit
@@ -286,7 +291,7 @@ def download_wordlist(spec: WordlistSpec, directory: Optional[str] = None,
     req = urllib.request.Request(spec.url, headers={"User-Agent": "cyber-controller-wordlist"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp_dl.name, "wb") as out:
-            shutil.copyfileobj(resp, out)
+            _stream_capped(resp, out, spec)
     except Exception as exc:  # noqa: BLE001 -- surface any network error as an honest failure
         _rm(tmp_dl.name)
         raise RuntimeError(f"download failed: {exc}") from exc
@@ -313,6 +318,27 @@ def download_wordlist(spec: WordlistSpec, directory: Optional[str] = None,
     os.replace(final_tmp, dest)
     log(f"[wordlist] installed {os.path.basename(dest)} — {msg}")
     return dest
+
+
+def _stream_capped(resp, out, spec: WordlistSpec) -> None:
+    """Copy the response body to ``out`` in chunks, aborting if it exceeds the expected size.
+
+    Fails closed BEFORE a runaway/oversized upstream can fill the operator's disk. The post-download
+    hash/size check in :func:`verify_file` still runs afterward — this is only the pre-verification
+    byte bound. On overflow the caller's ``except`` removes the ``.part`` temp.
+    """
+    limit = int(spec.size_bytes * 1.25) if spec.size_bytes else _DOWNLOAD_HARD_CAP_BYTES
+    written = 0
+    while True:
+        chunk = resp.read(65536)
+        if not chunk:
+            break
+        written += len(chunk)
+        if written > limit:
+            raise RuntimeError(
+                f"response exceeded size ceiling ({format_size(limit)}) — aborting to protect disk"
+            )
+        out.write(chunk)
 
 
 def _rm(path: str) -> None:

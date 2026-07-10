@@ -109,15 +109,14 @@ class EspAtProtocol(BaseProtocol):
         """Return True if the line looks like ESP-AT output.
 
         Claims the unambiguous AT+GMR version banner and the boot-complete "ready"
-        line, plus a CRLF-framed OK reply. A bare stripped "OK" is deliberately NOT
-        claimed on its own — too generic — so auto-detect doesn't steal another
-        firmware's status line.
+        line. A bare stripped "OK" is deliberately NOT claimed on its own — too
+        generic — so auto-detect doesn't steal another firmware's status line.
+        (The serial layer splits on ``[\\r\\n]+`` and strips before this sees a line,
+        so there is no multi-line CRLF-framed "OK" form to match here.)
         """
         if not line:
             return False
         banners = ("AT version:", "SDK version:", "Bin version:", "compile time")
         if any(b in line for b in banners):
-            return True
-        if "\r\nOK\r\n" in line:
             return True
         return line.strip() == "ready"
