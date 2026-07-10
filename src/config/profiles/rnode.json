@@ -1,0 +1,47 @@
+{
+  "name": "RNode (Reticulum LoRa)",
+  "id": "rnode",
+  "core_id": "rnode",
+  "label": "RNode — Reticulum LoRa radio interface",
+  "description": "markqvist/RNode_Firmware (GPL-3.0) — turns an ESP32/S3 LoRa board (T-Beam, T3S3, Heltec V3, LoRa32, T-Deck, XIAO-S3) into a Reticulum (RNS) radio interface. LoRa comms transport; no attack/jammer/deauth. It is a user-tunable TX radio, so operate only on bands you are licensed/authorized for. Cyber Controller flashes the vendor firmware and adds no capability of its own.",
+  "repo": "markqvist/RNode_Firmware",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "multi-file-offsets",
+  "app_offset": "0x10000",
+  "default_baud": 921600,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "by_chip": {"esp32": "tbeam_sx1262", "esp32s3": "t3s3"}},
+  "firmware_urls": {
+    "repo": "https://github.com/markqvist/RNode_Firmware",
+    "latest": "https://github.com/markqvist/RNode_Firmware/releases/latest"
+  },
+  "support_files": null,
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/markqvist/RNode_Firmware/releases/latest",
+    "asset_match": {"expand": "per_board_zip"},
+    "per_board_zip": {
+      "zip_template": "rnode_firmware_{board}.zip",
+      "app_member_template": "rnode_firmware_{board}.bin",
+      "support_member_templates": {
+        "bootloader": "rnode_firmware_{board}.bootloader",
+        "partitions": "rnode_firmware_{board}.partitions",
+        "boot_app0": "rnode_firmware_{board}.boot_app0"
+      },
+      "console_image": {"member": "console_image.bin", "offset": "0x210000"},
+      "offsets": {"partitions": "0x8000", "boot_app0": "0xe000", "app": "0x10000"},
+      "boards": [
+        {"board": "tbeam_sx1262", "chip": "esp32",   "name": "LilyGo T-Beam (SX1262)"},
+        {"board": "t3s3",         "chip": "esp32s3", "name": "LilyGo T3S3 (SX1262)"},
+        {"board": "heltec32v3",   "chip": "esp32s3", "name": "Heltec LoRa32 V3"},
+        {"board": "lora32v21",    "chip": "esp32",   "name": "TTGO LoRa32 v2.1"},
+        {"board": "tdeck",        "chip": "esp32s3", "name": "LilyGo T-Deck"},
+        {"board": "xiao_esp32s3", "chip": "esp32s3", "name": "Seeed XIAO ESP32-S3"}
+      ]
+    }
+  },
+  "note": "esptool multi-part flash from ONE per-board .zip (new per_board_zip resolver mode). Members verified from rnode_firmware_heltec32v3.zip @ tag 1.86: rnode_firmware_{board}.{bootloader,partitions,boot_app0,bin} + console_image.bin. Offsets: bootloader chip-dependent via _bootloader_offset (0x0 s3 / 0x1000 classic esp32), partitions 0x8000, boot_app0 0xe000, app 0x10000, console_image (SPIFFS, optional) 0x210000. nRF boards (rak4631/heltec_t114/techo) EXCLUDED — Nordic, not esptool. danger '' — legitimate LoRa transport (not a jammer/deauth); the tunable-TX 'licensed use only' caveat lives in the description + the universal legal disclaimer (same posture as meshtastic/meshcore/nautilus). FUNCTIONAL caveat: a flashed RNode boots but is NOT rnodeconf-provisioned/EEPROM-signed (device-signing is out of scope for CC) — full Reticulum operation needs `rnodeconf`. Offsets/members kept verify: (release.json ships a per-ZIP SHA, not per-member) until a real T3S3/T-Beam flash confirms boot (Phase-F HW gate)."
+}

@@ -179,6 +179,27 @@ def chip_match(connected_chip: str | None, profile: FirmwareProfile) -> str:
     return "match" if norm in chips else "mismatch"
 
 
+def _support_from_zip_members(variant: dict, cache: str, on_line: Callable[[str], None]) -> dict:
+    """Build the full-flash `support` map (offset -> extracted path) for a per-board-zip firmware
+    (RNode): every boot-chain member lives in the SAME per-board zip as the app, so each is pulled
+    from that one (already-cached) archive and mapped to its flash offset. A member marked
+    ``optional`` that isn't in the zip is skipped (e.g. the SPIFFS console_image — the fw boots
+    without it); a missing REQUIRED member raises, so the caller aborts rather than write a
+    non-booting board. See flash_core._expand_per_board_zip for where support_members is built."""
+    support: dict = {}
+    asset_name = variant.get("zip_name") or variant["name"]
+    for m in variant["support_members"]:
+        try:
+            path = flash_core.download_and_extract(variant["url"], cache, asset_name, m["member"], on_line)
+        except Exception:  # noqa: BLE001 — an optional member may legitimately be absent
+            if m.get("optional"):
+                on_line(f"[info] optional member {m['member']} not in the zip; skipping")
+                continue
+            raise
+        support[m["offset"]] = path
+    return support
+
+
 def _percent_adapter(progress: ProgressCallback | None) -> Callable[[str], None]:
     """Wrap a (percent, message) callback as flash_core's on_line(str) callback,
     parsing esptool progress percentages out of the streamed lines."""
@@ -423,7 +444,20 @@ class FlashEngine:
 
         support = None
         mode = profile.flash_mode if profile.flash_mode in ("app", "full") else "full"
-        if mode == "full":
+        if mode == "full" and variant.get("support_members"):
+            # RNode-style: the boot chain rides in the SAME per-board zip as the app (already cached
+            # by the app extraction above). Pull each member out of that one zip and map it to its
+            # flash offset — no core.support_files() call (this firmware has many boards per chip, so
+            # the boot chain can't be keyed on chip alone; it must come from the selected board's zip).
+            try:
+                support = _support_from_zip_members(variant, cache, on_line)
+            except Exception as exc:
+                on_line(f"[error] could not extract the boot chain from the board zip ({exc}); aborting "
+                        f"full flash — writing the app alone would leave a non-booting board.")
+                if progress:
+                    progress(0, "Flash failed")
+                return False
+        elif mode == "full":
             try:
                 # Merged-image profiles legitimately return None here (no fetch, no raise). An EXCEPTION
                 # is a real failure to obtain the bootloader/partitions/boot_app0 a multi-file profile

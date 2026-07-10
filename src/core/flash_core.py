@@ -2072,6 +2072,8 @@ def _resolve_github(cfg: Dict) -> Tuple[str, List[Dict]]:
         raise
     if am.get("expand") == "chip_zip_boards":
         return tag, _expand_chip_zip_boards(p, raw)
+    if am.get("expand") == "per_board_zip":
+        return tag, _expand_per_board_zip(p, raw)
     inc_re = re.compile(am["include_regex"], _regex_flags(am.get("regex_flags"))) if am.get("include_regex") else None
     suffixes = am.get("include_suffixes", [".bin"])
     excludes = am.get("exclude_substrings", [])
@@ -2133,6 +2135,51 @@ def _expand_chip_zip_boards(p: Dict, raw: List[Dict]) -> List[Dict]:
                 "zip_name": czb["zip_name_template"].format(chip=chip, version=version),
                 "zip_member": czb["member_template"].format(board=board, chip=chip, version=version),
             })
+    return out
+
+
+def _expand_per_board_zip(p: Dict, raw: List[Dict]) -> List[Dict]:
+    """RNode-style: each board ships as ONE .zip whose members flash to DISTINCT offsets.
+
+    Unlike _expand_chip_zip_boards (one merged member @0x0 per board), here a single per-board
+    zip carries the whole boot chain — bootloader / partitions / boot_app0 / app / an optional
+    SPIFFS console_image — each at its own offset. Emit one variant per configured board that is
+    actually present in the release; the app rides in `zip_member` (offset in `offset`) and the
+    rest ride in `support_members` ([{member, offset, optional?}]) which the flash orchestration
+    extracts from the SAME cached zip (see flash_engine). The bootloader offset is chip-dependent
+    (`_bootloader_offset`: 0x0 S3/C-series, 0x1000 classic ESP32, 0x2000 C5)."""
+    pbz = p["per_board_zip"]
+    by_name = {a.get("name", ""): a for a in raw}
+    offs = pbz.get("offsets", {})
+    part_off = offs.get("partitions", "0x8000")
+    boot_app0_off = offs.get("boot_app0", "0xe000")
+    app_off = offs.get("app", "0x10000")
+    sm_tmpl = pbz["support_member_templates"]
+    console = pbz.get("console_image")
+    out: List[Dict] = []
+    for b in pbz["boards"]:
+        board, chip = b["board"], b["chip"]
+        zip_name = pbz["zip_template"].format(board=board)
+        asset = by_name.get(zip_name)
+        if asset is None:
+            continue  # this board's zip isn't in the release — skip (defensive)
+        support_members = [
+            {"member": sm_tmpl["bootloader"].format(board=board), "offset": _bootloader_offset(chip)},
+            {"member": sm_tmpl["partitions"].format(board=board), "offset": part_off},
+            {"member": sm_tmpl["boot_app0"].format(board=board), "offset": boot_app0_off},
+        ]
+        if console:
+            support_members.append(
+                {"member": console["member"], "offset": console["offset"], "optional": True})
+        out.append({
+            "name": zip_name,
+            "url": asset.get("browser_download_url"),
+            "chip": chip,
+            "label": b.get("name", board),
+            "zip_member": pbz["app_member_template"].format(board=board),
+            "offset": app_off,
+            "support_members": support_members,
+        })
     return out
 
 
@@ -2400,6 +2447,13 @@ _PROFILE_FILES = (
     # means no CC operate surface). github_release tracks latest; merged single-bin @0x0 (include_regex picks
     # nautilus.bin, not the 3-part set). v1.0.0 asset verified live. Offset 0x0 verify: until the Phase-F HW gate.
     "nautilus.json",
+    # RNode (markqvist/RNode_Firmware, GPL-3.0) — Reticulum LoRa radio interface. Introduces the NEW
+    # per_board_zip resolver mode: each board ships ONE .zip whose members flash to DISTINCT offsets
+    # (bootloader chip-dependent / partitions 0x8000 / boot_app0 0xe000 / app 0x10000 / console_image
+    # SPIFFS 0x210000 optional). The boot chain rides in the variant's support_members and is extracted
+    # from the same cached zip by flash_engine (no support_files ABC change). Members verified live @ 1.86;
+    # nRF boards excluded. danger "" (legit LoRa transport). Offsets verify: until the Phase-F HW gate.
+    "rnode.json",
     # Hydra32 / ESP32-Deauther — pinned 'Hydra32' release, multi-file ESP32 offsets verified from the
     # repo partitions.csv + SHA-256-pinned (authorized testing only; deauth gated by the safety layer).
     "hydra32.json",
