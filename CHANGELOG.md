@@ -17,6 +17,18 @@ All notable changes to Cyber Controller are documented here. This project adhere
   manually. An explicit (non-Auto) firmware choice is always honoured and never overridden.
 
 ### Added
+- **ESP-AT (Espressif) — AT-command Wi-Fi/BT modem firmware profile + parser (1.7.0, bonus).** New `esp_at`
+  flash profile + `EspAtProtocol` (`text-cli`, CRLF line-ending) integrate Espressif's official ESP-AT firmware,
+  which turns an ESP32 into an AT-controlled Wi-Fi/BT modem. **SAFE** (`danger=""`) — a modem firmware with no
+  offensive/RF-attack transmit surface; the parser exposes only read-only AT helpers (`AT` ping, `AT+GMR`
+  version, `AT+CWLAP` Wi-Fi scan, `AT+CWMODE?` mode query, `AT+CIFSR` IP/MAC) and parses `OK`/`ERROR`/`busy`
+  status, the boot `ready` banner, and structured `+<CMD>:<payload>` responses. The factory image is a merged
+  single bin flashed at 0x0 (bench target: ESP32-WROOM-32 on ESP-AT v2.4.0; also S2/S3/C3). **Resolver deviation
+  (reality-forced):** Espressif ships the prebuilt bins as per-module ZIPs on `download.espressif.com` (its
+  GitHub Releases carry no `.bin` assets), which is outside CC's GitHub-only SSRF fetch allowlist — so the
+  profile uses the **`local` resolver** (same model as `custom`): CC flashes the factory bin you extract from the
+  official ZIP via the shared local-`.bin` path rather than auto-downloading it. The AT command channel is UART1
+  by default; the ROM boot log stays on UART0. Suite green.
 - **BlueStress — in-house gated RF-disruption firmware + CC control (1.7.0).** New `bluestress` flash profile +
   `BlueStressProtocol` (`text-cli`) integrate LxveLabs' own ESP32+nRF24 firmware, which — unlike the fire-on-boot
   upstream jammers — **boots idle** and exposes a real serial CLI, so CC can honestly present a *gated* operate

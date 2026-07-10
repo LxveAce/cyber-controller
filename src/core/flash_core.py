@@ -2410,6 +2410,12 @@ _PROFILE_FILES = (
     # SHA-256-verified. STAGED: LxveAce/BlueStress repo/build not yet published — placeholder commit + SHA-256
     # in the profile MUST be replaced with real build digests before any flash (verify_sha256 refuses a mismatch).
     "bluestress.json",
+    # ESP-AT (Espressif) — official AT-command Wi-Fi/BT modem firmware; SAFE (no offensive TX).
+    # Espressif ships the prebuilt bins as per-module ZIPs on download.espressif.com (NOT as GitHub
+    # release assets), outside this module's GitHub-only SSRF allowlist — so the profile uses the
+    # LOCAL resolver (same model as 'custom'): CC flashes the user-extracted factory image
+    # (factory/factory_WROOM-32.bin), a merged single bin @0x0. Bench: ESP32-WROOM-32 on v2.4.0.
+    "esp_at.json",
 )
 
 

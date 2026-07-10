@@ -28,6 +28,7 @@ from src.protocols.bluestress import BlueStressProtocol
 from src.protocols.bruce import BruceProtocol
 from src.protocols.bw16 import BW16Protocol
 from src.protocols.esp32_div import Esp32DivProtocol
+from src.protocols.esp_at import EspAtProtocol
 from src.protocols.flipper import FlipperProtocol
 from src.protocols.flock_you import FlockYouProtocol
 from src.protocols.ghost_esp import GhostESPProtocol
@@ -85,6 +86,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "nrf-bluenullifier2": NrfBlueNullifier2Protocol,
     "bluestress": BlueStressProtocol,
     "flock-you": FlockYouProtocol,
+    "esp_at": EspAtProtocol,
     # Fallbacks (both names map to the same passthrough class).
     "generic": GenericProtocol,
     "raw": GenericProtocol,
@@ -105,6 +107,7 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "nrf-bluenullifier2": "nRF BlueNullifier 2 (lab-only)",
     "bluestress": "BlueStress (lab-only)",
     "flock-you": "Flock-You (ALPR detector)",
+    "esp_at": "ESP-AT (Espressif)",
     "generic": "Generic / Raw",
     "raw": "Generic / Raw",
 }
@@ -233,6 +236,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "nrf-bluenullifier2": "src.protocols.nrf_bluenullifier",
     "bluestress": "src.protocols.bluestress",
     "flock-you": "src.protocols.flock_you",
+    "esp_at": "src.protocols.esp_at",
     "generic": "src.protocols",  # GenericProtocol lives in __init__
     "raw": "src.protocols",
 }
@@ -274,6 +278,7 @@ __all__ = [
     "BlueStressProtocol",
     "NrfBlueNullifier2Protocol",
     "FlockYouProtocol",
+    "EspAtProtocol",
     "GenericProtocol",
     "PROTOCOLS",
     "PROTOCOL_DISPLAY_NAMES",

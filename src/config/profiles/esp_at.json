@@ -1,0 +1,66 @@
+{
+  "name": "ESP-AT (Espressif)",
+  "id": "esp_at",
+  "core_id": "esp_at",
+  "label": "ESP-AT — Espressif AT-command Wi-Fi/BT firmware",
+  "description": "ESP-AT — Espressif's official AT-command Wi-Fi/BT firmware (turns an ESP32 into an AT-controlled modem). Flashes the per-module FACTORY image (factory/factory_WROOM-32.bin) as a single merged bin at 0x0. SAFE: it is a modem firmware with no offensive/RF-attack transmit surface. The AT command channel is on UART1 by default (the ROM boot log stays on UART0). Espressif ships the prebuilt bins as per-module ZIPs on download.espressif.com (NOT as GitHub release assets), which is outside Cyber Controller's GitHub-only fetch allowlist — so this profile flashes the factory .bin you extract from the official ZIP via the local-.bin flow rather than auto-downloading it.",
+  "backend": "esptool",
+  "protocol": "esp_at",
+  "danger": "",
+  "boards": [
+    {
+      "name": "ESP32-WROOM-32 (NodeMCU / DevKit)",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "40m",
+      "board_id": "esp32-wroom-32",
+      "factory_bin": "factory/factory_WROOM-32.bin"
+    },
+    {
+      "name": "ESP32-WROVER",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "40m",
+      "factory_bin": "factory/factory_WROVER-32.bin"
+    },
+    {
+      "name": "ESP32-S2",
+      "chip": "esp32s2",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32-S3",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32-C3",
+      "chip": "esp32c3",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/espressif/esp-at",
+    "binaries": "https://docs.espressif.com/projects/esp-at/en/latest/esp32/AT_Binary_Lists/esp_at_binaries.html",
+    "note": "Official prebuilt AT firmware is distributed as per-module ZIPs on download.espressif.com, listed on the Released-Firmware docs page above. The espressif/esp-at GitHub Releases carry the source tags only (no .bin assets)."
+  },
+  "note": "ESP-AT (Espressif's AT-command modem firmware). Bench-validated against two ESP32-WROOM-32 boards running ESP-AT v2.4.0. Install: download the per-module ZIP from Espressif's Released-Firmware page (e.g. ESP32-WROOM-32_AT_Bin_Vx.x.x.x.zip), extract factory/factory_WROOM-32.bin, and flash it at 0x0 (esptool: `write_flash -z --flash_mode dio --flash_freq 40m --flash_size 4MB 0x0 factory/factory_WROOM-32.bin`). RESOLVER = local (not auto-download): Espressif hosts the bins on download.espressif.com, which is NOT in Cyber Controller's GitHub-only SSRF fetch allowlist, and the GitHub Releases have no .bin assets — so CC flashes the user-supplied factory bin through the shared local-.bin path (same model as the 'custom' profile) instead of resolving a URL. The factory image is a MERGED single bin (bootloader+partition-table+at_customize+app), so it goes to 0x0 (merged-single-bin). After flashing, the AT command channel is UART1 by default (115200 8N1); the ROM boot log stays on UART0. SAFE firmware — no offensive TX; the paired esp_at parser exposes only read-only AT helpers (AT / AT+GMR / AT+CWLAP / AT+CWMODE? / AT+CIFSR).",
+  "repo": "espressif/esp-at",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "local",
+  "resolver_params": {},
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"}
+}
