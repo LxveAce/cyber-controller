@@ -23,7 +23,9 @@ def test_meshtastic_chip_zip_discovery(monkeypatch):
     s3 = core.variants_for_chip(assets, "esp32s3")
     hv3 = next(a for a in s3 if "heltec-v3" in a["name"])
     assert hv3["zip_name"] == "firmware-esp32s3-2.7.15.abc.zip"
-    assert hv3["zip_member"] == "firmware-heltec-v3-2.7.15.abc.bin"
+    # MERGED image at 0x0 must be the .factory.bin; the app-only .bin is the 0x10000 update image
+    # and bricks if written at 0x0 (QA 2026-07-10). oracle + meshtastic.json member_template lockstep.
+    assert hv3["zip_member"] == "firmware-heltec-v3-2.7.15.abc.factory.bin"
     assert hv3["offset"] == "0x0" and hv3["merged"] is True and hv3["url"] == "u_s3"
 
     e32 = core.variants_for_chip(assets, "esp32")

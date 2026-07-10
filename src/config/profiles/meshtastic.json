@@ -49,7 +49,7 @@
         "esp32c6": ["m5stack-unitc6l", "tlora-c6"],
         "esp32s2": []
       },
-      "member_template": "firmware-{board}-{version}.bin",
+      "member_template": "firmware-{board}-{version}.factory.bin",
       "zip_name_template": "firmware-{chip}-{version}.zip",
       "asset_name_template": "meshtastic-{board}-{version}",
       "label_template": "Meshtastic {board}"

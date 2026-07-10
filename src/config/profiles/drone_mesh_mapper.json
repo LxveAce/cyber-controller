@@ -32,10 +32,10 @@
       "repo": "https://raw.githubusercontent.com/colonelpanichacks/drone-mesh-mapper/efe96b6f47a271ec035b319d6a8eb0b308fcae97/firmware"
     },
     "assets": [
-      {"name": "esp32c3-wifi-rid.bin",           "source": "repo", "chip": "esp32c3", "offset": "0x0", "merged": true, "sha256": "verify:", "label": "Xiao C3 — WiFi Remote-ID detector"},
-      {"name": "esp32c3-wifi-rid-node-mode.bin", "source": "repo", "chip": "esp32c3", "offset": "0x0", "merged": true, "sha256": "verify:", "label": "Xiao C3 — detector + Meshtastic node relay"},
-      {"name": "esp32s3-dual-rid.bin",           "source": "repo", "chip": "esp32s3", "offset": "0x0", "merged": true, "sha256": "verify:", "label": "Xiao S3 — dual-radio Remote-ID detector"},
-      {"name": "esp32s3-dual-rid-node-mode.bin", "source": "repo", "chip": "esp32s3", "offset": "0x0", "merged": true, "sha256": "verify:", "label": "Xiao S3 — dual-radio detector + Meshtastic node relay"}
+      {"name": "esp32c3-wifi-rid.bin",           "source": "repo", "chip": "esp32c3", "offset": "0x0", "merged": true, "sha256": "ee6624133d233994f41146f8cd698ec44bc94bdf2ede08875a3b15e3fe8cb958", "label": "Xiao C3 — WiFi Remote-ID detector"},
+      {"name": "esp32c3-wifi-rid-node-mode.bin", "source": "repo", "chip": "esp32c3", "offset": "0x0", "merged": true, "sha256": "95659920b0b875e4725f43ef676ed60adabf0bdd4c68265ec2f421b58a410d35", "label": "Xiao C3 — detector + Meshtastic node relay"},
+      {"name": "esp32s3-dual-rid.bin",           "source": "repo", "chip": "esp32s3", "offset": "0x0", "merged": true, "sha256": "b96f44cc3617dc95be2b0dd047c9dcd2a349e205aa7efb7757e00dbc6969aa0c", "label": "Xiao S3 — dual-radio Remote-ID detector"},
+      {"name": "esp32s3-dual-rid-node-mode.bin", "source": "repo", "chip": "esp32s3", "offset": "0x0", "merged": true, "sha256": "bdfff9bb3dd4f64ca4d8242b5f18013eebba4e6522b5a5cead1d6302ffffeddd", "label": "Xiao S3 — dual-radio detector + Meshtastic node relay"}
     ]
   },
   "note": "Bins are IN-TREE (firmware/), NOT release assets, and there are 0 tagged releases -> pinned_release at the pinned commit efe96b6 (raw.githubusercontent). Only merged app bins ship (no separate bootloader/partitions in firmware/), so offset 0x0 / merged is the only structurally-valid read; kept SHA verify: (no SHA256SUMS published) -> verify_sha256 REFUSES a mismatch, so real digests MUST be computed from the pinned commit and the 0x0-merged boot confirmed on a real Xiao C3/S3 before any flash (Phase-F HW gate). DELIBERATELY EXCLUDES the repo's esp32s3-dual-rid-apple-maps.bin (an Apple-Find-My variant) pending a receive-only confirmation — this profile ships only the 4 pure RX Remote-ID detector images. License is README-declared MIT (GitHub API returns null only because there is no LICENSE *file*); conservatively fetch-from-origin only. danger '' (RX-only) — re-confirm no-TX on hardware."

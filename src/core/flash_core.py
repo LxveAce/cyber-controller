@@ -1494,9 +1494,10 @@ def _meshtastic_chip(board: str) -> str:
 
 
 # Meshtastic now ships per-CHIP zip bundles (firmware-<chip>-<ver>.zip), each containing every
-# board's factory image (firmware-<board>-<ver>.bin — a merged image flashed at 0x0) plus bleota
-# and per-board littlefs. We surface a curated board list per chip and extract the chosen board's
-# factory bin from the chip zip. Minimal install = factory bin at 0x0 (Meshtastic formats its
+# board's MERGED factory image (firmware-<board>-<ver>.factory.bin — flashed at 0x0) AND a separate
+# app-only update image (firmware-<board>-<ver>.bin — flashed at 0x10000, NOT bootable at 0x0) plus
+# bleota and per-board littlefs. We surface a curated board list per chip and extract the chosen
+# board's .factory.bin from the chip zip. Minimal install = factory bin at 0x0 (Meshtastic formats its
 # littlefs on first boot; bleota/littlefs are optional OTA/FS extras). The big chip zip is cached
 # and reused across boards (see download_and_extract).
 _MESHTASTIC_CHIP_ZIP = re.compile(r"^firmware-(esp32|esp32s2|esp32s3|esp32c3|esp32c6)-(.+)\.zip$")
@@ -1550,7 +1551,7 @@ class MeshtasticProfile(FirmwareProfile):
                     "offset": "0x0",
                     "merged": True,
                     "zip_name": f"firmware-{chip}-{ver}.zip",   # shared chip-zip cache filename
-                    "zip_member": f"firmware-{board}-{ver}.bin",  # the board's factory image
+                    "zip_member": f"firmware-{board}-{ver}.factory.bin",  # MERGED factory image (0x0); the app-only .bin would brick at 0x0
                 })
         return tag, assets
 
