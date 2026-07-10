@@ -2454,6 +2454,11 @@ _PROFILE_FILES = (
     # from the same cached zip by flash_engine (no support_files ABC change). Members verified live @ 1.86;
     # nRF boards excluded. danger "" (legit LoRa transport). Offsets verify: until the Phase-F HW gate.
     "rnode.json",
+    # ESP32 Dual-Band Wardriver (justcallmekoko/ESP32DualBandWardriver, MIT) — passive 2.4+5 GHz WiGLE
+    # logger on the ESP32-C5, danger "" (RX-only, no TX/deauth). pinned_release @ v2.3.0, multi-file:
+    # bootloader@0x2000 (C5 gotcha) / partitions@0x8000 / app@0x10000, single-app (no boot_app0). SHA-256
+    # digests are REAL (computed from the v2.3.0 assets) so verify_sha256 passes; offsets verify: until HW.
+    "esp32_wardriver.json",
     # Hydra32 / ESP32-Deauther — pinned 'Hydra32' release, multi-file ESP32 offsets verified from the
     # repo partitions.csv + SHA-256-pinned (authorized testing only; deauth gated by the safety layer).
     "hydra32.json",

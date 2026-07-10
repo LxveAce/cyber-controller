@@ -1,0 +1,54 @@
+{
+  "name": "ESP32 Dual-Band Wardriver",
+  "id": "esp32_wardriver",
+  "core_id": "esp32_wardriver",
+  "label": "ESP32 Dual-Band Wardriver (justcallmekoko) — passive WiGLE logging",
+  "description": "justcallmekoko/ESP32DualBandWardriver — a passive dual-band (2.4 + 5 GHz) Wi-Fi and BLE wardriver for the ESP32-C5. Scans and logs nearby networks/devices to an SD card in WiGLE CSV format for upload to wigle.net. Passive receive only — no transmit, deauth, or injection. Cyber Controller flashes the pinned, SHA-256-verified release images and adds no capability of its own.",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "multi-file-offsets",
+  "app_offset": "0x10000",
+  "default_baud": 460800,
+  "resolver": "pinned_release",
+  "variants_for_chip": "all",
+  "default_variant": { "strategy": "first" },
+  "boards": [
+    { "name": "Espressif ESP32-C5-DevKitC-1 v1.2", "chip": "esp32c5", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "80m", "board_id": "c5-devkit" }
+  ],
+  "repo": "justcallmekoko/ESP32DualBandWardriver",
+  "firmware_urls": {
+    "repo": "https://github.com/justcallmekoko/ESP32DualBandWardriver",
+    "latest": "https://github.com/justcallmekoko/ESP32DualBandWardriver/releases/latest",
+    "note": "ESP-IDF project; each release ships bootloader.bin + partitions.bin + a date-stamped app bin (c5_wardriver_<ver>_<date>_c5_devkit.bin). Pinned + SHA-256-verified at flash time, never vendored."
+  },
+  "support_files": {
+    "source": "pinned",
+    "verify_sha256": true,
+    "include_boot_app0": false,
+    "pinned_files": {
+      "bootloader.bin":  { "source": "release", "offset": "0x2000", "sha256": "3e2b92a74cf406745dddc88ecb5193fd446f4b269b96d2b9991d84f41c810611" },
+      "partitions.bin":  { "source": "release", "offset": "0x8000", "sha256": "0a8b5720e7b77ff11f1462458c3a509dee79224e5279898f26d6a2e3ae0517b7" }
+    }
+  },
+  "resolver_params": {
+    "tag": "v2.3.0",
+    "verify_sha256": true,
+    "url_sources": {
+      "release": "https://github.com/justcallmekoko/ESP32DualBandWardriver/releases/download/v2.3.0"
+    },
+    "assets": [
+      {
+        "name": "c5_wardriver_v2_3_0_20260709_c5_devkit.bin",
+        "source": "release",
+        "chip": "esp32c5",
+        "offset": "0x10000",
+        "merged": false,
+        "sha256": "8a0095590901b5439e1a98a1a0bf0b4c3b6019bcdc0f1494ad18b021736bb931",
+        "label": "ESP32 Dual-Band Wardriver app image (passive WiGLE logging)"
+      }
+    ]
+  },
+  "note": "Assets live-verified via gh 2026-07-10 (tag v2.3.0, latest, prerelease:false): bootloader.bin (20464 B), partitions.bin (3072 B), c5_wardriver_v2_3_0_20260709_c5_devkit.bin (1820656 B). SHA-256 digests are REAL — computed from the downloaded v2.3.0 assets (bl 3e2b92a7… / part 0a8b5720… / app 8a009559…), so verify_sha256 passes against the pinned tag. Offsets are the known-correct ESP32-C5 values: bootloader 0x2000 (the central C5 gotcha — matches _bootloader_offset('esp32c5')), partitions 0x8000, app 0x10000, single-app layout (NO boot_app0). LICENSE: repo now ships an MIT LICENSE (the earlier 'no license' note is superseded); CC still only fetches the upstream release at flash time and never vendors the bins. SD card required for logging (Solo/Core mode). Offsets kept treat-as-verify: until a real ESP32-C5 flash confirms boot (Phase-F HW gate); the SHAs are final."
+}
