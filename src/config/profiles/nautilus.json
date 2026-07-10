@@ -1,0 +1,33 @@
+{
+  "name": "Nautilus (T-Embed CC1101)",
+  "id": "nautilus",
+  "core_id": "nautilus",
+  "label": "Nautilus - sub-GHz RF firmware for LilyGo T-Embed CC1101",
+  "description": "n0xa/Nautilus-Firmware (GPL-3.0) - lightweight sub-GHz (CC1101, 300-928 MHz) RX/TX firmware for the LilyGo T-Embed CC1101 (ESP32-S3). General-purpose dual-use RF tool for authorized use only: sub-GHz TX can reach licensed/region-restricted bands, so operate only where lawful. No jammer or deauth feature. Cyber Controller flashes the vendor merged image and adds no capability of its own.",
+  "repo": "n0xa/Nautilus-Firmware",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "app_offset": "0x0",
+  "default_baud": 115200,
+  "resolver": "github_release",
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"},
+  "boards": [
+    {"name": "LilyGo T-Embed CC1101", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "external_modules": ["CC1101"]}
+  ],
+  "firmware_urls": {
+    "repo": "https://github.com/n0xa/Nautilus-Firmware",
+    "latest": "https://github.com/n0xa/Nautilus-Firmware/releases/latest"
+  },
+  "support_files": null,
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/n0xa/Nautilus-Firmware/releases/latest",
+    "asset_match": {"include_regex": "^nautilus\\.bin$"},
+    "chip_map": {"strategy": "fixed", "chip": "esp32s3"},
+    "emit": {"offset": "0x0", "merged": true}
+  },
+  "note": "n0xa/Nautilus-Firmware, GPL-3.0. Live-verified against release v1.0.0 (2025-12-26): the merged nautilus.bin (1,980,656 B, sha256 8be800fbf20bedabf9205559621a1d8878565d6f33a772bb0fa980b320988fcd) is the full image flashed at 0x0 - manifest.json arithmetic confirms it (firmware.bin 1,915,120 B @ 0x10000 -> 65536 + 1,915,120 = 1,980,656). include_regex ^nautilus\\.bin$ selects the merged bin, NOT the 3-part bootloader.bin/partitions.bin/firmware.bin set. github_release tracks the vendor latest (no SHA pinning in this resolver). qio/80m/16MB per the T-Embed. Distinct firmware from Bruce (which also runs on this board); adds a dedicated sub-GHz project per the implement-all directive. Offset 0x0 kept until a real T-Embed CC1101 flash confirms it (Stage-5 hardware gate)."
+}

@@ -2394,6 +2394,12 @@ _PROFILE_FILES = (
     # esp32s3-dual-rid-apple-maps.bin (Apple-Find-My variant) pending an RX-only confirmation. Only merged app
     # bins exist (no separate bootloader/partitions) -> 0x0/merged; SHA verify: until the Phase-F hardware gate.
     "drone_mesh_mapper.json",
+    # Nautilus (n0xa/Nautilus-Firmware, GPL-3.0) — sub-GHz CC1101 (300-928 MHz RX/TX) firmware for the LilyGo
+    # T-Embed CC1101 (ESP32-S3). General-purpose dual-use RF tool, danger "" (same posture as same-author
+    # m5stick_nemo and Bruce on this board — no jammer/deauth; operate-time risk is per-command, protocol:null
+    # means no CC operate surface). github_release tracks latest; merged single-bin @0x0 (include_regex picks
+    # nautilus.bin, not the 3-part set). v1.0.0 asset verified live. Offset 0x0 verify: until the Phase-F HW gate.
+    "nautilus.json",
     # Hydra32 / ESP32-Deauther — pinned 'Hydra32' release, multi-file ESP32 offsets verified from the
     # repo partitions.csv + SHA-256-pinned (authorized testing only; deauth gated by the safety layer).
     "hydra32.json",

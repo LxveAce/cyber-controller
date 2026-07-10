@@ -59,8 +59,8 @@ def test_runtime_chokepoint_blocks_evil_api():
 
 def test_bundled_profiles_all_pass_url_validation():
     # Every shipped profile uses allowlisted hosts -> none rejected at load; registry intact.
-    # 34 = 18 original + trex/mclite/bit_pirate + hydra32 + flipper_roguemaster + m5stick_nemo +
+    # 35 = 18 original + trex/mclite/bit_pirate + hydra32 + flipper_roguemaster + m5stick_nemo +
     # esp8266_deauther + m5gotchi/porkchop + esp32_wifi_pentest + wifi_duck + nrf_bluenullifier2 +
-    # bluestress + esp_at + meshcore + drone_mesh_mapper (all drop-in JSON; github/raw hosts, or the
-    # local resolver with no URLs). drone_mesh_mapper is pinned_release on raw.githubusercontent.com.
-    assert len(flash_core.PROFILES) == 34
+    # bluestress + esp_at + meshcore + drone_mesh_mapper + nautilus (all drop-in JSON; github/raw hosts,
+    # or the local resolver with no URLs). nautilus is github_release on api.github.com + github.com.
+    assert len(flash_core.PROFILES) == 35
