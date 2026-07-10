@@ -71,3 +71,6 @@ vault.enc
 vault.hdr.json
 .cyber-controller/
 suicide-marauder/
+
+# Dead Man's Switch host-provisioner output (guardcfg.bin = per-device hashed pw + salt; owner-only, never commit)
+/suicide_bundle/
