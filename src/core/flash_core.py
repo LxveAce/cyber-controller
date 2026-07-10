@@ -2386,6 +2386,13 @@ _PROFILE_FILES = (
     # companion role tag (companion-v1.16.0); multi-role/ble-usb selection is a deferred resolver
     # enhancement. Lawful LoRa mesh (danger ""). Offset 0x0 verify: until the Phase-F hardware gate.
     "meshcore.json",
+    # WiFi Drone Remote-ID Detector (colonelpanichacks/drone-mesh-mapper, README-MIT) — passive ASTM-F3411
+    # Remote-ID receiver, RX-only/danger "" (blue-team counter-surveillance). Prebuilt bins are IN-TREE
+    # (firmware/, 0 releases) so pinned_release at commit efe96b6 via raw.githubusercontent.com. Ships the 4
+    # pure-RX detector images (Xiao C3/S3, base + Meshtastic node-relay); DELIBERATELY EXCLUDES the repo's
+    # esp32s3-dual-rid-apple-maps.bin (Apple-Find-My variant) pending an RX-only confirmation. Only merged app
+    # bins exist (no separate bootloader/partitions) -> 0x0/merged; SHA verify: until the Phase-F hardware gate.
+    "drone_mesh_mapper.json",
     # Hydra32 / ESP32-Deauther — pinned 'Hydra32' release, multi-file ESP32 offsets verified from the
     # repo partitions.csv + SHA-256-pinned (authorized testing only; deauth gated by the safety layer).
     "hydra32.json",
