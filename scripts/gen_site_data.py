@@ -133,7 +133,13 @@ def fetch_latest_release() -> dict | None:
         "tag": rel.get("tagName"),
         "url": rel.get("url"),
         "published_at": rel.get("publishedAt"),
-        "assets": [a.get("name") for a in rel.get("assets", []) if a.get("name")],
+        # Enriched for the site-sync consumer: each asset carries its download URL + size, so a
+        # site can render real download links from the SSOT instead of hand-coding them.
+        # (SHA256SUMS.txt is one of the assets; embedding its parsed contents is a future step.)
+        "assets": [
+            {"name": a.get("name"), "url": a.get("url"), "size": a.get("size")}
+            for a in rel.get("assets", []) if a.get("name")
+        ],
     }
 
 
