@@ -7,10 +7,13 @@ serial output is read-only telemetry that the BW16 forwards into that web UI.
 
 So this protocol is **informational only**: it parses boot / mode / nRF status lines into ``info`` /
 ``status`` events and identifies the firmware on its banner. :meth:`get_commands` returns an EMPTY
-list because Cyber Controller has no way — and, per the illegal-to-operate framing (FCC 47 U.S.C.
-§333), no intent — to key the transmitter over serial. CC flashes the image and reads telemetry for
-lab study; it never operates the jammer. The device's control surface (the web UI) is documented in
-``config/profiles/bluejammer_bw16.json`` for a launcher, not driven over this serial parser.
+list because BlueJammer-V2 exposes no interactive serial CLI — this parser is telemetry-only and
+never keys the transmitter over the serial monitor. Operate/mode control is NOT absent from Cyber
+Controller, though: it lives on a separate, consent-gated surface — the BlueJammer panel in the Qt
+device tab, which drives the device's own web UI via ``core.bluejammer_control``. There, arm/mode
+sits behind an RF-shielded-enclosure attestation + a per-press confirm, STOP/Idle is ungated, and it
+is fail-safe: nothing is sent until a control map captured from the user's own hardware is loaded.
+That surface is intentionally not wired through this serial parser.
 """
 
 from __future__ import annotations
@@ -55,8 +58,9 @@ class BlueJammerProtocol(BaseProtocol):
         return ParsedEvent(event_type="info", data={"message": line}, raw=line)
 
     def get_commands(self) -> list[CommandInfo]:
-        # Intentionally empty: BlueJammer-V2 has NO serial command channel. Control is the
-        # device's physical button + its self-hosted web UI; CC never keys the transmitter.
+        # Intentionally empty: BlueJammer-V2 has NO serial command channel, so this parser sends
+        # nothing. CC's operate/mode control is the separate consent-gated web-UI surface (the Qt
+        # BlueJammer panel + core.bluejammer_control), not this serial monitor.
         return []
 
     def format_command(self, cmd: str, args: dict[str, str] | None = None) -> str:

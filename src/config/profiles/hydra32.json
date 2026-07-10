@@ -5,7 +5,7 @@
   "label": "Hydra32 (ESP32-Deauther) — authorized testing only",
   "description": "Hydra32 / ESP32-Deauther (SameerAlSahab) — WiFi recon + deauth toolkit for the ESP32 DevKit V1. *** Authorized security testing on networks you own or are permitted to test ONLY — unauthorized deauthentication is illegal in most jurisdictions. *** GPL-3.0. Cyber Controller flashes the pinned, SHA-256-verified release images and adds no attack capability of its own.",
   "backend": "esptool",
-  "protocol": "hydra32",
+  "protocol": null,
   "boards": [
     { "name": "ESP32 DevKit V1", "chip": "esp32", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "80m", "board_id": "esp32-devkit-v1" }
   ],

@@ -1,7 +1,7 @@
 {
   "name": "Pwnagotchi",
   "id": "pwnagotchi",
-  "description": "Raspberry Pi WiFi AI that passively roams and collects WPA/WPA2 handshakes (PMKID + full) using reinforcement learning. Flashed as an SD-card .img.",
+  "description": "Raspberry Pi WiFi AI that roams and collects WPA/WPA2 handshakes (PMKID + full) using reinforcement learning, performing active deauthentication by default to force them. Flashed as an SD-card .img.",
   "backend": "sd",
   "protocol": null,
   "boards": [

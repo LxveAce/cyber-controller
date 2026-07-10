@@ -1307,10 +1307,11 @@ class RtlAmeba8720Profile(FirmwareProfile):
 # --------------------------------------------------------------------------- #
 #
 # *** LAB-ONLY / ILLEGAL TO OPERATE ***  BlueJammer-V2 is a 2.4 GHz jammer (Bluetooth / BLE /
-# WiFi / RC). Cyber Controller's role is limited to FLASHING the precompiled image and reading
-# the device's own telemetry for study — it adds NO jamming capability and exposes NO
-# operate/transmit control (the only TX triggers are the device's physical button + its
-# self-hosted web UI, neither of which CC drives). OPERATING any mode transmits interference and
+# WiFi / RC). Cyber Controller adds NO jamming capability of its own: it FLASHES the precompiled
+# image and reads the device's own telemetry for study. Operate/mode control is exposed only via a
+# SEPARATE consent-gated surface (the Qt BlueJammer panel driving the device's web UI: arm/mode
+# behind an RF-shielded-enclosure attestation + confirm, STOP ungated, and fail-safe — nothing is
+# sent until a user-captured control map is loaded). OPERATING any mode transmits interference and
 # is illegal under FCC / 47 U.S.C. §333 (and equivalent law elsewhere). Retained + flashable and
 # labelled danger="illegal-tx" per the project's "label, never block" doctrine.
 #
@@ -1351,7 +1352,8 @@ class BlueJammerEsp32Profile(FirmwareProfile):
 
     esptool multi-image: app@0x10000 + bootloader@0x1000 + partitions@0x8000, and deliberately
     NO boot_app0 @0xE000 (the upstream flasher omits it). Each bin is SHA-256-pinned. CC flashes
-    and reads telemetry only; it never operates the transmitter.
+    and reads telemetry; any arm/mode control is a separate consent-gated surface (see the
+    section header above), never an unguarded transmit.
     """
 
     id = "bluejammer-esp32"
@@ -1668,7 +1670,7 @@ class OuiSpyProfile(FirmwareProfile):
 
 
 # --------------------------------------------------------------------------- #
-# Sky-Spy profile  (colonelpanichacks/Sky-Spy — ESP32-S3/WROOM-32, drone RemoteID)
+# Sky-Spy profile  (colonelpanichacks/Sky-Spy — ESP32-S3 / ESP32-C5 (XIAO C5), drone RemoteID)
 # --------------------------------------------------------------------------- #
 
 _SKYSPY_API = "https://api.github.com/repos/colonelpanichacks/Sky-Spy/releases/latest"
@@ -1691,7 +1693,8 @@ class SkySpyProfile(FirmwareProfile):
             name = a.get("name", "")
             if not name.endswith(".bin"):
                 continue
-            chip = "esp32s3" if "s3" in name.lower() else "esp32"
+            low = name.lower()
+            chip = "esp32s3" if "s3" in low else ("esp32c5" if "c5" in low else "esp32")
             assets.append({
                 "name": name,
                 "url": a.get("browser_download_url"),

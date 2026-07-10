@@ -57,7 +57,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 | **ESP32 Marauder** | Wi-Fi/BLE recon + attack suite | ESP32 / S2 / S3 / C5 | esptool |
 | **GhostESP** | Wi-Fi/BLE/SubGHz multitool | ESP32 / S2 / S3 / C-series | esptool (zip) |
 | **Bruce** | Pentest multitool | ESP32 / S3 / C-series | esptool (merged) |
-| **ESP32-DIV** | Wi-Fi/RF Swiss-army firmware | ESP32-S3 (v2) · ESP32 (legacy) | esptool |
+| **ESP32-DIV** | Wi-Fi/RF Swiss-army firmware | ESP32-S3 (v2) | esptool |
 | **HaleHound** | CYD-native Wi-Fi tool | ESP32 (Cheap Yellow Display) | esptool |
 | **MinigotchiV3** | Pwnagotchi-style handshake hunter | ESP32 dual-core / S3 | esptool |
 | **Meshtastic** | LoRa off-grid mesh comms | ESP32-S3 / Heltec LoRa | esptool (zip) |
@@ -67,18 +67,18 @@ The full version-by-version history — every fix, every hardening pass, every a
 | **M5Stick NEMO** | M5 multitool | ESP32 / S3 (StickC Plus2 / Cardputer / StickS3) | esptool (merged) |
 | **M5Gotchi** | Pwnagotchi for M5Stack | ESP32-S3 (M5Cardputer / Stick-S3) | esptool (merged) |
 | **AirTag Scanner** | Detect nearby AirTags / trackers | ESP32 / S3 | esptool |
-| **Chasing Your Tail NG** | Counter-surveillance tail detection | ESP32 | esptool |
+| **Chasing Your Tail NG** | Counter-surveillance tail detection — *no prebuilt ESP32 image to flash yet (upstream is a Linux/Pi Python analyzer)* | ESP32 | esptool |
 | **OUI-Spy** | Target device by MAC/OUI | ESP32-S3 | esptool |
-| **Sky-Spy** | Drone Remote-ID sniffer | ESP32-S3 / C6 | esptool |
+| **Sky-Spy** | Drone Remote-ID sniffer | ESP32-S3 / C5 | esptool |
 | **Flock-You** | Passive ALPR / Flock camera detector | ESP32-S3 | esptool |
 | **RayHunter** | IMSI-catcher / cell-site detector | Orbic RC400L (LTE hotspot) | ADB |
 | **Flipper Zero — Momentum** | Feature-rich Flipper custom firmware | STM32WB55 | qFlipper |
 | **Flipper Zero — Unleashed** | Unlocked Flipper custom firmware | STM32WB55 | qFlipper |
 | **Flipper Zero — RogueMaster** | Bleeding-edge Flipper custom firmware | STM32WB55 | qFlipper |
-| **BW16 Deauther** | Dual-band 2.4/5 GHz Wi-Fi + BLE | RTL8720DN (AmebaD) | rtl8720 |
+| **BW16 Deauther** ⚠ | Dual-band 2.4/5 GHz Wi-Fi + BLE deauther (authorized testing) | RTL8720DN (AmebaD) | rtl8720 |
 | **Pwnagotchi** | AI handshake-hunting SBC | Raspberry Pi | SD image |
-| **RaspyJack** | Pi drop-box / LAN implant | Raspberry Pi (LCD/GPIO HAT) | SD image |
-| **Kali Linux ARM** | Full pentest distro | Raspberry Pi (ARM64) | SD image |
+| **RaspyJack** | Pi drop-box / LAN implant — *install-script overlay, not a prebuilt flashable image* | Raspberry Pi (LCD/GPIO HAT) | SD image |
+| **Kali Linux ARM** | Full pentest distro — *image URL pending (no auto-resolved download yet)* | Raspberry Pi (ARM64) | SD image |
 | **Hydra32 / ESP32-Deauther** ⚠ | Wi-Fi deauth (authorized testing) | ESP32 DevKit V1 | esptool (SHA-256-pinned) |
 | **ESP8266 Deauther** ⚠ | Spacehuhn classic (authorized testing) | ESP8266 (D1 mini / NodeMCU / DSTIKE) | esptool (merged) |
 | **WiFiDuck** ⚠ | Wi-Fi BadUSB (authorized testing) | ESP8266 (DSTIKE WiFi Duck / Malduino W) | esptool (merged) |

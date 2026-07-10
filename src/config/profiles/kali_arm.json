@@ -16,5 +16,5 @@
     "repo": "https://kali.download/arm-images/",
     "latest": "https://kali.download/arm-images/"
   },
-  "note": "id matches sd_backend.PI_IMAGE_PROFILES key 'kali-arm'. No GitHub release — images come straight from kali.download (allowlisted in sd_backend). SD imaging requires an explicit removable target + confirmed=True."
+  "note": "id matches sd_backend.PI_IMAGE_PROFILES key 'kali-arm'. HONEST STATUS: firmware_urls.latest and the sd_backend download_url point at the kali.download ARM-image directory INDEX (https://kali.download/arm-images/), not a concrete .img.xz, and no resolver selects the latest image yet — so discover->flash currently yields zero auto-resolved assets (owner decision pending: pin a concrete image URL / add a kali.download directory-index resolver vs relabel vs remove from the matrix). kali.download is allowlisted in sd_backend. SD imaging requires an explicit removable target + confirmed=True."
 }

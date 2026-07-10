@@ -15,8 +15,8 @@
       "flash_freq": "80m"
     },
     {
-      "name": "ESP32-C6 Generic",
-      "chip": "esp32c6",
+      "name": "ESP32-C5 Generic (Seeed XIAO ESP32-C5, dual-band Wi-Fi 6)",
+      "chip": "esp32c5",
       "flash_size": "4MB",
       "flash_mode": "dio",
       "flash_freq": "80m"
@@ -41,7 +41,7 @@
     "asset_match": {"include_suffixes": [".bin"], "include_regex": "^(.*)\\.bin$"},
     "chip_map": {
       "strategy": "fragments", "source": "name", "default": "esp32",
-      "rules": [["s3", "esp32s3"]]
+      "rules": [["s3", "esp32s3"], ["c5", "esp32c5"]]
     },
     "emit": {
       "offset": "0x0", "merged": true,

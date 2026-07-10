@@ -1,5 +1,6 @@
 {
   "name": "Chasing Your Tail NG",
+  "label": "Chasing Your Tail NG (ArgeliusLabs)",
   "id": "cyt_ng",
   "description": "Counter-surveillance WiFi/BLE device-tracking detector (Chasing Your Tail — Next Gen). Flags devices that repeatedly reappear near you over time. Distinct from the HaleHound CYD multitool.",
   "backend": "esptool",
@@ -18,7 +19,7 @@
     "repo": "https://github.com/ArgeliusLabs/Chasing-Your-Tail-NG",
     "latest": "https://github.com/ArgeliusLabs/Chasing-Your-Tail-NG/releases/latest"
   },
-  "note": "Aligned with flash_core CytNgProfile (ArgeliusLabs/Chasing-Your-Tail-NG) — the repo the flasher actually downloads. 'CYT' = Chasing Your Tail. Verify ESP32 flashability before field use.",
+  "note": "HONEST STATUS: upstream ArgeliusLabs/Chasing-Your-Tail-NG is a Linux/RPi Python (Kismet-based) probe-request analyzer — it ships NO ESP32/Arduino firmware and NO release binaries, so the esptool resolver returns zero assets (on_error=source_only_empty) and this profile cannot currently flash anything (owner decision pending: repoint at a genuine ESP32 port if one exists vs relabel vs remove from the matrix). 'CYT' = Chasing Your Tail. Aligned with flash_core CytNgProfile (the equivalence oracle).",
   "core_id": "cyt-ng",
   "repo": "ArgeliusLabs/Chasing-Your-Tail-NG",
   "supports_suicide": false,

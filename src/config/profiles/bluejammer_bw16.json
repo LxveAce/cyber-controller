@@ -1,7 +1,7 @@
 {
   "name": "BlueJammer-V2 — BW16 controller [LAB-ONLY / illegal to operate]",
   "id": "bluejammer_bw16",
-  "description": "EmenstaNougat/BlueJammer-V2 BW16/RTL8720DN web controller + UART master (hosts the 5 GHz control AP + web UI; bridges the ESP32 engine's telemetry). *** LAB-ONLY / ILLEGAL TO OPERATE (FCC 47 U.S.C. 333). *** Same AmebaD 3-file layout as the rtl8720 profile; flashed by the rtl8720 backend. CC has no operate/transmit control over serial.",
+  "description": "EmenstaNougat/BlueJammer-V2 BW16/RTL8720DN web controller + UART master (hosts the 5 GHz control AP + web UI; bridges the ESP32 engine's telemetry). *** LAB-ONLY / ILLEGAL TO OPERATE (FCC 47 U.S.C. 333). *** Same AmebaD 3-file layout as the rtl8720 profile; flashed by the rtl8720 backend. CC exposes no serial command channel for it; operate/mode control is a separate consent-gated surface driving the device's own web UI (arm/mode behind an RF-shielded-enclosure attestation + confirm; STOP/Idle ungated; fail-safe until a user-captured control map is loaded).",
   "backend": "rtl8720",
   "protocol": "bluejammer",
   "danger": "illegal-tx",
@@ -15,7 +15,7 @@
     "ap_ssid": "BlueJ-V2_by_@emensta",
     "ap_pass": "NoConn1337",
     "modes": ["Bluetooth", "BLE", "WiFi", "RC/Drone", "Idle"],
-    "note": "CONTROL SURFACE (documented, not driven): the device is operated from this self-hosted web UI after joining its AP, plus the physical button. There is NO serial command channel, so CC cannot (and per the illegal-to-operate framing does not) key the transmitter. A future in-app control panel would POST to the web UI's mode endpoints — those must be captured on real hardware first, and gated behind the illegal-tx confirmation."
+    "note": "CONTROL SURFACE: the device is operated from this self-hosted web UI after joining its AP, plus the physical button. There is NO serial command channel. CC's in-app BlueJammer panel (Qt device tab) POSTs to the web UI's mode endpoints as a consent-gated surface — gated behind an RF-shielded-enclosure attestation + a per-press illegal-tx confirmation, with STOP/Idle ungated. It is fail-safe: the exact endpoints are closed-source, so nothing is sent until a validated control map captured on real hardware is loaded."
   },
   "firmware_urls": {
     "repo": "https://github.com/EmenstaNougat/BlueJammer-V2",

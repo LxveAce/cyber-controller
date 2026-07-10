@@ -10,7 +10,7 @@
   "default_baud": 115200,
   "firmware_urls": {
     "repo": "https://github.com/vampel/vampel.github.io",
-    "note": "AmebaD 3-file bundle (km0_boot_all / km4_boot_all / km0_km4_image2) + imgtool_flashloader_amebad.bin, fetched by flash_core.RtlAmeba8720Profile"
+    "note": "AmebaD 3-file bundle (km0_boot_all / km4_boot_all / km0_km4_image2) + imgtool_flashloader_amebad.bin, fetched by the rtl8720 backend (a GenericProfile built from this JSON; flash_core.RtlAmeba8720Profile is the equivalence oracle, not the runtime path)."
   },
   "note": "Needs Realtek's upload_image_tool on the host (set CYBERC_AMEBAD_TOOL or drop it in tools/realtek/ with cygwin1.dll on Windows). Not bundled here (GPL). Monitor/CLI baud is 115200; the AmebaD loader negotiates 1.5 Mbaud for the flash itself.",
 

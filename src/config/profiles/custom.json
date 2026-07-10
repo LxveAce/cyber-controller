@@ -3,7 +3,7 @@
   "id": "custom",
   "description": "Flash ANY local .bin(s) you provide, with chip-appropriate default offsets. A lone merged image flashes at 0x0; pass an explicit support map (offset->path) for a full multi-file flash.",
   "backend": "esptool",
-  "protocol": "custom",
+  "protocol": null,
   "boards": [],
   "default_baud": 921600,
   "firmware_urls": {},

@@ -3,7 +3,7 @@
   "id": "bluejammer_esp32",
   "core_id": "bluejammer-esp32",
   "label": "BlueJammer-V2 — ESP32 engine [LAB-ONLY / illegal to operate]",
-  "description": "EmenstaNougat/BlueJammer-V2 ESP32-WROOM-32U jamming engine (drives up to 4x nRF24L01+, 128x64 OLED). *** LAB-ONLY / ILLEGAL TO OPERATE (FCC 47 U.S.C. 333). *** Cyber Controller FLASHES the precompiled image and reads telemetry for study only — it adds no jamming capability and exposes NO operate/transmit control (the device's only TX triggers are its physical button + the BW16-hosted web UI, neither driven by CC).",
+  "description": "EmenstaNougat/BlueJammer-V2 ESP32-WROOM-32U jamming engine (drives up to 4x nRF24L01+, 128x64 OLED). *** LAB-ONLY / ILLEGAL TO OPERATE (FCC 47 U.S.C. 333). *** Cyber Controller adds no jamming capability of its own: it FLASHES the precompiled image (pinned, SHA-256-verified bins) and reads telemetry for study. It also exposes a consent-gated remote-control surface (arm/mode behind an RF-shielded-enclosure attestation + a per-press confirm; STOP/Idle is ungated) that stays fail-safe — it refuses to send until you load a validated control map captured from your own device.",
   "backend": "esptool",
   "protocol": "bluejammer",
   "danger": "illegal-tx",
@@ -16,7 +16,7 @@
     "latest": "https://github.com/EmenstaNougat/BlueJammer-V2/releases/latest",
     "note": "Closed-source/precompiled — pinned v0.2 bins fetched from the GitHub Release at flash time, never vendored. Fetched + SHA-256-verified by flash_core.BlueJammerEsp32Profile."
   },
-  "note": "esptool offsets bootloader@0x1000 / partitions@0x8000 / app@0x10000, with NO boot_app0 @0xE000 (the upstream RUN_THIS.bat omits it). Wire up to 4x nRF24L01+ on the fixed pins with a 10uF cap per module VCC/GND (brownout fix). CC flashes + reads telemetry only — it never operates the transmitter.",
+  "note": "esptool offsets bootloader@0x1000 / partitions@0x8000 / app@0x10000, with NO boot_app0 @0xE000 (the upstream RUN_THIS.bat omits it). Wire up to 4x nRF24L01+ on the fixed pins with a 10uF cap per module VCC/GND (brownout fix). CC flashes + reads telemetry; any arm/mode control is consent-gated and fail-safe (RF-shielded-enclosure attestation + per-press confirm; STOP/Idle ungated; nothing is sent until a user-captured, validated control map is loaded).",
   "repo": "EmenstaNougat/BlueJammer-V2",
   "supports_suicide": false,
   "image_model": "multi-file-offsets",
