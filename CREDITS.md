@@ -43,7 +43,7 @@ build, bundle, or alter them.
 | AirTag Scanner | Matthew KuKanich (MatthewKuKanich) | https://github.com/MatthewKuKanich/ESP32-AirTag-Scanner | `verify:` (no LICENSE file detected in repo) |
 | Chasing Your Tail NG | Argelius Labs | https://github.com/ArgeliusLabs/Chasing-Your-Tail-NG | MIT |
 | T-REX firmware | Abdallah Natsheh (abdallahnatsheh) | https://github.com/abdallahnatsheh/T-REX-FIRMWARE | AGPL-3.0 |
-| MCLite (MeshCore) | laserir | https://github.com/laserir/MCLite | MIT |
+| MCLite (MeshCore fork) | laserir | https://github.com/laserir/MCLite | MIT |
 | ESP32 Bit Pirate | geo-tp | https://github.com/geo-tp/ESP32-Bit-Pirate | MIT |
 | Hydra32 / ESP32-Deauther | SameerAlSahab | https://github.com/SameerAlSahab/ESP32-Deauther | GPL-3.0 |
 

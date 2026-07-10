@@ -1,8 +1,9 @@
 {
-  "name": "MCLite (MeshCore)",
+  "name": "MCLite (MeshCore fork)",
   "id": "mclite",
   "core_id": "mclite",
-  "description": "Lightweight off-grid mesh comms for LilyGo T-Deck Plus / T-Watch (SX1262 LoRa) — encrypted channels, direct messages, GPS share, SOS. Lawful mesh networking.",
+  "label": "MCLite — laserir T-Deck/T-Watch MeshCore fork",
+  "description": "laserir/MCLite — a lean MeshCore-compatible companion firmware for the LilyGo T-Deck Plus and T-Watch Ultra (SX1262 LoRa): encrypted channels, direct messages, GPS share, SOS. Distinct from mainline MeshCore (the separate 'meshcore' profile). Lawful off-grid mesh networking.",
   "repo": "laserir/MCLite",
   "backend": "esptool",
   "protocol": null,
@@ -14,17 +15,17 @@
   "default_baud": 115200,
   "resolver": "github_release",
   "variants_for_chip": "by_chip",
-  "default_variant": {"strategy": "first"},
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["mclite-v"]},
   "resolver_params": {
     "api_url": "https://api.github.com/repos/laserir/MCLite/releases/latest",
     "asset_match": {"include_suffixes": [".bin"]},
     "chip_map": {"strategy": "fixed", "chip": "esp32s3"},
-    "emit": {"offset": "0x0", "merged": true}
+    "emit": {"offset": "0x0", "merged": true, "label_strategy": "longest_substring", "label_map": {"mclite-watch": "LilyGo T-Watch Ultra (SX1262 LoRa)", "mclite-v": "LilyGo T-Deck Plus (SX1262 LoRa)"}}
   },
   "boards": [
     {"name": "LilyGo T-Deck Plus", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "has_keyboard": true, "has_display": true, "external_modules": ["SX1262"]},
     {"name": "LilyGo T-Watch Ultra", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "has_display": true, "external_modules": ["SX1262"]}
   ],
   "firmware_urls": {"repo": "https://github.com/laserir/MCLite", "latest": "https://github.com/laserir/MCLite/releases/latest"},
-  "note": "Single merged .bin per device flashed at 0x0 (web-flasher class). esp32s3 + SX1262 LoRa. Non-.bin release assets (config_tool.html) excluded by the .bin filter. Offset pending hardware verification (Stage-5 gate)."
+  "note": "laserir/MCLite (MIT) — the lean laserir MeshCore FORK for the T-Deck Plus / T-Watch Ultra, DISTINCT from mainline meshcore-dev/MeshCore (its own 'meshcore' profile). v0.4.1 (2026-06-25) ships TWO merged device bins: mclite-v*.bin (T-Deck Plus) and mclite-watch-v*.bin (T-Watch Ultra), each a single web-flasher merged image flashed at 0x0 on esp32s3 + SX1262 LoRa. The label_map ('mclite-watch' vs 'mclite-v', longest_substring) labels the watch and deck images distinctly so neither lands on the wrong device; the default variant prefers the T-Deck (mclite-v) build. Non-.bin assets (mclite_config_tool.html) excluded by the .bin filter. Offset 0x0 pending hardware verification (Stage-5 gate)."
 }
