@@ -6,10 +6,10 @@
 
 ### One dashboard to flash, drive, and coordinate every radio in your cyberdeck.
 
-**Flash. Control. Coordinate.** — 41 firmware profiles, 5 flash backends, 4 interfaces, one screen.
+**Flash. Control. Coordinate.** — 42 firmware profiles, 5 flash backends, 4 interfaces, one screen.
 
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release&color=39FF14)](https://github.com/LxveAce/cyber-controller/releases)
-[![Firmwares](https://img.shields.io/badge/firmware%20profiles-41-success?style=for-the-badge)](#-supported-firmware)
+[![Firmwares](https://img.shields.io/badge/firmware%20profiles-42-success?style=for-the-badge)](#-supported-firmware)
 [![Platform](https://img.shields.io/badge/Windows%20·%20Linux%20·%20macOS%20·%20ARM-blue?style=for-the-badge)](#-interfaces)
 [![License](https://img.shields.io/github/license/LxveAce/cyber-controller?style=for-the-badge)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
@@ -38,7 +38,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 
 ## ✨ Highlights
 
-**🔥 Flash** — **41 firmware profiles** across 5 backends. A hardware-validated flash core auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+**🔥 Flash** — **42 firmware profiles** across 5 backends. A hardware-validated flash core auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
 
 **🎮 Control** — a protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **10 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
 
@@ -48,7 +48,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 
 ## 🧩 Supported firmware
 
-41 firmware profiles ship in `src/config/profiles/` — each tracks its **latest upstream release** at flash time and auto-selects the correct per-board binary.
+42 firmware profiles ship in `src/config/profiles/` — each tracks its **latest upstream release** at flash time and auto-selects the correct per-board binary.
 
 > 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)** — a per-firmware walkthrough for every entry below: what to buy, how to build it, how to flash & run it, how to wire it into Cyber Controller, and troubleshooting — each with a downloadable PDF.
 
@@ -75,6 +75,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 | **Sky-Spy** | Drone Remote-ID sniffer | ESP32-S3 / C5 | esptool |
 | **Drone Mesh Mapper** | Passive WiFi drone Remote-ID detector, RX-only (mesh node-relay) | ESP32-C3 / S3 (Xiao) | esptool (merged) |
 | **ESP32 Dual-Band Wardriver** | Passive 2.4+5 GHz WiFi/BLE WiGLE logger (RX-only, SD) | ESP32-C5-DevKitC-1 | esptool (pinned) |
+| **ESP32 BLE Collector** | Passive BLE advert logger to SD (app-only update) | M5Stack Core2/Fire/Basic, Odroid-GO, CoreS3 | esptool (pinned) |
 | **Flock-You** | Passive ALPR / Flock camera detector | ESP32-S3 | esptool |
 | **RayHunter** | IMSI-catcher / cell-site detector | Orbic RC400L (LTE hotspot) | ADB |
 | **Flipper Zero — Momentum** | Feature-rich Flipper custom firmware | STM32WB55 | qFlipper |

@@ -1,0 +1,47 @@
+{
+  "name": "ESP32 BLE Collector",
+  "id": "ble_collector",
+  "core_id": "ble_collector",
+  "label": "ESP32 BLE Collector (tobozo) — passive BLE advert logger to SD",
+  "description": "tobozo/ESP32-BLECollector — a passive Bluetooth LE scanner that logs every nearby BLE advertisement (name, MAC, vendor, RSSI) to an SD card, with an on-device UI. Passive receive only — no transmit, pairing, or attack. *** APP-ONLY UPDATE: the upstream release ships only the compiled app image (no bootloader/partition table). Cyber Controller flashes it at 0x10000 as an app UPDATE over your device's existing M5Stack/Odroid factory bootloader; it does NOT full-flash a blank board and requires a large-app partition scheme (the app is ~1.1-1.9 MB — 'No OTA (Large Apps)' / 'Minimal SPIFFS'). For a blank board or a small-partition device, flash via M5Burner (which bundles the bootloader+partitions) first. *** Cyber Controller adds no capability of its own.",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "multi-file-offsets",
+  "app_offset": "0x10000",
+  "flash_mode": "app",
+  "default_baud": 921600,
+  "resolver": "pinned_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": { "strategy": "first" },
+  "boards": [
+    { "name": "M5Stack Core2 (ESP32)", "chip": "esp32",   "flash_size": "16MB", "flash_mode": "dio", "flash_freq": "80m", "board_id": "m5core2" },
+    { "name": "M5Stack Fire (ESP32)",  "chip": "esp32",   "flash_size": "16MB", "flash_mode": "dio", "flash_freq": "80m", "board_id": "m5fire" },
+    { "name": "M5Stack Basic/Gray (ESP32)", "chip": "esp32", "flash_size": "16MB", "flash_mode": "dio", "flash_freq": "80m", "board_id": "m5stack" },
+    { "name": "Odroid-GO (ESP32)",     "chip": "esp32",   "flash_size": "16MB", "flash_mode": "dio", "flash_freq": "80m", "board_id": "odroidgo" },
+    { "name": "M5Stack CoreS3 / ESP32-S3-BOX", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "dio", "flash_freq": "80m", "board_id": "s3box" }
+  ],
+  "repo": "tobozo/ESP32-BLECollector",
+  "firmware_urls": {
+    "repo": "https://github.com/tobozo/ESP32-BLECollector",
+    "latest": "https://github.com/tobozo/ESP32-BLECollector/releases/latest",
+    "note": "Arduino project; the release ships one compiled APP image per board (<Board>-BLECollector.bin, an esp-idf v4.4.4 app). Pinned + SHA-256-verified at flash time, never vendored."
+  },
+  "support_files": null,
+  "resolver_params": {
+    "tag": "1.6.1",
+    "verify_sha256": true,
+    "url_sources": {
+      "release": "https://github.com/tobozo/ESP32-BLECollector/releases/download/1.6.1"
+    },
+    "assets": [
+      { "name": "M5Core2-BLECollector.bin", "source": "release", "chip": "esp32",   "offset": "0x10000", "merged": false, "sha256": "e408019b18adaaa3ed3317c47036bd7062a653d81ae70e0c901e8a0b17970f14", "label": "M5Stack Core2 — BLE Collector app" },
+      { "name": "M5Fire-BLECollector.bin",  "source": "release", "chip": "esp32",   "offset": "0x10000", "merged": false, "sha256": "c53be150866e6362b4c8df01a64e07cd04a33cd0ad95e42c5a813ecaee249804", "label": "M5Stack Fire — BLE Collector app" },
+      { "name": "M5stack-BLECollector.bin", "source": "release", "chip": "esp32",   "offset": "0x10000", "merged": false, "sha256": "11fb914b0d44ea66a7e1c0ac3d3b0bb9ef4cedb25b76ce81f6ac0b7c5b8e7691", "label": "M5Stack Basic/Gray — BLE Collector app" },
+      { "name": "OdroidGo-BLECollector.bin","source": "release", "chip": "esp32",   "offset": "0x10000", "merged": false, "sha256": "c766e32eb0f641551843ed858a66996d431c0254cd8f4da1d4c4b5a2baa6b5b9", "label": "Odroid-GO — BLE Collector app" },
+      { "name": "S3Box-BLECollector.bin",   "source": "release", "chip": "esp32s3", "offset": "0x10000", "merged": false, "sha256": "b903270d867c4fff6338e443483f3a655209ebd50bd5bd7e9ebe88de0155512e", "label": "M5Stack CoreS3 / ESP32-S3-BOX — BLE Collector app" }
+    ]
+  },
+  "note": "APP-ONLY firmware — verified via esptool image-info: each <Board>-BLECollector.bin is an esp-idf v4.4.4 APPLICATION image (has App Information), NOT a merged bin and NOT a bootloader; there is NO bootloader/partition-table in the release. So this is an app UPDATE flashed at 0x10000 over the device's factory bootloader (flash_mode='app' -> CC writes only the app; a full-flash correctly refuses since no boot chain is provided). REAL SHA-256 computed from the downloaded 1.6.1 assets (5 boards) so verify_sha256 passes. Chips confirmed: M5Core2/M5Fire/M5stack/OdroidGo = classic ESP32; S3Box = ESP32-S3 (image-info Chip ID 9). RELIABILITY caveat: the app is ~1.1-1.9 MB and needs a large-app partition scheme ('No OTA (Large Apps)' / 'Minimal SPIFFS') already on the device; flashing over a small default app0 partition would overflow into adjacent partitions and fail to boot (recoverable by re-flashing via M5Burner, not a brick). Repo now MIT (shortlist's 'no license' note superseded). v1.6.1 (2023-05, stable/stale). Offset 0x10000 is the ESP-IDF/Arduino standard; treat-as-verify: until a real M5Stack flash confirms boot (Phase-F HW gate)."
+}

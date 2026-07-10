@@ -2459,6 +2459,11 @@ _PROFILE_FILES = (
     # bootloader@0x2000 (C5 gotcha) / partitions@0x8000 / app@0x10000, single-app (no boot_app0). SHA-256
     # digests are REAL (computed from the v2.3.0 assets) so verify_sha256 passes; offsets verify: until HW.
     "esp32_wardriver.json",
+    # ESP32 BLE Collector (tobozo/ESP32-BLECollector, MIT) — passive BLE advert logger to SD, danger "".
+    # APP-ONLY: upstream ships only compiled app images (esp-idf v4.4.4, verified via image-info), NO boot
+    # chain -> flash_mode "app" writes app@0x10000 over the M5Stack factory bootloader (full-flash refuses,
+    # no support files). REAL SHA-256 for all 5 board bins; needs a large-app partition scheme (caveat in note).
+    "ble_collector.json",
     # Hydra32 / ESP32-Deauther — pinned 'Hydra32' release, multi-file ESP32 offsets verified from the
     # repo partitions.csv + SHA-256-pinned (authorized testing only; deauth gated by the safety layer).
     "hydra32.json",
