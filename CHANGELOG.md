@@ -17,6 +17,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
   manually. An explicit (non-Auto) firmware choice is always honoured and never overridden.
 
 ### Added
+- **WPA/WPA2 + PMKID offline-crack pipeline — core engine (1.7.0).** New `src.core.crack_pipeline`: the host-side
+  offline half of the Wi-Fi audit flow that turns a capture you made (PMKID or a full 4-way handshake) into a
+  recovered passphrase via your own installed hashcat (mode 22000) or aircrack-ng. **Dictionary-only** by design —
+  it never constructs a mask/brute run (`-a 3`), and a test locks that invariant. **Nothing is bundled**: the GPL
+  tools (hcxtools/hashcat/aircrack-ng) are detected on PATH and shelled out to; a missing tool gives an honest
+  "install it" message, never a fake result. **Consent-gated** with a per-run authorization affirmation on top of
+  the first-run legal disclaimer, and **verify-never-fake** — "no handshake in this capture" and "key not in your
+  wordlist" are surfaced plainly, and a hashcat hit is read back from the potfile, never asserted. Pure argv/parse
+  core is fully unit-tested (17 tests, no hardware, no tools required to run the tests). The Devices-tab UI panel
+  and the capture-file retrieval step land next; see `command-center` design doc 08.
 - **Scan-to-export: "Export CSV…" on the Targets tab (1.7.0).** A button in the Targets toolbar writes *every*
   target seen this session — APs, clients and BLE devices from the shared pool — to a CSV file
   (type, SSID, MAC, RSSI, channel, device source, encryption, vendor, first/last seen). It exports the whole
