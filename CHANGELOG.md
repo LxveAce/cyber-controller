@@ -8,7 +8,7 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [1.7.0] — 2026-07-09
 
 _Beta. Multi-firmware release: the offline Wi-Fi crack pipeline + wordlist manager, the BlueStress and ESP-AT
-firmware integrations (36 profiles), the nRF BlueNullifier 2 study target, auto-detect per-firmware parser
+firmware integrations (42 profiles), the nRF BlueNullifier 2 study target, auto-detect per-firmware parser
 routing, and a full firmware-integration audit + honesty pass._
 
 ### Changed
@@ -85,6 +85,27 @@ routing, and a full firmware-integration audit + honesty pass._
   "what's currently in range" — and rows age out on their own as they go stale (the 3s refresh re-evaluates freshness).
   It combines with the search box and never touches the shared pool: Cross-Comm, macros and the graph still see the
   whole session; this only changes what *this* table displays.
+- **Six more firmware profiles — the 07-10 multi-firmware integration pass (36 → 42 profiles).** Each flashes an
+  upstream image and adds no capability of its own; all are **SAFE** (`danger=""`, passive/lawful-comms) and were
+  added under the owner's "support them all" directive. Flash-only integrations (no fabricated control surface):
+  - **`ble_collector` — ESP32 BLE Collector (tobozo).** Passive BLE-advertisement logger to SD (name/MAC/vendor/RSSI)
+    with an on-device UI; receive-only, no transmit/pair/attack. App-only upstream image → CC flashes it at **0x10000
+    as an app UPDATE** over the device's existing M5Stack/Odroid bootloader (needs a large-app partition scheme; a
+    blank board must be seeded with M5Burner first). `pinned_release`.
+  - **`drone_mesh_mapper` — Drone Mesh Mapper (colonelpanichacks).** Passive Wi-Fi **Remote-ID (ASTM F3411)** drone
+    detector/decoder; node-mode relays detections over Meshtastic. Receive-only (README-confirmed), blue-team
+    counter-surveillance. MIT. `pinned_release` (SHA-256 pinned).
+  - **`esp32_wardriver` — ESP32 Dual-Band Wardriver (justcallmekoko).** Passive dual-band (2.4 + 5 GHz) Wi-Fi/BLE
+    wardriver for the ESP32-C5; logs to SD in **WiGLE CSV**. Passive receive only — no transmit/deauth/injection.
+    `pinned_release`, SHA-256-verified.
+  - **`meshcore` — MeshCore (mainline).** Hybrid flood+routed **LoRa mesh** (companion role) for ESP32/S3/C3/C6.
+    Lawful off-grid comms; no attack/jammer/deauth. `github_release` (merged image).
+  - **`nautilus` — Nautilus (n0xa, GPL-3.0).** Lightweight **sub-GHz CC1101 (300–928 MHz) RX/TX** firmware for the
+    LilyGo T-Embed CC1101 (ESP32-S3). General-purpose **dual-use RF for authorized use only** (sub-GHz TX can reach
+    licensed/region-restricted bands — operate only where lawful); no jammer/deauth feature. `github_release`.
+  - **`rnode` — RNode (markqvist, GPL-3.0).** Turns an ESP32/S3 LoRa board (T-Beam, T3S3, Heltec V3, LoRa32, T-Deck,
+    XIAO-S3) into a **Reticulum (RNS) radio interface**. LoRa comms transport; no attack/jammer/deauth. User-tunable
+    TX radio — operate only on bands you are licensed/authorized for. `github_release`.
 
 ## [1.6.9] — 2026-07-08
 
