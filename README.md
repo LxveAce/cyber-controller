@@ -6,10 +6,10 @@
 
 ### One dashboard to flash, drive, and coordinate every radio in your cyberdeck.
 
-**Flash. Control. Coordinate.** — 33 firmware profiles, 5 flash backends, 4 interfaces, one screen.
+**Flash. Control. Coordinate.** — 34 firmware profiles, 5 flash backends, 4 interfaces, one screen.
 
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release&color=39FF14)](https://github.com/LxveAce/cyber-controller/releases)
-[![Firmwares](https://img.shields.io/badge/firmware%20profiles-33-success?style=for-the-badge)](#-supported-firmware)
+[![Firmwares](https://img.shields.io/badge/firmware%20profiles-34-success?style=for-the-badge)](#-supported-firmware)
 [![Platform](https://img.shields.io/badge/Windows%20·%20Linux%20·%20macOS%20·%20ARM-blue?style=for-the-badge)](#-interfaces)
 [![License](https://img.shields.io/github/license/LxveAce/cyber-controller?style=for-the-badge)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
@@ -38,7 +38,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 
 ## ✨ Highlights
 
-**🔥 Flash** — 33 firmware profiles across 5 backends. A hardware-validated flash core auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+**🔥 Flash** — **34 firmware profiles** across 5 backends. A hardware-validated flash core auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
 
 **🎮 Control** — a protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **10 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
 
@@ -48,7 +48,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 
 ## 🧩 Supported firmware
 
-**33 firmware profiles** ship in `src/config/profiles/` — each tracks its **latest upstream release** at flash time and auto-selects the correct per-board binary.
+34 firmware profiles ship in `src/config/profiles/` — each tracks its **latest upstream release** at flash time and auto-selects the correct per-board binary.
 
 > 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)** — a per-firmware walkthrough for every entry below: what to buy, how to build it, how to flash & run it, how to wire it into Cyber Controller, and troubleshooting — each with a downloadable PDF.
 
@@ -72,7 +72,9 @@ The full version-by-version history — every fix, every hardening pass, every a
 | **Sky-Spy** | Drone Remote-ID sniffer | ESP32-S3 / C6 | esptool |
 | **Flock-You** | Passive ALPR / Flock camera detector | ESP32-S3 | esptool |
 | **RayHunter** | IMSI-catcher / cell-site detector | Orbic RC400L (LTE hotspot) | ADB |
-| **Flipper — Momentum / Unleashed / RogueMaster** | Flipper Zero custom firmware | STM32WB55 | qFlipper |
+| **Flipper Zero — Momentum** | Feature-rich Flipper custom firmware | STM32WB55 | qFlipper |
+| **Flipper Zero — Unleashed** | Unlocked Flipper custom firmware | STM32WB55 | qFlipper |
+| **Flipper Zero — RogueMaster** | Bleeding-edge Flipper custom firmware | STM32WB55 | qFlipper |
 | **BW16 Deauther** | Dual-band 2.4/5 GHz Wi-Fi + BLE | RTL8720DN (AmebaD) | rtl8720 |
 | **Pwnagotchi** | AI handshake-hunting SBC | Raspberry Pi | SD image |
 | **RaspyJack** | Pi drop-box / LAN implant | Raspberry Pi (LCD/GPIO HAT) | SD image |
@@ -82,7 +84,9 @@ The full version-by-version history — every fix, every hardening pass, every a
 | **WiFiDuck** ⚠ | Wi-Fi BadUSB (authorized testing) | ESP8266 (DSTIKE WiFi Duck / Malduino W) | esptool (merged) |
 | **ESP32 WiFi Penetration Tool** ⚠ | PMKID / handshake attacks (authorized) | ESP32 (DevKit / WROOM) | esptool (SHA-256-pinned) |
 | **M5PORKCHOP** ⚠ | M5 offensive multitool (authorized) | ESP32-S3 (M5Cardputer) | esptool (merged) |
-| **BlueJammer-V2** ⚠⚠ *lab-only* | BT/BLE jammer — **flash-and-study only** | ESP32-WROOM-32U · RTL8720DN | esptool · rtl8720 |
+| **BlueJammer-V2 (ESP32)** ⚠⚠ *lab-only* | BT/BLE jammer — **flash-and-study only** | ESP32-WROOM-32U | esptool |
+| **BlueJammer-V2 (BW16)** ⚠⚠ *lab-only* | BT/BLE jammer — **flash-and-study only** | RTL8720DN (AmebaD) | rtl8720 |
+| **nRF BlueNullifier 2** ⚠⚠ *lab-only* | 2.4 GHz nRF24 RF stress — **flash-and-study** | 2× nRF24L01 + ESP32 | esptool |
 | **Custom / local `.bin`** | Flash your own build | any ESP32 | esptool |
 
 > ⚠ marks firmware that can transmit and is included for **authorized testing only**. ⚠⚠ **BlueJammer-V2** is a flash-and-study target for an authorized lab: RF jamming is **illegal to transmit** (FCC 47 U.S.C. §333). Per the *label, never block* doctrine its binaries are SHA-256-pinned + fetched at flash time (never vendored), and Cyber Controller exposes **no operate/transmit control** for it — the parser is telemetry-only.

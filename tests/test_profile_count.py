@@ -28,7 +28,7 @@ def test_readme_firmware_table_rows_match_disk():
     'Custom / local .bin' included). Lock the table's data-row count to the profiles on disk."""
     n = _profile_json_count()
     readme = (_ROOT / "README.md").read_text(encoding="utf-8")
-    m = re.search(r"\| Firmware \| Upstream \| Chips \| Backend \|\n\|[-| ]+\|\n((?:\|.*\n)+)", readme)
+    m = re.search(r"\| Firmware \| Purpose \| Chips / boards \| Backend \|\n\|[-| ]+\|\n((?:\|.*\n)+)", readme)
     assert m, "Supported-Firmwares table not found (header/format changed?)"
     rows = [ln for ln in m.group(1).splitlines() if ln.strip().startswith("|")]
     assert len(rows) == n, f"firmware table has {len(rows)} rows but {n} profiles ship on disk"
