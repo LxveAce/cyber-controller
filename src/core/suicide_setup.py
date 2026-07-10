@@ -148,6 +148,32 @@ def _load_provision():
     return provision
 
 
+# Range/domain checks mirroring the provisioner's argparse ``choices=``. build() constructs the
+# Namespace by hand (bypassing argparse), so a programmatic/GUI caller or the loose run_cli ask()
+# helper can pass out-of-range values (e.g. arm_level=5, armed=2) that would otherwise be written to
+# NVS as a nonsense u8 and make the firmware misread the gate. Fail loud here instead. NOTE: the
+# unsafe arm_pull/arm_level PAIRING and kdf_iter/max_att floors stay the provisioner's job — this is
+# only the independent per-field domain check the hand-built Namespace skips.
+_CFG_DOMAINS = {
+    "arm_pin": (0, 48), "arm_level": (0, 1), "arm_pull": (0, 2), "max_att": (0, 255),
+    "deadman": (0, 1), "armed": (0, 1), "wipe_ota": (0, 1), "wipe_nvs": (0, 1),
+    "wipe_spiffs": (0, 1), "wipe_sd": (0, 1), "brick": (0, 1), "sd_passes": (0, 255),
+    "flash_passes": (0, 255), "fast_wipe": (0, 1),
+}
+
+
+def _validate_cfg(cfg: SuicideConfig) -> None:
+    """Range-check the gate config before it is baked into NVS. RAISES ValueError on anything out of
+    domain, so a mistyped ``arm_level=5`` / ``armed=2`` fails LOUD here instead of silently writing a
+    nonsense u8 to the board's guardcfg."""
+    for field, (lo, hi) in _CFG_DOMAINS.items():
+        val = getattr(cfg, field)
+        if not isinstance(val, int) or not (lo <= val <= hi):
+            raise ValueError(f"{field}={val!r} out of range [{lo}..{hi}]")
+    if cfg.kdf_iter < 1000:
+        raise ValueError(f"kdf_iter={cfg.kdf_iter} too low (min 1000 PBKDF2 iterations)")
+
+
 def build(cfg: SuicideConfig, password: str, out_dir: str | Path) -> tuple[str, dict, list]:
     """Host-side provisioning: hash *password* (PBKDF2) and bake ``guardcfg`` + bundle into *out_dir*.
 
@@ -157,6 +183,7 @@ def build(cfg: SuicideConfig, password: str, out_dir: str | Path) -> tuple[str, 
     """
     if not password:
         raise ValueError("password must not be empty")
+    _validate_cfg(cfg)
     # Canonicalize + validate the chip BEFORE anything else so a bad chip fails LOUD here — for both
     # the CLI and programmatic callers — instead of silently defaulting to the classic 0x1000
     # bootloader offset downstream (which soft-bricks an S3/C3/C6/H2 board).
@@ -204,7 +231,22 @@ def run_cli(argv: list[str] | None = None) -> int:
     cfg.max_att = ask("wrong-password attempts before wipe", cfg.max_att, int)
     cfg.armed = ask("ARM now? (0=disarmed safe default, 1=armed)", cfg.armed, int)
     cfg.brick = ask("brick boot chain on wipe? (0=T1 reflashable, 1=T2 brick)", cfg.brick, int)
-    cfg.build_dir = ask("firmware build dir (blank = provision guardcfg only)", cfg.build_dir)
+    cfg.build_dir = ask("firmware build dir (blank = guardcfg-only PREVIEW, not flashable)", cfg.build_dir)
+
+    # Explicit consent gate for a self-destruct-capable config: a bare numeric 1 at the ARM prompt is
+    # too easy to fat-finger. Echo the dangerous config back and require a typed token before minting;
+    # anything but the exact token reverts to disarmed (fail-safe).
+    if cfg.armed == 1:
+        print("\n  *** You are about to mint an ARMED dead-man bundle. ***")
+        print(f"      armed=1  brick={cfg.brick} "
+              f"({'T2 PERMANENT brick' if cfg.brick else 'T1 reflashable'})  "
+              f"arm_pin={cfg.arm_pin}  arm_level={cfg.arm_level}  max_att={cfg.max_att}")
+        print("      Once flashed and physically wired, the configured trigger will IRREVERSIBLY erase"
+              + (" and BRICK" if cfg.brick else "") + " the board.")
+        token = input("      Type ARM (uppercase) to confirm, anything else to disarm: ").strip()
+        if token != "ARM":
+            print("      Not confirmed — reverting to armed=0 (disarmed, safe).")
+            cfg.armed = 0
 
     pw = getpass.getpass("  Set boot password: ")
     pw2 = getpass.getpass("  Confirm password: ")
@@ -225,8 +267,13 @@ def run_cli(argv: list[str] | None = None) -> int:
     print(f"  armed={cfg.armed} (0=disarmed safe) arm_pin={cfg.arm_pin} arm_level={cfg.arm_level} "
           f"max_att={cfg.max_att} brick={cfg.brick}")
     if warnings:
-        print(f"  NOTE: {len(warnings)} firmware image(s) not present — build the Dead Man's Switch firmware")
-        print("        firmware (build_dir) to complete the bundle, then flash via flash_suicide.")
+        print(f"  NOTE: this is a guardcfg-ONLY bundle — {len(warnings)} firmware image(s) not present.")
+        print("        It is a config PREVIEW and is NOT flashable as-is: flash_suicide requires an")
+        print("        integrity hash for every image, and that hash is recorded only at provision time.")
+        print("        To get a flashable bundle: build the Dead Man's Switch firmware, then RE-RUN this")
+        print("        setup with 'firmware build dir' set to that build output. (Dropping .bins into")
+        print("        this bundle dir afterward will NOT work — the flasher rejects images that have no")
+        print("        provisioned hash.)")
     if cfg.armed == 1:
         print("  *** armed=1: this board WILL self-destruct on the configured trigger conditions. ***")
     return 0

@@ -125,7 +125,7 @@ class SuicideSetupDialog(QDialog):
         iof = QFormLayout(io)
         self.out_dir = QLineEdit(os.path.abspath("suicide_bundle"))
         self.build_dir = QLineEdit("")
-        self.build_dir.setPlaceholderText("(optional) dir with built firmware .bins — blank = guardcfg only")
+        self.build_dir.setPlaceholderText("dir with built firmware .bins — blank = guardcfg-only preview (NOT flashable)")
         iof.addRow("Bundle out:", _path_row(self.out_dir, self._browse_out))
         iof.addRow("Firmware build dir:", _path_row(self.build_dir, self._browse_build))
         root.addWidget(io)
@@ -232,8 +232,11 @@ class SuicideSetupDialog(QDialog):
         )
         if warnings:
             msg += (
-                f"\n\nNOTE: {len(warnings)} firmware image(s) not present — build the Dead Man's Switch firmware "
-                "firmware (set the build dir) to complete the flash bundle, then flash via flash_suicide."
+                f"\n\nNOTE: this is a guardcfg-ONLY bundle ({len(warnings)} firmware image(s) not present). "
+                "It is a config PREVIEW and is NOT flashable as-is — flash_suicide needs an integrity hash "
+                "for every image, recorded only at provision time. To get a flashable bundle, build the "
+                "Dead Man's Switch firmware, then RE-PROVISION with the build dir set to that output. "
+                "(Dropping .bins into this bundle afterward will not work — the flasher rejects unhashed images.)"
             )
         if cfg.armed == 1:
             msg += "\n\n*** armed=1: this board will self-destruct on the configured trigger conditions. ***"
