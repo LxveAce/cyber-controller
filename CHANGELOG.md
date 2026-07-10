@@ -35,6 +35,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
   wordlist" are surfaced plainly, and a hashcat hit is read back from the potfile, never asserted. Pure argv/parse
   core is fully unit-tested (17 tests, no hardware, no tools required to run the tests). The Devices-tab UI panel
   and the capture-file retrieval step land next; see `command-center` design doc 08.
+- **Wordlist manager for the crack pipeline — install prepackaged or bring your own (1.7.0).** New
+  `src.core.wordlist_manager`: because the cracker is dictionary-only, the wordlist *is* the tool. The operator
+  can **install a prepackaged list** from a small curated catalog (WPA-specific probable lists, a 10k general
+  list, and the classic rockyou) or **use their own** file. Nothing is bundled — prepackaged lists are downloaded
+  **on explicit opt-in** from pinned upstream sources (SecLists at a fixed commit SHA; rockyou from the canonical
+  naive-hashcat release asset) and **integrity-checked before install**: entries we could pre-hash carry a real
+  SHA-256 that must match; the one we could not (140 MB rockyou) is size-verified with a loud "integrity not
+  pre-pinned" warning — a made-up hash is never shipped, and a mismatched/rotated download is deleted, never
+  installed. Pure catalog/verify/scan core is fully unit-tested (24 tests, no network); the urllib download is the
+  thin best-effort layer. Feeds the crack UI's wordlist picker (`scan_installed`) plus a BYO path.
 - **Scan-to-export: "Export CSV…" on the Targets tab (1.7.0).** A button in the Targets toolbar writes *every*
   target seen this session — APs, clients and BLE devices from the shared pool — to a CSV file
   (type, SSID, MAC, RSSI, channel, device source, encryption, vendor, first/last seen). It exports the whole
