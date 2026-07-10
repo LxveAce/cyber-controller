@@ -1519,7 +1519,8 @@ _MESHTASTIC_BOARDS: Dict[str, List[str]] = {
     # as a .uf2 in the nrf52840 bundle, never as a .bin in an esp32c6 zip. Listing it here made it an
     # advertised-but-unflashable target (download_and_extract raised "zip has no member ..."). Flash
     # nRF52840 targets via the UF2/DFU path, not the esptool chip-zip expander.
-    "esp32c6": [],
+    # Two REAL esp32c6 boards, verified as .bin members of firmware-esp32c6-*.zip.
+    "esp32c6": ["m5stack-unitc6l", "tlora-c6"],
     "esp32s2": [],
 }
 
