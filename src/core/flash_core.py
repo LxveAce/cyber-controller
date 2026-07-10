@@ -2381,6 +2381,11 @@ _PROFILE_FILES = (
     # New (2026-06-29 discovery): added via the hybrid model — drop-a-JSON, no code. Lawful, verified
     # releases; merged single-bin @ 0x0 web-flasher class; flash offset pending the Stage-5 hardware gate.
     "trex.json", "mclite.json", "bit_pirate.json",
+    # MeshCore MAINLINE (meshcore-dev/MeshCore, MIT) — distinct from mclite (the laserir/MCLite fork CC
+    # previously labeled "MeshCore"). esptool merged-single-bin @0x0, github_release pinned to the
+    # companion role tag (companion-v1.16.0); multi-role/ble-usb selection is a deferred resolver
+    # enhancement. Lawful LoRa mesh (danger ""). Offset 0x0 verify: until the Phase-F hardware gate.
+    "meshcore.json",
     # Hydra32 / ESP32-Deauther — pinned 'Hydra32' release, multi-file ESP32 offsets verified from the
     # repo partitions.csv + SHA-256-pinned (authorized testing only; deauth gated by the safety layer).
     "hydra32.json",

@@ -1,0 +1,34 @@
+{
+  "name": "MeshCore",
+  "id": "meshcore",
+  "core_id": "meshcore",
+  "label": "MeshCore (mainline) — companion LoRa mesh",
+  "description": "meshcore-dev/MeshCore — hybrid flood+routed LoRa mesh (companion role) for ESP32 / S3 / C3 / C6 boards. Lawful off-grid comms; no attack, jammer, or deauth. Cyber Controller flashes the mainline merged image and adds no capability of its own.",
+  "repo": "meshcore-dev/MeshCore",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "app_offset": "0x0",
+  "default_baud": 115200,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["companion_radio_ble"]},
+  "boards": [
+    {"name": "Heltec LoRa32 V3", "chip": "esp32s3", "flash_mode": "dio", "flash_freq": "80m", "external_modules": ["SX1262"]},
+    {"name": "Station G2", "chip": "esp32", "external_modules": ["SX1276"]},
+    {"name": "Xiao ESP32-C3", "chip": "esp32c3", "external_modules": ["SX1262"]},
+    {"name": "M5Stack Unit C6L", "chip": "esp32c6", "external_modules": ["LoRa"]},
+    {"name": "LilyGo T-Beam (SX1262)", "chip": "esp32", "external_modules": ["SX1262"]}
+  ],
+  "firmware_urls": {"repo": "https://github.com/meshcore-dev/MeshCore", "latest": "https://github.com/meshcore-dev/MeshCore/releases"},
+  "support_files": null,
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/meshcore-dev/MeshCore/releases/tags/companion-v1.16.0",
+    "asset_match": {"include_suffixes": ["-merged.bin"]},
+    "chip_map": {"strategy": "fragments", "source": "name", "default": "esp32", "rules": [["heltec_v3", "esp32s3"], ["xiao_c3", "esp32c3"], ["m5stack_unit_c6l", "esp32c6"]]},
+    "emit": {"offset": "0x0", "merged": true}
+  },
+  "note": "MAINLINE MeshCore (meshcore-dev, MIT) — distinct from CC's 'MCLite (MeshCore)' which is the smaller laserir/MCLite fork. Pinned to the companion role tag companion-v1.16.0: MeshCore publishes each role (companion / repeater / room-server) as its OWN release tag, so multi-role and ble-vs-usb selection is a deferred resolver enhancement (github_release resolves ONE api_url today); this profile flashes the companion merged image and prefers the BLE variant. Uses the -merged.bin (flash @0x0), never an app-only .bin. Offset 0x0 kept verify: until a real Heltec V3 / Station G2 flash confirms it (Phase F hardware gate)."
+}
