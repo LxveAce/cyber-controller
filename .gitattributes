@@ -6,3 +6,6 @@ src/ui/web/static/vendor/** -text
 # wordlist_manager.CATALOG keeps verifying, AND so a Windows checkout can't turn each password into
 # "password\r" (which hashcat/aircrack would then try verbatim). Never line-ending-normalized.
 src/config/wordlists/*.txt -text
+
+# Encrypted bundled crack-tool packs — binary AES archives, never line-ending-normalized or diffed.
+src/config/tools/*.pack -text binary

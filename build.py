@@ -102,6 +102,14 @@ def _build() -> int:
     if wordlists_dir.is_dir():
         cmd.extend(["--add-data", f"{wordlists_dir}{sep}src/config/wordlists"])
 
+    # Bundled crack-tool packs (AES-encrypted aircrack-ng/... + manifests). tool_bundle.list_packs()
+    # reads resource_path("src","config","tools") in the frozen build; encrypted so Defender can't
+    # delete them at rest (they extract only into a user-excluded folder on opt-in). PyInstaller never
+    # touches a plain .pack/.json data dir.
+    tools_dir = _ROOT / "src" / "config" / "tools"
+    if tools_dir.is_dir():
+        cmd.extend(["--add-data", f"{tools_dir}{sep}src/config/tools"])
+
     # Device-View per-firmware skin palettes (DV3) — resource_path("src","ui","qt","skins") reads these in
     # the frozen build, so they must be bundled or every skin silently falls back to the default palette.
     skins_dir = _ROOT / "src" / "ui" / "qt" / "skins"
@@ -206,6 +214,14 @@ def _build() -> int:
         print("Bundling esp_idf_nvs_partition_gen (Dead Man's Switch NVS provisioning).")
     except ImportError:
         print("note: esp_idf_nvs_partition_gen not installed — DMS NVS provisioning won't be bundled.")
+
+    # pyzipper (+ its pycryptodome AES backend) decrypts the bundled crack-tool packs at runtime
+    # (src/core/tool_bundle.py). Collect it fully so the frozen app can unpack aircrack-ng/... on opt-in.
+    try:
+        import pyzipper  # noqa: F401
+        cmd.extend(["--collect-all", "pyzipper"])
+    except ImportError:
+        print("note: pyzipper not installed — bundled crack-tool packs can't be unpacked in this build.")
 
     # Collect submodules for all UI variants
     cmd.extend([

@@ -42,6 +42,10 @@ dependencies = [
     # bundled with esptool, so a frozen build (or a fresh env) failed DMS provisioning with "Could not
     # find the NVS partition generator". Pure-Python; also --collect-all'd in build.py so it's frozen-bundled.
     "esp-idf-nvs-partition-gen>=0.2",
+    # pyzipper: decrypts the AES-encrypted bundled crack-tool packs (src/config/tools/*.pack). They are
+    # encrypted so Windows Defender can't false-positive-delete the standard FOSS binaries at rest; CC
+    # unpacks them only into a user-excluded folder on explicit opt-in (src/core/tool_bundle.py).
+    "pyzipper>=0.3",
 ]
 
 [project.optional-dependencies]

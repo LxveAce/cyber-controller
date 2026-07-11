@@ -1,0 +1,193 @@
+{
+  "name": "aircrack-ng-1.7-win",
+  "tool": "aircrack-ng",
+  "version": "1.7",
+  "platform": "windows",
+  "license": "GPL-2.0",
+  "source_url": "https://download.aircrack-ng.org/aircrack-ng-1.7-win.zip",
+  "archive_sha1": "872ef4f731080626d7cee893ef42c8f630ce90cd",
+  "primary_exe": "aircrack-ng.exe",
+  "files": [
+    {
+      "name": "AUTHORS",
+      "size": 4326,
+      "sha256": "1685e43c1491d7b22c1176f29d426d2bfc067b4b1294cd6ffde6130b04300d9b"
+    },
+    {
+      "name": "Aircrack-ng GUI.exe",
+      "size": 32768,
+      "sha256": "c84ff6bb93b341575643c9bafe9bc4ece20357fa1f3e95035f04980bd310a3e9"
+    },
+    {
+      "name": "LICENSE",
+      "size": 18009,
+      "sha256": "fc51fd3a97223f2fd47b057202d4a6b0daaedf23b5a1f5ff8723c192fc1e021d"
+    },
+    {
+      "name": "airbase-ng.exe",
+      "size": 179158,
+      "sha256": "53f19477e0c298cdbb7ab8da47446ac4c73f343b1af5a5d8bcb4d240ea2149dc"
+    },
+    {
+      "name": "aircrack-ng.exe",
+      "size": 248810,
+      "sha256": "29c29ccd797b134ae460d0b5452965b3ef02d02d035a2b296319734cbba2513b"
+    },
+    {
+      "name": "airdecap-ng.exe",
+      "size": 119943,
+      "sha256": "af54bfec0ad4a2efc09797f558f9c5c868e9eedb3e1f61f3086efe901dfc75d5"
+    },
+    {
+      "name": "airdecloak-ng.exe",
+      "size": 100674,
+      "sha256": "3d4ac33f4bf7287b659f08c9fd82d1278fc1e5808e3324ae27c450f543bb0796"
+    },
+    {
+      "name": "aireplay-ng.exe",
+      "size": 206352,
+      "sha256": "a8d6e08427c6f5766d2f2e028c7b08e481d58cc37fb6552bcdcb8166afa5f14f"
+    },
+    {
+      "name": "airodump-ng.exe",
+      "size": 229437,
+      "sha256": "ad5b999f6cd145edef5b7076345479a4088f5352196ea043c0e1748776fcb46c"
+    },
+    {
+      "name": "airolib-ng.exe",
+      "size": 128688,
+      "sha256": "8d2a112e23e0a6efe03e162dd39d43b4437762274e25b860c3349a962af902fe"
+    },
+    {
+      "name": "airpcap.dll",
+      "size": 210944,
+      "sha256": "ee14a2819a2e7206dbb002bdec46e6097e2798ab295c32ed1090a66dddc64861"
+    },
+    {
+      "name": "airserv-ng.exe",
+      "size": 87675,
+      "sha256": "88ee6fc08c42e5e702fe6ab80abd6ecf8788e0bdfca55d14bdd673569ae1d5a4"
+    },
+    {
+      "name": "airtun-ng.exe",
+      "size": 148238,
+      "sha256": "f8236cad565aaeea259d49f74d799c10691c47bd9fe63c1727a80ab78d1fc603"
+    },
+    {
+      "name": "airventriloquist-ng.exe",
+      "size": 147516,
+      "sha256": "b986bebae91481dd2afb0daeb03f7bbedfa8c723a30cbb5203f962ace34a8dfc"
+    },
+    {
+      "name": "besside-ng.exe",
+      "size": 150678,
+      "sha256": "99fb5763d9bb7f93f98c1a04d80152efcd14da69072407c4a6c18ad4afcf4327"
+    },
+    {
+      "name": "buddy-ng.exe",
+      "size": 86339,
+      "sha256": "36c2a8af28b1223b1245035d2bbcbcf48044e9569e514ee96157b6582f672dd7"
+    },
+    {
+      "name": "cygaircrack-ce-wpa-1-7-0.dll",
+      "size": 108660,
+      "sha256": "231d3899dca3c6c0e14ac65c0a1d3c1e884366be103d5537b694d42f56383e60"
+    },
+    {
+      "name": "cygaircrack-ce-wpa-x86-avx-1-7-0.dll",
+      "size": 107154,
+      "sha256": "fe00a4d428eda4a1ccd702ab86487510dfbf3a8313c6cac23cf500ec48750672"
+    },
+    {
+      "name": "cygaircrack-ce-wpa-x86-avx2-1-7-0.dll",
+      "size": 107154,
+      "sha256": "754e4a0b1e8ee771509bf48e865fe5ca65f461ba07b7186da44fb78cae9de9de"
+    },
+    {
+      "name": "cygaircrack-ce-wpa-x86-sse2-1-7-0.dll",
+      "size": 110226,
+      "sha256": "b8464fcceb6d2ebe362d69e7b8e1e2417a4c27f710d180e07bd93f144a491b85"
+    },
+    {
+      "name": "cygaircrack-osdep-1-7-0.dll",
+      "size": 118320,
+      "sha256": "a202b96dede733dc352691af43912b130790e7d8701df024069620931e80ac98"
+    },
+    {
+      "name": "cygcrypto-1.1.dll",
+      "size": 2550803,
+      "sha256": "807dc3e7b82c5b04a31af263e21c6661d1a74eb8a0f2a09dec5456fbf9363fb1"
+    },
+    {
+      "name": "cyggcc_s-seh-1.dll",
+      "size": 75283,
+      "sha256": "d894b274c14c40be093ccbe18e584b1782d410808fad410ace6d540292ccb0aa"
+    },
+    {
+      "name": "cygpcre-1.dll",
+      "size": 508947,
+      "sha256": "f77836b49a23c13af9e34efb60379ebc889344dba1157ebad2bf61ff2573b88b"
+    },
+    {
+      "name": "cygsqlite3-0.dll",
+      "size": 1307155,
+      "sha256": "b8fa83027de933fe150367170c60f7b47fb6f62242097e62b2406c6c5cbb7323"
+    },
+    {
+      "name": "cygstdc++-6.dll",
+      "size": 1914387,
+      "sha256": "79af4473b7191ead1e7f2ada1e0a463131f0a21a98db2e5dd651ca33ee0ec9f9"
+    },
+    {
+      "name": "cygwin1.dll",
+      "size": 3554998,
+      "sha256": "28242f3752644b4b8395f7221e38b13bb6eb870f26af7292d9c86144c6b7b3fa"
+    },
+    {
+      "name": "cygz.dll",
+      "size": 89619,
+      "sha256": "f7f43eab596f4ea2aa80119965c78eb8469a88b36d88476d1ab7b8a1b37a3a4a"
+    },
+    {
+      "name": "easside-ng.exe",
+      "size": 110414,
+      "sha256": "7626b1d097fda724f5f54f5bac9de9da71b8cc3bb61b9f9cce679537289984ce"
+    },
+    {
+      "name": "ivstools.exe",
+      "size": 112227,
+      "sha256": "6d6cf269a8b8dcf40bd2e26d865cb009680543c0d900db34484b6e1d011e6c6f"
+    },
+    {
+      "name": "kstats.exe",
+      "size": 74173,
+      "sha256": "0520d1b4f1ae5e4c42c6038b3f72344c7b00d910db27c3ae803008813a68ef75"
+    },
+    {
+      "name": "makeivs-ng.exe",
+      "size": 87865,
+      "sha256": "21eb42e9c493fa97209aab704a4133792b786a4731301ed5f1437788dcf8f56e"
+    },
+    {
+      "name": "packetforge-ng.exe",
+      "size": 138263,
+      "sha256": "6904ddbc97a934b9bc3b3eb1603f237d8aff4818aacfcd1e38833419c7a939b5"
+    },
+    {
+      "name": "tkiptun-ng.exe",
+      "size": 158897,
+      "sha256": "4babfb191dcc348dcfe106f5cf0d149f21aa217d466c2dbc43026ffb1773752b"
+    },
+    {
+      "name": "wesside-ng.exe",
+      "size": 132936,
+      "sha256": "631688461513541a5c192006bf86930b15f9c8515202d34c52b823877397055f"
+    },
+    {
+      "name": "wpaclean.exe",
+      "size": 77095,
+      "sha256": "255bfb810f2a1a6aae5179ce1e3d67dd5baf6e1b0dbcd392d9422889eff9d757"
+    }
+  ],
+  "file_count": 36
+}
