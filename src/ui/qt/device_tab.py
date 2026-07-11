@@ -565,6 +565,8 @@ class DeviceTab(QWidget):
             dev = self._dm.get_device(port)
             if dev is None or not dev.connected:
                 return
+            if getattr(dev, "firmware_forced", False):
+                return  # a manual force (Broadcast/Devices) must not be clobbered by re-autodetect
             banner = (getattr(dev, "fw_banner", "") or "").strip()
             if not banner:
                 return
@@ -576,8 +578,9 @@ class DeviceTab(QWidget):
             if proto.protocol_name == self._ingest_proto.get(port):
                 return  # already parsing with the detected firmware — nothing to do
             # Keep the resolver / broadcast / palette / capabilities in sync (all key off Device.firmware,
-            # which _selected_protocol() re-resolves), then swap the live ingest parser.
-            dev.firmware = proto.protocol_name
+            # which _selected_protocol() re-resolves); route through the central setter so the Broadcast
+            # panel repopulates too. Not forced (this is auto-detect), then swap the live ingest parser.
+            self._dm.set_firmware(port, proto.protocol_name, forced=False)
             if not self._reattach_ingest(port, proto):
                 return
             if port == getattr(self, "_active_port", ""):
@@ -711,9 +714,13 @@ class DeviceTab(QWidget):
         dev = self._dm.get_device(port)
         if dev is not None and dev.connected:
             try:
-                dev.firmware = self._selected_protocol().protocol_name
+                fw = self._selected_protocol().protocol_name
             except Exception:
-                pass
+                return
+            # Route through the central setter so the Broadcast panel (and anything on on_device_changed)
+            # stays in sync. An explicit (non-Auto) pick is a manual FORCE that re-autodetect must honour.
+            forced = self._firmware_combo.currentText() != _AUTO_DETECT
+            self._dm.set_firmware(port, fw, forced=forced)
 
     def _open_bj_webui(self) -> None:
         """Open the BlueJammer's own control web UI (its real control surface) in the browser."""
