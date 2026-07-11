@@ -1,0 +1,44 @@
+{
+  "name": "Sniffle — BLE 4.x/5.x Sniffer (NCC Group)",
+  "id": "sniffle",
+  "core_id": "sniffle",
+  "label": "Sniffle — BLE5 link-layer sniffer (TI CC13xx/CC26xx)",
+  "description": "nccgroup/Sniffle — passive/active BLE 4.x/5.x link-layer sniffer for TI CC13xx/CC26xx. Follows connections, decodes extended advertising, and relays over Wireshark; also active scanning (TX scan-requests) and link-layer relay/MITM -> lab-only, authorized testing only. No jammer/deauth. CC flashes the firmware; the host runs Sniffle's own python scripts out-of-band.",
+  "repo": "nccgroup/Sniffle",
+  "backend": "cc2538_bsl",
+  "protocol": null,
+  "danger": "lab-only",
+  "supports_suicide": false,
+  "image_model": "intel_hex",
+  "app_offset": "verify:",
+  "default_baud": "verify:",
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["cc2652p1"]},
+  "bsl_trigger": "sonoff-usb",
+  "boards": [
+    {"name": "SONOFF CC2652P USB Dongle Plus (primary)", "chip": "cc2652p1", "bsl_trigger": "sonoff-usb"},
+    {"name": "CatSniffer V3", "chip": "cc1352p7", "bsl_trigger": "catnip_rp2040_bridge"}
+  ],
+  "firmware_urls": {
+    "repo": "https://github.com/nccgroup/Sniffle",
+    "latest": "https://github.com/nccgroup/Sniffle/releases/latest"
+  },
+  "support_files": {"cc2538_bsl": "sultanqasim fork (CC2652P reset fix)"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/nccgroup/Sniffle/releases/latest",
+    "asset_match": "sniffle_<chip>.hex",
+    "chip_map": {
+      "cc2652p1": "sniffle_cc1352p1_cc2652p1.hex",
+      "cc1352p7": "sniffle_cc1352p7.hex",
+      "cc2652rb": "sniffle_cc2652rb.hex",
+      "cc2652r1": "sniffle_cc2652r1.hex",
+      "cc2652r7": "sniffle_cc2652r7.hex",
+      "cc1352r1": "sniffle_cc1352r1.hex",
+      "cc1354p10": "sniffle_cc1354p10.hex",
+      "cc2651p3": "sniffle_cc2651p3.hex"
+    },
+    "sha256": "verify:"
+  },
+  "note": "Intel-HEX carries its own load addresses (app_offset not an esptool offset -> verify:). Do NOT set default_baud from the _1M asset suffix (that is the Sniffle HOST-comms runtime baud, not the flash baud); cc2538-bsl flash baud typ. 500000 -> keep verify:. Flash path: cc2538-bsl -p PORT --bootloader-sonoff-usb -ewv sniffle_cc1352p1_cc2652p1.hex (Sonoff); CatSniffer V3 via catnip_uploader/RP2040 bridge. TI LaunchPads are JTAG/UniFlash-only and OUT of cc2538_bsl scope -- do NOT claim CC flashes LaunchPads. FIRST shipped consumer of the new cc2538_bsl backend (bench-gated). danger lab-only (active scan + connection-follow + link-layer relay/MITM are active manipulation, like whad_butterfly; labelled, never blocked). Per-asset SHA-256 is in the API but kept verify: until confirmed on a real Sonoff CC2652P dongle."
+}

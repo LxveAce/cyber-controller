@@ -23,6 +23,14 @@ routing, and a full firmware-integration audit + honesty pass._
   manually. An explicit (non-Auto) firmware choice is always honoured and never overridden.
 
 ### Added
+- **Sniffle BLE 4.x/5.x sniffer + the new `cc2538_bsl` flash backend (45 profiles).** New `cc2538_bsl`
+  backend wraps `cc2538-bsl` to flash TI CC13xx/CC26xx parts over their ROM serial bootloader (prefer the
+  sultanqasim fork for the CC2652P reset fix) — the first backend that can drive a TI dongle, and it unlocks
+  the whole CC2652P / Z-Stack / CatSniffer ecosystem. First consumer: `sniffle` (nccgroup/Sniffle, GPL-3.0),
+  a BLE link-layer sniffer (follow connections, decode extended advertising, relay to Wireshark) on the SONOFF
+  CC2652P USB Dongle Plus (+ CatSniffer V3). Intel-HEX (self-addressed), so app-offset/baud stay `verify:`;
+  `danger="lab-only"` (active scan + connection-follow + link-layer relay/MITM — labelled, never blocked). The
+  backend is argv/flow unit-tested (golden argv locked); real-hardware validation of the BSL flow is pending.
 - **Wi-Fi Audit tab — the reachable UI for the offline WPA key-recovery pipeline (1.7.0).** The
   `crack_pipeline` + `wordlist_manager` engines were finished + unit-tested but had **no user-facing entry
   point**; a new **Wi-Fi Audit** sub-tab (Operate surface) wires them end-to-end: capture picker →

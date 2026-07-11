@@ -2512,6 +2512,11 @@ _PROFILE_FILES = (
     # fwupgrade.zip), Makerdiary MDK via uf2 drag-drop (butterfly-mdk-fwupgrade.uf2). Inject/hijack
     # = active TX -> danger lab-only (labelled, never blocked). SHAs known but verify:.
     "whad_butterfly.json",
+    # Sniffle (nccgroup, GPL-3.0) - BLE 4.x/5.x link-layer sniffer for TI CC13xx/CC26xx. FIRST
+    # consumer of the NEW cc2538_bsl backend (cc2538-bsl over the TI ROM bootloader; Sonoff CC2652P
+    # dongle primary). Intel-HEX (self-addressed) -> app_offset/baud verify:; danger lab-only
+    # (active scan + connection-follow + relay/MITM). Per-asset SHA in the API but verify: until HW.
+    "sniffle.json",
 )
 
 

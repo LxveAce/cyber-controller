@@ -343,3 +343,39 @@ def test_backends_registered():
     assert eng._backends["dfu"] == eng._flash_dfu
     assert eng._backends["uf2"] == eng._flash_uf2
     assert eng._backends["nrf_dfu"] == eng._flash_nrf_dfu
+    assert eng._backends["cc2538_bsl"] == eng._flash_cc2538_bsl
+
+
+# ── cc2538-bsl backend (TI CC13xx/CC26xx ROM bootloader) ─────────────
+
+
+def test_cc2538_bsl_builds_argv_and_succeeds(monkeypatch):
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FirmwareProfile, FlashEngine
+
+    rec = {}
+    monkeypatch.setattr(flash_engine.shutil, "which",
+                        lambda name: "/usr/bin/cc2538-bsl" if name == "cc2538-bsl" else None)
+    _wire_download(monkeypatch, flash_core, "/tmp/sniffle.hex")
+
+    def fake_run(argv, on_line):
+        rec["argv"] = list(argv)
+        return 0
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run)
+
+    prof = FirmwareProfile(backend="cc2538_bsl", core_id="pico", local_path="")
+    assert FlashEngine()._flash_cc2538_bsl("COM9", prof, None) is True
+    # default Sonoff USB auto-trigger; erase+write+verify; port + resolved .hex.
+    assert rec["argv"] == [
+        "/usr/bin/cc2538-bsl", "-p", "COM9", "--bootloader-sonoff-usb", "-ewv", "/tmp/sniffle.hex"]
+
+
+def test_cc2538_bsl_missing_tool_returns_false(monkeypatch):
+    from src.core import flash_engine
+    from src.core.flash_engine import FirmwareProfile, FlashEngine
+
+    monkeypatch.setattr(flash_engine.shutil, "which", lambda name: None)
+    prof = FirmwareProfile(backend="cc2538_bsl", core_id="sniffle", local_path="")
+    # tool absent -> honest failure, never a faked success.
+    assert FlashEngine()._flash_cc2538_bsl("COM9", prof, None) is False

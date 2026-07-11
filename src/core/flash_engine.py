@@ -265,6 +265,7 @@ class FlashEngine:
             "sd-image": self._flash_sd,
             "rtl8720": self._flash_rtl8720,
             # Phase-3 scaffolds (HW-validation pending — argv/flow unit-tested, no board yet):
+            "cc2538_bsl": self._flash_cc2538_bsl,  # cc2538-bsl -> TI CC2652P (Sniffle)
             "dfu": self._flash_dfu,   # dfu-util → RP2040/Pi Pico in DFU + generic USB-DFU
             "uf2": self._flash_uf2,   # UF2 mass-storage → RP2040-family / UF2 bootloaders
             "nrf_dfu": self._flash_nrf_dfu,  # Nordic nRF52 DFU .zip → ChameleonUltra / Nordic dongle DFU
@@ -780,6 +781,44 @@ class FlashEngine:
         if dfu_id:
             argv += ["-d", dfu_id]
         argv += ["-D", app_path, "-R"]
+        rc = flash_core._run_stream(argv, on_line)
+        if progress:
+            progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
+        return rc == 0
+
+    def _flash_cc2538_bsl(
+        self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
+    ) -> bool:
+        """TI CC13xx/CC26xx ROM-serial-bootloader flashing via ``cc2538-bsl``.
+
+        HW-validation pending — argv/flow unit-tested only. Target: TI CC2652P / CC1352 dongles
+        (the SONOFF CC2652P USB Dongle Plus is the primary board; prefer the sultanqasim fork,
+        which carries the CC2652P reset-after-flash fix). None of the other backends can drive a
+        TI part over its ROM bootloader — this is the whole cost, and it also unlocks the
+        Z-Stack-coordinator / CatSniffer ecosystem.
+
+        Resolve the Intel-HEX image (local or downloaded+verified via ``_resolve_binary``), then
+        shell ``cc2538-bsl`` through the proven ``flash_core._run_stream``. The BSL entry trigger
+        comes from ``profile.raw['bsl_trigger']`` (default the Sonoff USB auto-trigger
+        ``--bootloader-sonoff-usb``); ``-ewv`` = erase+write+verify. We NEVER report success when
+        ``cc2538-bsl`` is missing or nothing was flashed.
+        """
+        on_line = _percent_adapter(progress)
+        tool = shutil.which("cc2538-bsl") or shutil.which("cc2538-bsl.py")
+        if not tool:
+            on_line("[cc2538_bsl] cc2538-bsl not found. Install the community tool "
+                    "(prefer the sultanqasim fork for the CC2652P reset fix): "
+                    "'pip install cc2538-bsl', or clone JelmerT/cc2538-bsl and put it on PATH, "
+                    "then re-run.")
+            return False
+        app_path = self._resolve_binary(profile, on_line, "cc2538_bsl")
+        if not app_path:
+            return False
+        trigger = profile.raw.get("bsl_trigger", "sonoff-usb")
+        argv = [tool, "-p", port]
+        if trigger == "sonoff-usb":
+            argv.append("--bootloader-sonoff-usb")
+        argv += ["-ewv", app_path]
         rc = flash_core._run_stream(argv, on_line)
         if progress:
             progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
