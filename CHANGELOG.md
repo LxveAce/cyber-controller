@@ -37,6 +37,15 @@ routing, and a full firmware-integration audit + honesty pass._
   (ElectronicCats CatSniffer V3 — passive 802.15.4/Zigbee/Thread/BLE/sub-GHz sniffer; CC1352P7 radio via
   `cc2538_bsl` + RP2040 bridge via `uf2`; `danger=""`). CatSniffer's `asset_match` is scoped to the sniffer build
   and `exclude_regex` drops the bundled airtag_spoofer (active TX). Offsets/SHAs `verify:` until real-hardware.
+- **nRF Sniffer for 802.15.4 profile — `nrf_dfu` extended to wrap a raw `.hex` (49 profiles).** `nrf802154_sniffer`
+  (nordicsemi/nRF-Sniffer-for-802.15.4, NOASSERTION) — passive IEEE 802.15.4 / Zigbee / Thread capture into
+  Wireshark (extcap plugin) on the nRF52840 Dongle (PCA10059). Receive-only, `danger=""`. Unlike Chameleon/RNode
+  (which ship a ready DFU `.zip`), this ships a **raw `.hex`**, so the `nrf_dfu` backend now runs a pkg-generate
+  pre-step first — `nrfutil pkg generate --hw-version 52 --sd-req 0x00 --application <hex>` (classic pc-nrfutil) or
+  `adafruit-nrfutil dfu genpkg --dev-type 0x0052 --application <hex>` (the fork) — then flashes the generated
+  package. Firmware is in-tree (empty release assets), so the resolver uses `pinned_release` + a pinned-commit
+  `raw.githubusercontent.com` URL; the vendor `.hex` is fetched from origin, never re-hosted. Only the dongle is
+  CC-flashable (the DK boards need J-Link/SWD). Offsets/SHA/pinned-commit `verify:` until a real dongle flash.
 - **PortaPack Mayhem SDR firmware + the new `hackrf_spiflash` flash backend (48 profiles).** New `hackrf_spiflash`
   backend drives HackRF's libusb SPI-flash vendor command (`hackrf_spiflash -R -w <bin>`) — HackRF is
   libusb-addressed, so no serial port; `-R` resets into the freshly written firmware. First (and only) consumer:

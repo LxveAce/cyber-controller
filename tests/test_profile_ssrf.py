@@ -64,4 +64,4 @@ def test_bundled_profiles_all_pass_url_validation():
     # bluestress + esp_at + meshcore + drone_mesh_mapper + nautilus + rnode + esp32_wardriver + ble_collector
     # + rnode_nrf + whad_butterfly (round-2 nrf_dfu/uf2 profiles bundled into 1.7.0).
     # (all drop-in JSON; github/raw hosts, or the local resolver with no URLs). ble_collector is pinned_release.
-    assert len(flash_core.PROFILES) == 44
+    assert len(flash_core.PROFILES) == 45

@@ -2512,6 +2512,12 @@ _PROFILE_FILES = (
     # fwupgrade.zip), Makerdiary MDK via uf2 drag-drop (butterfly-mdk-fwupgrade.uf2). Inject/hijack
     # = active TX -> danger lab-only (labelled, never blocked). SHAs known but verify:.
     "whad_butterfly.json",
+    # nRF Sniffer for 802.15.4 (nordicsemi, PCA10059 dongle) - passive Zigbee/Thread capture into
+    # Wireshark (extcap). EXTENDS nrf_dfu: firmware is a RAW .hex (not a ready zip), so nrf_dfu now
+    # runs `nrfutil pkg generate --hw-version 52 --sd-req 0x00 --application <hex>` first. Firmware
+    # is in-tree (empty release assets) -> pinned_release + raw.githubusercontent at a pinned SHA.
+    # RX-only, danger "". License NOASSERTION -> fetch-from-origin only. SHAs/commit verify:.
+    "nrf802154_sniffer.json",
     # Sniffle (nccgroup, GPL-3.0) - BLE 4.x/5.x link-layer sniffer for TI CC13xx/CC26xx. FIRST
     # consumer of the NEW cc2538_bsl backend (cc2538-bsl over the TI ROM bootloader; Sonoff CC2652P
     # dongle primary). Intel-HEX (self-addressed) -> app_offset/baud verify:; danger lab-only

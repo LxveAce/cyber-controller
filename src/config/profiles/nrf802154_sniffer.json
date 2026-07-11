@@ -1,0 +1,38 @@
+{
+  "name": "nRF Sniffer for 802.15.4 (nRF52840 Dongle)",
+  "id": "nrf802154_sniffer",
+  "core_id": "nrf802154_sniffer",
+  "label": "nRF Sniffer for 802.15.4 — passive Zigbee/Thread capture",
+  "description": "nordicsemi/nRF-Sniffer-for-802.15.4 — passive IEEE 802.15.4 / Zigbee / Thread capture into Wireshark (extcap plugin) on the nRF52840 Dongle. Receive-only, no transmit. CC flashes the vendor image via Nordic DFU.",
+  "repo": "nordicsemi/nRF-Sniffer-for-802.15.4",
+  "backend": "nrf_dfu",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "raw_hex_to_dfu_pkg",
+  "app_offset": "verify:",
+  "default_baud": 115200,
+  "nrf_dfu_tool": null,
+  "nrf_dfu_transport": "serial",
+  "nrf_dfu_pkg_generate": {"hw_version": 52, "sd_req": "0x00", "application": "nrf802154_sniffer_nrf52840dongle.hex"},
+  "resolver": "pinned_release",
+  "variants_for_chip": "all",
+  "default_variant": {"strategy": "first"},
+  "boards": [
+    {"name": "nRF52840 Dongle (PCA10059)", "chip": "nrf52840"}
+  ],
+  "firmware_urls": {
+    "repo": "https://github.com/nordicsemi/nRF-Sniffer-for-802.15.4"
+  },
+  "resolver_params": {
+    "pinned_commit": "verify:",
+    "url_sources": {
+      "raw": "https://raw.githubusercontent.com/nordicsemi/nRF-Sniffer-for-802.15.4/<pinned-sha>/nrf802154_sniffer"
+    },
+    "assets": [
+      {"name": "nrf802154_sniffer_nrf52840dongle.hex", "source": "raw", "chip": "nrf52840", "sha256": "verify:"}
+    ],
+    "support_files": ["nrf802154_sniffer/nrf802154_sniffer.py (Wireshark extcap)"]
+  },
+  "note": "Only the DONGLE (PCA10059) is CC-flashable via DFU; the 52840DK/5340DK hex need J-Link/SWD and are EXCLUDED. Firmware is in-tree, releases have empty asset lists -> pinned_release + raw githubusercontent at a PINNED commit. nrf_dfu is EXTENDED: raw .hex -> `nrfutil pkg generate --hw-version 52 --sd-req 0x00 --application <hex>` -> DFU serial flash (chameleon/RNode ship a ready zip; this does not). License NOASSERTION (custom Nordic) -> do NOT re-host the .hex; fetch-from-origin only. app_offset (Nordic docs 0x1000) + SHA + pinned_commit kept verify: until a real dongle flash."
+}

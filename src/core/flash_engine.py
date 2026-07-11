@@ -24,6 +24,7 @@ import os
 import re
 import shutil
 import string
+import tempfile
 import threading
 import time
 from contextlib import contextmanager
@@ -888,6 +889,14 @@ class FlashEngine:
         pkg_path = self._resolve_binary(profile, on_line, "nrf_dfu")
         if not pkg_path:
             return False
+        # Some nRF firmware (nRF Sniffer for 802.15.4) ships a RAW .hex, not a ready DFU .zip.
+        # Nordic DFU can only flash a .zip package, so build one first via the tool's pkg-generate
+        # step. Chameleon/RNode already ship a .zip -> the pre-step is skipped for them.
+        gen_cfg = profile.raw.get("nrf_dfu_pkg_generate")
+        if gen_cfg and pkg_path.lower().endswith(".hex"):
+            pkg_path = self._nrf_dfu_pkg_from_hex(tool, pkg_path, gen_cfg, on_line)
+            if not pkg_path:
+                return False
         baud = profile.raw.get("nrf_dfu_baud", 115200)
         if "adafruit" in os.path.basename(tool).lower():
             argv = [tool, "dfu", "serial", "-pkg", pkg_path, "-p", port, "-b", str(baud)]
@@ -901,6 +910,39 @@ class FlashEngine:
         if progress:
             progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
         return rc == 0
+
+    def _nrf_dfu_pkg_from_hex(
+        self, tool: str, hex_path: str, cfg: dict, on_line: Callable[[str], None]
+    ) -> str | None:
+        """Build a Nordic DFU ``.zip`` from a raw ``.hex`` via the tool's pkg-generate step.
+
+        HW-validation pending — argv/flow unit-tested only. Firmware that ships a raw ``.hex``
+        (the nRF Sniffer for 802.15.4) can't be flashed by Nordic DFU directly — DFU only takes a
+        signed ``.zip`` package — so we wrap the hex first. ``cfg`` is the profile's
+        ``nrf_dfu_pkg_generate`` block: ``hw_version`` (default 52), ``sd_req`` (SoftDevice
+        requirement, default ``0x00`` = no SoftDevice). Classic Nordic ``nrfutil`` and the
+        ``adafruit-nrfutil`` fork spell this command differently, so we branch on the tool. Returns
+        the package path, or ``None`` (never a false success) if the generate step fails.
+        """
+        out_zip = os.path.join(tempfile.gettempdir(), "cc_nrf_dfu_pkg.zip")
+        hw = str(cfg.get("hw_version", 52))
+        sd = str(cfg.get("sd_req", "0x00"))
+        if "adafruit" in os.path.basename(tool).lower():
+            # adafruit-nrfutil fork: dfu genpkg --dev-type 0x00<hw> --application <hex> <out>.
+            # hw_version 52 -> the documented nRF52 dev-type 0x0052 (zero-padded decimal digits,
+            # matching Adafruit's own genpkg examples — NOT hex(52)).
+            argv = [tool, "dfu", "genpkg", "--dev-type", f"0x{int(hw):04d}",
+                    "--application", hex_path, out_zip]
+        else:
+            # classic Nordic pc-nrfutil: pkg generate --hw-version .. --sd-req .. --application ..
+            argv = [tool, "pkg", "generate", "--hw-version", hw, "--sd-req", sd,
+                    "--application", hex_path, out_zip]
+        on_line(f"[nrf_dfu] building DFU package from raw hex {os.path.basename(hex_path)}")
+        rc = flash_core._run_stream(argv, on_line)
+        if rc != 0:
+            on_line("[nrf_dfu] pkg generate failed — cannot build the DFU package from the hex.")
+            return None
+        return out_zip
 
     # ── UF2 (mass-storage drag-drop bootloader) ──────────────────────
 

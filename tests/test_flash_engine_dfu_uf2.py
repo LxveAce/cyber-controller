@@ -333,6 +333,94 @@ def test_nrf_dfu_returns_false_when_release_fetch_fails(monkeypatch):
     assert FlashEngine()._flash_nrf_dfu("COM7", prof, None) is False  # no false success
 
 
+def test_nrf_dfu_raw_hex_generates_pkg_first_classic(monkeypatch):
+    """nRF Sniffer for 802.15.4 ships a raw .hex — nrf_dfu must build a DFU .zip first."""
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FirmwareProfile, FlashEngine
+
+    calls = []
+    # classic Nordic nrfutil only (no adafruit-nrfutil on PATH).
+    monkeypatch.setattr(flash_engine.shutil, "which",
+                        lambda name: "/usr/bin/nrfutil" if name == "nrfutil" else None)
+    _wire_download(monkeypatch, flash_core, "/tmp/sniffer.hex")
+
+    def fake_run(argv, on_line):
+        calls.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run)
+
+    prof = FirmwareProfile(
+        backend="nrf_dfu", core_id="pico", local_path="",
+        raw={"nrf_dfu_pkg_generate": {"hw_version": 52, "sd_req": "0x00"}},
+    )
+    assert FlashEngine()._flash_nrf_dfu("COM7", prof, None) is True
+    assert len(calls) == 2  # pkg-generate, then the actual DFU flash
+    gen, flash = calls
+    # 1) classic pc-nrfutil pkg-generate wraps the raw hex into a signed DFU zip.
+    assert gen[:8] == ["/usr/bin/nrfutil", "pkg", "generate", "--hw-version", "52",
+                       "--sd-req", "0x00", "--application"]
+    assert gen[8] == "/tmp/sniffer.hex"
+    out_zip = gen[9]
+    assert out_zip.endswith("cc_nrf_dfu_pkg.zip")
+    # 2) the flash consumes the GENERATED zip (never the raw hex).
+    assert flash == ["/usr/bin/nrfutil", "dfu", "usb-serial", "-pkg", out_zip, "-p", "COM7"]
+
+
+def test_nrf_dfu_raw_hex_adafruit_uses_genpkg(monkeypatch):
+    """The adafruit-nrfutil fork spells pkg-generate as `dfu genpkg --dev-type`."""
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FirmwareProfile, FlashEngine
+
+    calls = []
+
+    def _which(name):
+        return "/usr/bin/adafruit-nrfutil" if name == "adafruit-nrfutil" else None
+
+    monkeypatch.setattr(flash_engine.shutil, "which", _which)
+    _wire_download(monkeypatch, flash_core, "/tmp/sniffer.hex")
+
+    def fake_run(argv, on_line):
+        calls.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run)
+
+    prof = FirmwareProfile(
+        backend="nrf_dfu", core_id="pico", local_path="",
+        raw={"nrf_dfu_pkg_generate": {"hw_version": 52, "sd_req": "0x00"}},
+    )
+    assert FlashEngine()._flash_nrf_dfu("COM7", prof, None) is True
+    gen = calls[0]
+    assert gen[:5] == ["/usr/bin/adafruit-nrfutil", "dfu", "genpkg", "--dev-type", "0x0052"]
+    assert gen[5:7] == ["--application", "/tmp/sniffer.hex"]
+    assert gen[7].endswith("cc_nrf_dfu_pkg.zip")
+
+
+def test_nrf_dfu_raw_hex_pkg_generate_failure_aborts(monkeypatch):
+    """If pkg-generate fails, we abort — never flash and never a false success."""
+    from src.core import flash_core, flash_engine
+    from src.core.flash_engine import FirmwareProfile, FlashEngine
+
+    calls = []
+    monkeypatch.setattr(flash_engine.shutil, "which",
+                        lambda name: "/usr/bin/nrfutil" if name == "nrfutil" else None)
+    _wire_download(monkeypatch, flash_core, "/tmp/sniffer.hex")
+
+    def fake_run(argv, on_line):
+        calls.append(list(argv))
+        return 1  # generate step fails
+
+    monkeypatch.setattr(flash_core, "_run_stream", fake_run)
+
+    prof = FirmwareProfile(
+        backend="nrf_dfu", core_id="pico", local_path="",
+        raw={"nrf_dfu_pkg_generate": {"hw_version": 52, "sd_req": "0x00"}},
+    )
+    assert FlashEngine()._flash_nrf_dfu("COM7", prof, None) is False
+    assert len(calls) == 1  # bailed after the failed generate; never shelled the flash
+
+
 # ── registry wiring ──────────────────────────────────────────────────
 
 
