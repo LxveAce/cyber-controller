@@ -38,7 +38,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 
 ## ✨ Highlights
 
-**🔥 Flash** — **44 firmware profiles** across 5 backends. A hardware-validated flash core auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+**🔥 Flash** — **44 firmware profiles** across 5 backends. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress — see the beta caveats) auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
 
 **🎮 Control** — a protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **13 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
 
@@ -95,7 +95,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 | **BlueJammer-V2 (ESP32)** ⚠⚠ *lab-only* | BT/BLE jammer — **flash-and-study only** | ESP32-WROOM-32U | esptool |
 | **BlueJammer-V2 (BW16)** ⚠⚠ *lab-only* | BT/BLE jammer — **flash-and-study only** | RTL8720DN (AmebaD) | rtl8720 |
 | **nRF BlueNullifier 2** ⚠⚠ *lab-only* | 2.4 GHz nRF24 RF stress — **flash-and-study** | 2× nRF24L01 + ESP32 | esptool |
-| **BlueStress** ⚠⚠ *lab-only* | 2.4 GHz/BLE disruption — **boots idle, gated serial control** | ESP32 + nRF24L01 | esptool |
+| **BlueStress** ⚠⚠ *STAGED / illegal-tx* | 2.4 GHz/BLE disruption (LxveLabs, GPL-3.0, derived from wirebits/nrfBlueNullifier + smoochiee Noisy-boy) — **staged/preview: firmware not yet published, cannot flash in this build** | ESP32 + nRF24L01 | esptool |
 | **ESP-AT** | Espressif AT-command Wi-Fi/BT modem firmware | ESP32 / S2 / S3 / C3 | esptool (zip) |
 | **Custom / local `.bin`** | Flash your own build | any ESP32 | esptool |
 

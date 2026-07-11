@@ -42,13 +42,16 @@ routing, and a full firmware-integration audit + honesty pass._
   profile uses the **`local` resolver** (same model as `custom`): CC flashes the factory bin you extract from the
   official ZIP via the shared local-`.bin` path rather than auto-downloading it. The AT command channel is UART1
   by default; the ROM boot log stays on UART0. Suite green.
-- **BlueStress — in-house gated RF-disruption firmware + CC control (1.7.0).** New `bluestress` flash profile +
-  `BlueStressProtocol` (`text-cli`) integrate LxveLabs' own ESP32+nRF24 firmware, which — unlike the fire-on-boot
+- **BlueStress — in-house gated RF-disruption firmware + CC control (1.7.0). STAGED / preview.** New `bluestress`
+  flash profile + `BlueStressProtocol` (`text-cli`) integrate LxveLabs' own ESP32+nRF24 firmware (GPL-3.0, derived
+  by subtraction from wirebits/nrfBlueNullifier + smoochiee's Noisy-boy), which — unlike the fire-on-boot
   upstream jammers — **boots idle** and exposes a real serial CLI, so CC can honestly present a *gated* operate
   surface instead of a no-op. `get_commands()` returns exactly `Status`/`Bands` (safe) + **`Flood`** (carries
   `danger="illegal-tx"` → consent gate) + **`Off`** (cease is always reachable, ungated). Lab-only / illegal to
-  operate on air (FCC 47 U.S.C. 333); CC flashes a pinned SHA-256-verified image and only keys/steers/stops the
-  upstream engine — it authors no TX and adds no RF power. **Safety hardening:** `"flood"` added to the
+  operate on air (FCC 47 U.S.C. 333). **STAGED: the LxveLabs/BlueStress repo + build are not yet published, the
+  profile's SHA-256 digests are placeholders, and `verify_sha256` refuses to flash — so it is listed but NOT
+  flashable in this build.** When published, CC will flash a pinned SHA-256-verified image and only key/steer/stop
+  the upstream engine — it authors no TX and adds no RF power. **Safety hardening:** `"flood"` added to the
   command-string illegal-tx set so a hand-typed `flood <band>` is gated even if it misses a CommandInfo lookup,
   while a *description* containing "flood" (e.g. "probe request flood") deliberately stays lab-only via a new
   `_DESC_ILLEGAL_TX_KEYWORDS` split (no over-flagging of deauth/beacon/probe-flood descriptions). Firmware +
