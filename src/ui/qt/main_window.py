@@ -962,11 +962,16 @@ class CyberControllerWindow(QMainWindow):
                 if dev is not None and not getattr(dev, "firmware", ""):
                     from src.models.device import BoardType
 
-                    dev.firmware = (
+                    fw = (
                         "flipper"
                         if getattr(dev, "board_type", None) == BoardType.FLIPPER_ZERO
                         else "marauder"
                     )
+                    # Route through the central setter (not a direct dev.firmware write) so
+                    # on_device_changed fires and the Broadcast panel repopulates reactively instead
+                    # of waiting on its safety-net timer. forced=False: a best-effort autodetect
+                    # stamp, not a manual force (re-autodetect may still refine it).
+                    self._dm.set_firmware(port, fw)
                 color = self._pterm_assign_color(port)
                 # Capture port in closure
                 _port = port
@@ -2009,7 +2014,8 @@ class CyberControllerWindow(QMainWindow):
         # destroyed mid-run (a cut-off USB write / leaked serial ports) on exit. The Wardrive tabs DO route
         # through the DeviceManager, but dm.shutdown() only force-closes ports — it never sends the firmware
         # STOP verb, so join their shutdown() here too or an ESP32 is left scanning after the GUI is gone.
-        for _tab_attr in ("_software_tab", "_flock_heatmap", "_wardrive_tab", "_wardrive_multi_tab"):
+        for _tab_attr in ("_software_tab", "_flock_heatmap", "_wardrive_tab", "_wardrive_multi_tab",
+                          "_crack_lab_tab"):
             _tab = getattr(self, _tab_attr, None)
             _shutdown = getattr(_tab, "shutdown", None)
             if callable(_shutdown):

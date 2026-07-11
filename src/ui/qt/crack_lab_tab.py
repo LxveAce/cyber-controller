@@ -52,14 +52,24 @@ class _CrackWorker(QThread):
         self._wordlist = wordlist
         self._backend = backend
         self._bssid = bssid
+        self._stop = False
+
+    def request_stop(self) -> None:
+        """Cooperative cancel — the native engine polls this between candidate batches, so Stop is a
+        clean exit rather than a hard QThread.terminate() (which, mid pure-Python crack loop, can
+        deadlock the GUI on the GIL)."""
+        self._stop = True
 
     def run(self) -> None:  # noqa: D401 - QThread entry point
         emit = self.line.emit
+        tmp_hash = None
         try:
             tools = cp.detect_tools()
             if self._backend == "native":
-                # CC's own pure-Python cracker — no external tool, always available.
-                result = cp.run_native(self._capture, self._wordlist, emit, bssid=self._bssid)
+                # CC's own pure-Python cracker — no external tool, always available. Pass the
+                # cooperative stop hook so Stop cancels without killing the thread.
+                result = cp.run_native(self._capture, self._wordlist, emit, bssid=self._bssid,
+                                       should_stop=lambda: self._stop)
             elif self._backend == "aircrack":
                 result = cp.run_aircrack(self._capture, self._wordlist, emit,
                                          tools=tools, bssid=self._bssid)
@@ -70,12 +80,19 @@ class _CrackWorker(QThread):
                 else:
                     fd, hash_file = tempfile.mkstemp(suffix=".hc22000", prefix="cc_wifi_")
                     os.close(fd)
+                    tmp_hash = hash_file  # ours to clean up (never the user's own .hc22000)
                     n = cp.convert_capture(self._capture, hash_file, emit, tools=tools)
                     emit(f"[convert] {n} crackable hash(es) extracted.")
                 result = cp.run_hashcat(hash_file, self._wordlist, emit, tools=tools)
         except Exception as exc:  # never let a worker exception kill the thread silently
             log.exception("wifi-audit crack worker failed")
             result = cp.CrackResult(detail=f"error: {exc}")
+        finally:
+            if tmp_hash is not None:  # delete the temp .hc22000 we created (leak-free on any exit)
+                try:
+                    os.remove(tmp_hash)
+                except OSError:
+                    pass
         self.done.emit(result)
 
 
@@ -174,11 +191,21 @@ class _WordlistCatalogDialog(QDialog):
                 btn.setEnabled(False)
 
     def closeEvent(self, event) -> None:
+        self._join_worker()
+        super().closeEvent(event)
+
+    def done(self, result: int) -> None:
+        # The "Close" button (accept) and Escape (reject) route through done(), NOT closeEvent — so
+        # join the worker here too, else a running download keeps going detached after the dialog is
+        # dismissed (and risks a QThread-destroyed-while-running abort on teardown).
+        self._join_worker()
+        super().done(result)
+
+    def _join_worker(self) -> None:
         w = self._worker
         if w is not None and w.isRunning():
             w.terminate()   # like the crack worker's stop; a killed run leaves only a .part temp
             w.wait(2000)
-        super().closeEvent(event)
 
 
 class _ToolEnableWorker(QThread):
@@ -318,11 +345,20 @@ class _ToolsDialog(QDialog):
             btn.setEnabled(not ok)
 
     def closeEvent(self, event) -> None:
+        self._join_worker()
+        super().closeEvent(event)
+
+    def done(self, result: int) -> None:
+        # "Close" (accept) + Escape (reject) bypass closeEvent — join the enable worker here too so a
+        # running unpack doesn't continue detached after the dialog is gone.
+        self._join_worker()
+        super().done(result)
+
+    def _join_worker(self) -> None:
         w = self._worker
         if w is not None and w.isRunning():
             w.terminate()
             w.wait(2000)
-        super().closeEvent(event)
 
 
 class CrackLabTab(QWidget):
@@ -516,12 +552,38 @@ class CrackLabTab(QWidget):
         self._worker.start()
 
     def _on_stop(self) -> None:
-        if self._worker and self._worker.isRunning():
-            self._append_line("[stop] requested — terminating the run…")
-            self._worker.terminate()
-            self._worker.wait(3000)
+        w = self._worker
+        if not (w and w.isRunning()):
+            return
+        self._append_line("[stop] requested — cancelling…")
+        w.request_stop()
+        self._stop_btn.setEnabled(False)
+        self._result_label.setText("stopping…")
+        if w._backend != "native":
+            # aircrack/hashcat block in subprocess with no cooperative poll, so terminate the worker
+            # as a last resort. The native default never needs this — it exits on the stop flag and
+            # its done signal resets the UI, avoiding a QThread.terminate() mid pure-Python crack
+            # loop (which can deadlock the GUI on the GIL).
+            w.terminate()
+            w.wait(2000)
             self._reset_run_buttons()
             self._result_label.setText("stopped")
+
+    def shutdown(self) -> None:
+        """Stop + join the crack worker so its QThread isn't destroyed mid-run when the app closes
+        (that aborts with 'QThread: Destroyed while thread is still running'). Called from
+        MainWindow.closeEvent, mirroring the other worker-owning tabs."""
+        w = self._worker
+        if w is None:
+            return
+        try:
+            if w.isRunning():
+                w.request_stop()
+                if not w.wait(2000):
+                    w.terminate()
+                    w.wait(2000)
+        except RuntimeError:  # underlying C++ object already gone
+            pass
 
     def _append_line(self, text: str) -> None:
         self._log.appendPlainText(text.rstrip("\n"))

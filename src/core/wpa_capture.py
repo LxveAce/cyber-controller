@@ -66,17 +66,21 @@ def _iter_pcapng(data: bytes) -> Iterator[tuple[int, bytes]]:
         if blen < 12 or off + blen > n:
             break
         body = data[off + 8:off + blen - 4]
+        # A truncated/malformed block can leave `body` shorter than the fields we read — guard every
+        # unpack so a bad pcapng is skipped, never fatal (the module's fail-soft contract).
         if btype == 0x00000001:  # Interface Description Block
-            lt = struct.unpack(end + "H", body[0:2])[0]
-            linktypes[iface_count] = lt
-            iface_count += 1
+            if len(body) >= 2:
+                lt = struct.unpack(end + "H", body[0:2])[0]
+                linktypes[iface_count] = lt
+            iface_count += 1  # keep interface_id alignment even if this IDB is short
         elif btype == 0x00000006:  # Enhanced Packet Block
-            iface_id, _th, _tl, caplen = struct.unpack(end + "IIII", body[0:16])
-            frame = body[16:16 + caplen]
-            yield linktypes.get(iface_id, _LT_DOT11), frame
+            if len(body) >= 16:
+                iface_id, _th, _tl, caplen = struct.unpack(end + "IIII", body[0:16])
+                frame = body[16:16 + caplen]
+                yield linktypes.get(iface_id, _LT_DOT11), frame
         elif btype == 0x00000003:  # Simple Packet Block
-            frame = body[4:]
-            yield linktypes.get(0, _LT_DOT11), frame
+            if len(body) >= 4:
+                yield linktypes.get(0, _LT_DOT11), body[4:]
         off += blen
 
 
@@ -192,7 +196,12 @@ def parse_capture(path: str) -> list[Handshake]:
         essid = ssids.get(ap, "")
         if essid:
             out.append(Handshake(kind="pmkid", essid=essid, ap_mac=ap, sta_mac=sta, pmkid=pmkid))
-    out.extend(hs for hs in eapol_hs if hs.essid)
+    # Resolve each EAPOL handshake's ESSID now that ALL beacons have been seen — a handshake captured
+    # before its AP's beacon still gets its network name (without this it'd be dropped as saltless).
+    for hs in eapol_hs:
+        hs.essid = ssids.get(hs.ap_mac, "")
+        if hs.essid:
+            out.append(hs)
     return out
 
 
@@ -232,8 +241,16 @@ def _consume_eapol(f: bytes, eapol: bytes, ssids, pmkids, m1, eapol_hs) -> None:
     elif is_mic and not is_ack:          # message 2 (SNonce + MIC over this frame)
         anonce = m1.get((ap, sta))
         if anonce:
-            zeroed = bytearray(eapol)
+            # Trim to the 802.1X PDU length (4-byte header + declared body). A monitor-mode capture
+            # often appends the 4-byte 802.11 FCS (or pad bytes), which are NOT part of the MIC input
+            # (hashing them in makes the correct passphrase never verify). Fall back to the full frame
+            # if the declared length is implausible (below the MIC end, or past the captured bytes).
+            plen = struct.unpack(">H", eapol[2:4])[0]
+            frame = eapol[:4 + plen] if 95 <= plen <= len(eapol) - 4 else eapol
+            zeroed = bytearray(frame)
             zeroed[81:97] = b"\x00" * 16  # MIC field within the EAPOL frame (4 hdr + 77)
+            # ESSID (the PBKDF2 salt) is resolved in parse_capture's final pass, so a beacon that
+            # appears AFTER this handshake still names the network (matches the PMKID path).
             eapol_hs.append(Handshake(
-                kind="eapol", essid=ssids.get(ap, ""), ap_mac=ap, sta_mac=sta,
+                kind="eapol", essid="", ap_mac=ap, sta_mac=sta,
                 anonce=anonce, snonce=nonce, eapol=bytes(zeroed), mic=mic, key_version=kv))

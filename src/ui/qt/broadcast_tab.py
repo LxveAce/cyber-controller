@@ -344,9 +344,14 @@ class BroadcastBar(QWidget):
             try:
                 results = self._engine.dispatch(plan, confirmed=True)
                 sent = sum(1 for r in results if r.status == "sent")
-                failed = len(results) - sent
+                # dispatch() drops devices whose write didn't finish before the deadline, so they'd
+                # otherwise vanish from the count — treat any missing device as a timeout failure so a
+                # STOP ALL that didn't reach every board is never reported as fully successful.
+                timed_out = max(0, len(plan.concrete) - len(results))
+                failed = (len(results) - sent) + timed_out
+                tail = f" ({timed_out} timed out)" if timed_out else ""
                 msg = (f"Broadcast '{plan.action.label}' → {sent} sent, "
-                       f"{failed} failed, {len(plan.skipped)} skipped.")
+                       f"{failed} failed, {len(plan.skipped)} skipped.{tail}")
                 act.emit_line("broadcast", msg, "success" if failed == 0 else "warn")
             except Exception as exc:  # never let a dispatch error kill the UI
                 msg = f"Broadcast error: {exc}"

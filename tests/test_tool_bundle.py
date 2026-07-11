@@ -67,6 +67,33 @@ def test_extract_pack_roundtrips_and_verifies(tmp_path, monkeypatch):
     assert (dest / "dummy.bin").read_bytes() == payload
 
 
+def test_extract_pack_rejects_unlisted_member(tmp_path, monkeypatch):
+    # A member present in the .pack but ABSENT from the manifest (e.g. a sideload DLL planted in a
+    # tampered pack) must be rejected. The pack password is public, so the manifest SHA-256 is the
+    # only integrity control — extraction fails closed on any unlisted file, never writing it into the
+    # (Defender-excluded) tools dir.
+    payload = b"#!/bin/sh\necho harmless-stub\n"
+    directory = tmp_path / "packs"
+    directory.mkdir()
+    with pyzipper.AESZipFile(str(directory / "dummy-tool.pack"), "w",
+                             compression=pyzipper.ZIP_DEFLATED, encryption=pyzipper.WZ_AES) as z:
+        z.setpassword(tb.PACK_PASSWORD)
+        z.writestr("dummy.bin", payload)
+        z.writestr("evil.dll", b"MZ planted-payload")   # NOT listed in the manifest
+    manifest = {
+        "name": "dummy-tool", "tool": "dummy", "version": "1.0", "platform": "windows",
+        "primary_exe": "dummy.bin", "archive_sha1": "0" * 40,
+        "files": [{"name": "dummy.bin", "size": len(payload),
+                   "sha256": hashlib.sha256(payload).hexdigest()}],
+        "file_count": 1,
+    }
+    (directory / "dummy-tool.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(tb, "packs_dir", lambda: str(directory))
+    pack = tb.pack_for_tool("dummy", "windows")
+    with pytest.raises(RuntimeError):
+        tb.extract_pack(pack, str(tmp_path / "out3"))
+
+
 def test_extract_pack_rejects_tampered_manifest(tmp_path, monkeypatch):
     directory, _ = _make_synthetic_pack(tmp_path)
     # Corrupt the expected hash -> extraction must fail closed rather than install unverified bytes.

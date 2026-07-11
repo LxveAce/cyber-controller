@@ -55,10 +55,17 @@ def realtime_on() -> "bool | None":
     return out.split()[0].lower() == "true"
 
 
+def _ps_squote(s: str) -> str:
+    """Escape *s* for safe embedding inside a PowerShell single-quoted literal by doubling any quote.
+    Without this a path with a ' (a valid Windows username char, e.g. ``O'Brien``, or a hostile
+    CC_TOOLS_DIR) would break out of the quotes — and this text runs ELEVATED via add_exclusion_elevated."""
+    return s.replace("'", "''")
+
+
 def exclusion_command(path: str) -> str:
     """The exact PowerShell command that adds a Defender folder exclusion. Shown to the user verbatim so
     they can run it themselves in an elevated (admin) PowerShell — nothing hidden."""
-    return f"Add-MpPreference -ExclusionPath '{path}'"
+    return f"Add-MpPreference -ExclusionPath '{_ps_squote(path)}'"
 
 
 def add_exclusion_elevated(path: str, timeout: float = 180.0) -> bool:
@@ -75,7 +82,7 @@ def add_exclusion_elevated(path: str, timeout: float = 180.0) -> bool:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             f.write(exclusion_command(path) + "\n")
         launch = ("Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden "
-                  f"-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{ps1}'")
+                  f"-ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','{_ps_squote(ps1)}'")
         r = subprocess.run(["powershell", "-NoProfile", "-Command", launch],
                            capture_output=True, text=True, timeout=timeout)
         return r.returncode == 0

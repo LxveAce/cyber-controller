@@ -86,6 +86,12 @@ def verify(hs: "Handshake", psk: str) -> bool:
     if hs.kind == "pmkid":
         return hmac.compare_digest(compute_pmkid(p, hs.ap_mac, hs.sta_mac), hs.pmkid)
     if hs.kind == "eapol":
+        # We implement the WPA (HMAC-MD5) and WPA2 (HMAC-SHA1) key MICs. Key-descriptor versions
+        # 0/3 use AES-128-CMAC (802.11w/PMF, WPA3-SHA256 AKMs) with a different KDF — verifying
+        # those with SHA1 would be a silent false negative, so we decline honestly (never a fake
+        # match). crack() filters these out up front and tells the operator to use hashcat.
+        if hs.key_version not in (1, 2):
+            return False
         return hmac.compare_digest(compute_mic(p, hs), hs.mic)
     return False
 
@@ -118,6 +124,22 @@ def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[L
     stop: Stop = should_stop or (lambda: False)
     if not handshakes:
         return NativeResult(detail="no PMKID or handshake in this capture (nothing to crack)")
+    # Drop EAPOL handshakes the native MIC path can't verify (AES-CMAC, key-descriptor v0/v3 —
+    # 802.11w/PMF or WPA3-SHA256). Cracking them with SHA1 would silently report "not in wordlist"
+    # even for the right key, so we surface the reason instead of misleading the operator.
+    usable, skipped = [], 0
+    for h in handshakes:
+        if h.kind == "eapol" and h.key_version not in (1, 2):
+            skipped += 1
+        else:
+            usable.append(h)
+    if skipped:
+        log(f"[native] skipping {skipped} AES-CMAC handshake(s) (802.11w/PMF or WPA3-SHA256) — the "
+            f"native engine can't verify those; use the hashcat engine for them.")
+    if not usable:
+        return NativeResult(detail="only AES-CMAC (802.11w / WPA3-SHA256) handshakes here — "
+                                   "use the hashcat engine for those")
+    handshakes = usable
     ref = handshakes[0]
     tried = 0
     with open(wordlist_path, "r", encoding="utf-8", errors="ignore") as f:

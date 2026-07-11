@@ -80,3 +80,30 @@ def test_crack_empty_handshakes():
     res = nc.crack([], "nonexistent")
     assert not res.cracked
     assert "nothing to crack" in res.detail
+
+
+def test_native_declines_aes_cmac_handshake(tmp_path):
+    # A key-descriptor v3 (AES-128-CMAC / 802.11w-PMF) EAPOL handshake must be DECLINED, not silently
+    # mis-verified with HMAC-SHA1. verify() returns False, and crack() reports it unsupported instead
+    # of the misleading "key not in wordlist" (verify-never-fake: never a false match, never a false
+    # "exhausted" that hides an uncrackable-here handshake).
+    import dataclasses
+    cmac = dataclasses.replace(_eapol_hs(), key_version=3)
+    assert nc.verify(cmac, "hashcat!") is False
+    wl = tmp_path / "w.txt"
+    wl.write_text("hashcat!\n", encoding="utf-8")
+    res = nc.crack([cmac], str(wl))
+    assert not res.cracked
+    assert "CMAC" in res.detail or "hashcat" in res.detail
+
+
+def test_native_cracks_supported_and_skips_cmac(tmp_path):
+    # A mixed capture (one AES-CMAC v3 handshake + one crackable WPA2 v2 handshake) must still recover
+    # the key from the supported one — the unsupported handshake is skipped, not a run-stopper.
+    import dataclasses
+    good = _eapol_hs()                                   # kv=2, real MIC, crackable with "hashcat!"
+    cmac = dataclasses.replace(good, key_version=3)
+    wl = tmp_path / "w.txt"
+    wl.write_text("nope1234\nhashcat!\n", encoding="utf-8")
+    res = nc.crack([cmac, good], str(wl))
+    assert res.cracked and res.password == "hashcat!"

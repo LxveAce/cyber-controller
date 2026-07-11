@@ -90,9 +90,17 @@ def extract_pack(pack: ToolPack, dest_dir: str, on_line: Optional[Line] = None) 
     with pyzipper.AESZipFile(pack.pack_path) as z:
         z.setpassword(PACK_PASSWORD)
         for name in z.namelist():
+            if name.endswith("/"):
+                continue  # directory entry — nothing to write or verify
             blob = z.read(name)
+            # Fail-closed: the pack password is public (see module docstring), so the per-file
+            # SHA-256 is the ONLY integrity control. Every extracted member MUST be named in the
+            # manifest with a matching hash — an unlisted file (e.g. a planted sideload DLL added
+            # to a tampered pack) is rejected, not silently written into the Defender-excluded dir.
             exp = want.get(name)
-            if exp and hashlib.sha256(blob).hexdigest() != exp:
+            if exp is None:
+                raise RuntimeError(f"{name}: not listed in the manifest — refusing to install")
+            if hashlib.sha256(blob).hexdigest() != exp:
                 raise RuntimeError(f"{name}: SHA-256 mismatch on extract — refusing to install")
             # zip-slip guard: the resolved path must stay inside dest_dir.
             out_path = os.path.join(dest_dir, name)

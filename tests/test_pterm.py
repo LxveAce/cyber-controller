@@ -91,25 +91,32 @@ def _stub_connect(win, monkeypatch, dev):
 
 
 def test_pterm_connect_stamps_default_firmware(qapp, isolated_settings, monkeypatch):
-    # Connecting a board in the terminal must stamp a firmware so the Operate surface (Broadcast/Targets/
-    # STOP-ALL, which all route by Device.firmware) can send — a blank routes to zero actions and no-ops.
+    # Connecting a board in the terminal must stamp a firmware via the CENTRAL setter (set_firmware),
+    # not a direct dev.firmware write — that's what fires on_device_changed so the Broadcast panel
+    # repopulates reactively instead of waiting on its safety-net timer.
     win = _make_window()
     try:
         dev = types.SimpleNamespace(firmware="", board_type=None)
         _stub_connect(win, monkeypatch, dev)
+        calls = []
+        monkeypatch.setattr(win._dm, "set_firmware", lambda port, fw, **kw: calls.append((port, fw)))
         win._pterm_on_connect()
-        assert dev.firmware == "marauder"
+        assert calls == [("COM7", "marauder")]
     finally:
         win.close()
 
 
 def test_pterm_connect_does_not_clobber_explicit_firmware(qapp, isolated_settings, monkeypatch):
-    # An explicit firmware (e.g. chosen in the Devices tab) must survive a terminal connect.
+    # An explicit firmware (e.g. chosen in the Devices tab) must survive a terminal connect — the
+    # blank-only guard means set_firmware is never invoked when a firmware is already set.
     win = _make_window()
     try:
         dev = types.SimpleNamespace(firmware="ghost_esp", board_type=None)
         _stub_connect(win, monkeypatch, dev)
+        calls = []
+        monkeypatch.setattr(win._dm, "set_firmware", lambda port, fw, **kw: calls.append((port, fw)))
         win._pterm_on_connect()
+        assert calls == []
         assert dev.firmware == "ghost_esp"
     finally:
         win.close()

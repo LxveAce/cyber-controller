@@ -14,6 +14,16 @@ def test_exclusion_command_names_the_path():
     assert r"C:\Users\x\.cyber-controller\tools" in cmd
 
 
+def test_exclusion_command_escapes_single_quotes():
+    # A path with a ' (a valid Windows username char, e.g. O'Brien) must be escaped by doubling the
+    # quote — otherwise it breaks out of the single-quoted literal, and this text runs ELEVATED.
+    cmd = defender.exclusion_command(r"C:\Users\O'Brien\tools")
+    assert "O''Brien" in cmd                      # the ' was doubled
+    assert cmd.count("'") % 2 == 0                # quotes are balanced (no early break-out)
+    # no lone unescaped quote that could terminate the string then inject
+    assert "O'Brien" not in cmd.replace("O''Brien", "")
+
+
 def test_is_windows_is_bool():
     assert isinstance(defender.is_windows(), bool)
 
