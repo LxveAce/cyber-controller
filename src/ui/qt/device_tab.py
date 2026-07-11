@@ -1038,6 +1038,13 @@ class DeviceTab(QWidget):
             if self._recorder is not None:
                 self._recorder.record_command(cmd)
             self._terminal.append(f"> {cmd}")
+            # Mirror the sent command into the app-wide activity bus so the persistent terminal reflects
+            # command execution too (this tab's own terminal is separate). Guarded — never break a send.
+            try:
+                from src.core.activity_log import activity_log
+                activity_log().emit_line("cmd", f"[{self._active_port}] > {cmd}")
+            except Exception:  # noqa: BLE001
+                pass
             self._cmd_input.clear()
         except Exception as exc:
             self._terminal.append(f"[Send error: {exc}]")

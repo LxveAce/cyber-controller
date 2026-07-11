@@ -163,14 +163,29 @@ class BroadcastBar(QWidget):
         self._dispatch_async(plan)
 
     def _dispatch_async(self, plan) -> None:
+        # Surface the per-device commands + the outcome in the app-wide activity bus so the persistent
+        # terminal reflects broadcasts (previously only a one-line status label showed anything). The bus
+        # is a QObject, so the emit inside the worker thread queues safely onto the GUI thread.
+        from src.core.activity_log import activity_log
+        act = activity_log()
+        for c in plan.concrete:
+            pre = (" ; ".join(c.pre_commands) + " ; ") if c.pre_commands else ""
+            act.emit_line("broadcast", f"[{c.port}] {c.firmware}: {pre}{c.command}")
+        if plan.skipped:
+            act.emit_line("broadcast",
+                          "skipped: " + ", ".join(f"{p} ({f})" for p, f, _ in plan.skipped), "warn")
+
         def run() -> None:
             try:
                 results = self._engine.dispatch(plan, confirmed=True)
                 sent = sum(1 for r in results if r.status == "sent")
+                failed = len(results) - sent
                 msg = (f"Broadcast '{plan.action.label}' → {sent} sent, "
-                       f"{len(results) - sent} failed, {len(plan.skipped)} skipped.")
+                       f"{failed} failed, {len(plan.skipped)} skipped.")
+                act.emit_line("broadcast", msg, "success" if failed == 0 else "warn")
             except Exception as exc:  # never let a dispatch error kill the UI
                 msg = f"Broadcast error: {exc}"
+                act.emit_line("broadcast", msg, "error")
             self._bridge.done.emit(msg)
 
         threading.Thread(target=run, daemon=True).start()

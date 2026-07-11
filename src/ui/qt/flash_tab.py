@@ -1158,6 +1158,14 @@ class FlashTab(QWidget):
     def _log(self, msg: str) -> None:
         self._log_output.append(msg)
         log.info("FlashTab: %s", msg)
+        # Mirror to the app-wide activity bus so the persistent terminal reflects flashing, backup,
+        # erase, detect and vault output — every esptool/tool subprocess line already arrives here as
+        # `msg` (flash_engine._percent_adapter forwards them). Guarded so logging can never break a flash.
+        try:
+            from src.core.activity_log import activity_log
+            activity_log().emit_line("flash", msg)
+        except Exception:  # noqa: BLE001
+            pass
 
     # ── Firmware Vault ───────────────────────────────────────────────
 

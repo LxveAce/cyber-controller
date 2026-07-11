@@ -854,6 +854,13 @@ class CyberControllerWindow(QMainWindow):
         self._pterm_line_signal = _PTermLineSignal()
         self._pterm_line_signal.line_received.connect(self._pterm_on_line)
 
+        # Subscribe the terminal to the app-wide activity bus so flashing, command execution,
+        # broadcasts, crack runs and background ops all surface here — not just serial RX. The bus is a
+        # QObject, so worker-thread emits queue onto this (GUI-thread) connection safely.
+        from src.core.activity_log import activity_log
+        self._activity_log = activity_log()
+        self._activity_log.line.connect(self._pterm_on_activity)
+
         # Refresh device checklist
         self._pterm_refresh_ports()
 
@@ -1081,6 +1088,22 @@ class CyberControllerWindow(QMainWindow):
             and getattr(self._device_tab, '_active_conn', None) is not conn
         ):
             self._device_tab._terminal.append(html.escape(line))
+
+    # Activity-bus level → source-tag colour (error/warn stand out; info/success stay calm).
+    _ACTIVITY_COLORS = {"info": "#58a6ff", "success": "#3fb950", "warn": "#f0883e", "error": "#f85149"}
+
+    @pyqtSlot(str, str, str)
+    def _pterm_on_activity(self, source: str, level: str, text: str) -> None:
+        """Render one line from the app-wide activity bus into the persistent terminal.
+
+        Non-serial activity (flash/crack/broadcast/cmd/macro). The serial path (``_pterm_on_line``) is
+        untouched. Untrusted tool/device text is ``html.escape``d exactly like the serial path — only the
+        code-controlled colour span is trusted markup, so a crafted SSID or tool line can't forge the UI.
+        """
+        color = self._ACTIVITY_COLORS.get(level, "#8b949e")
+        self._pterm_output.append(
+            f'<span style="color:{color};">[{html.escape(source)}]</span> {html.escape(text)}'
+        )
 
     # ── Dead Man's Switch auth UI ────────────────────────────────────
 

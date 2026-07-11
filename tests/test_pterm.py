@@ -202,3 +202,45 @@ def test_dms_auth_result_message_html_escaped(qapp, isolated_settings):
         assert '<b>trusted</b><img src=x>' in text, "DMS message must be shown verbatim, not as HTML"
     finally:
         win.close()
+
+
+def test_pterm_reflects_activity_bus(qapp, isolated_settings):
+    # A line on the activity bus (flash/crack/broadcast/cmd/macro) surfaces in the persistent
+    # terminal with a [source] tag — reflecting non-serial activity, not just serial RX.
+    from src.core.activity_log import activity_log
+    win = _make_window()
+    try:
+        activity_log().emit_line("flash", "Writing at 0x10000...", "info")
+        text = win._pterm_output.toPlainText()
+        assert "[flash]" in text
+        assert "Writing at 0x10000..." in text
+    finally:
+        win.close()
+
+
+def test_pterm_activity_line_html_escaped(qapp, isolated_settings):
+    # Tool/device output on the bus is untrusted; the activity slot must html.escape it so a
+    # crafted line can't forge terminal markup (a fake green KEY FOUND banner on a security tool).
+    from src.core.activity_log import activity_log
+    win = _make_window()
+    try:
+        activity_log().emit_line("crack", "<span style='color:#3fb950'>KEY FOUND</span>", "info")
+        text = win._pterm_output.toPlainText()
+        assert "<span" in text, "untrusted markup must be escaped to literal text, not rendered"
+    finally:
+        win.close()
+
+
+def test_activity_log_emit_shape_and_blank_drop(qapp):
+    # emit_line drops a blank line (callers can emit unconditionally), defaults/normalizes the
+    # level, and delivers (source, level, text). Uses a fresh ActivityLog (not the singleton) so
+    # the test's connection doesn't leak into other tests.
+    from src.core.activity_log import ActivityLog
+    bus = ActivityLog()
+    seen = []
+    bus.line.connect(lambda s, lvl, t: seen.append((s, lvl, t)))
+    bus.emit_line("flash", "")                    # blank -> dropped
+    bus.emit_line("flash", "hello")               # default level -> info
+    bus.emit_line("crack", "bad", "nonsense")     # unknown level -> normalized to info
+    bus.emit_line("crack", "err", "error")        # valid level preserved
+    assert seen == [("flash", "info", "hello"), ("crack", "info", "bad"), ("crack", "error", "err")]

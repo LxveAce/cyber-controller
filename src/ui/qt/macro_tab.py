@@ -511,6 +511,7 @@ class MacroTab(QWidget):
         # Highlight current step in table
         if 0 <= step < self._steps_table.rowCount():
             self._steps_table.selectRow(step)
+        self._emit_activity(f"step {step + 1}/{total}: {msg}")
 
     def _on_playback_complete(self, success: bool, msg: str) -> None:
         self._btn_play.setEnabled(True)
@@ -519,5 +520,17 @@ class MacroTab(QWidget):
         if success:
             self._progress.setValue(100)
             self._progress.setFormat("Playback complete")
+            self._emit_activity("playback complete", "success")
         else:
             self._progress.setFormat(f"Playback stopped: {msg}")
+            self._emit_activity(f"playback stopped: {msg}", "warn")
+
+    @staticmethod
+    def _emit_activity(text: str, level: str = "info") -> None:
+        """Mirror a macro-playback line to the app-wide activity bus (persistent terminal). Guarded so
+        a logging hiccup never interrupts playback."""
+        try:
+            from src.core.activity_log import activity_log
+            activity_log().emit_line("macro", text, level)
+        except Exception:  # noqa: BLE001
+            pass
