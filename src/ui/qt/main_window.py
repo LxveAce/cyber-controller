@@ -1017,9 +1017,30 @@ class CyberControllerWindow(QMainWindow):
         self._refresh_sidebar_devices()
 
     def _pterm_on_send(self) -> None:
-        """Send a command from the persistent terminal to all checked+connected devices."""
+        """Send from the persistent terminal. A known local-tool command (aircrack-ng/hashcat/…) runs
+        as a subprocess whose output streams back via the activity bus; ``stop`` kills a running tool;
+        everything else goes to the checked+connected serial devices (the original behaviour)."""
+        import os
+        import shlex
+
+        from src.core import tool_runner
         cmd = self._pterm_input.text().strip()
         if not cmd:
+            return
+        # 'stop' kills a running local tool (checked before serial so it can't be swallowed as a device cmd).
+        proc = getattr(self, "_pterm_tool_proc", None)
+        if cmd.lower() == "stop" and proc is not None and proc.poll() is None:
+            proc.terminate()
+            self._pterm_output.append('<span style="color:#f0883e;">[tool] stopping…</span>')
+            self._pterm_input.clear()
+            return
+        try:
+            argv = shlex.split(cmd, posix=(os.name != "nt"))
+        except ValueError:
+            argv = cmd.split()
+        if argv and tool_runner.is_tool_command(argv[0]):
+            self._pterm_run_tool(argv)
+            self._pterm_input.clear()
             return
         checked = self._pterm_checked_ports()
         # Filter to only connected ports
@@ -1055,6 +1076,23 @@ class CyberControllerWindow(QMainWindow):
                     f'<span style="color:#f85149;">[{port}] Send error: {exc}</span>'
                 )
         self._pterm_input.clear()
+
+    def _pterm_run_tool(self, argv: list) -> None:
+        """Run a known local tool (aircrack-ng/hashcat/…) from the terminal, streaming its output via the
+        activity bus (which auto-marshals the reader-thread lines onto the GUI thread). One at a time;
+        ``stop`` kills it. Scoped to KNOWN tools by the caller — never an arbitrary OS command."""
+        from src.core import tool_runner
+        from src.core.activity_log import activity_log
+        act = activity_log()
+        proc = getattr(self, "_pterm_tool_proc", None)
+        if proc is not None and proc.poll() is None:
+            act.emit_line("tool", 'a tool is already running — type "stop" to kill it', "warn")
+            return
+        act.emit_line("tool", "$ " + " ".join(argv))
+        self._pterm_tool_proc = tool_runner.run_tool(
+            argv,
+            on_line=lambda t: act.emit_line("tool", t),
+            on_exit=lambda rc: act.emit_line("tool", f"[exit {rc}]", "success" if rc == 0 else "warn"))
 
     @pyqtSlot(str, str)
     def _pterm_on_line(self, port: str, line: str) -> None:
@@ -1998,6 +2036,13 @@ class CyberControllerWindow(QMainWindow):
             self._tabs.close_all_popouts()
         except Exception:  # noqa: BLE001
             pass
+        # Kill a terminal-launched tool subprocess (aircrack/hashcat/…) so it doesn't outlive the app.
+        _tproc = getattr(self, "_pterm_tool_proc", None)
+        if _tproc is not None and _tproc.poll() is None:
+            try:
+                _tproc.terminate()
+            except Exception:  # noqa: BLE001
+                pass
         # Disconnect all persistent terminal connections
         for port in list(self._pterm_conns.keys()):
             try:
