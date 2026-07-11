@@ -33,6 +33,9 @@ class _DM:
     def get_connection(self, port):
         return self._conns.get(port)
 
+    def get_device(self, port):
+        return next((d for d in self._devices if d.port == port), None)
+
 
 class _Bus:
     def __init__(self):
@@ -136,3 +139,26 @@ def test_dispatch_stamps_flipper_cr_terminator():
     eng = BroadcastEngine(dm, _Bus())
     eng.dispatch(eng.plan(BroadcastVerb.SUBGHZ_SCAN), confirmed=True)
     assert conn.line_ending == "\r" and conn.writes == ["subghz rx"]
+
+
+def test_plan_for_port_single_device():
+    dm = _DM([_Dev("COM1", "marauder"), _Dev("COM2", "flipper")])
+    eng = BroadcastEngine(dm, _Bus())
+    p = eng.plan_for_port("COM1", BroadcastVerb.FIND_APS)
+    assert len(p.concrete) == 1 and p.concrete[0].port == "COM1"
+    assert p.skipped == []
+    p2 = eng.plan_for_port("COM2", BroadcastVerb.FIND_APS)  # flipper: no wifi AP scan
+    assert p2.concrete == []
+    assert p2.skipped == [("COM2", "flipper", "unsupported by this firmware")]
+    assert eng.plan_for_port("NOPE", BroadcastVerb.FIND_APS).concrete == []  # no such device
+
+
+def test_supported_and_available_verbs_for():
+    eng = BroadcastEngine(_DM([_Dev("COM1", "marauder")]), _Bus())
+    sv = eng.supported_verbs("marauder")
+    assert BroadcastVerb.FIND_APS in sv
+    assert BroadcastVerb.SUBGHZ_SCAN not in sv  # marauder has no sub-GHz radio
+    av = eng.available_verbs_for("COM1")
+    assert av[BroadcastVerb.FIND_APS] == 1
+    assert av[BroadcastVerb.SUBGHZ_SCAN] == 0
+    assert eng.supported_verbs("") == []  # unknown firmware supports nothing

@@ -145,34 +145,61 @@ class BroadcastEngine:
 
     # ── plan (no side effects) ───────────────────────────────────────
     def plan(self, verb: BroadcastVerb) -> BroadcastPlan:
-        from src.core import safety
-        from src.protocols import get_protocol, get_protocol_module
-
+        """Fan-out plan: every connected device's native realization of *verb* (or skipped)."""
         action = self._actions[verb]
         plan = BroadcastPlan(action=action)
         for device in self._dm.list_connected():
-            fw = (getattr(device, "firmware", "") or "").strip()
-            port = getattr(device, "port", "?")
-            if not fw:
-                plan.skipped.append((port, "(unknown)", "firmware unknown"))
-                continue
-            mod = get_protocol_module(fw)
-            caps = getattr(mod, "BROADCAST_CAPABILITIES", {}) if mod else {}
-            if not mod:
-                plan.skipped.append((port, fw, "firmware unknown"))
-                continue
-            if verb not in caps:
-                plan.skipped.append((port, fw, "unsupported by this firmware"))
-                continue
-            pre, cmd = caps[verb]
-            info = self._command_info_for(get_protocol(fw), cmd)
-            danger = safety.classify(cmd, info)
-            plan.concrete.append(ConcreteCommand(port, fw, tuple(pre), cmd, danger))
+            self._plan_device(device, verb, plan)
         return plan
+
+    def plan_for_port(self, port: str, verb: BroadcastVerb) -> BroadcastPlan:
+        """Plan *verb* for a SINGLE device (the per-device Broadcast sections) — same rules as
+        :meth:`plan`. A firmware that lacks the verb is reported in ``plan.skipped``, never silently."""
+        plan = BroadcastPlan(action=self._actions[verb])
+        dev = self._dm.get_device(port)
+        if dev is not None:
+            self._plan_device(dev, verb, plan)
+        return plan
+
+    def _plan_device(self, device: Any, verb: BroadcastVerb, plan: BroadcastPlan) -> None:
+        """Append *device*'s concrete command for *verb* to *plan* (or record why it's skipped)."""
+        from src.core import safety
+        from src.protocols import get_protocol, get_protocol_module
+        fw = (getattr(device, "firmware", "") or "").strip()
+        port = getattr(device, "port", "?")
+        if not fw:
+            plan.skipped.append((port, "(unknown)", "firmware unknown"))
+            return
+        mod = get_protocol_module(fw)
+        caps = getattr(mod, "BROADCAST_CAPABILITIES", {}) if mod else {}
+        if not mod:
+            plan.skipped.append((port, fw, "firmware unknown"))
+            return
+        if verb not in caps:
+            plan.skipped.append((port, fw, "unsupported by this firmware"))
+            return
+        pre, cmd = caps[verb]
+        info = self._command_info_for(get_protocol(fw), cmd)
+        danger = safety.classify(cmd, info)
+        plan.concrete.append(ConcreteCommand(port, fw, tuple(pre), cmd, danger))
 
     def available_verbs(self) -> dict[BroadcastVerb, int]:
         """verb -> count of connected devices that support it (for live button enable)."""
         return {v: len(self.plan(v).concrete) for v in self._actions}
+
+    def supported_verbs(self, firmware: str) -> list[BroadcastVerb]:
+        """The verbs a given *firmware* supports (its ``BROADCAST_CAPABILITIES`` keys), in registry order
+        — for lighting a per-device section's buttons. Empty for unknown / no-capability firmware."""
+        from src.protocols import get_protocol_module
+        mod = get_protocol_module((firmware or "").strip()) if firmware else None
+        caps = getattr(mod, "BROADCAST_CAPABILITIES", {}) if mod else {}
+        return [v for v in self._actions if v in caps]
+
+    def available_verbs_for(self, port: str) -> dict[BroadcastVerb, int]:
+        """``{verb: 1|0}`` for ONE device — which verbs its firmware can do (per-device button enable)."""
+        dev = self._dm.get_device(port)
+        supported = set(self.supported_verbs(getattr(dev, "firmware", "") if dev else ""))
+        return {v: (1 if v in supported else 0) for v in self._actions}
 
     # ── dispatch (true simultaneous fan-out) ─────────────────────────
     def dispatch(self, plan: BroadcastPlan, confirmed: bool = False) -> list[BroadcastResult]:
