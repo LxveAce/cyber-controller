@@ -24,6 +24,7 @@ from PyQt5.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -57,7 +58,15 @@ class WardriveMultiTab(QWidget):
 
     # ── UI ────────────────────────────────────────────────────────────
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        _scroll = QScrollArea(self)
+        _scroll.setWidgetResizable(True)
+        _scroll.setFrameShape(QScrollArea.NoFrame)
+        _content = QWidget()
+        _scroll.setWidget(_content)
+        _outer = QVBoxLayout(self)
+        _outer.setContentsMargins(0, 0, 0, 0)
+        _outer.addWidget(_scroll)
+        root = QVBoxLayout(_content)
         banner = QLabel("⚠ Lawful, owner-authorized use only. Passive beacon + GPS logging across every "
                         "selected board, merged into one WiGLE CSV. No deauth, no payload capture.")
         banner.setWordWrap(True)

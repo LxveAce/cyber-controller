@@ -139,10 +139,32 @@ class _GraphView(QGraphicsView):
         self.setBackgroundBrush(QBrush(QColor("#0d1117")))
         self.setDragMode(QGraphicsView.NoDrag)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self._user_zoomed = False   # once the user zooms, stop auto-framing
+        self._refitting = False
 
     def wheelEvent(self, event):  # noqa: N802 (Qt signature)
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self.scale(factor, factor)
+        self._user_zoomed = True
+
+    def fit_content(self) -> None:
+        """Frame all nodes into the viewport (until the user zooms). Fixes the launch-render bug: the
+        graph was built while the view had no size, so nodes painted off-centre/clipped and never
+        auto-framed. Called on resize + after a rebuild."""
+        from PyQt5.QtCore import Qt
+        if self._user_zoomed or self._refitting:
+            return
+        rect = self.scene().itemsBoundingRect()
+        if rect.isValid() and not rect.isEmpty() and self.viewport().width() > 1:
+            self._refitting = True
+            try:
+                self.fitInView(rect, Qt.KeepAspectRatio)
+            finally:
+                self._refitting = False
+
+    def resizeEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(ev)
+        self.fit_content()
 
 
 class NetworkTab(QWidget):
@@ -298,6 +320,7 @@ class NetworkTab(QWidget):
                 n.setPos(x, y)
                 restored.add(k)
         self._auto_arrange(skip=restored)
+        self._view.fit_content()   # frame the (re)built graph until the user zooms
 
     @staticmethod
     def _target_kind(t) -> str:

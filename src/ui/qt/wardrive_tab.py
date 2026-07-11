@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
     QLineEdit,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -268,7 +269,15 @@ class WardriveTab(QWidget):
         self._refresh_ports()
 
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        _scroll = QScrollArea(self)
+        _scroll.setWidgetResizable(True)
+        _scroll.setFrameShape(QScrollArea.NoFrame)
+        _content = QWidget()
+        _scroll.setWidget(_content)
+        _outer = QVBoxLayout(self)
+        _outer.setContentsMargins(0, 0, 0, 0)
+        _outer.addWidget(_scroll)
+        root = QVBoxLayout(_content)
 
         banner = QLabel("⚠ Lawful, owner-authorized use only. This passively logs broadcast Wi-Fi "
                         "beacon metadata + your GPS position (like WiGLE). It does not deauth or capture "

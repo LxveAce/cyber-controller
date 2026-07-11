@@ -22,6 +22,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QMessageBox,
     QPushButton,
+    QScrollArea,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -54,7 +55,15 @@ class NodesTab(QWidget):
 
     # ── UI ───────────────────────────────────────────────────────────
     def _build_ui(self) -> None:
-        root = QVBoxLayout(self)
+        _scroll = QScrollArea(self)
+        _scroll.setWidgetResizable(True)
+        _scroll.setFrameShape(QScrollArea.NoFrame)
+        _content = QWidget()
+        _scroll.setWidget(_content)
+        _outer = QVBoxLayout(self)
+        _outer.setContentsMargins(0, 0, 0, 0)
+        _outer.addWidget(_scroll)
+        root = QVBoxLayout(_content)
 
         banner = QLabel(
             "⚠  Preview — the relay/node ESP32 sketches now ship in firmware/ (source-only: compile and "

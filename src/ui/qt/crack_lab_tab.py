@@ -28,6 +28,7 @@ from PyQt5.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -330,7 +331,17 @@ class CrackLabTab(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._worker: _CrackWorker | None = None
-        root = QVBoxLayout(self)
+        # Scroll-wrap the content so the engine/capture/wordlist rows never clip on a small/deck window
+        # (setWidgetResizable lets the log still expand to fill when there's room).
+        _scroll = QScrollArea(self)
+        _scroll.setWidgetResizable(True)
+        _scroll.setFrameShape(QScrollArea.NoFrame)
+        _content = QWidget()
+        _scroll.setWidget(_content)
+        _outer = QVBoxLayout(self)
+        _outer.setContentsMargins(0, 0, 0, 0)
+        _outer.addWidget(_scroll)
+        root = QVBoxLayout(_content)
 
         info = QLabel(cp.capability_text())
         info.setWordWrap(True)
