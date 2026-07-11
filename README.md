@@ -40,7 +40,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 
 **🔥 Flash** — **42 firmware profiles** across 5 backends. A hardware-validated flash core auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
 
-**🎮 Control** — a protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **10 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
+**🎮 Control** — a protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **13 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
 
 **🛰 Coordinate** — the **Unified Action Broadcast**: one intent (*Find APs, Deauth All, BLE Scan, Capture Handshakes, STOP ALL*) fans out to **every connected radio at once**, each translated into that firmware's own native command. A **shared target pool** means one board's discovery is instantly actionable by another.
 
@@ -192,4 +192,14 @@ MIT — Copyright © 2026 [LxveAce](https://github.com/LxveAce). See [LICENSE](L
 
 ## 📫 Connect
 
-**Discord:** [discord.gg/lxvelabs](https://discord.gg/lxvelabs) · **GitHub:** [@LxveAce](https://github.com/LxveAce) · **Email:** LxveLabs@proton.me · **Sites:** [lxvelabs.com](https://lxvelabs.com) · [cybercontroller.org](https://cybercontroller.org)
+**Discord:** [discord.gg/lxvelabs](https://discord.gg/lxvelabs) · **GitHub:** [@LxveAce](https://github.com/LxveAce) · **Email:** LxveLabs@proton.me (business) · lxveace@proton.me (direct) · **Sites:** [lxvelabs.com](https://lxvelabs.com) · [cybercontroller.org](https://cybercontroller.org)
+
+---
+
+<div align="center">
+
+**Built by [LxveAce](https://github.com/LxveAce) · a LxveLabs project**
+
+Hardware supported by [PCBWay](https://www.pcbway.com) — LxveLabs is developing a board in collaboration with PCBWay.
+
+</div>
