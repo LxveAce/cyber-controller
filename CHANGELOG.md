@@ -4,6 +4,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+- **Renamed the "Wi-Fi Audit" tab to "Crack Lab."** The tab is the full offline handshake→convert→crack
+  pipeline (capture → `hcxpcapngtool` → `hashcat`/`aircrack-ng` + wordlists), so the name now reflects what it
+  does. Same consent-gated, dictionary-only behaviour; only the label + code symbols (`crack_lab_tab.py` /
+  `CrackLabTab`) changed, and the tab gained an icon (an open padlock).
 - **"Check for Updates" in the Firmware Vault.** The vault could cache firmware and flash offline, but
   `FirmwareVault.check_updates()` (one GitHub API call per *cached* profile, SSRF-allowlisted) was
   CLI-only — no way to ask "is any of my cached firmware outdated?" from the app. Added a **Check for

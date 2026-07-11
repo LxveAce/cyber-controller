@@ -10,7 +10,7 @@ One coherent line-art system (24-grid, 1.75 stroke, round caps) drawn with
 Run:  python assets/gen_icons.py           # writes assets/icons/*.svg
 Feature icons map 1:1 to CC's tabs (Connect/Operate/Network/Settings/Devices/
 Device View/Firmware/Flash/Software OS/Nodes/Cross-Comm/Broadcast/Health/Macros/
-Targets/Wardrive/Multi-Wardrive/Flock Map/Graph/Remote) plus brand marks.
+Targets/Wardrive/Multi-Wardrive/Flock Map/Graph/Remote/Crack Lab) plus brand marks.
 """
 from __future__ import annotations
 
@@ -101,6 +101,10 @@ ICONS: dict[str, str] = {
     "remote": '<rect x="8" y="3" width="8" height="18" rx="2.4" fill="none"/>'
               '<path d="M10.2 6.2a3 3 0 0 1 3.6 0"/>' + dot(12, 6, 0.7) +
               '<line x1="10.5" y1="11" x2="13.5" y2="11"/><line x1="10.5" y1="14" x2="13.5" y2="14"/>',
+    # Crack Lab (offline WPA key-recovery): an open padlock — the shackle sprung on the right.
+    "crack-lab": '<rect x="5.5" y="11" width="13" height="9" rx="2" fill="none"/>'
+                 '<path d="M8.5 11 V7.5 a3.5 3.5 0 0 1 6.9 -0.8"/>' + dot(12, 15, 1.3) +
+                 '<line x1="12" y1="15" x2="12" y2="17.6"/>',
 
     # --- brand / product marks ---
     "cybercontroller": '<rect x="3" y="5" width="18" height="14" rx="2.2" fill="none"/>'

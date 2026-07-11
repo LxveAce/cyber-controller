@@ -1,6 +1,6 @@
-"""Wi-Fi Audit tab (src/ui/qt/wifi_audit_tab.py) — smoke/integration test.
+"""Crack Lab tab (src/ui/qt/crack_lab_tab.py) — smoke/integration test.
 
-Drives the new UI surface headless (offscreen): it constructs + populates from the real engines,
+Drives the UI surface headless (offscreen): it constructs + populates from the real engines,
 and proves the per-run CONSENT gate is honoured (a declined affirmation starts no crack worker,
 a missing capture is rejected). No real cracking tool is invoked.
 """
@@ -15,8 +15,8 @@ import pytest
 pytest.importorskip("PyQt5.QtWidgets")
 from PyQt5.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
-import src.ui.qt.wifi_audit_tab as wat  # noqa: E402
-from src.ui.qt.wifi_audit_tab import WifiAuditTab  # noqa: E402
+import src.ui.qt.crack_lab_tab as clt  # noqa: E402
+from src.ui.qt.crack_lab_tab import CrackLabTab  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -25,7 +25,7 @@ def qapp():
 
 
 def test_tab_constructs_and_populates(qapp):
-    tab = WifiAuditTab()
+    tab = CrackLabTab()
     # the wired controls exist
     assert tab._capture_edit is not None
     assert tab._wordlist_combo is not None
@@ -40,8 +40,8 @@ def test_tab_constructs_and_populates(qapp):
 def test_run_rejects_missing_capture(qapp, monkeypatch):
     warned = []
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warned.append(a))
-    monkeypatch.setattr(wat.cp, "available_backends", lambda _t: ["hashcat"])
-    tab = WifiAuditTab()
+    monkeypatch.setattr(clt.cp, "available_backends", lambda _t: ["hashcat"])
+    tab = CrackLabTab()
     tab._backend_combo.clear()
     tab._backend_combo.addItem("hashcat")
     tab._capture_edit.setText("")            # no capture chosen
@@ -57,12 +57,12 @@ def test_consent_declined_starts_no_worker(qapp, monkeypatch, tmp_path):
     wl = tmp_path / "words.txt"
     wl.write_text("password\nletmein\n", encoding="utf-8")
 
-    monkeypatch.setattr(wat.cp, "available_backends", lambda _t: ["hashcat"])
+    monkeypatch.setattr(clt.cp, "available_backends", lambda _t: ["hashcat"])
     # decline the consent affirmation
     monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
 
-    tab = WifiAuditTab()
+    tab = CrackLabTab()
     tab._backend_combo.clear()
     tab._backend_combo.addItem("hashcat")
     tab._capture_edit.setText(str(cap))

@@ -1,4 +1,4 @@
-"""Wi-Fi Audit tab — the user-facing entry point for the offline WPA key-recovery pipeline.
+"""Crack Lab tab (formerly "Wi-Fi Audit") — the offline WPA key-recovery pipeline UI.
 
 The engines (``crack_pipeline`` + ``wordlist_manager``) are finished + unit-tested, but before 1.7.0
 they had NO reachable UI. This tab wires them honestly:
@@ -73,7 +73,7 @@ class _CrackWorker(QThread):
         self.done.emit(result)
 
 
-class WifiAuditTab(QWidget):
+class CrackLabTab(QWidget):
     """Reachable UI for the offline WPA dictionary attack (capture -> wordlist -> crack)."""
 
     def __init__(self) -> None:
@@ -215,13 +215,13 @@ class WifiAuditTab(QWidget):
         wordlist = self._wordlist_combo.currentData() or ""
         backend = self._backend_combo.currentText()
         if backend not in ("hashcat", "aircrack"):
-            QMessageBox.warning(self, "Wi-Fi Audit", "Install hashcat or aircrack-ng first.")
+            QMessageBox.warning(self, "Crack Lab", "Install hashcat or aircrack-ng first.")
             return
         try:
             cp.validate_capture(capture)
             cp.validate_wordlist(wordlist)
         except ValueError as exc:
-            QMessageBox.warning(self, "Wi-Fi Audit", str(exc))
+            QMessageBox.warning(self, "Crack Lab", str(exc))
             return
         # per-run consent affirmation — always shown, never bypassed
         if QMessageBox.question(

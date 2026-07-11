@@ -40,6 +40,7 @@ TAB_ICONS = {
     "Wardrive": "wardrive",
     "Multi-Wardrive": "multi-wardrive",
     "Flock Map": "flock-map",
+    "Crack Lab": "crack-lab",
     "Graph": "graph",
     "Remote": "remote",
 }
