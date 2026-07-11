@@ -121,8 +121,10 @@ class DeviceTab(QWidget):
 
         # Auto-refresh device list every 3 seconds
         self._timer = QTimer(self)
+        self._timer.setInterval(3000)
         self._timer.timeout.connect(self._refresh_devices)
-        self._timer.start(3000)
+        # The 3s device-list poll runs only while the tab is visible (showEvent starts it — fires at
+        # launch for the default tab too — and hideEvent stops it). Serial I/O is independent of this.
 
     # ── Layout ───────────────────────────────────────────────────────
 
@@ -355,6 +357,15 @@ class DeviceTab(QWidget):
                 w.setVisible(pro)
 
     # ── Device list ──────────────────────────────────────────────────
+
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().showEvent(ev)
+        self._refresh_devices()   # catch up immediately when shown
+        self._timer.start()
+
+    def hideEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().hideEvent(ev)
+        self._timer.stop()
 
     def _refresh_devices(self) -> None:
         """Update the list widget from the device manager."""

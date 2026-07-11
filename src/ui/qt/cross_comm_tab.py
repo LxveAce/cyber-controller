@@ -183,8 +183,9 @@ class CrossCommTab(QWidget):
 
         # Periodic safety-net refresh in case any update is missed.
         self._timer = QTimer(self)
+        self._timer.setInterval(5000)
         self._timer.timeout.connect(self._refresh_pool)
-        self._timer.start(5000)
+        # Safety-net poll (bus subscription + showEvent do the live work) — runs only while visible.
 
     # ── Layout ───────────────────────────────────────────────────────
 
@@ -547,3 +548,8 @@ class CrossCommTab(QWidget):
         super().showEvent(event)
         self._refresh_pool()
         self._refresh_rules()
+        self._timer.start()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 — Qt naming
+        super().hideEvent(event)
+        self._timer.stop()

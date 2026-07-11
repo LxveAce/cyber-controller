@@ -54,8 +54,9 @@ class HealthTab(QWidget):
 
         # Refresh timer (5 seconds)
         self._timer = QTimer(self)
+        self._timer.setInterval(5000)
         self._timer.timeout.connect(self._refresh)
-        self._timer.start(5000)
+        # The arc-gauge repaint runs only while the Health tab is visible (showEvent/hideEvent).
 
         # Initial refresh
         self._refresh()
@@ -194,6 +195,15 @@ class HealthTab(QWidget):
                 w.setVisible(pro)
 
     # ── Refresh ──────────────────────────────────────────────────────
+
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().showEvent(ev)
+        self._refresh()   # catch up immediately when shown
+        self._timer.start()
+
+    def hideEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().hideEvent(ev)
+        self._timer.stop()
 
     def _refresh(self) -> None:
         """Poll health monitor and update all widgets."""

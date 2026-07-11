@@ -152,8 +152,9 @@ class TargetsTab(QWidget):
 
         # Periodic safety-net refresh (also covers age-driven RSSI changes).
         self._timer = QTimer(self)
+        self._timer.setInterval(3000)
         self._timer.timeout.connect(self._refresh)
-        self._timer.start(3000)
+        # Safety-net poll (the bus/showEvent do the live work) — runs only while visible (show/hideEvent).
 
     # ── Layout ───────────────────────────────────────────────────────
 
@@ -681,3 +682,8 @@ class TargetsTab(QWidget):
     def showEvent(self, event) -> None:  # noqa: N802 — Qt naming
         super().showEvent(event)
         self._refresh()
+        self._timer.start()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 — Qt naming
+        super().hideEvent(event)
+        self._timer.stop()

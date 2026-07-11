@@ -51,7 +51,17 @@ class NodesTab(QWidget):
         self._timer = QTimer(self)
         self._timer.setInterval(2000)
         self._timer.timeout.connect(self._refresh)
+        # The 2s poll runs only while the tab is visible (see showEvent/hideEvent) — a hidden/background
+        # preview tab then costs ~0 instead of rebuilding its table every 2 seconds forever.
+
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().showEvent(ev)
+        self._refresh()          # catch up immediately when shown
         self._timer.start()
+
+    def hideEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().hideEvent(ev)
+        self._timer.stop()
 
     # ── UI ───────────────────────────────────────────────────────────
     def _build_ui(self) -> None:

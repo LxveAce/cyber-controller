@@ -224,10 +224,11 @@ class NetworkTab(QWidget):
         # scans (WiFi/BLE) instead of only on a manual Rebuild. The bus callback fires on the ingest thread,
         # so it just emits a queued signal; a short single-shot debounce coalesces a burst of scan hits into
         # one relayout (the graph preserves dragged positions). No bus → no auto-refresh (manual Rebuild only).
+        self._dirty = False   # a bus target-change arrived while hidden -> rebuild on the next show
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.setInterval(400)
-        self._refresh_timer.timeout.connect(self.rebuild)
+        self._refresh_timer.timeout.connect(self._debounced_rebuild)
         self._targets_changed.connect(self._refresh_timer.start)  # queued → GUI thread restarts the timer
         if self._bus is not None:
             for topic in ("target.added", "target.updated", "target.removed", "target.cleared"):
@@ -239,6 +240,22 @@ class NetworkTab(QWidget):
     def _on_bus_target_event(self, _topic: str, _payload) -> None:
         """EventBus callback (any thread) — request a debounced GUI-thread rebuild of the graph."""
         self._targets_changed.emit()
+
+    def _debounced_rebuild(self) -> None:
+        """Rebuild only while visible; if hidden, mark dirty and defer to the next showEvent, so a scan
+        burst doesn't repeatedly rebuild an off-screen QGraphicsScene."""
+        if self.isVisible():
+            self.rebuild()
+        else:
+            self._dirty = True
+
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().showEvent(ev)
+        if self._dirty:
+            self._dirty = False
+            self.rebuild()          # catch up on any target changes that arrived while hidden
+        else:
+            self._view.fit_content()   # re-frame in case the view was resized while hidden
 
     # ── interface mode (dual-depth Simple / Pro) ─────────────────────
     def set_ui_mode(self, mode: str) -> None:
