@@ -102,11 +102,93 @@ def build_pack(spec: dict, local_zip: str | None = None) -> None:
     print(f"  wrote {pack_path} ({os.path.getsize(pack_path):,} bytes, {len(entries)} files) + manifest")
 
 
+HASHCAT = {
+    "name": "hashcat-7.1.2-win",
+    "tool": "hashcat",
+    "version": "7.1.2",
+    "platform": "windows",
+    "license": "MIT",
+    "source_url": "https://hashcat.net/files/hashcat-7.1.2.7z",
+    "primary_exe": "hashcat.exe",
+    "exclude": ("hashcat.bin",),   # the Linux binary — dropped from the Windows pack
+}
+
+
+def build_hashcat_pack(local_7z: str | None = None) -> None:
+    """hashcat ships only a universal .7z. Download it (self-pin its SHA-256 — the vendor publishes no
+    hash, only a PGP sig), extract, and repack the Windows tree (minus hashcat.bin) encrypted.
+
+    MAINTAINER STEP — not runnable in a default env: hashcat's .7z uses the **BCJ2** filter (py7zr can't
+    unpack it), so this needs real **7-Zip** (``7z``/``7zr`` on PATH). It also extracts ``hashcat.exe``
+    (a PUA binary) to disk, so the OUTPUT DIR must be Defender-excluded first or Windows deletes it
+    mid-build. Run on a box with 7-Zip + a temp Defender exclusion for ``src/config/tools``."""
+    import shutil as _sh
+    import subprocess
+    print(f"building {HASHCAT['name']}.pack …")
+    os.makedirs(_OUT, exist_ok=True)
+    if local_7z:
+        data = open(local_7z, "rb").read()
+    else:
+        req = urllib.request.Request(HASHCAT["source_url"], headers={"User-Agent": "Mozilla/5.0"})
+        data = urllib.request.urlopen(req, timeout=240).read()
+    sha = hashlib.sha256(data).hexdigest()
+    print(f"  downloaded {len(data):,} bytes, self-pinned SHA-256 {sha}")
+
+    sevenz_exe = _sh.which("7z") or _sh.which("7zr")
+    if not sevenz_exe:
+        raise SystemExit("hashcat's .7z uses the BCJ2 filter — install 7-Zip (7z/7zr on PATH) and run "
+                         "with src/config/tools Defender-excluded (it extracts PUA binaries).")
+    tmp = os.path.join(_OUT, "_hc_tmp")
+    if os.path.isdir(tmp):
+        _sh.rmtree(tmp, ignore_errors=True)
+    os.makedirs(tmp)
+    sevenz = os.path.join(tmp, "hc.7z")
+    with open(sevenz, "wb") as f:
+        f.write(data)
+    subprocess.run([sevenz_exe, "x", f"-o{tmp}", "-y", sevenz], check=True,
+                   capture_output=True, text=True)
+    os.remove(sevenz)
+    root = next(os.path.join(tmp, d) for d in os.listdir(tmp)
+                if d.lower().startswith("hashcat-") and os.path.isdir(os.path.join(tmp, d)))
+
+    entries: list[dict] = []
+    pack_path = os.path.join(_OUT, HASHCAT["name"] + ".pack")
+    with pyzipper.AESZipFile(pack_path, "w", compression=pyzipper.ZIP_DEFLATED,
+                             encryption=pyzipper.WZ_AES) as pack:
+        pack.setpassword(PACK_PASSWORD)
+        for dirpath, _dirs, files in os.walk(root):
+            for fn in files:
+                if fn in HASHCAT["exclude"]:
+                    continue
+                full = os.path.join(dirpath, fn)
+                arc = os.path.relpath(full, root).replace("\\", "/")
+                with open(full, "rb") as f:
+                    blob = f.read()
+                pack.writestr(arc, blob)
+                entries.append({"name": arc, "size": len(blob),
+                                "sha256": hashlib.sha256(blob).hexdigest()})
+    import shutil as _sh
+    _sh.rmtree(tmp, ignore_errors=True)
+
+    manifest = {k: HASHCAT[k] for k in ("name", "tool", "version", "platform", "license",
+                                        "source_url", "primary_exe")}
+    manifest["archive_sha256"] = sha
+    manifest["files"] = sorted(entries, key=lambda e: e["name"])
+    manifest["file_count"] = len(entries)
+    with open(os.path.join(_OUT, HASHCAT["name"] + ".manifest.json"), "w", encoding="utf-8") as f:
+        json.dump(manifest, f, indent=2)
+    print(f"  wrote {pack_path} ({os.path.getsize(pack_path):,} bytes, {len(entries)} files) + manifest")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--from-zip", default=None, help="build from a local (already-verified) zip")
+    ap.add_argument("--from-zip", default=None, help="build aircrack from a local (verified) zip")
+    ap.add_argument("--from-7z", default=None, help="build hashcat from a local .7z")
+    ap.add_argument("--hashcat", action="store_true", help="also build the hashcat pack")
     args = ap.parse_args()
     build_pack(AIRCRACK, args.from_zip)
+    if args.hashcat or args.from_7z:
+        build_hashcat_pack(args.from_7z)
     print("done.")
 
 

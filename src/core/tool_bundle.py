@@ -98,6 +98,7 @@ def extract_pack(pack: ToolPack, dest_dir: str, on_line: Optional[Line] = None) 
             out_path = os.path.join(dest_dir, name)
             if not os.path.realpath(out_path).startswith(os.path.realpath(dest_dir) + os.sep):
                 raise RuntimeError(f"unsafe pack member path: {name!r}")
+            os.makedirs(os.path.dirname(out_path) or dest_dir, exist_ok=True)  # hashcat has kernels/ etc.
             with open(out_path, "wb") as out:
                 out.write(blob)
             log(f"[tools] extracted {name}")
