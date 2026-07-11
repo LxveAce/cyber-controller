@@ -162,6 +162,44 @@ class _DetectWorker(QThread):
             self.failed.emit(str(exc))
 
 
+def _format_update_report(updates: list) -> str:
+    """Render FirmwareVault.check_updates() output as a log message. Pure/UI-free so it can be
+    unit-tested. Each update dict carries name / profile_id / cached_version / latest_version.
+    """
+    if not updates:
+        return "Firmware Vault: all cached firmware is up to date."
+    lines = [f"Firmware Vault: {len(updates)} update(s) available —"]
+    for u in updates:
+        name = u.get("name") or u.get("profile_id") or "?"
+        cached = u.get("cached_version", "?")
+        latest = u.get("latest_version", "?")
+        lines.append(f"  • {name}: cached {cached} → latest {latest}")
+    lines.append("Use 'Download to Vault' to fetch the latest.")
+    return "\n".join(lines)
+
+
+class _CheckUpdatesWorker(QThread):
+    """Check GitHub for firmware newer than the vault's cache, off the UI thread (network I/O).
+
+    One API call per CACHED profile (FirmwareVault.check_updates). Kept off the GUI thread for the
+    same reason as _VaultWorker — network latency must not freeze the UI, and results marshal back
+    via signals rather than touching widgets from this thread.
+    """
+
+    done = pyqtSignal(list)   # list[dict] from FirmwareVault.check_updates
+    failed = pyqtSignal(str)
+
+    def __init__(self, vault) -> None:
+        super().__init__()
+        self._vault = vault
+
+    def run(self) -> None:
+        try:
+            self.done.emit(list(self._vault.check_updates()))
+        except Exception as exc:  # noqa: BLE001 — a network/vault error must never crash the UI thread
+            self.failed.emit(str(exc))
+
+
 class _VaultWorker(QThread):
     """Download a profile's firmware into the vault off the UI thread (network I/O).
 
@@ -426,6 +464,14 @@ class FlashTab(QWidget):
         btn_download = QPushButton("Download to Vault")
         btn_download.clicked.connect(self._on_vault_download)
         vault_row.addWidget(btn_download)
+
+        self._btn_check_updates = QPushButton("Check for Updates")
+        self._btn_check_updates.setToolTip(
+            "Check GitHub for firmware releases newer than what you have cached (one API call per "
+            "cached profile). Reports what's outdated; does not download anything."
+        )
+        self._btn_check_updates.clicked.connect(self._on_vault_check_updates)
+        vault_row.addWidget(self._btn_check_updates)
 
         btn_clear_vault = QPushButton("Clear Cache")
         btn_clear_vault.clicked.connect(self._on_vault_clear)
@@ -1167,6 +1213,25 @@ class FlashTab(QWidget):
         worker.done.connect(_done)
         worker.finished.connect(lambda w=worker: self._bg_workers.discard(w))
         worker.start()
+
+    def _on_vault_check_updates(self) -> None:
+        """Check GitHub for firmware newer than the vault cache (off-thread); report to the log."""
+        self._btn_check_updates.setEnabled(False)
+        self._log("Firmware Vault: checking GitHub for updates to cached firmware…")
+        worker = _CheckUpdatesWorker(self._vault)
+        self._bg_workers.add(worker)
+        worker.done.connect(self._on_check_updates_done)
+        worker.failed.connect(self._on_check_updates_failed)
+        worker.finished.connect(lambda w=worker: self._bg_workers.discard(w))
+        worker.start()
+
+    def _on_check_updates_done(self, updates: list) -> None:
+        self._log(_format_update_report(updates))
+        self._btn_check_updates.setEnabled(True)
+
+    def _on_check_updates_failed(self, msg: str) -> None:
+        self._log(f"Firmware Vault: update check failed — {msg}")
+        self._btn_check_updates.setEnabled(True)
 
     def _on_vault_clear(self) -> None:
         """Clear the firmware vault cache."""

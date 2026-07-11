@@ -4,6 +4,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+- **"Check for Updates" in the Firmware Vault.** The vault could cache firmware and flash offline, but
+  `FirmwareVault.check_updates()` (one GitHub API call per *cached* profile, SSRF-allowlisted) was
+  CLI-only — no way to ask "is any of my cached firmware outdated?" from the app. Added a **Check for
+  Updates** button to the Flash tab's Firmware Vault card: runs the check off the UI thread and reports
+  each outdated profile ("cached X → latest Y") or "all cached firmware is up to date" in the flash log.
+  Read-only — reports what's stale, downloads nothing.
 - **Flash tab now routes a picked Meshtastic UF2 board to the uf2 backend.** The 1.7.0 Meshtastic
   UF2 family (nRF52840 / RP2040 / RP2350) added the resolver + engine dispatch, but the Flash tab only
   set `profile.variant` — not `profile.chip` — so a picked RAK4631/Pico2 kept `chip=auto` and fell

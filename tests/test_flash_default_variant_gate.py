@@ -339,3 +339,61 @@ def test_uf2_variant_chip_makes_engine_route_to_uf2():
     chip = flash_tab._uf2_chip_for_variant(prof, "meshtastic-rak4631-2.7.26", loaded)
     prof.chip = chip  # exactly what _on_flash does
     assert FlashEngine()._uf2_family_backend(prof) == "uf2"
+
+
+# ── Firmware Vault "Check for Updates" (wire firmware_vault.check_updates into the UI) ──
+
+
+def test_format_update_report_pure():
+    """The report formatter renders check_updates() output; empty means up to date."""
+    assert "up to date" in flash_tab._format_update_report([])
+    rep = flash_tab._format_update_report([
+        {"name": "Marauder", "profile_id": "marauder", "cached_version": "v1.12.1",
+         "latest_version": "v1.12.3"},
+        {"profile_id": "ghost_esp", "cached_version": "1.9.9", "latest_version": "1.9.10"},
+    ])
+    assert "2 update(s) available" in rep
+    assert "Marauder: cached v1.12.1 → latest v1.12.3" in rep
+    assert "ghost_esp: cached 1.9.9 → latest 1.9.10" in rep  # falls back to profile_id when no name
+
+
+def test_check_updates_done_reports_to_log(flash_tab_widget):
+    """The done handler writes the human report to the flash log and re-enables the button."""
+    ft = flash_tab_widget
+    ft._btn_check_updates.setEnabled(False)
+    ft._log_output.clear()
+    ft._on_check_updates_done([
+        {"name": "Bruce", "profile_id": "bruce",
+         "cached_version": "1.14", "latest_version": "1.15"},
+    ])
+    text = ft._log_output.toPlainText()
+    assert "1 update(s) available" in text and "Bruce: cached 1.14 → latest 1.15" in text
+    assert ft._btn_check_updates.isEnabled()  # button restored after the check
+
+
+def test_check_updates_done_all_current(flash_tab_widget):
+    ft = flash_tab_widget
+    ft._log_output.clear()
+    ft._on_check_updates_done([])
+    assert "up to date" in ft._log_output.toPlainText()
+
+
+def test_check_updates_failure_reports_and_reenables(flash_tab_widget):
+    """A network/vault error is surfaced (not swallowed) and the button is re-enabled."""
+    ft = flash_tab_widget
+    ft._btn_check_updates.setEnabled(False)
+    ft._log_output.clear()
+    ft._on_check_updates_failed("offline")
+    assert "update check failed — offline" in ft._log_output.toPlainText()
+    assert ft._btn_check_updates.isEnabled()
+
+
+def test_check_updates_button_hidden_in_simple_mode(flash_tab_widget):
+    """The button lives in the Vault card, which Simple mode hides (no orphan control). Uses
+    isHidden() — the explicit hide state — since the offscreen window is never shown, so isVisible()
+    would read False regardless of the mode toggle."""
+    ft = flash_tab_widget
+    ft.set_ui_mode("simple")
+    assert ft._vault_card.isHidden()
+    ft.set_ui_mode("pro")
+    assert not ft._vault_card.isHidden()
