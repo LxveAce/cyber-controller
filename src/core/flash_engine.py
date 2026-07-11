@@ -266,6 +266,7 @@ class FlashEngine:
             "rtl8720": self._flash_rtl8720,
             # Phase-3 scaffolds (HW-validation pending — argv/flow unit-tested, no board yet):
             "cc2538_bsl": self._flash_cc2538_bsl,  # cc2538-bsl -> TI CC2652P (Sniffle)
+            "hackrf_spiflash": self._flash_hackrf_spiflash,  # HackRF SPI flash (PortaPack Mayhem)
             "dfu": self._flash_dfu,   # dfu-util → RP2040/Pi Pico in DFU + generic USB-DFU
             "uf2": self._flash_uf2,   # UF2 mass-storage → RP2040-family / UF2 bootloaders
             "nrf_dfu": self._flash_nrf_dfu,  # Nordic nRF52 DFU .zip → ChameleonUltra / Nordic dongle DFU
@@ -819,6 +820,35 @@ class FlashEngine:
         if trigger == "sonoff-usb":
             argv.append("--bootloader-sonoff-usb")
         argv += ["-ewv", app_path]
+        rc = flash_core._run_stream(argv, on_line)
+        if progress:
+            progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
+        return rc == 0
+
+    def _flash_hackrf_spiflash(
+        self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
+    ) -> bool:
+        """HackRF SPI-flash write via ``hackrf_spiflash`` (PortaPack Mayhem etc.).
+
+        HW-validation pending — argv/flow unit-tested only. The HackRF is addressed over
+        libusb, not a serial ``port`` (``port`` is accepted for the uniform backend signature
+        but unused). Resolve the firmware image (a ``.bin`` extracted from the release zip, via
+        ``_resolve_binary``), then shell ``hackrf_spiflash -R -w <bin>`` (``-R`` resets into the
+        new firmware after the write) through the proven ``flash_core._run_stream``. We NEVER
+        report success when ``hackrf_spiflash`` is missing or nothing was flashed. CC only
+        *writes* the image — Mayhem's on-device apps are the transmitters.
+        """
+        on_line = _percent_adapter(progress)
+        tool = shutil.which("hackrf_spiflash")
+        if not tool:
+            on_line("[hackrf_spiflash] hackrf_spiflash not found. Install the HackRF host tools "
+                    "(Debian/Ubuntu: 'sudo apt install hackrf'; macOS: 'brew install hackrf'; "
+                    "Windows: the Great Scott Gadgets hackrf-tools build) and re-run.")
+            return False
+        app_path = self._resolve_binary(profile, on_line, "hackrf_spiflash")
+        if not app_path:
+            return False
+        argv = [tool, "-R", "-w", app_path]
         rc = flash_core._run_stream(argv, on_line)
         if progress:
             progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")

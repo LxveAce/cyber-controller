@@ -37,6 +37,16 @@ routing, and a full firmware-integration audit + honesty pass._
   (ElectronicCats CatSniffer V3 — passive 802.15.4/Zigbee/Thread/BLE/sub-GHz sniffer; CC1352P7 radio via
   `cc2538_bsl` + RP2040 bridge via `uf2`; `danger=""`). CatSniffer's `asset_match` is scoped to the sniffer build
   and `exclude_regex` drops the bundled airtag_spoofer (active TX). Offsets/SHAs `verify:` until real-hardware.
+- **PortaPack Mayhem SDR firmware + the new `hackrf_spiflash` flash backend (48 profiles).** New `hackrf_spiflash`
+  backend drives HackRF's libusb SPI-flash vendor command (`hackrf_spiflash -R -w <bin>`) — HackRF is
+  libusb-addressed, so no serial port; `-R` resets into the freshly written firmware. First (and only) consumer:
+  `mayhem` (portapack-mayhem/mayhem-firmware, GPL-3.0) — the flagship HackRF One / Pro / PortaRF PortaPack
+  firmware. Whole-flash raw image from `0x0` (no app-offset math); the flashable `.bin` is a **ZIP member** inside
+  `FIRMWARE_mayhem_vX.Y.Z.zip`, so the resolver zip-extracts and picks the per-board member (hackrf 1 MB /
+  portarf 2 MB / hpro 4 MB). `danger="illegal-tx"` — genuinely dual-use (large legit RX side: ADS-B, POCSAG/ACARS/
+  APRS, TPMS, spectrum recon) but bundles TX apps on protected/emergency bands; **label-and-warn, never block —
+  CC flashes firmware only and authors no TX payload**. Optional DFU-unbrick sub-flow reuses CC's existing `dfu`
+  backend (`1fc9:000c` `hackrf_usb.dfu`). Offsets/SHAs `verify:` until a real HackRF One flash.
 - **Wi-Fi Audit tab — the reachable UI for the offline WPA key-recovery pipeline (1.7.0).** The
   `crack_pipeline` + `wordlist_manager` engines were finished + unit-tested but had **no user-facing entry
   point**; a new **Wi-Fi Audit** sub-tab (Operate surface) wires them end-to-end: capture picker →

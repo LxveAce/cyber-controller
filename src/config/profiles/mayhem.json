@@ -1,0 +1,40 @@
+{
+  "name": "PortaPack Mayhem (HackRF One / Pro / PortaRF)",
+  "id": "mayhem",
+  "core_id": "mayhem",
+  "label": "PortaPack Mayhem — HackRF SDR firmware",
+  "description": "portapack-mayhem/mayhem-firmware — the flagship HackRF+PortaPack SDR firmware (RX-heavy: ADS-B, POCSAG/ACARS/APRS, TPMS, spectrum recon; and TX apps on protected/emergency bands). Transmitting on those bands unlicensed is illegal -> illegal-tx label. CC only flashes the firmware; Mayhem's own on-device apps are the transmitters. CC authors no TX payload.",
+  "repo": "portapack-mayhem/mayhem-firmware",
+  "backend": "hackrf_spiflash",
+  "protocol": null,
+  "danger": "illegal-tx",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "app_offset": "0x0",
+  "default_baud": 115200,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["hackrf"]},
+  "boards": [
+    {"name": "HackRF One + PortaPack H1/H2/H4M", "chip": "lpc43xx", "variant": "hackrf"},
+    {"name": "PortaRF", "chip": "lpc43xx", "variant": "portarf"},
+    {"name": "HackRF Pro (PRALINE) [experimental]", "chip": "lpc43xx", "variant": "hpro"}
+  ],
+  "firmware_urls": {
+    "repo": "https://github.com/portapack-mayhem/mayhem-firmware",
+    "latest": "https://github.com/portapack-mayhem/mayhem-firmware/releases/latest"
+  },
+  "support_files": {
+    "dfu_unbrick": "firmware/hackrf_usb.dfu (1fc9:000c, via CC's existing dfu backend)",
+    "factory_restore": "firmware/hackrf_usb.bin (hackrf_spiflash -R -w)"
+  },
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/portapack-mayhem/mayhem-firmware/releases/latest",
+    "asset_match": {"include_regex": "^FIRMWARE_mayhem_.*\\.zip$"},
+    "zip_member_map": {"hackrf": "firmware/firmware_hackrf.bin", "portarf": "firmware/firmware_portarf.bin", "hpro": "firmware/firmware_hpro.bin"},
+    "flash_cmd": "hackrf_spiflash -R -w <member>",
+    "verify_sha256": true,
+    "sha256": "verify:"
+  },
+  "note": "App is written by hackrf_spiflash -R -w (libusb vendor cmd), NOT dfu-util (dfu only RAM-loads a USB stack for unbrick) -> new hackrf_spiflash backend. The flashable .bin is a ZIP MEMBER inside FIRMWARE_mayhem_vX.Y.Z.zip -> resolver needs zip-extract + variant-member pick (hackrf 1MB / portarf 2MB / hpro 4MB). Whole-flash raw image from 0x0 (no app_offset math). HackRF Pro (hpro/PRALINE) is WIP/buggy in v2.4.0 -> experimental. danger illegal-tx (bundles EPIRB/SAME/P25/POCSAG TX apps) but genuinely dual-use with a large legit RX side; label-and-warn, never block; CC authors NO TX. Optional DFU-unbrick sub-flow via CC's existing dfu backend (1fc9:000c hackrf_usb.dfu) + factory-restore via hackrf_usb.bin. SHA read from the zip but kept verify: until a real HackRF One flash. Opens CC's SDR layer."
+}

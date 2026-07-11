@@ -2525,6 +2525,12 @@ _PROFILE_FILES = (
     # Two chips: CC1352P7 radio (cc2538_bsl) + RP2040 bridge (uf2). asset_match = sniffer_fw;
     # exclude_regex drops the bundled airtag_spoofer (active TX). danger "". SHAs verify: until HW.
     "catsniffer.json",
+    # PortaPack Mayhem (portapack-mayhem) — flagship HackRF+PortaPack SDR firmware. FIRST
+    # consumer of the NEW hackrf_spiflash backend (hackrf_spiflash -R -w; .bin is a ZIP member
+    # -> resolver extracts). danger illegal-tx (bundles EPIRB/SAME/P25/POCSAG TX apps; large
+    # legit RX side) -- CC only FLASHES, authors no TX. Whole-flash @0x0. SHA in the zip but
+    # verify: until a real HackRF flash.
+    "mayhem.json",
 )
 
 
