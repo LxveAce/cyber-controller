@@ -280,6 +280,28 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self.setDragMode(QGraphicsView.ScrollHandDrag)          # click-drag to pan
             self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)  # zoom toward the cursor
             self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
+            self._user_zoomed = False   # once the user wheels, stop auto-refitting on resize
+            self._pending_fit = None    # QRectF to (re)fit until then
+            self._refitting = False     # resizeEvent re-entrancy guard
+
+        def fit(self, rect) -> None:
+            """Frame *rect* now AND remember it, so the first REAL resize after the tab is shown re-fits
+            it correctly. Fixes the launch-render bug: the tab is built while hidden, so at construction
+            the viewport has no size and fitInView frames against a near-zero viewport (wrong scale) and
+            was never recomputed. Re-fitting on the next resize (below) makes it correct on first paint."""
+            from PyQt5.QtCore import QRectF
+            self._pending_fit = QRectF(rect)
+            self._user_zoomed = False
+            self.fitInView(rect, Qt.KeepAspectRatio)
+
+        def resizeEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+            super().resizeEvent(ev)
+            if self._pending_fit is not None and not self._user_zoomed and not self._refitting:
+                self._refitting = True
+                try:
+                    self.fitInView(self._pending_fit, Qt.KeepAspectRatio)
+                finally:
+                    self._refitting = False
 
         def _min_zoom(self) -> float:
             """Zoom-OUT floor: the scale at which the whole scene rect fits the viewport, so you can pull all
@@ -295,6 +317,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                     self._min_zoom(), self._MAX_SCALE)
             if f != 1.0:
                 self.scale(f, f)
+                self._user_zoomed = True   # the user took control — stop auto-refitting on resize
             ev.accept()   # consume the notch so it can't fall through to the scrollbars as a pan
 
     class _CameraLayer(QGraphicsItem):
@@ -470,6 +493,14 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._unloaded = False   # True while the scene is freed for a backgrounded tab (see hideEvent)
 
             root = QVBoxLayout(self)
+            _wip = QLabel(
+                "\U0001F6A7  Work in progress — the Flock map is still being built. Cameras only appear "
+                "from a live scan or a loaded cameras.geojson; a bundled dataset + one-click update are "
+                "still coming.")
+            _wip.setWordWrap(True)
+            _wip.setStyleSheet("background:#3d2c00;color:#f0c000;border:1px solid #7a5c00;"
+                               "border-radius:6px;padding:8px 10px;font-weight:600;")
+            root.addWidget(_wip)
             file_row = QHBoxLayout()
             self._btn_load = QPushButton("Load cameras.geojson…")
             self._btn_load.setToolTip("Open a saved Flock scan (the cameras.geojson a FlockSession writes).")
@@ -748,7 +779,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 if show_base:
                     self._scene.setSceneRect(0, 0, _WORLD_PX, _WORLD_PX)   # whole world, pannable
                     self._legend.setText("World basemap · no detections loaded. Blue = few · red = many.")
-                    self._view.fitInView(self._scene.sceneRect(), Qt.KeepAspectRatio)   # frame the globe
+                    self._view.fit(self._scene.sceneRect())   # frame the globe (re-fits on first resize)
                 else:
                     self._scene.setSceneRect(0, 0, _CANVAS_W, _CANVAS_H)
                     self._legend.setText("No detections loaded. Blue = few sightings · red = many.")
@@ -812,7 +843,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             else:
                 rect = self._scene.sceneRect()
             if rect.isValid() and not rect.isEmpty():
-                self._view.fitInView(rect, Qt.KeepAspectRatio)
+                self._view.fit(rect)
 
         def render_native(self, width: int = _CANVAS_W, height: int = _CANVAS_H) -> "QImage":
             """Render the scene into a QImage — pure, offscreen-testable (no window needed). Frames the
