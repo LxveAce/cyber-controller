@@ -72,6 +72,9 @@ class DeviceManager:
         # auto-attach the TargetIngestor, so a scan on ANY opened device feeds the shared pool (not only a
         # Devices-tab Connect).
         self._on_conn_opened: list = []
+        # Fired with (device) when a device's firmware (or forced state) changes via set_firmware — so the
+        # Broadcast panel + anything else can react (per-device sections, capability chips) without polling.
+        self._on_changed: list[DeviceCallback] = []
 
         self._hotplug: HotPlugMonitor | None = None
 
@@ -90,6 +93,11 @@ class DeviceManager:
         :meth:`open_connection` or an injected link via :meth:`attach_connection`. The cross-comm hub uses
         this to auto-attach the TargetIngestor so any opened device feeds the shared pool."""
         self._on_conn_opened.append(cb)
+
+    def on_device_changed(self, cb: DeviceCallback) -> None:
+        """Register ``cb(device)`` fired when a device's firmware / forced state changes (via
+        :meth:`set_firmware`). Lets the Broadcast panel repopulate reactively instead of polling."""
+        self._on_changed.append(cb)
 
     # ── Device registry ──────────────────────────────────────────────
 
@@ -125,6 +133,23 @@ class DeviceManager:
         """Return only devices that are currently connected."""
         with self._lock:
             return [d for d in self._devices.values() if d.connected]
+
+    def set_firmware(self, port: str, firmware: str, *, forced: bool = False) -> bool:
+        """The single authoritative way to set a device's firmware. Updates ``Device.firmware`` + the
+        ``firmware_forced`` flag and fires :meth:`on_device_changed`. ``forced=True`` marks a manual
+        user choice (Broadcast/Devices) that re-autodetect must not clobber. Returns True if a device
+        exists at *port*. Centralizes what used to be set in three scattered places, so the Devices tab,
+        Broadcast panel and the terminal all stay in sync from one call + one notification."""
+        with self._lock:
+            dev = self._devices.get(port)
+            if dev is None:
+                return False
+            changed = dev.firmware != firmware or dev.firmware_forced != forced
+            dev.firmware = firmware
+            dev.firmware_forced = forced
+        if changed:
+            self._fire_changed(dev)
+        return True
 
     # ── Serial connections ───────────────────────────────────────────
 
@@ -426,6 +451,13 @@ class DeviceManager:
                 cb(port, conn)
             except Exception:
                 log.exception("on_connection_opened callback error")
+
+    def _fire_changed(self, device: Device) -> None:
+        for cb in self._on_changed:
+            try:
+                cb(device)
+            except Exception:
+                log.exception("on_device_changed callback error")
 
     # ── Cleanup ──────────────────────────────────────────────────────
 

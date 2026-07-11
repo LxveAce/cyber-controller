@@ -54,6 +54,9 @@ class Device:
     port: str
     name: str = ""
     firmware: str = ""
+    #: True when the operator manually FORCED this firmware (Broadcast force-firmware / Devices combo).
+    #: A forced choice must survive the post-probe re-autodetect (which otherwise overwrites it).
+    firmware_forced: bool = False
     protocol: Protocol = Protocol.UNKNOWN
     connected: bool = False
     serial_number: str = ""
