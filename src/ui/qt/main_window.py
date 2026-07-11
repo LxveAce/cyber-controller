@@ -532,6 +532,12 @@ class CyberControllerWindow(QMainWindow):
         # tab lifecycle). It sits next to Wardrive since both are GPS-tagged field-survey views.
         self._flock_heatmap = FlockHeatmapTab()
         self._operate_surface.addTab(self._flock_heatmap, label_icon("Flock Map"), "Flock Map")
+        # Wi-Fi Audit (1.7.0): the reachable entry point for the offline WPA crack pipeline +
+        # wordlist manager (capture -> wordlist -> per-run consent -> hashcat/aircrack).
+        # Dictionary-only, bundles no cracking tools; the consent gate is never bypassed.
+        from src.ui.qt.wifi_audit_tab import WifiAuditTab
+        self._wifi_audit_tab = WifiAuditTab()
+        self._operate_surface.addTab(self._wifi_audit_tab, label_icon("Wi-Fi Audit"), "Wi-Fi Audit")
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its

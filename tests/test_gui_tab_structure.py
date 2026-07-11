@@ -117,12 +117,13 @@ def test_connect_surface_subtabs(qapp, isolated_settings):
 
 
 def test_operate_surface_subtabs(qapp, isolated_settings):
-    # The Operate action surface holds five sub-views — Targets (leads), Broadcast, Macros, Wardrive, Flock Map
-    # (FL F5) — and the re-parented widgets are the SAME objects the window still exposes on named attributes.
+    # The Operate action surface holds Targets (leads), Broadcast, Macros, Wardrive, Multi-Wardrive, Flock Map,
+    # and Wi-Fi Audit (1.7.0) — the re-parented widgets are the SAME objects the window exposes on named attrs.
     win = _make_window()
     surface = win._operate_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Targets", "Broadcast", "Macros", "Wardrive", "Multi-Wardrive", "Flock Map"]
+    assert titles == ["Targets", "Broadcast", "Macros", "Wardrive", "Multi-Wardrive", "Flock Map",
+                      "Wi-Fi Audit"]
     assert surface.widget(0) is win._targets_tab, "Targets sub-tab must be the TargetsTab object"
     assert surface.widget(1) is win._broadcast_bar, "Broadcast sub-tab must be the BroadcastBar object"
     assert surface.widget(2) is win._macro_tab, "Macros sub-tab must be the MacroTab object"

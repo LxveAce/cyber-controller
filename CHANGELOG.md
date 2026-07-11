@@ -23,6 +23,15 @@ routing, and a full firmware-integration audit + honesty pass._
   manually. An explicit (non-Auto) firmware choice is always honoured and never overridden.
 
 ### Added
+- **Wi-Fi Audit tab — the reachable UI for the offline WPA key-recovery pipeline (1.7.0).** The
+  `crack_pipeline` + `wordlist_manager` engines were finished + unit-tested but had **no user-facing entry
+  point**; a new **Wi-Fi Audit** sub-tab (Operate surface) wires them end-to-end: capture picker →
+  live tool-presence check (`detect_tools`) → wordlist picker (installed / BYO / catalog) → **a per-run
+  consent affirmation that is never bypassed** (`consent_prompt_text`) → convert (`hcxpcapngtool`) + crack
+  (`hashcat` mode 22000 `-a 0` **or** `aircrack-ng`) in a background `QThread` with streamed output + parsed
+  result. Dictionary-only (no brute force), and it bundles/installs **no** cracking tools. New
+  `tests/test_wifi_audit_tab.py` smoke/integration test drives the surface headless + asserts the consent
+  gate blocks a declined run.
 - **Round-2 firmware expansion — first two nRF52840 profiles (44 profiles).** `rnode_nrf` (markqvist RNode
   Firmware for RAK4631 / T-Echo / Heltec-T114 — Reticulum LoRa transport, `danger=""`) and `whad_butterfly`
   (whad-team ButteRFly multi-PHY BLE/Zigbee/ESB/Unifying/Mosart/ANT research fw, `danger="lab-only"`). These
