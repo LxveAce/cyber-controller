@@ -1507,15 +1507,17 @@ _MESHTASTIC_CHIP_ZIP = re.compile(r"^firmware-(esp32|esp32s2|esp32s3|esp32c3|esp
 _MESHTASTIC_BOARDS: Dict[str, List[str]] = {
     "esp32s3": [
         "heltec-v3", "heltec-wireless-tracker", "heltec-wsl-v3", "tbeam-s3-core",
-        "t-deck", "t-watch-s3", "t-eth-elite", "seeed-xiao-s3", "station-g2",
-        "tlora-t3s3-v1", "m5stack-cores3", "picomputer-s3", "unphone",
+        "t-deck", "t-deck-pro", "t-watch-s3", "t-eth-elite", "seeed-xiao-s3", "station-g2",
+        "station-g3", "tlora-t3s3-v1", "tlora-pager", "m5stack-cores3", "picomputer-s3", "unphone",
     ],
+    # tbeam0_7 / heltec-v1 / heltec-v2_0 / heltec-v2_1 pruned 2026-07-10: verified ABSENT from the
+    # 2.7.26 manifest, so they were advertised-but-unflashable (download_and_extract "no member").
     "esp32": [
-        "tbeam", "tbeam0_7", "tlora-v2-1-1_6", "tlora-v2-1-1_8", "heltec-v2_1",
-        "heltec-v2_0", "heltec-v1", "rak11200", "station-g1", "nano-g1",
+        "tbeam", "tlora-v2-1-1_6", "tlora-v2-1-1_8", "rak11200", "station-g1", "nano-g1",
         "m5stack-coreink", "t-lora-v1",
     ],
-    "esp32c3": ["esp32-c3-devkitm-1", "heltec-ht-ct62"],
+    # esp32-c3-devkitm-1 / heltec-ht-ct62 were stale; the 2.7.26 manifest ships these two.
+    "esp32c3": ["heltec-hru-3601", "heltec-ht62-esp32c3-sx1262"],
     # heltec-mesh-node-t114 is an nRF52840 (SX1262) board, NOT an ESP32-C6 — its Meshtastic image ships
     # as a .uf2 in the nrf52840 bundle, never as a .bin in an esp32c6 zip. Listing it here made it an
     # advertised-but-unflashable target (download_and_extract raised "zip has no member ..."). Flash
@@ -2072,7 +2074,13 @@ def _resolve_github(cfg: Dict) -> Tuple[str, List[Dict]]:
             return ("source-only", [])
         raise
     if am.get("expand") == "chip_zip_boards":
-        return tag, _expand_chip_zip_boards(p, raw)
+        assets = _expand_chip_zip_boards(p, raw)
+        # A profile can carry a SIBLING uf2 board family (Meshtastic nRF52840/RP2040/RP2350 flash
+        # by drag-drop, not esptool). Emit those variants too, each tagged flash_method="uf2" so the
+        # engine routes them to the uf2 backend instead of the profile's default esptool.
+        if p.get("chip_uf2_boards"):
+            assets = assets + _expand_chip_uf2_boards(p, raw)
+        return tag, assets
     if am.get("expand") == "per_board_zip":
         return tag, _expand_per_board_zip(p, raw)
     inc_re = re.compile(am["include_regex"], _regex_flags(am.get("regex_flags"))) if am.get("include_regex") else None
@@ -2135,6 +2143,42 @@ def _expand_chip_zip_boards(p: Dict, raw: List[Dict]) -> List[Dict]:
                 "merged": True,
                 "zip_name": czb["zip_name_template"].format(chip=chip, version=version),
                 "zip_member": czb["member_template"].format(board=board, chip=chip, version=version),
+            })
+    return out
+
+
+def _expand_chip_uf2_boards(p: Dict, raw: List[Dict]) -> List[Dict]:
+    """UF2 sibling of _expand_chip_zip_boards (Meshtastic nRF52840 / RP2040 / RP2350).
+
+    Those boards flash by dragging a ``.uf2`` onto the BOOT mass-storage volume, not via esptool.
+    Cross-join the per-chip board lists with the matching ``firmware-{chip}-{ver}.zip`` and emit the
+    ``.uf2`` member (NOT the ``.hex`` / ``-ota.zip`` DFU package the same zip also carries). No
+    offset — UF2 self-addresses. Each asset is tagged ``flash_method="uf2"`` so the flash engine
+    routes it to the uf2 backend regardless of the profile's default (esptool)."""
+    cub = p["chip_uf2_boards"]
+    zip_re = re.compile(cub["zip_regex"])
+    boards_by_chip = cub["boards_by_chip"]
+    member_tmpl = cub.get("member_template", "firmware-{board}-{version}.uf2")
+    name_tmpl = cub.get("asset_name_template", "meshtastic-{board}-{version}")
+    label_tmpl = cub.get("label_template", "{board}")
+    zipname_tmpl = cub.get("zip_name_template", "firmware-{chip}-{version}.zip")
+    out: List[Dict] = []
+    for a in raw:
+        name = a.get("name", "")
+        m = zip_re.match(name)
+        if not m:
+            continue
+        chip = m.group(cub.get("chip_group", 1))
+        version = m.group(cub.get("version_group", 2))
+        for board in boards_by_chip.get(chip, []):
+            out.append({
+                "name": name_tmpl.format(board=board, chip=chip, version=version),
+                "url": a.get("browser_download_url"),
+                "chip": chip,
+                "label": label_tmpl.format(board=board, chip=chip, version=version),
+                "zip_name": zipname_tmpl.format(chip=chip, version=version),
+                "zip_member": member_tmpl.format(board=board, chip=chip, version=version),
+                "flash_method": "uf2",
             })
     return out
 

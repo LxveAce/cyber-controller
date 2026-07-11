@@ -37,15 +37,14 @@
       "boards_by_chip": {
         "esp32s3": [
           "heltec-v3", "heltec-wireless-tracker", "heltec-wsl-v3", "tbeam-s3-core",
-          "t-deck", "t-watch-s3", "t-eth-elite", "seeed-xiao-s3", "station-g2",
-          "tlora-t3s3-v1", "m5stack-cores3", "picomputer-s3", "unphone"
+          "t-deck", "t-deck-pro", "t-watch-s3", "t-eth-elite", "seeed-xiao-s3", "station-g2",
+          "station-g3", "tlora-t3s3-v1", "tlora-pager", "m5stack-cores3", "picomputer-s3", "unphone"
         ],
         "esp32": [
-          "tbeam", "tbeam0_7", "tlora-v2-1-1_6", "tlora-v2-1-1_8", "heltec-v2_1",
-          "heltec-v2_0", "heltec-v1", "rak11200", "station-g1", "nano-g1",
+          "tbeam", "tlora-v2-1-1_6", "tlora-v2-1-1_8", "rak11200", "station-g1", "nano-g1",
           "m5stack-coreink", "t-lora-v1"
         ],
-        "esp32c3": ["esp32-c3-devkitm-1", "heltec-ht-ct62"],
+        "esp32c3": ["heltec-hru-3601", "heltec-ht62-esp32c3-sx1262"],
         "esp32c6": ["m5stack-unitc6l", "tlora-c6"],
         "esp32s2": []
       },
@@ -53,6 +52,26 @@
       "zip_name_template": "firmware-{chip}-{version}.zip",
       "asset_name_template": "meshtastic-{board}-{version}",
       "label_template": "Meshtastic {board}"
+    },
+    "chip_uf2_boards": {
+      "backend": "uf2",
+      "zip_regex": "^firmware-(nrf52840|rp2040|rp2350)-(.+)\\.zip$",
+      "chip_group": 1,
+      "version_group": 2,
+      "boards_by_chip": {
+        "nrf52840": [
+          "rak4631", "t-echo", "nano-g2-ultra", "thinknode_m1", "tracker-t1000-e",
+          "seeed_xiao_nrf52840_kit", "heltec-mesh-node-t114", "wio-tracker-wm1110",
+          "rak2560", "canaryone"
+        ],
+        "rp2040": ["pico", "picow", "rak11310", "senselora_rp2040"],
+        "rp2350": ["pico2", "pico2w", "rp2350-lora"]
+      },
+      "member_template": "firmware-{board}-{version}.uf2",
+      "zip_name_template": "firmware-{chip}-{version}.zip",
+      "asset_name_template": "meshtastic-{board}-{version}",
+      "label_template": "Meshtastic {board}",
+      "emit": {"method": "uf2"}
     }
   }
 }

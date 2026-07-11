@@ -37,6 +37,17 @@ routing, and a full firmware-integration audit + honesty pass._
   (ElectronicCats CatSniffer V3 — passive 802.15.4/Zigbee/Thread/BLE/sub-GHz sniffer; CC1352P7 radio via
   `cc2538_bsl` + RP2040 bridge via `uf2`; `danger=""`). CatSniffer's `asset_match` is scoped to the sniffer build
   and `exclude_regex` drops the bundled airtag_spoofer (active TX). Offsets/SHAs `verify:` until real-hardware.
+- **Meshtastic coverage expansion — ESP32 board-list refresh + nRF52840/RP2040/RP2350 UF2 support.**
+  Item A (esptool, existing backend): pruned four dead ESP32 slugs (`tbeam0_7`, `heltec-v1`, `heltec-v2_0`,
+  `heltec-v2_1` — verified absent from the 2.7.26 manifest, so they were advertised-but-unflashable),
+  refreshed the stale `esp32c3` slugs to `heltec-hru-3601` / `heltec-ht62-esp32c3-sx1262`, and added
+  `esp32s3` boards (t-deck-pro, station-g3, tlora-pager). Item B (drag-drop): the profile now declares a
+  `chip_uf2_boards` family for the nRF52840 / RP2040 / RP2350 boards (RAK4631, T-Echo, Nano G2 Ultra,
+  Pico2, …). A new resolver expander emits their `.uf2` members (never the `.hex`/`-ota.zip` the same zip
+  carries), each tagged `flash_method="uf2"`, and the flash engine routes a selected UF2-family chip to the
+  (existing) `uf2` backend instead of esptool — so CC never tries to esptool-write a `.uf2`. The legacy
+  `MeshtasticProfile` equivalence oracle was kept in lockstep. No new profile file (count unchanged); the
+  physical BOOT-drive drag-drop stays HW-gated pending a real RAK4631 / Pico2.
 - **nRF Sniffer for 802.15.4 profile — `nrf_dfu` extended to wrap a raw `.hex` (49 profiles).** `nrf802154_sniffer`
   (nordicsemi/nRF-Sniffer-for-802.15.4, NOASSERTION) — passive IEEE 802.15.4 / Zigbee / Thread capture into
   Wireshark (extcap plugin) on the nRF52840 Dongle (PCA10059). Receive-only, `danger=""`. Unlike Chameleon/RNode

@@ -337,6 +337,11 @@ class FlashEngine:
                     self._status = FlashStatus.FLASHING
                 try:
                     backend = (profile.backend or "esptool").lower()
+                    # A profile can carry a UF2 sub-family (e.g. Meshtastic's nRF52840/RP2040/RP2350
+                    # boards flash by drag-drop, while the profile's default backend is esptool for
+                    # the ESP32 family). If the SELECTED chip is in that sub-family, route to
+                    # the uf2 backend so we never try to esptool-write a .uf2.
+                    backend = self._uf2_family_backend(profile) or backend
                     handler = self._backends.get(backend)
                     if handler is None:
                         if progress:
@@ -357,6 +362,24 @@ class FlashEngine:
                 progress(0, f"Port {port} is busy with another flash/backup/erase — aborted so a second "
                             f"esptool can't fight the first over the same port (a known way to brick it).")
             return False
+
+    @staticmethod
+    def _uf2_family_backend(profile: FirmwareProfile) -> str | None:
+        """Return ``"uf2"`` when the selected chip belongs to a profile's UF2 sub-family.
+
+        A profile whose default backend is esptool (the ESP32 family) can also declare a
+        ``chip_uf2_boards`` block for board families that flash by drag-drop (Meshtastic's
+        nRF52840 / RP2040 / RP2350). Those chips are UF2-only, so if the selected ``profile.chip``
+        is one of them we route to the uf2 backend rather than let esptool try to write a ``.uf2``.
+        Returns ``None`` (no override) for everything else. Kept a pure local lookup — no network.
+        """
+        chip = (profile.chip or "").lower()
+        if not chip or chip == "auto":
+            return None
+        uf2 = (profile.raw.get("resolver_params", {}) or {}).get("chip_uf2_boards", {}) or {}
+        if chip in (uf2.get("boards_by_chip", {}) or {}):
+            return "uf2"
+        return None
 
     # ── esptool (the bulk of firmwares) ──────────────────────────────
 
