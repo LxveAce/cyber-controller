@@ -1,0 +1,38 @@
+{
+  "name": "RNode Firmware (nRF52)",
+  "id": "rnode_nrf",
+  "core_id": "rnode_nrf",
+  "label": "RNode Firmware (nRF52840) — Reticulum LoRa transport",
+  "description": "markqvist/RNode_Firmware for nRF52840 LoRa boards (RAK4631, T-Echo, Heltec T114). Reticulum (RNS) LoRa transport; no attack/jammer payload, but a user-tunable TX radio — authorized/licensed use only. CC flashes the vendor DFU package via Nordic Secure DFU over serial.",
+  "repo": "markqvist/RNode_Firmware",
+  "backend": "nrf_dfu",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "nrf_dfu_zip",
+  "app_offset": null,
+  "default_baud": 115200,
+  "nrf_dfu_tool": null,
+  "nrf_dfu_transport": "serial",
+  "nrf_dfu_baud": 115200,
+  "nrf_dfu_flow_control": 0,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["rak4631"]},
+  "boards": [
+    {"name": "RAK4631 (WisBlock, SX1262)", "chip": "nrf52840", "dfu_package": "rnode_firmware_rak4631.zip"},
+    {"name": "LilyGo T-Echo",             "chip": "nrf52840", "dfu_package": "rnode_firmware_techo.zip"},
+    {"name": "Heltec Mesh Node T114",     "chip": "nrf52840", "dfu_package": "rnode_firmware_heltec_t114.zip"}
+  ],
+  "firmware_urls": {
+    "repo": "https://github.com/markqvist/RNode_Firmware",
+    "latest": "https://github.com/markqvist/RNode_Firmware/releases/latest"
+  },
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/markqvist/RNode_Firmware/releases/latest",
+    "asset_match": {"per_board_zip": "rnode_firmware_{board}.zip"},
+    "package_is_zip": true,
+    "sha256": "verify:"
+  },
+  "note": "The per-board .zip is a Nordic legacy DFU 0.5 package (manifest.json + .dat + .bin) passed WHOLE as the DFU -pkg (no member extraction), matching CC's chameleon-style nrf_dfu path. Board must be in serial DFU mode (double-tap reset, Adafruit-nRF52 bootloader) before flashing. adafruit-nrfutil (or legacy nrfutil 6.x) must be on PATH. VERIFY on real HW: nrf_dfu_flow_control (0 vs 1) + that adafruit-nrfutil completes the write — nrf_dfu is bench-gated with ZERO prior HW-validated consumers. Same rnodeconf-provisioning caveat as the ESP32 family: flash != signed/provisioned RNode. Zip SHA-256 known from the API but kept verify: until a real DFU flash."
+}

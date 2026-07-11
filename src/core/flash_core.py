@@ -2501,6 +2501,17 @@ _PROFILE_FILES = (
     # LOCAL resolver (same model as 'custom'): CC flashes the user-extracted factory image
     # (factory/factory_WROOM-32.bin), a merged single bin @0x0. Bench: ESP32-WROOM-32 on v2.4.0.
     "esp_at.json",
+    # Round-2 firmware expansion (bundled into 1.7.0; offsets/SHAs verify: until real-HW confirm).
+    # RNode Firmware (nRF52840) - markqvist/RNode_Firmware for RAK4631/T-Echo/Heltec-T114. Reticulum
+    # LoRa transport (danger "" like the ESP32 rnode sibling; licensed-TX caveat in description).
+    # FIRST shipped consumer of the built-but-unused nrf_dfu backend: per-board .zip = a whole
+    # Nordic legacy-DFU 0.5 package fed to adafruit-nrfutil. nrf_dfu bench-gated -> HW gate matters.
+    "rnode_nrf.json",
+    # WHAD ButteRFly (nRF52840) - whad-team/butterfly multi-PHY (BLE/Zigbee/ESB/Unifying/Mosart).
+    # TWO flash paths on two built-but-unused backends: Nordic PCA10059 via nrf_dfu (butterfly-
+    # fwupgrade.zip), Makerdiary MDK via uf2 drag-drop (butterfly-mdk-fwupgrade.uf2). Inject/hijack
+    # = active TX -> danger lab-only (labelled, never blocked). SHAs known but verify:.
+    "whad_butterfly.json",
 )
 
 

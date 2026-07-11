@@ -1,0 +1,39 @@
+{
+  "name": "WHAD ButteRFly",
+  "id": "whad_butterfly",
+  "core_id": "whad_butterfly",
+  "label": "WHAD ButteRFly — multi-protocol BLE/Zigbee/ESB/Unifying/Mosart/ANT nRF52840 research fw",
+  "description": "whad-team/butterfly — sniff/scan/hijack + PDU-inject across BLE, Zigbee, Enhanced ShockBurst, Logitech Unifying, Mosart and ANT, driven from the host whad-client. Inject/hijack are active TX -> lab-only, authorized research only. No jammer/deauth. CC only flashes the firmware; the WHAD host authors any injected traffic.",
+  "repo": "whad-team/butterfly",
+  "backend": "nrf_dfu",
+  "protocol": null,
+  "danger": "lab-only",
+  "supports_suicide": false,
+  "image_model": "nrf_dfu_zip",
+  "app_offset": null,
+  "default_baud": 115200,
+  "nrf_dfu_tool": null,
+  "nrf_dfu_transport": "serial",
+  "nrf_dfu_baud": 115200,
+  "nrf_dfu_flow_control": 0,
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["nordic"]},
+  "boards": [
+    {"name": "Nordic nRF52840 Dongle (PCA10059)", "chip": "nrf52840", "backend": "nrf_dfu", "dfu_package": "butterfly-fwupgrade.zip"},
+    {"name": "Makerdiary nRF52840 MDK USB Dongle", "chip": "nrf52840", "backend": "uf2", "uf2_asset": "butterfly-mdk-fwupgrade.uf2"}
+  ],
+  "firmware_urls": {
+    "repo": "https://github.com/whad-team/butterfly",
+    "latest": "https://github.com/whad-team/butterfly/releases/latest"
+  },
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/whad-team/butterfly/releases/latest",
+    "assets": [
+      {"board": "nordic_nrf52840_dongle",  "asset_match": "butterfly-fwupgrade.zip",     "backend": "nrf_dfu", "sha256": "verify:"},
+      {"board": "makerdiary_mdk_dongle",   "asset_match": "butterfly-mdk-fwupgrade.uf2", "backend": "uf2",     "sha256": "verify:"}
+    ],
+    "chip_map": {"strategy": "fixed", "chip": "nrf52840"}
+  },
+  "note": "Two flash paths on two existing built-but-unused backends: Nordic dongle via nrf_dfu (adafruit-nrfutil dfu serial -pkg butterfly-fwupgrade.zip), Makerdiary MDK via uf2 drag-drop (butterfly-mdk-fwupgrade.uf2). Do NOT bundle whad-client (host tool) — pip/host dependency, out of CC flash scope. VERIFY on real HW: nrf_dfu path shares chameleon/rnode_nrf's bench gate (zero prior HW-validated nrf_dfu consumers). All four inject/hijack paths are active TX -> danger lab-only; label the injection, never block. SHAs known from API but verify:."
+}
