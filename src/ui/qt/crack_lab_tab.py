@@ -180,109 +180,146 @@ class _WordlistCatalogDialog(QDialog):
         super().closeEvent(event)
 
 
-class _ToolInstallWorker(QThread):
-    """Downloads + verifies + installs one crack tool off the GUI thread, streaming progress lines."""
+class _ToolEnableWorker(QThread):
+    """Unpacks one bundled tool pack off the GUI thread (after the folder is Defender-excluded)."""
 
     line = pyqtSignal(str)
-    done = pyqtSignal(str, str)  # (installed_exe or "", error or "")
+    done = pyqtSignal(bool, str)  # (ok, message)
 
-    def __init__(self, spec) -> None:
+    def __init__(self, pack) -> None:
         super().__init__()
-        self._spec = spec
+        self._pack = pack
 
     def run(self) -> None:  # noqa: D401 - QThread entry point
         try:
-            path = ti.install_tool(self._spec, on_line=self.line.emit)
-            self.done.emit(path, "")
+            from src.core import tool_bundle
+            ok, msg = tool_bundle.enable_bundled(self._pack, on_line=self.line.emit)
+            self.done.emit(ok, msg)
         except Exception as exc:  # never let the worker die silently
-            log.exception("tool install failed")
-            self.done.emit("", str(exc))
+            log.exception("enable bundled tool failed")
+            self.done.emit(False, str(exc))
 
 
 class _ToolsDialog(QDialog):
-    """Get the offline-crack tools: auto-fetch where an official binary exists (aircrack-ng), install
-    guidance for the rest. Downloads run off the GUI thread and stream into the terminal."""
+    """OPTIONAL external engines. Crack Lab's built-in native cracker already works; aircrack-ng/hashcat
+    are extras (faster + full CLI). They ship as encrypted packs; enabling one unpacks it — but Windows
+    Defender flags them as PUA, so it's gated behind a one-time, opt-in folder exclusion the user
+    controls. There is NO fetching (the vendor host is unreliable) — everything is bundled."""
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Get cracking tools")
-        self.setMinimumWidth(600)
-        self._worker: _ToolInstallWorker | None = None
+        self.setWindowTitle("Optional external engines")
+        self.setMinimumWidth(660)
+        self._worker: _ToolEnableWorker | None = None
+        from src.core import defender, tool_bundle
+        self._defender = defender
+        self._tool_bundle = tool_bundle
         root = QVBoxLayout(self)
 
         intro = QLabel(
-            "Cyber Controller does not bundle the GPL cracking tools, but it can fetch the ones with an "
-            "official prebuilt binary (verified) and shows you how to get the rest. Installed tools go "
-            "in your CC tools folder and are found automatically.")
+            "Crack Lab's <b>built-in native cracker works right now</b> — no install, no antivirus "
+            "prompts. These external tools are OPTIONAL: aircrack-ng and hashcat can be faster (hashcat "
+            "uses your GPU) and give you their full command line in the terminal.")
         intro.setWordWrap(True)
         root.addWidget(intro)
 
-        self._install_buttons: dict[str, QPushButton] = {}
-        for row in ti.tool_availability():
-            box = QHBoxLayout()
-            status = f"✓ present ({row.source})" if row.present else "✗ not found"
-            lbl = QLabel(
-                f"<b>{row.tool}</b> — {status}"
-                f"<br><span style='color:#8b949e;'>{row.guidance}</span>")
+        excl_dir = tool_bundle.enable_dir()
+        if defender.is_windows() and defender.pua_protection_on() is not False:
+            notice = QLabel(
+                "<b>Heads-up:</b> Windows Defender flags these standard tools as PUA and will delete "
+                "them unless you add a one-time exclusion for CC's tools folder. That turns off Defender "
+                "scanning for THAT folder only — a deliberate trade-off you opt into. Prefer not to? The "
+                "native cracker already does the job.")
+            notice.setWordWrap(True)
+            notice.setObjectName("muted")
+            root.addWidget(notice)
+            cmd_row = QHBoxLayout()
+            self._cmd_edit = QLineEdit(defender.exclusion_command(excl_dir))
+            self._cmd_edit.setReadOnly(True)
+            cmd_row.addWidget(self._cmd_edit, 1)
+            copy_btn = QPushButton("Copy")
+            copy_btn.clicked.connect(self._copy_cmd)
+            cmd_row.addWidget(copy_btn)
+            uac_btn = QPushButton("Add exclusion (admin)")
+            uac_btn.clicked.connect(self._add_exclusion)
+            cmd_row.addWidget(uac_btn)
+            root.addLayout(cmd_row)
+            hint = QLabel("Run that in an <b>admin PowerShell</b>, or click “Add exclusion (admin)” for a "
+                          "UAC prompt — then Enable a tool below.")
+            hint.setWordWrap(True)
+            hint.setObjectName("muted")
+            root.addWidget(hint)
+
+        self._enable_buttons: dict[str, QPushButton] = {}
+        for pack in tool_bundle.list_packs():
+            row = QHBoxLayout()
+            lbl = QLabel(f"<b>{pack.tool}</b> {pack.version} — bundled (encrypted). Enable to unpack it "
+                         "and use its full CLI from the terminal.")
             lbl.setWordWrap(True)
-            box.addWidget(lbl, 1)
-            if row.can_autofetch:
-                btn = QPushButton("Install")
-                btn.clicked.connect(lambda _=False, t=row.tool: self._install(t))
-                self._install_buttons[row.tool] = btn
-                box.addWidget(btn)
-            root.addLayout(box)
+            row.addWidget(lbl, 1)
+            btn = QPushButton("Enable…")
+            btn.clicked.connect(lambda _=False, p=pack: self._enable(p))
+            self._enable_buttons[pack.name] = btn
+            row.addWidget(btn)
+            root.addLayout(row)
+
+        for r in ti.tool_availability():
+            if r.present:
+                root.addWidget(QLabel(f"✓ {r.tool} already detected ({r.source}) — usable as-is."))
 
         self._log = QPlainTextEdit()
         self._log.setReadOnly(True)
         self._log.setMaximumHeight(120)
-        self._log.setPlaceholderText("install progress appears here (and in the terminal)")
+        self._log.setPlaceholderText("progress appears here (and in the terminal)")
         root.addWidget(self._log)
 
         close = QPushButton("Close")
         close.clicked.connect(self.accept)
         root.addWidget(close)
 
-    def _install(self, tool: str) -> None:
+    def _copy_cmd(self) -> None:
+        from PyQt5.QtWidgets import QApplication
+        QApplication.clipboard().setText(self._cmd_edit.text())
+        self._log.appendPlainText("[tools] exclusion command copied to clipboard")
+
+    def _add_exclusion(self) -> None:
+        self._log.appendPlainText("[tools] requesting an elevated Defender exclusion — approve the UAC "
+                                  "prompt…")
+        ok = self._defender.add_exclusion_elevated(self._tool_bundle.enable_dir())
+        self._log.appendPlainText("[tools] exclusion added." if ok else
+                                  "[tools] not added (declined/failed) — run the command manually.")
+
+    def _enable(self, pack) -> None:
         if self._worker is not None and self._worker.isRunning():
-            return  # one install at a time
-        spec = ti.spec_for(tool)
-        if spec is None:
-            return
-        btn = self._install_buttons.get(tool)
+            return  # one at a time
+        btn = self._enable_buttons.get(pack.name)
         if btn is not None:
             btn.setEnabled(False)
-            btn.setText("Installing…")
-        self._worker = _ToolInstallWorker(spec)
+            btn.setText("Enabling…")
+        self._worker = _ToolEnableWorker(pack)
         self._worker.line.connect(self._on_line)
-        self._worker.done.connect(lambda path, err, t=tool: self._on_done(t, path, err))
+        self._worker.done.connect(lambda ok, msg, p=pack: self._on_done(p, ok, msg))
         self._worker.start()
 
     def _on_line(self, text: str) -> None:
         self._log.appendPlainText(text)
         try:
             from src.core.activity_log import activity_log
-            activity_log().emit_line("install", text)
+            activity_log().emit_line("tools", text)
         except Exception:  # noqa: BLE001
             pass
 
-    def _on_done(self, tool: str, path: str, err: str) -> None:
-        btn = self._install_buttons.get(tool)
-        if err:
-            self._log.appendPlainText(f"[error] {err}")
-            if btn is not None:
-                btn.setEnabled(True)
-                btn.setText("Retry")
-        else:
-            self._log.appendPlainText(f"[ok] {tool} installed: {path}")
-            if btn is not None:
-                btn.setText("Installed ✓")
-                btn.setEnabled(False)
+    def _on_done(self, pack, ok: bool, msg: str) -> None:
+        self._log.appendPlainText(("[ok] " if ok else "[error] ") + msg)
+        btn = self._enable_buttons.get(pack.name)
+        if btn is not None:
+            btn.setText("Enabled ✓" if ok else "Retry")
+            btn.setEnabled(not ok)
 
     def closeEvent(self, event) -> None:
         w = self._worker
         if w is not None and w.isRunning():
-            w.terminate()   # like the crack worker's stop; a killed download leaves only a .part temp
+            w.terminate()
             w.wait(2000)
         super().closeEvent(event)
 

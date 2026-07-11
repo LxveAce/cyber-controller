@@ -104,3 +104,32 @@ def extract_pack(pack: ToolPack, dest_dir: str, on_line: Optional[Line] = None) 
     exe = os.path.join(dest_dir, pack.primary_exe)
     log(f"[tools] {pack.tool} {pack.version} unpacked into {dest_dir}")
     return exe
+
+
+def enable_dir() -> str:
+    """The folder bundled tools are extracted into — the one the user Defender-excludes. Parallel to the
+    resolver's tools dir so :func:`crack_pipeline.detect_tools` finds the enabled tools afterward."""
+    from .tool_installer import default_tools_dir
+    return default_tools_dir()
+
+
+def enable_bundled(pack: ToolPack, on_line: Optional[Line] = None) -> tuple[bool, str]:
+    """Extract *pack* into ``enable_dir()/<tool>/`` and confirm the primary exe actually runs.
+
+    The caller MUST have already added a Defender exclusion for :func:`enable_dir` (else the extracted
+    PUA binary is re-quarantined). Returns (ok, message) — a Defender block is reported honestly, never
+    as a fake success."""
+    from . import defender
+    log: Line = on_line or (lambda *_a: None)
+    dest = os.path.join(enable_dir(), pack.tool)
+    try:
+        exe = extract_pack(pack, dest, log)
+    except Exception as exc:  # noqa: BLE001
+        return (False, f"extract failed: {exc}")
+    if not os.path.isfile(exe):
+        return (False, "extracted, but the tool binary is missing — Windows Defender likely quarantined "
+                       "it. Add the exclusion (see the notice) for this folder and try again.")
+    if defender.is_windows() and not defender.exe_runs(exe):
+        return (False, "extracted, but the tool won't launch — Defender is still blocking it. Make sure "
+                       "the exclusion covers this folder, then try again.")
+    return (True, f"{pack.tool} enabled: {exe}")
