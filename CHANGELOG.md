@@ -4,6 +4,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+- **Flash tab now routes a picked Meshtastic UF2 board to the uf2 backend.** The 1.7.0 Meshtastic
+  UF2 family (nRF52840 / RP2040 / RP2350) added the resolver + engine dispatch, but the Flash tab only
+  set `profile.variant` — not `profile.chip` — so a picked RAK4631/Pico2 kept `chip=auto` and fell
+  through to esptool (which can't write a `.uf2`). The tab now recovers the picked variant's chip and
+  sets it when the variant is a UF2-family board, so the engine's `_uf2_family_backend` routes it
+  correctly; esptool variants keep chip auto-detect untouched. (Physical drag-drop still HW-gated.)
 
 ## [1.7.0] — 2026-07-09
 

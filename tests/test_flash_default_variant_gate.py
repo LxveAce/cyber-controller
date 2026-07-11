@@ -293,3 +293,49 @@ def test_batch_marauder_auto_confirms_and_cancel_aborts(flash_tab_widget, monkey
     assert called["warning"] is True, "a Marauder+Auto batch confirms up front"
     assert ft._batch_jobs == [], "cancel aborts the batch — no jobs started"
     assert "cancelled" in ft._log_output.toPlainText().lower()
+
+
+# ── UF2-family chip routing (Meshtastic nRF52840/RP2040/RP2350 -> uf2 backend) ──
+
+
+def _mesh_profile():
+    """Load the real Meshtastic profile (carries the chip_uf2_boards family in .raw)."""
+    from src.core.resources import resource_path
+    return flash_tab.FirmwareProfile.from_file(
+        resource_path("src", "config", "profiles") / "meshtastic.json"
+    )
+
+
+def test_uf2_chip_for_variant_picks_uf2_family_chip():
+    """A picked nRF52840/RP2040/RP2350 variant resolves to its chip so the flash routes to uf2."""
+    prof = _mesh_profile()
+    loaded = [
+        {"name": "meshtastic-rak4631-2.7.26", "chip": "nrf52840"},
+        {"name": "meshtastic-pico2-2.7.26", "chip": "rp2350"},
+        {"name": "meshtastic-heltec-v3-2.7.26", "chip": "esp32s3"},  # esptool board
+    ]
+    assert flash_tab._uf2_chip_for_variant(prof, "meshtastic-rak4631-2.7.26", loaded) == "nrf52840"
+    assert flash_tab._uf2_chip_for_variant(prof, "meshtastic-pico2-2.7.26", loaded) == "rp2350"
+    # An esptool board's variant must NOT override chip (leaves auto-detect intact).
+    assert flash_tab._uf2_chip_for_variant(prof, "meshtastic-heltec-v3-2.7.26", loaded) is None
+    # Auto (empty variant) and unknown names never override.
+    assert flash_tab._uf2_chip_for_variant(prof, "", loaded) is None
+    assert flash_tab._uf2_chip_for_variant(prof, "meshtastic-nope-2.7.26", loaded) is None
+
+
+def test_uf2_chip_for_variant_noop_without_family():
+    """A profile with no chip_uf2_boards block never overrides the chip."""
+    from src.core.flash_engine import FirmwareProfile
+    plain = FirmwareProfile(backend="esptool", raw={"resolver_params": {}})
+    loaded = [{"name": "x", "chip": "nrf52840"}]
+    assert flash_tab._uf2_chip_for_variant(plain, "x", loaded) is None
+
+
+def test_uf2_variant_chip_makes_engine_route_to_uf2():
+    """End-to-end: setting the picked UF2 chip makes the engine dispatch to the uf2 backend."""
+    from src.core.flash_engine import FlashEngine
+    prof = _mesh_profile()
+    loaded = [{"name": "meshtastic-rak4631-2.7.26", "chip": "nrf52840"}]
+    chip = flash_tab._uf2_chip_for_variant(prof, "meshtastic-rak4631-2.7.26", loaded)
+    prof.chip = chip  # exactly what _on_flash does
+    assert FlashEngine()._uf2_family_backend(prof) == "uf2"

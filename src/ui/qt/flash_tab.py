@@ -51,6 +51,29 @@ log = logging.getLogger(__name__)
 _PROFILES_DIR = resource_path("src", "config", "profiles")
 
 
+def _uf2_chip_for_variant(
+    profile: FirmwareProfile, variant_name: str, loaded_variants: list
+) -> str | None:
+    """Return the UF2-family chip for a picked variant of a mixed-backend profile, else ``None``.
+
+    Meshtastic's default backend is esptool (the ESP32 family), but it also declares a
+    ``chip_uf2_boards`` family — nRF52840 / RP2040 / RP2350 boards that flash by UF2 drag-drop.
+    Those chips are NOT auto-detectable (they enumerate as a mass-storage volume, not a serial
+    chip-id), so ``profile.chip`` stays ``auto`` and the engine can't tell it should route to the
+    uf2 backend. If the picked variant is one of those UF2 boards, return its chip so the caller can
+    set ``profile.chip`` and the engine routes correctly. Pure/UI-free so it can be unit-tested; a
+    no-op (``None``) for esptool-only profiles or esptool variants, leaving chip auto-detect intact.
+    """
+    uf2 = (profile.raw.get("resolver_params", {}) or {}).get("chip_uf2_boards", {}) or {}
+    fam = uf2.get("boards_by_chip", {}) or {}
+    if not fam or not variant_name:
+        return None
+    for v in loaded_variants:
+        if v.get("name") == variant_name and v.get("chip") in fam:
+            return v.get("chip")
+    return None
+
+
 def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
     """Create a card-styled QFrame with optional title label."""
     card = QFrame()
@@ -214,6 +237,10 @@ class FlashTab(QWidget):
         self._batch_ok = 0
         self._pending_variant: str | None = None  # variant to select once the async list lands
         self._pending_flash_hint: str | None = None  # post-flash "screen blank? re-pick" hint (B2)
+        # last-fetched variant dicts ({name,label,chip,url}) for the current profile — kept so
+        # _on_flash can recover a picked variant's chip (needed to route a mixed-backend profile's
+        # UF2 board to the uf2 backend; see _uf2_chip_for_variant).
+        self._loaded_variants: list = []
         self._profiles: dict[str, Path] = {}  # display name -> path
         self._profile_objs: dict[str, FirmwareProfile] = {}  # display name -> loaded profile
 
@@ -532,6 +559,9 @@ class FlashTab(QWidget):
         # stale list can't repopulate the picker for the wrong profile.
         if self.sender() is not self._variant_loader:
             return
+        # Keep the full dicts so _on_flash can recover a picked variant's chip (the combo only
+        # stores the variant NAME as data). Needed to route UF2-family boards to the uf2 backend.
+        self._loaded_variants = list(variants)
         # Drop the "Loading…" placeholder, keep "Auto" at index 0.
         for i in range(self._variant_combo.count() - 1, 0, -1):
             self._variant_combo.removeItem(i)
@@ -805,6 +835,13 @@ class FlashTab(QWidget):
 
         variant = self._variant_combo.currentData() or ""
         profile.variant = variant
+        # If the picked variant is a UF2 board of a mixed-backend profile (Meshtastic nRF52840/
+        # RP2040/RP2350), set profile.chip to that board's chip so the engine routes it to the uf2
+        # backend instead of esptool — those chips aren't auto-detectable, so without this the flash
+        # falls through to esptool and fails on a .uf2. No-op (auto-detect intact) for esptool.
+        uf2_chip = _uf2_chip_for_variant(profile, variant, self._loaded_variants)
+        if uf2_chip:
+            profile.chip = uf2_chip
         # B2 — flash-default honesty. Marauder's Auto default is per-chip; on the classic-esp32 bucket
         # (every CYD, which we can't positively ID over a shared UART bridge) it's the generic ILI9341
         # build, the wrong display driver for most such panels — their screen stays blank after a flash
