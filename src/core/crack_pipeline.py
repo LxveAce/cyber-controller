@@ -11,10 +11,12 @@ runs the standard offline recovery chain against it:
 
 Deliberate honesty / reliability invariants (load-bearing, not decoration):
 
-* **Nothing is bundled.** hcxtools (``hcxpcapngtool``), hashcat and aircrack-ng are GPL and are
-  NOT vendored or auto-installed -- CC *shells out* to whatever the operator installed.
-  :func:`detect_tools` reports exactly what is present; a missing tool yields an honest "install
-  it" message, never a fake success. Keeps CC's license clean and ships no attack binaries.
+* **Not bundled; fetched or found.** hcxtools (``hcxpcapngtool``), hashcat and aircrack-ng are GPL and
+  are NOT vendored into CC. CC *shells out* to whatever is on PATH or in the CC tools dir; where an
+  official prebuilt binary exists (aircrack-ng on Windows) the in-app installer
+  (:mod:`src.core.tool_installer`) can fetch + verify it on demand, and everything else gets honest
+  install guidance. :func:`detect_tools` reports exactly what is present; a missing tool yields an
+  honest "install it" message, never a fake success. CC ships no attack binaries.
 * **Dictionary-only.** The only attack mode built here is hashcat straight mode (``-a 0``) /
   aircrack-ng wordlist mode. Brute-force / mask (``-a 3``) is intentionally NOT built: it is a
   different legal + expectations conversation (hours-to-never runtimes, easy to misrepresent), so
@@ -106,9 +108,21 @@ def _probe_version(path: str, args: tuple[str, ...]) -> str:
     return ""
 
 
+def _installed_fallback(name: str) -> Optional[str]:
+    """A tool the operator installed via the in-app installer (or hand-dropped) into the CC tools dir,
+    consulted after PATH so an installed aircrack-ng is found even when it isn't globally on PATH. The
+    lazy import avoids a load-time cycle with tool_installer (which imports these tool names from here)."""
+    try:
+        from .tool_installer import installed_tools
+        return installed_tools().get(name)
+    except Exception:  # noqa: BLE001 — the fallback must never break detection
+        return None
+
+
 def detect_tools() -> dict[str, ToolStatus]:
-    """Resolve the three external tools on PATH -> {name: ToolStatus}. No tool is required present;
-    the caller decides what it can do with what's installed (hashcat OR aircrack is enough to
+    """Resolve the three external tools -> {name: ToolStatus}. Prefers PATH, then falls back to the CC
+    tools dir (``~/.cyber-controller/tools`` — where the in-app installer puts them). No tool is required
+    present; the caller decides what it can do with what's installed (hashcat OR aircrack is enough to
     crack; hcxpcapngtool is only needed for the hashcat path)."""
     probes = {
         CONVERTER: ("--version",),
@@ -118,7 +132,7 @@ def detect_tools() -> dict[str, ToolStatus]:
     }
     out: dict[str, ToolStatus] = {}
     for name, vargs in probes.items():
-        path = shutil.which(name)
+        path = shutil.which(name) or _installed_fallback(name)
         version = _probe_version(path, vargs) if path else ""
         out[name] = ToolStatus(name=name, path=path, version=version)
     return out
@@ -270,8 +284,9 @@ def capability_text() -> str:
         "Offline Wi-Fi key recovery (dictionary attack). Takes a Wi-Fi capture you made "
         "(PMKID or a full WPA/WPA2 4-way handshake) and tries the passphrases in a wordlist you "
         "provide against it, using your installed hashcat or aircrack-ng. It is dictionary-only: "
-        "it can only recover a passphrase actually in your wordlist. It does not brute-force, "
-        "and it does not install or bundle the cracking tools -- you install those yourself."
+        "it can only recover a passphrase actually in your wordlist. It does not brute-force, and it "
+        "does not bundle the cracking tools -- but it can fetch aircrack-ng for you (a complete "
+        "backend) and shows you how to get the others."
     )
 
 
@@ -308,8 +323,8 @@ def missing_tools_text(backend: str, tools: dict[str, ToolStatus]) -> str:
     is_are = "is" if len(need) == 1 else "are"
     return (
         f"The {backend} crack path needs {joined}, which {is_are} not installed / not on PATH. "
-        "Cyber Controller does not bundle these GPL tools -- install them "
-        "(hcxtools + hashcat, or aircrack-ng) and try again."
+        "Use 'Get tools' to fetch aircrack-ng (a complete backend, no converter needed), or see the "
+        "install guidance there for hashcat / hcxtools, then try again."
     )
 
 

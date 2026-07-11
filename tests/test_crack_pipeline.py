@@ -164,7 +164,7 @@ def test_capability_text_is_honest() -> None:
     t = capability_text().lower()
     assert "dictionary" in t
     assert "does not brute-force" in t
-    assert "install those yourself" in t  # not bundled
+    assert "does not bundle" in t  # tools are fetched/found, never bundled into CC
 
 
 def test_missing_tools_text() -> None:

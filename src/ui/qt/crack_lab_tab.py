@@ -33,6 +33,7 @@ from PyQt5.QtWidgets import (
 )
 
 from src.core import crack_pipeline as cp
+from src.core import tool_installer as ti
 from src.core import wordlist_manager as wm
 
 log = logging.getLogger(__name__)
@@ -176,6 +177,113 @@ class _WordlistCatalogDialog(QDialog):
         super().closeEvent(event)
 
 
+class _ToolInstallWorker(QThread):
+    """Downloads + verifies + installs one crack tool off the GUI thread, streaming progress lines."""
+
+    line = pyqtSignal(str)
+    done = pyqtSignal(str, str)  # (installed_exe or "", error or "")
+
+    def __init__(self, spec) -> None:
+        super().__init__()
+        self._spec = spec
+
+    def run(self) -> None:  # noqa: D401 - QThread entry point
+        try:
+            path = ti.install_tool(self._spec, on_line=self.line.emit)
+            self.done.emit(path, "")
+        except Exception as exc:  # never let the worker die silently
+            log.exception("tool install failed")
+            self.done.emit("", str(exc))
+
+
+class _ToolsDialog(QDialog):
+    """Get the offline-crack tools: auto-fetch where an official binary exists (aircrack-ng), install
+    guidance for the rest. Downloads run off the GUI thread and stream into the terminal."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setWindowTitle("Get cracking tools")
+        self.setMinimumWidth(600)
+        self._worker: _ToolInstallWorker | None = None
+        root = QVBoxLayout(self)
+
+        intro = QLabel(
+            "Cyber Controller does not bundle the GPL cracking tools, but it can fetch the ones with an "
+            "official prebuilt binary (verified) and shows you how to get the rest. Installed tools go "
+            "in your CC tools folder and are found automatically.")
+        intro.setWordWrap(True)
+        root.addWidget(intro)
+
+        self._install_buttons: dict[str, QPushButton] = {}
+        for row in ti.tool_availability():
+            box = QHBoxLayout()
+            status = f"✓ present ({row.source})" if row.present else "✗ not found"
+            lbl = QLabel(
+                f"<b>{row.tool}</b> — {status}"
+                f"<br><span style='color:#8b949e;'>{row.guidance}</span>")
+            lbl.setWordWrap(True)
+            box.addWidget(lbl, 1)
+            if row.can_autofetch:
+                btn = QPushButton("Install")
+                btn.clicked.connect(lambda _=False, t=row.tool: self._install(t))
+                self._install_buttons[row.tool] = btn
+                box.addWidget(btn)
+            root.addLayout(box)
+
+        self._log = QPlainTextEdit()
+        self._log.setReadOnly(True)
+        self._log.setMaximumHeight(120)
+        self._log.setPlaceholderText("install progress appears here (and in the terminal)")
+        root.addWidget(self._log)
+
+        close = QPushButton("Close")
+        close.clicked.connect(self.accept)
+        root.addWidget(close)
+
+    def _install(self, tool: str) -> None:
+        if self._worker is not None and self._worker.isRunning():
+            return  # one install at a time
+        spec = ti.spec_for(tool)
+        if spec is None:
+            return
+        btn = self._install_buttons.get(tool)
+        if btn is not None:
+            btn.setEnabled(False)
+            btn.setText("Installing…")
+        self._worker = _ToolInstallWorker(spec)
+        self._worker.line.connect(self._on_line)
+        self._worker.done.connect(lambda path, err, t=tool: self._on_done(t, path, err))
+        self._worker.start()
+
+    def _on_line(self, text: str) -> None:
+        self._log.appendPlainText(text)
+        try:
+            from src.core.activity_log import activity_log
+            activity_log().emit_line("install", text)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _on_done(self, tool: str, path: str, err: str) -> None:
+        btn = self._install_buttons.get(tool)
+        if err:
+            self._log.appendPlainText(f"[error] {err}")
+            if btn is not None:
+                btn.setEnabled(True)
+                btn.setText("Retry")
+        else:
+            self._log.appendPlainText(f"[ok] {tool} installed: {path}")
+            if btn is not None:
+                btn.setText("Installed ✓")
+                btn.setEnabled(False)
+
+    def closeEvent(self, event) -> None:
+        w = self._worker
+        if w is not None and w.isRunning():
+            w.terminate()   # like the crack worker's stop; a killed download leaves only a .part temp
+            w.wait(2000)
+        super().closeEvent(event)
+
+
 class CrackLabTab(QWidget):
     """Reachable UI for the offline WPA dictionary attack (capture -> wordlist -> crack)."""
 
@@ -189,11 +297,14 @@ class CrackLabTab(QWidget):
         root.addWidget(info)
 
         # tools presence
-        tools_box = QGroupBox("Cracking tools (you install these — CC never bundles them)")
+        tools_box = QGroupBox("Cracking tools (not bundled — CC can fetch aircrack-ng; see “Get tools”)")
         tl = QHBoxLayout(tools_box)
         self._tools_label = QLabel("…")
         self._tools_label.setWordWrap(True)
         tl.addWidget(self._tools_label, 1)
+        get_tools = QPushButton("Get tools…")
+        get_tools.clicked.connect(self._show_tools)
+        tl.addWidget(get_tools)
         recheck = QPushButton("Re-check")
         recheck.clicked.connect(self._refresh_tools)
         tl.addWidget(recheck)
@@ -316,6 +427,10 @@ class CrackLabTab(QWidget):
             return
         self._wordlist_combo.addItem(os.path.basename(path), path)
         self._wordlist_combo.setCurrentIndex(self._wordlist_combo.count() - 1)
+
+    def _show_tools(self) -> None:
+        _ToolsDialog(self).exec_()
+        self._refresh_tools()   # a freshly-installed tool enables its backend immediately
 
     def _show_catalog(self) -> None:
         _WordlistCatalogDialog(self).exec_()
