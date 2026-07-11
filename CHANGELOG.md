@@ -8,6 +8,33 @@ All notable changes to Cyber Controller are documented here. This project adhere
   pipeline (capture → `hcxpcapngtool` → `hashcat`/`aircrack-ng` + wordlists), so the name now reflects what it
   does. Same consent-gated, dictionary-only behaviour; only the label + code symbols (`crack_lab_tab.py` /
   `CrackLabTab`) changed, and the tab gained an icon (an open padlock).
+- **Crack Lab now has a BUILT-IN native WPA/WPA2 cracker — works out of the box, no external tools.** WPA-PSK
+  dictionary cracking is standard crypto, and Python's `hashlib.pbkdf2_hmac` is C/OpenSSL, so CC cracks
+  natively (`src/core/native_crack.py` + `wpa_capture.py` — CC's own PMKID/handshake extractor). Validated
+  against the canonical IEEE 802.11i PMK vectors + hashcat's own mode-22000 example. It is the default engine,
+  needs no install, and there is nothing for antivirus to flag; hashcat/aircrack-ng are optional accelerators
+  (detected if installed, or an opt-in bundled aircrack pack behind a transparent, consented Windows Defender
+  exclusion). Dictionary-only, consent-gated, verify-never-fake.
+- **The bottom terminal is now a unified activity console + a tool shell.** It reflects everything going on —
+  flashing (incl. every esptool line), command execution, broadcasts, crack runs, macro playback — via a new
+  `ActivityLog` bus, not just serial RX. It also runs the crack tools with their FULL command line: type
+  `aircrack-ng …` / `hashcat …` and it runs the bundled/installed tool, streaming output (scoped to known
+  tools; `stop` kills it). The serial path + anti-forgery html-escaping are unchanged.
+- **A small offline WPA wordlist core is bundled** (SecLists MIT subset, hash-verified) so a first crack works
+  with zero download; larger lists still install on demand.
+- **Operate ▸ Broadcast — per-device sections + force-any-firmware.** Keeps the universal fan-out row and adds
+  a section per connected device: a force-to-any-firmware picker (exposing that firmware's command set even if
+  it may not run on the hardware — full manual control), capability chips, and per-device buttons. Everything
+  populates reactively (new `DeviceManager.set_firmware` + `on_device_changed` event; the Devices tab and
+  Broadcast now stay in sync, and a force survives re-autodetect). Dropped the dead `MESH_RELAY` phantom button.
+- **Flock Map: a "Work in progress" banner + a launch-render fix.** The map (and the Network graph) framed
+  against a not-yet-sized viewport at construction and opened at the wrong scale until a manual resize; they
+  now re-fit correctly on first paint.
+- **Resizeable-tab walkthrough + a whole-app performance pass.** Non-scrolling tabs are wrapped in scroll areas
+  so controls never clip on a small/deck window; the 8 per-tab refresh timers now run only while their tab is
+  visible (a backgrounded tab costs ~0), and the Network graph defers its rebuild while hidden.
+- **Reskin: `colors.py` is now the single palette source of truth** (the QSS uses `${TOKEN}` placeholders it
+  substitutes), and the off-brand acid-green (`#39FF14`) splash is fixed to the LxveAce violet accent.
 - **"Check for Updates" in the Firmware Vault.** The vault could cache firmware and flash offline, but
   `FirmwareVault.check_updates()` (one GitHub API call per *cached* profile, SSRF-allowlisted) was
   CLI-only — no way to ask "is any of my cached firmware outdated?" from the app. Added a **Check for
