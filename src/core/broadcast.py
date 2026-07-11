@@ -125,9 +125,8 @@ BROADCAST_ACTIONS: dict[BroadcastVerb, BroadcastAction] = {
     BroadcastVerb.BLE_SPAM: BroadcastAction(
         BroadcastVerb.BLE_SPAM, "BLE Spam", _I_SPAM, ActionCategory.ATTACK,
         base_danger="lab-only", description="BLE advertisement spam (controlled-lab only)."),
-    BroadcastVerb.MESH_RELAY: BroadcastAction(
-        BroadcastVerb.MESH_RELAY, "Mesh Status", _I_MESH, ActionCategory.UTILITY,
-        description="Query mesh nodes (Meshtastic)."),
+    # (MESH_RELAY intentionally NOT registered: Meshtastic is a stream/protobuf firmware with no text
+    # command channel, so no protocol can implement it — it was a permanently-disabled phantom button.)
     BroadcastVerb.STOP_ALL: BroadcastAction(
         BroadcastVerb.STOP_ALL, "STOP ALL", _I_STOP, ActionCategory.UTILITY,
         description="Stop the current operation on every device. Always safe."),
