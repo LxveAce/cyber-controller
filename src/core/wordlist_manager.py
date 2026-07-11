@@ -2,10 +2,10 @@ r"""Wordlist provisioning for the offline WPA/WPA2 dictionary-crack pipeline.
 
 The cracker in :mod:`src.core.crack_pipeline` is *dictionary-only* -- it can only recover a passphrase
 that is actually in the wordlist you point it at. So the wordlist IS the tool. This module is the
-"bring a wordlist" half: it lets the operator either **install a prepackaged wordlist** from a small
-curated catalog, or **use their own** file (BYO). Nothing is bundled in the app; prepackaged lists are
-*downloaded on explicit opt-in* from pinned upstream URLs and integrity-checked, so CC ships no large
-data blobs and no attack material.
+"bring a wordlist" half: it ships a **tiny bundled WPA core** (works offline, no download), lets the
+operator **install a larger prepackaged wordlist** from a small curated catalog, or **use their
+own** file (BYO). Only the tiny core is bundled; larger lists are *downloaded on explicit opt-in*
+from pinned upstream URLs and integrity-checked, so CC ships no large data blobs.
 
 Honesty / safety invariants (load-bearing):
 
@@ -38,6 +38,7 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 from .crack_pipeline import validate_wordlist  # BYO reuses the same non-empty-file guard
+from .resources import resource_path  # locate the bundled tiny WPA core (dev + frozen)
 
 Line = Callable[[str], None]
 
@@ -141,6 +142,32 @@ def default_wordlist_dir() -> str:
     return os.path.join(os.path.expanduser("~"), ".cyber-controller", "wordlists")
 
 
+def bundled_wordlist_dir() -> str:
+    """The read-only tiny WPA core shipped INSIDE the app (``src/config/wordlists``; resolves in dev
+    and the frozen build via :func:`resource_path`). These load offline with no download, so a first
+    crack works out of the box."""
+    return str(resource_path("src", "config", "wordlists"))
+
+
+def bundled_wordlists() -> list[dict]:
+    """The bundled tiny WPA core -> ``[{name, path, size, size_human, bundled: True}]`` (sorted by
+    name). Always available (no download); the UI merges these with :func:`scan_installed`."""
+    directory = bundled_wordlist_dir()
+    if not os.path.isdir(directory):
+        return []
+    out: list[dict] = []
+    for name in sorted(os.listdir(directory)):
+        if not name.lower().endswith(".txt"):
+            continue
+        path = os.path.join(directory, name)
+        if not os.path.isfile(path):
+            continue
+        size = os.path.getsize(path)
+        out.append({"name": name, "path": path, "size": size,
+                    "size_human": format_size(size), "bundled": True})
+    return out
+
+
 def filename_for(spec: WordlistSpec) -> str:
     """Local filename for a spec: the URL basename, with any ``.gz`` suffix dropped (we store inflated)."""
     base = spec.url.rstrip("/").split("/")[-1]
@@ -234,10 +261,11 @@ def is_installed(spec: WordlistSpec, directory: Optional[str] = None) -> bool:
 def install_choices_text() -> str:
     """The install-time 'prepackaged or your own' explainer the UI shows above the catalog."""
     return (
-        "A dictionary attack needs a wordlist. You can install a prepackaged list below, or use your "
-        "own file. Prepackaged lists are downloaded on demand from their pinned upstream source and "
-        "integrity-checked — Cyber Controller does not bundle wordlists. Bring-your-own is always "
-        "available: point the cracker at any .txt of candidate passphrases you already have."
+        "A dictionary attack needs a wordlist. Cyber Controller bundles a small WPA core that "
+        "works offline with no download; you can also install a larger prepackaged list below "
+        "(downloaded on demand from its pinned upstream source and integrity-checked) or use your "
+        "own file. Bring-your-own is always available: point the cracker at any .txt of candidate "
+        "passphrases you already have."
     )
 
 

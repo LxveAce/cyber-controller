@@ -160,10 +160,38 @@ def test_register_byo_valid_and_invalid(tmp_path):
 
 def test_install_choices_text_offers_both_paths():
     t = wm.install_choices_text().lower()
-    assert "prepackaged" in t and "your own" in t and "does not bundle" in t
+    # Honest framing: a small core is bundled, larger lists download on demand, BYO always works.
+    assert "bundle" in t and "download" in t and "your own" in t
 
 
 def test_catalog_text_lists_every_entry():
     t = wm.catalog_text()
     for w in wm.catalog():
         assert w.name in t
+
+
+# -- bundled tiny WPA core --------------------------------------------
+
+def test_bundled_wordlists_present():
+    names = {e["name"] for e in wm.bundled_wordlists()}
+    for expected in ("probable-v2-wpa-top62.txt", "probable-v2-wpa-top4800.txt",
+                     "10k-most-common.txt"):
+        assert expected in names, f"bundled core missing {expected}"
+    for e in wm.bundled_wordlists():
+        assert e["bundled"] is True
+        assert e["size"] > 0
+
+
+def test_bundled_core_matches_catalog_hashes():
+    # Each vendored file's content must match the catalog's pinned SHA-256, so the bundled core
+    # is provably the same list a download would fetch (no silent drift, no fabricated content).
+    by_name = {wm.filename_for(s): s for s in wm.catalog()}
+    bundled = wm.bundled_wordlists()
+    assert bundled, "expected a bundled core"
+    for e in bundled:
+        spec = by_name.get(e["name"])
+        assert spec is not None, f"bundled file {e['name']} is not in the catalog"
+        assert wm.is_pinned(spec), f"{e['name']} must map to a hash-pinned catalog entry"
+        with open(e["path"], "rb") as f:
+            digest = hashlib.sha256(f.read()).hexdigest()
+        assert digest == spec.sha256, f"{e['name']} sha256 drifted from the catalog pin"

@@ -95,6 +95,13 @@ def _build() -> int:
     if maps_dir.is_dir():
         cmd.extend(["--add-data", f"{maps_dir}{sep}src/config/maps"])
 
+    # Bundled tiny WPA wordlist core (SecLists MIT subset) — bundled_wordlist_dir() reads
+    # resource_path("src","config","wordlists") in the frozen build so the Crack Lab picker has
+    # offline lists with no download. PyInstaller never touches a plain .txt data dir.
+    wordlists_dir = _ROOT / "src" / "config" / "wordlists"
+    if wordlists_dir.is_dir():
+        cmd.extend(["--add-data", f"{wordlists_dir}{sep}src/config/wordlists"])
+
     # Device-View per-firmware skin palettes (DV3) — resource_path("src","ui","qt","skins") reads these in
     # the frozen build, so they must be bundled or every skin silently falls back to the default palette.
     skins_dir = _ROOT / "src" / "ui" / "qt" / "skins"
