@@ -1,0 +1,36 @@
+{
+  "name": "CatSniffer V3 (multiprotocol sniffer)",
+  "id": "catsniffer",
+  "core_id": "catsniffer",
+  "label": "CatSniffer V3 — 802.15.4/Zigbee/Thread/BLE/sub-GHz passive sniffer",
+  "description": "ElectronicCats/CatSniffer-Firmware — CatSniffer V3 passive multiprotocol RF sniffer (IEEE 802.15.4/Zigbee/Thread, BLE, sub-GHz) with live Wireshark (extcap) capture. Two chips: CC1352P7 radio (cc2538_bsl) + RP2040 USB bridge (uf2). Passive analysis, no attack. CC flashes the sniffer build only; the bundled airtag_spoofer (active TX) is excluded.",
+  "repo": "ElectronicCats/CatSniffer-Firmware",
+  "backend": "cc2538_bsl",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "intel_hex",
+  "app_offset": "verify:",
+  "default_baud": "verify:",
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["sniffer_fw"]},
+  "bsl_trigger": "catnip_rp2040_bridge",
+  "boards": [
+    {"name": "CatSniffer V3 (CC1352P7 radio)", "chip": "cc1352p7", "backend": "cc2538_bsl", "bsl_trigger": "catnip_rp2040_bridge"},
+    {"name": "CatSniffer V3 (RP2040 USB bridge)", "chip": "rp2040", "backend": "uf2", "uf2_asset": "catsniffer-v3.1.0.0.uf2"}
+  ],
+  "firmware_urls": {
+    "repo": "https://github.com/ElectronicCats/CatSniffer-Firmware",
+    "latest": "https://github.com/ElectronicCats/CatSniffer-Firmware/releases/latest"
+  },
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/ElectronicCats/CatSniffer-Firmware/releases/latest",
+    "asset_match": {"include_regex": "^sniffer_fw_Catsniffer_v3\\.x\\.hex$"},
+    "exclude_regex": "airtag_spoofer|airtag_scanner|justworks",
+    "rp2040_bridge_asset": "catsniffer-v3.1.0.0.uf2",
+    "chip_map": {"strategy": "fixed", "chip": "cc1352p7"},
+    "sha256": "verify:"
+  },
+  "note": "Two-chip device: CC1352P7 sniffer via cc2538_bsl (BOTH chips must be flashed for a functional sniffer). asset_match is TIGHTLY scoped to sniffer_fw_Catsniffer_v3.x.hex; exclude_regex drops the bundled airtag_spoofer (active TX), airtag_scanner, and justworks builds. License is README-declared AGPL-3.0 (copyleft) despite the API's NOASSERTION -> resolve before mirroring; prefer sourcing the Sniffle BLE build from nccgroup's clean GPL-3.0 asset instead of this hub. A real SHA256SUMS.txt ships but keep verify: until a real CatSniffer flash. RP2040 bridge .uf2 uses CC's existing uf2 backend. Third consumer of cc2538_bsl."
+}

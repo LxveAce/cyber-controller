@@ -6,10 +6,10 @@
 
 ### One dashboard to flash, drive, and coordinate every radio in your cyberdeck.
 
-**Flash. Control. Coordinate.** — 45 firmware profiles, 5 flash backends, 4 interfaces, one screen.
+**Flash. Control. Coordinate.** — 47 firmware profiles, 5 flash backends, 4 interfaces, one screen.
 
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release&color=39FF14)](https://github.com/LxveAce/cyber-controller/releases)
-[![Firmwares](https://img.shields.io/badge/firmware%20profiles-45-success?style=for-the-badge)](#-supported-firmware)
+[![Firmwares](https://img.shields.io/badge/firmware%20profiles-47-success?style=for-the-badge)](#-supported-firmware)
 [![Platform](https://img.shields.io/badge/Windows%20·%20Linux%20·%20macOS%20·%20ARM-blue?style=for-the-badge)](#-interfaces)
 [![License](https://img.shields.io/github/license/LxveAce/cyber-controller?style=for-the-badge)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
@@ -38,7 +38,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 
 ## ✨ Highlights
 
-**🔥 Flash** — **45 firmware profiles** across 5 backends. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress — see the beta caveats) auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+**🔥 Flash** — **47 firmware profiles** across 5 backends. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress — see the beta caveats) auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
 
 **🎮 Control** — a protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **13 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
 
@@ -48,7 +48,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 
 ## 🧩 Supported firmware
 
-45 firmware profiles ship in `src/config/profiles/` — each tracks its **latest upstream release** at flash time and auto-selects the correct per-board binary.
+47 firmware profiles ship in `src/config/profiles/` — each tracks its **latest upstream release** at flash time and auto-selects the correct per-board binary.
 
 > 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)** — a per-firmware walkthrough for every entry below: what to buy, how to build it, how to flash & run it, how to wire it into Cyber Controller, and troubleshooting — each with a downloadable PDF.
 
@@ -79,6 +79,8 @@ The full version-by-version history — every fix, every hardening pass, every a
 | **RNode (nRF52)** | Reticulum LoRa transport (nRF52840) | RAK4631 / T-Echo / Heltec T114 | nrf_dfu (Nordic DFU) |
 | **WHAD ButteRFly** | Multi-protocol BLE/Zigbee/ESB/Unifying/Mosart/ANT research fw | nRF52840 (Nordic dongle / Makerdiary MDK) | nrf_dfu / uf2 |
 | **Sniffle** ⚠ *lab-only* | BLE 4.x/5.x link-layer sniffer (follow/relay) | TI CC13xx/CC26xx (SONOFF CC2652P / CatSniffer V3) | cc2538_bsl |
+| **Z-Stack Coordinator** | Zigbee 3.x coordinator/router | TI CC2652/CC1352 (Sonoff ZBDongle-E) | cc2538_bsl |
+| **CatSniffer V3** | Passive 802.15.4/Zigbee/Thread/BLE/sub-GHz sniffer | TI CC1352P7 + RP2040 bridge | cc2538_bsl / uf2 |
 | **Flock-You** | Passive ALPR / Flock camera detector | ESP32-S3 | esptool |
 | **RayHunter** | IMSI-catcher / cell-site detector | Orbic RC400L (LTE hotspot) | ADB |
 | **Flipper Zero — Momentum** | Feature-rich Flipper custom firmware | STM32WB55 | qFlipper |

@@ -1,0 +1,39 @@
+{
+  "name": "Z-Stack 3.x Coordinator (CC2652/CC1352)",
+  "id": "zstack_coordinator",
+  "core_id": "zstack_coordinator",
+  "label": "Z-Stack 3.x Coordinator/Router — TI CC2652/CC1352",
+  "description": "Koenkk/Z-Stack-firmware — Zigbee 3.x coordinator (and router) firmware for TI CC2652/CC1352 dongles (Sonoff ZBDongle-E, CC2652R7, CC2652RB, SLZB/ZigStar). A coordinator is an active TX radio performing legitimate Zigbee protocol operation -> no deauth/jam/injection. CC flashes the vendor image over the TI serial ROM bootloader.",
+  "repo": "Koenkk/Z-Stack-firmware",
+  "backend": "cc2538_bsl",
+  "protocol": null,
+  "danger": "",
+  "supports_suicide": false,
+  "image_model": "intel_hex",
+  "app_offset": "verify:",
+  "default_baud": "verify:",
+  "resolver": "github_release",
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["coordinator", "CC2652P"]},
+  "bsl_trigger": "sonoff-usb",
+  "boards": [
+    {"name": "Sonoff ZBDongle-E (CC2652P)", "chip": "cc2652p", "bsl_trigger": "sonoff-usb"},
+    {"name": "CC2652R7 dongle", "chip": "cc2652r7"},
+    {"name": "CC2652RB", "chip": "cc2652rb"},
+    {"name": "SLZB / ZigStar CC2652P", "chip": "cc2652p"}
+  ],
+  "firmware_urls": {
+    "repo": "https://github.com/Koenkk/Z-Stack-firmware",
+    "latest": "https://github.com/Koenkk/Z-Stack-firmware/releases"
+  },
+  "support_files": {"cc2538_bsl": "JelmerT/cc2538-bsl (pip package) or sultanqasim fork"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/Koenkk/Z-Stack-firmware/releases",
+    "asset_match": {"per_board_zip": "{CHIP}_coordinator_*.zip"},
+    "post_step": "unzip -> single *.hex",
+    "chip_map": {"cc2652r7": "CC2652R7", "cc2652p": "CC2652P2", "cc2652rb": "CC2652RB", "cc2652r": "CC2652R", "cc1352p2": "CC1352P2", "cc1352p7": "CC1352P7"},
+    "variants": ["coordinator", "router"],
+    "sha256": "verify:"
+  },
+  "note": "Every release asset is a .zip wrapping ONE .hex (verified: CC2652R7_coordinator_20250321.zip -> one 506630 B .hex). Resolver MUST unzip before flashing (no raw .hex in-tree). BSL entry differs per dongle (Sonoff vs ZigStar vs bare LaunchPad) -> per-board bootloader-trigger param; LaunchPads are XDS110/UniFlash-only (out of scope). app_offset (full-image mass-erase, likely 0x0) + BSL baud kept verify: until a real CC2652 flash. Second consumer of the cc2538_bsl backend. danger '' -- a coordinator is a legit-protocol TX radio, not an attack tool. Compiled binary carries TI's SimpleLink SDK binary license -- flag before any LxveLabs mirror."
+}

@@ -31,6 +31,12 @@ routing, and a full firmware-integration audit + honesty pass._
   CC2652P USB Dongle Plus (+ CatSniffer V3). Intel-HEX (self-addressed), so app-offset/baud stay `verify:`;
   `danger="lab-only"` (active scan + connection-follow + link-layer relay/MITM — labelled, never blocked). The
   backend is argv/flow unit-tested (golden argv locked); real-hardware validation of the BSL flow is pending.
+- **Z-Stack Coordinator + CatSniffer V3 profiles (47 profiles) — the cc2538_bsl backend's 2nd/3rd consumers.**
+  `zstack_coordinator` (Koenkk/Z-Stack-firmware — Zigbee 3.x coordinator/router for CC2652/CC1352 dongles like
+  the Sonoff ZBDongle-E; `danger=""`, a legit-protocol radio; per-board `.zip` wraps one `.hex`) and `catsniffer`
+  (ElectronicCats CatSniffer V3 — passive 802.15.4/Zigbee/Thread/BLE/sub-GHz sniffer; CC1352P7 radio via
+  `cc2538_bsl` + RP2040 bridge via `uf2`; `danger=""`). CatSniffer's `asset_match` is scoped to the sniffer build
+  and `exclude_regex` drops the bundled airtag_spoofer (active TX). Offsets/SHAs `verify:` until real-hardware.
 - **Wi-Fi Audit tab — the reachable UI for the offline WPA key-recovery pipeline (1.7.0).** The
   `crack_pipeline` + `wordlist_manager` engines were finished + unit-tested but had **no user-facing entry
   point**; a new **Wi-Fi Audit** sub-tab (Operate surface) wires them end-to-end: capture picker →

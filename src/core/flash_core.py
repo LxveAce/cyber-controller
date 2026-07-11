@@ -2517,6 +2517,14 @@ _PROFILE_FILES = (
     # dongle primary). Intel-HEX (self-addressed) -> app_offset/baud verify:; danger lab-only
     # (active scan + connection-follow + relay/MITM). Per-asset SHA in the API but verify: until HW.
     "sniffle.json",
+    # Z-Stack coordinator (Koenkk) - Zigbee 3.x coordinator/router for CC2652/
+    # CC1352 dongles (Sonoff ZBDongle-E primary). 2nd cc2538_bsl consumer; per-board .zip wraps ONE
+    # .hex (resolver unzips). danger "" (legit-protocol TX radio). app_offset/baud verify: until HW.
+    "zstack_coordinator.json",
+    # CatSniffer V3 (ElectronicCats, AGPL-3.0) - passive 802.15.4/Zigbee/Thread/BLE/sub-GHz sniffer.
+    # Two chips: CC1352P7 radio (cc2538_bsl) + RP2040 bridge (uf2). asset_match = sniffer_fw;
+    # exclude_regex drops the bundled airtag_spoofer (active TX). danger "". SHAs verify: until HW.
+    "catsniffer.json",
 )
 
 

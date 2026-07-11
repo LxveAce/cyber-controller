@@ -1462,6 +1462,215 @@
     "image_model": "merged-single-bin",
     "supports_suicide": false
   },
+  "catsniffer": {
+    "chips": {
+      "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support": null
+        }
+      },
+      "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support": null
+        }
+      },
+      "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support": null
+        }
+      },
+      "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support": null
+        }
+      },
+      "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support": null
+        }
+      },
+      "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support": null
+        }
+      },
+      "esp8266": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp8266",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support": null
+        }
+      }
+    },
+    "image_model": "intel_hex",
+    "supports_suicide": false
+  },
   "custom": {
     "chips": {
       "esp32": {
@@ -8464,6 +8673,215 @@
       }
     },
     "image_model": "merged-single-bin",
+    "supports_suicide": false
+  },
+  "zstack_coordinator": {
+    "chips": {
+      "esp32": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support_error": "KeyError: 'source'"
+        }
+      },
+      "esp32c3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support_error": "KeyError: 'source'"
+        }
+      },
+      "esp32c5": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c5",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support_error": "KeyError: 'source'"
+        }
+      },
+      "esp32c6": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32c6",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support_error": "KeyError: 'source'"
+        }
+      },
+      "esp32s2": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s2",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support_error": "KeyError: 'source'"
+        }
+      },
+      "esp32s3": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp32s3",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support_error": "KeyError: 'source'"
+        }
+      },
+      "esp8266": {
+        "app": {
+          "argv": [
+            "<py>",
+            "-m",
+            "esptool",
+            "--chip",
+            "esp8266",
+            "--port",
+            "PORTX",
+            "--baud",
+            "921600",
+            "--before",
+            "default_reset",
+            "--after",
+            "hard_reset",
+            "write_flash",
+            "-z",
+            "--flash_size",
+            "detect",
+            "verify:",
+            "APP.bin"
+          ]
+        },
+        "app_offset": "verify:",
+        "full": {
+          "support_error": "KeyError: 'source'"
+        }
+      }
+    },
+    "image_model": "intel_hex",
     "supports_suicide": false
   }
 }
