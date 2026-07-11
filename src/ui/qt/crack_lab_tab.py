@@ -56,7 +56,10 @@ class _CrackWorker(QThread):
         emit = self.line.emit
         try:
             tools = cp.detect_tools()
-            if self._backend == "aircrack":
+            if self._backend == "native":
+                # CC's own pure-Python cracker — no external tool, always available.
+                result = cp.run_native(self._capture, self._wordlist, emit, bssid=self._bssid)
+            elif self._backend == "aircrack":
                 result = cp.run_aircrack(self._capture, self._wordlist, emit,
                                          tools=tools, bssid=self._bssid)
             else:
@@ -297,7 +300,7 @@ class CrackLabTab(QWidget):
         root.addWidget(info)
 
         # tools presence
-        tools_box = QGroupBox("Cracking tools (not bundled — CC can fetch aircrack-ng; see “Get tools”)")
+        tools_box = QGroupBox("Engine (built-in native cracker always works — optional faster engines below)")
         tl = QHBoxLayout(tools_box)
         self._tools_label = QLabel("…")
         self._tools_label.setWordWrap(True)
@@ -441,8 +444,8 @@ class CrackLabTab(QWidget):
         capture = self._capture_edit.text().strip()
         wordlist = self._wordlist_combo.currentData() or ""
         backend = self._backend_combo.currentText()
-        if backend not in ("hashcat", "aircrack"):
-            QMessageBox.warning(self, "Crack Lab", "Install hashcat or aircrack-ng first.")
+        if backend not in ("native", "hashcat", "aircrack"):
+            QMessageBox.warning(self, "Crack Lab", "Choose a crack engine.")
             return
         try:
             cp.validate_capture(capture)

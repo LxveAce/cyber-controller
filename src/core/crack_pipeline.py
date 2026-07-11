@@ -139,20 +139,44 @@ def detect_tools() -> dict[str, ToolStatus]:
 
 
 def available_backends(tools: dict[str, ToolStatus]) -> list[str]:
-    """Which end-to-end crack backends are usable given installed tools.
+    """Which end-to-end crack backends are usable.
 
-    * ``"hashcat"`` needs BOTH hcxpcapngtool (to make the .hc22000) AND hashcat.
+    * ``"native"`` is CC's own pure-Python cracker (:mod:`src.core.native_crack`) — ALWAYS available,
+      needs no external tool, nothing for AV to flag. Listed first so Crack Lab works out of the box.
+    * ``"hashcat"`` needs BOTH hcxpcapngtool (to make the .hc22000) AND hashcat (GPU-fast when present).
     * ``"aircrack"`` needs only aircrack-ng (it reads the .pcap directly).
-    Returned most-preferred first (hashcat is faster when a GPU is present)."""
+    The external backends are optional accelerators layered on top of the always-present native one."""
     def have(n: str) -> bool:
         return tools.get(n, ToolStatus(n)).present
 
-    backs: list[str] = []
+    backs: list[str] = ["native"]
     if have(CONVERTER) and have(HASHCAT):
         backs.append("hashcat")
     if have(AIRCRACK):
         backs.append("aircrack")
     return backs
+
+
+def run_native(capture: str, wordlist: str, on_line: Line,
+               bssid: str = "", should_stop: Optional[Callable[[], bool]] = None) -> CrackResult:
+    """CC's OWN dictionary crack — parse the capture + try the wordlist natively, no external tool.
+
+    Reads PMKIDs / 4-way-handshake MICs (+ the ESSID) straight out of the ``.pcap``/``.pcapng`` and
+    checks each candidate passphrase against them in pure Python. Same honest posture as the rest:
+    dictionary-only, verify-never-fake. Raises ValueError on bad input."""
+    from src.core import native_crack, wpa_capture
+    validate_capture(capture)
+    validate_wordlist(wordlist)
+    handshakes = wpa_capture.parse_capture(capture)
+    if bssid:
+        want = bssid.lower().replace(":", "").replace("-", "")
+        filtered = [h for h in handshakes if h.ap_mac.hex() == want]
+        handshakes = filtered or handshakes
+    on_line(f"[native] {len(handshakes)} crackable PMKID/handshake(s) in this capture")
+    res = native_crack.crack(handshakes, wordlist, on_line, should_stop)
+    return CrackResult(cracked=res.cracked, ssid=res.essid, bssid=res.bssid, password=res.password,
+                       hashes_extracted=len(handshakes),
+                       detail=res.detail if not res.cracked else "key recovered (native)")
 
 
 # -- Input validation -------------------------------------------------
@@ -283,10 +307,9 @@ def capability_text() -> str:
     return (
         "Offline Wi-Fi key recovery (dictionary attack). Takes a Wi-Fi capture you made "
         "(PMKID or a full WPA/WPA2 4-way handshake) and tries the passphrases in a wordlist you "
-        "provide against it, using your installed hashcat or aircrack-ng. It is dictionary-only: "
-        "it can only recover a passphrase actually in your wordlist. It does not brute-force, and it "
-        "does not bundle the cracking tools -- but it can fetch aircrack-ng for you (a complete "
-        "backend) and shows you how to get the others."
+        "provide against it. It is dictionary-only: it can only recover a passphrase actually in your "
+        "wordlist, and it does not brute-force. CC has a BUILT-IN native cracker (no install, works "
+        "out of the box); if you have hashcat or aircrack-ng they're offered as faster optional engines."
     )
 
 

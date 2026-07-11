@@ -46,13 +46,14 @@ def test_available_backends_matrix() -> None:
         return {n: ToolStatus(n, path=("/x/" + n if present.get(n) else None)) for n in
                 ("hcxpcapngtool", "hashcat", "aircrack-ng")}
 
+    # "native" (CC's own cracker) is ALWAYS available and listed first; the external tools layer on top.
     # hashcat path needs BOTH converter and hashcat; aircrack needs only itself.
-    assert available_backends(s({"hcxpcapngtool": True, "hashcat": True})) == ["hashcat"]
-    assert available_backends(s({"aircrack-ng": True})) == ["aircrack"]
-    assert available_backends(s({"hashcat": True})) == []  # converter missing -> no hashcat path
+    assert available_backends(s({"hcxpcapngtool": True, "hashcat": True})) == ["native", "hashcat"]
+    assert available_backends(s({"aircrack-ng": True})) == ["native", "aircrack"]
+    assert available_backends(s({"hashcat": True})) == ["native"]  # converter missing -> no hashcat path
     both = available_backends(s({"hcxpcapngtool": True, "hashcat": True, "aircrack-ng": True}))
-    assert both == ["hashcat", "aircrack"]  # hashcat preferred first
-    assert available_backends(s({})) == []
+    assert both == ["native", "hashcat", "aircrack"]  # native, then hashcat, then aircrack
+    assert available_backends(s({})) == ["native"]  # native always works out of the box
 
 
 def test_detect_tools_all_absent(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -164,7 +165,7 @@ def test_capability_text_is_honest() -> None:
     t = capability_text().lower()
     assert "dictionary" in t
     assert "does not brute-force" in t
-    assert "does not bundle" in t  # tools are fetched/found, never bundled into CC
+    assert "built-in" in t and "native" in t  # CC's own cracker works out of the box, no install
 
 
 def test_missing_tools_text() -> None:
