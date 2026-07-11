@@ -19,7 +19,14 @@ def apply_theme(app: QApplication) -> None:
     """
     qss_path = resource_path("src", "ui", "qt", "theme", "cyber_dark.qss")
     try:
-        app.setStyleSheet(qss_path.read_text(encoding="utf-8"))
+        from string import Template
+
+        from src.ui.qt.theme import colors
+        # colors.PALETTE is the single source of truth: the QSS uses ${TOKEN} placeholders that we
+        # substitute here, so changing a colour in colors.py re-themes the whole app. safe_substitute
+        # leaves any un-tokenised literal untouched (and CSS has no '$', so nothing else is affected).
+        qss = Template(qss_path.read_text(encoding="utf-8")).safe_substitute(colors.PALETTE)
+        app.setStyleSheet(qss)
     except OSError as exc:
         log.warning("Theme stylesheet unavailable (%s) - using default Qt style: %s", qss_path, exc)
     font = QFont("Segoe UI", 10)

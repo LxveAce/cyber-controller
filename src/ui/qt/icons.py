@@ -14,10 +14,10 @@ from PyQt5.QtGui import QIcon, QPainter, QPixmap
 from PyQt5.QtSvg import QSvgRenderer
 
 from src.core.resources import resource_path
+from src.ui.qt.theme.colors import ACCENT  # brand accent — single source of truth (colors.py)
 
-# CC purple. The icons are monochrome + currentColor-driven, so re-tinting for a different theme is a one-arg
-# change at the call site; the default matches the violet brand identity (colors.py / cyber_dark.qss).
-ACCENT = "#A371F7"
+# The icons are monochrome + currentColor-driven, so re-tinting for a different theme is a one-arg change
+# at the call site; the default tint is the brand ACCENT from colors.py above.
 
 # Tab / surface label -> icon basename (from the wiring kit's 1:1 map). Used both for direct wiring and for the
 # detached-tab restore path, so a tab keeps its icon after being popped out and back in.

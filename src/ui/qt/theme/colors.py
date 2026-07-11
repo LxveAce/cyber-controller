@@ -34,3 +34,14 @@ TERMINAL = "#7ee787"  # live serial-output text (soft green on the deep backgrou
 # ── Font stacks ─────────────────────────────────────────────────────
 FONT_MONO = '"JetBrains Mono", "Cascadia Code", "Consolas", monospace'
 FONT_SANS = '"Segoe UI", "Inter", sans-serif'
+
+# ── Palette map ─────────────────────────────────────────────────────
+#: Token name -> hex, the SINGLE SOURCE OF TRUTH for the app palette. ``apply_theme`` substitutes these
+#: for ``${TOKEN}`` placeholders in cyber_dark.qss, so changing a colour here re-themes the whole app.
+PALETTE = {
+    "BG_DEEP": BG_DEEP, "BG_SURFACE": BG_SURFACE, "BG_CARD": BG_CARD, "BG_INPUT": BG_INPUT,
+    "BORDER": BORDER, "TEXT_PRIMARY": TEXT_PRIMARY, "TEXT_MUTED": TEXT_MUTED,
+    "TEXT_DISABLED": TEXT_DISABLED, "ACCENT": ACCENT, "ACCENT_BRIGHT": ACCENT_BRIGHT,
+    "ACCENT_DIM": ACCENT_DIM, "SUCCESS": SUCCESS, "WARNING": WARNING, "ERROR": ERROR,
+    "INFO": INFO, "TERMINAL": TERMINAL,
+}

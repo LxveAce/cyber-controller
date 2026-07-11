@@ -35,10 +35,12 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-_BG = QColor(13, 17, 23)
-_PANEL = QColor(22, 27, 34)
-_BORDER = QColor(48, 54, 61)
-_ACCENT = QColor(57, 255, 20)
+from src.ui.qt.theme import colors
+
+_BG = QColor(colors.BG_DEEP)
+_PANEL = QColor(colors.BG_SURFACE)
+_BORDER = QColor(colors.BORDER)
+_ACCENT = QColor(colors.ACCENT)   # LxveAce violet — was the off-brand acid-green #39FF14 splash
 _TRACK = QColor(33, 38, 45)
 
 
