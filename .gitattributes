@@ -1,3 +1,8 @@
 # Vendored third-party assets must stay byte-exact to upstream (so the recorded sha256/sha384 in
 # static/vendor/README.md keep verifying) — never line-ending-normalized.
 src/ui/web/static/vendor/** -text
+
+# Bundled WPA wordlist core: byte-exact to the pinned SecLists upstream so the sha256 in
+# wordlist_manager.CATALOG keeps verifying, AND so a Windows checkout can't turn each password into
+# "password\r" (which hashcat/aircrack would then try verbatim). Never line-ending-normalized.
+src/config/wordlists/*.txt -text
