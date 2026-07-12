@@ -17,11 +17,21 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
+def _drain_drive_scan(tab, qapp):
+    """The removable-drive enumeration now runs on a QThread (on Windows it spawns a PowerShell subprocess,
+    which used to freeze the app at startup). Wait for it + pump the event loop so the combo is populated."""
+    w = tab._drive_scan
+    if w is not None:
+        w.wait()
+    qapp.processEvents()
+
+
 def test_software_tab_lists_oses_and_drives(qapp, monkeypatch):
     from src.ui.qt import software_tab
     monkeypatch.setattr(software_tab.sd, "detect_sd_cards",
                         lambda *_a, **_k: [{"device": r"\\.\PhysicalDrive9", "name": "USB", "size": 16 << 30}])
     tab = software_tab.SoftwareTab()
+    _drain_drive_scan(tab, qapp)
 
     ids = {tab._os_combo.itemData(i) for i in range(tab._os_combo.count())}
     assert {"tails", "kali", "arch"} <= ids
@@ -75,6 +85,7 @@ def test_flash_double_click_does_not_orphan_inflight_resolver(qapp, monkeypatch)
                         lambda *_a, **_k: [{"device": r"\\.\PhysicalDrive9", "name": "USB", "size": 16 << 30}])
     monkeypatch.setattr(software_tab, "_ResolveWorker", _FakeResolver)
     tab = software_tab.SoftwareTab()
+    _drain_drive_scan(tab, qapp)  # populate the (now async) drive combo so _on_flash sees a target
 
     # First 'Flash OS' click with nothing resolved kicks off an auto-resolve and disables the flash button.
     assert tab._resolved is None
@@ -124,3 +135,27 @@ def test_shutdown_waits_for_running_workers(qapp, monkeypatch):
     tab.shutdown()
     assert resolver.waited, "shutdown must wait for the in-flight resolve worker"
     assert worker.waited, "shutdown must wait for the running OS-flash worker"
+
+
+def test_drive_scan_runs_off_the_gui_thread(qapp, monkeypatch):
+    """Regression (UI-audit Batch UI-3): detect_sd_cards spawns a PowerShell subprocess on Windows and this
+    tab is built eagerly at startup — the enumeration must run on a worker thread, not freeze the app-launch
+    event loop."""
+    import threading
+
+    from src.ui.qt import software_tab
+
+    gui_ident = threading.get_ident()
+    seen: dict = {}
+
+    def fake_detect(*_a, **_k):
+        seen["ident"] = threading.get_ident()
+        return [{"device": r"\\.\PhysicalDrive9", "name": "USB", "size": 16 << 30}]
+
+    monkeypatch.setattr(software_tab.sd, "detect_sd_cards", fake_detect)
+    tab = software_tab.SoftwareTab()
+    _drain_drive_scan(tab, qapp)
+
+    assert seen.get("ident") is not None
+    assert seen["ident"] != gui_ident  # enumeration ran off the GUI thread
+    assert tab._drive_combo.itemData(0) == r"\\.\PhysicalDrive9"

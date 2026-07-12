@@ -2061,7 +2061,7 @@ class CyberControllerWindow(QMainWindow):
         # through the DeviceManager, but dm.shutdown() only force-closes ports — it never sends the firmware
         # STOP verb, so join their shutdown() here too or an ESP32 is left scanning after the GUI is gone.
         for _tab_attr in ("_software_tab", "_flock_heatmap", "_wardrive_tab", "_wardrive_multi_tab",
-                          "_crack_lab_tab"):
+                          "_crack_lab_tab", "_device_tab"):
             _tab = getattr(self, _tab_attr, None)
             _shutdown = getattr(_tab, "shutdown", None)
             if callable(_shutdown):
