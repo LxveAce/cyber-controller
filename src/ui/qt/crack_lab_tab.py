@@ -15,6 +15,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import threading
 from pathlib import Path
 
 from PyQt5.QtCore import QObject, Qt, QThread, pyqtSignal
@@ -58,12 +59,29 @@ class _CrackWorker(QThread):
         self._backend = backend
         self._bssid = bssid
         self._stop = False
+        # The aircrack/hashcat child process, once it spawns. request_stop() (GUI thread) and
+        # _register_proc() (worker thread) both touch it, so guard it with a lock.
+        self._proc = None
+        self._proc_lock = threading.Lock()
+
+    def _register_proc(self, proc) -> None:
+        """Called on the worker thread the instant a crack child spawns. If Stop already fired, kill it
+        immediately; otherwise stash it so request_stop() (GUI thread) can."""
+        with self._proc_lock:
+            self._proc = proc
+            if self._stop:
+                cp.kill_proc_tree(proc)
 
     def request_stop(self) -> None:
-        """Cooperative cancel — the native engine polls this between candidate batches, so Stop is a
-        clean exit rather than a hard QThread.terminate() (which, mid pure-Python crack loop, can
-        deadlock the GUI on the GIL)."""
+        """Cancel the run. The native engine polls ``self._stop`` between candidate batches (a clean exit
+        without QThread.terminate(), which mid pure-Python loop can deadlock the GUI on the GIL). The
+        aircrack/hashcat backends block in a subprocess with no cooperative poll, so ALSO kill the child
+        process here — QThread.terminate() would only kill this wrapper thread and orphan the running
+        aircrack/hashcat OS process (and skip the temp-file cleanup)."""
         self._stop = True
+        with self._proc_lock:
+            if self._proc is not None:
+                cp.kill_proc_tree(self._proc)
 
     def run(self) -> None:  # noqa: D401 - QThread entry point
         emit = self.line.emit
@@ -77,7 +95,7 @@ class _CrackWorker(QThread):
                                        should_stop=lambda: self._stop)
             elif self._backend == "aircrack":
                 result = cp.run_aircrack(self._capture, self._wordlist, emit,
-                                         tools=tools, bssid=self._bssid)
+                                         tools=tools, bssid=self._bssid, on_proc=self._register_proc)
             else:
                 # hashcat path: convert the capture to .hc22000 first (unless already one)
                 if os.path.splitext(self._capture)[1].lower() == ".hc22000":
@@ -88,7 +106,8 @@ class _CrackWorker(QThread):
                     tmp_hash = hash_file  # ours to clean up (never the user's own .hc22000)
                     n = cp.convert_capture(self._capture, hash_file, emit, tools=tools)
                     emit(f"[convert] {n} crackable hash(es) extracted.")
-                result = cp.run_hashcat(hash_file, self._wordlist, emit, tools=tools)
+                result = cp.run_hashcat(hash_file, self._wordlist, emit, tools=tools,
+                                        on_proc=self._register_proc)
         except Exception as exc:  # never let a worker exception kill the thread silently
             log.exception("wifi-audit crack worker failed")
             result = cp.CrackResult(detail=f"error: {exc}")
@@ -98,6 +117,10 @@ class _CrackWorker(QThread):
                     os.remove(tmp_hash)
                 except OSError:
                     pass
+        if self._stop:
+            # The user cancelled: the killed child's nonzero exit would otherwise read as a tool error,
+            # so report an honest "stopped" instead.
+            result = cp.CrackResult(detail="stopped")
         self.done.emit(result)
 
 
@@ -384,6 +407,7 @@ class CrackLabTab(QWidget):
     def __init__(self, hub=None) -> None:
         super().__init__()
         self._worker: _CrackWorker | None = None
+        self._backends_cache: list[str] = []   # detected crack backends; refreshed by _refresh_tools()
 
         # Shared capture log (auto-populates the Captures table). None when the hub is unavailable.
         self._captures = getattr(hub, "captures", None) if hub is not None else None
@@ -586,6 +610,10 @@ class CrackLabTab(QWidget):
             parts.append(f"{mark} {st.name}" + (f" ({st.version})" if st.version else ""))
         self._tools_label.setText("   ".join(parts) or "no tools detected")
         backends = cp.available_backends(tools)
+        # Cache the detected backends. detect_tools() spawns a --version subprocess per external tool, so
+        # re-probing it on the GUI thread after every run (in _reset_run_buttons) hitched the event loop.
+        # Refresh the cache here — where the tool set genuinely changes (startup, tool install/recheck).
+        self._backends_cache = backends
         self._backend_combo.clear()
         self._backend_combo.addItems(backends or ["(install hashcat or aircrack-ng)"])
         self._run_btn.setEnabled(bool(backends))
@@ -654,7 +682,9 @@ class CrackLabTab(QWidget):
             QMessageBox.warning(self, "Crack Lab", "Choose a crack engine.")
             return
         try:
-            cp.validate_capture(capture)
+            # validate_crack_input accepts a prebuilt .hc22000 hashfile (hashcat-only) as well as a raw
+            # capture, so the advertised prebuilt-hashfile path actually runs instead of being rejected.
+            cp.validate_crack_input(capture, backend)
             cp.validate_wordlist(wordlist)
         except ValueError as exc:
             QMessageBox.warning(self, "Crack Lab", str(exc))
@@ -678,18 +708,12 @@ class CrackLabTab(QWidget):
         if not (w and w.isRunning()):
             return
         self._append_line("[stop] requested — cancelling…")
+        # request_stop() now cancels EVERY backend cleanly: native exits on the stop flag; aircrack/hashcat
+        # have their child process killed. The worker then finishes and its done signal resets the buttons
+        # + label — no QThread.terminate() (which orphaned the child process and skipped temp cleanup).
         w.request_stop()
         self._stop_btn.setEnabled(False)
         self._result_label.setText("stopping…")
-        if w._backend != "native":
-            # aircrack/hashcat block in subprocess with no cooperative poll, so terminate the worker
-            # as a last resort. The native default never needs this — it exits on the stop flag and
-            # its done signal resets the UI, avoiding a QThread.terminate() mid pure-Python crack
-            # loop (which can deadlock the GUI on the GIL).
-            w.terminate()
-            w.wait(2000)
-            self._reset_run_buttons()
-            self._result_label.setText("stopped")
 
     def shutdown(self) -> None:
         """Stop + join the crack worker so its QThread isn't destroyed mid-run when the app closes
@@ -726,5 +750,8 @@ class CrackLabTab(QWidget):
             self._forget_active_capture()   # one write-back per load; a re-run must re-bind
 
     def _reset_run_buttons(self) -> None:
-        self._run_btn.setEnabled(bool(cp.available_backends(cp.detect_tools())))
+        # Reuse the backends cached by _refresh_tools instead of re-running detect_tools() (which spawns
+        # tool subprocesses) on the GUI thread after every run. "native" is always available, so the
+        # cache is non-empty whenever a run is possible; an explicit "recheck" refreshes it.
+        self._run_btn.setEnabled(bool(self._backends_cache))
         self._stop_btn.setEnabled(False)

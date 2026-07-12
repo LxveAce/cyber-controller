@@ -42,6 +42,7 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import signal
 import subprocess
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -199,6 +200,33 @@ def validate_capture(path: str) -> str:
     if os.path.splitext(path)[1].lower() not in CAPTURE_EXTS:
         raise ValueError(f"not a capture file (expected {'/'.join(CAPTURE_EXTS)}): {path!r}")
     return path
+
+
+#: A prebuilt hashcat hashfile — a valid crack INPUT, but only for the hashcat engine (native/aircrack
+#: read a raw capture, not a prehashed file), so it isn't in CAPTURE_EXTS.
+HASHFILE_EXT = ".hc22000"
+
+
+def validate_crack_input(path: str, backend: str) -> str:
+    """Validate the crack input for *backend*. A prebuilt ``.hc22000`` hashfile is a valid input but ONLY
+    for the hashcat engine — native/aircrack parse a raw capture, so a hashfile can't feed them. Any other
+    input must be a ``.pcapng``/``.pcap``/``.cap`` capture (delegates to :func:`validate_capture`). Raises
+    ValueError on a bad file or an input/engine mismatch.
+
+    Without this, the UI advertised ``.hc22000`` everywhere (Browse filter, placeholder, double-click
+    loader) but ``validate_capture`` rejected it, so the prebuilt-hashfile path was completely unreachable.
+    """
+    if not isinstance(path, str) or not path:
+        raise ValueError("no capture file given")
+    if os.path.splitext(path)[1].lower() == HASHFILE_EXT:
+        if backend != "hashcat":
+            raise ValueError(
+                "a prebuilt .hc22000 hashfile can only be cracked with the hashcat engine — "
+                "select 'hashcat' as the engine (native/aircrack read a raw .pcap capture instead).")
+        if not os.path.isfile(path):
+            raise ValueError(f"hashfile not found: {path!r}")
+        return path
+    return validate_capture(path)
 
 
 def validate_wordlist(path: str) -> str:
@@ -403,11 +431,59 @@ def _read_show_results(hash_file: str, wordlist: str, hashcat_path: str,
     return parse_hashcat_show(r.stdout or "")
 
 
+ProcSink = Callable[["subprocess.Popen"], None]
+
+
+def _spawn_kwargs() -> dict:
+    """Spawn a crack child in its OWN process group so a Stop can kill the whole tree (the tool may fork
+    helpers), on Windows and POSIX."""
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def kill_proc_tree(proc: Optional["subprocess.Popen"]) -> None:
+    """Best-effort kill of *proc* and its process group. A UI's Stop calls this so a running aircrack /
+    hashcat child is actually terminated instead of orphaned — QThread.terminate() on the wrapper thread
+    kills only the Python thread, never the separate OS process it is blocked waiting on."""
+    if proc is None or proc.poll() is not None:
+        return
+    if os.name != "nt":
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except (OSError, ProcessLookupError):
+            pass
+    try:
+        proc.kill()   # TerminateProcess on Windows / SIGKILL the direct child on POSIX
+    except OSError:
+        pass
+
+
+def _run_tool(argv: list[str], timeout: Optional[float],
+              on_proc: Optional[ProcSink] = None) -> tuple[int, str, str]:
+    """Run *argv* to completion and return ``(returncode, stdout, stderr)``. The child runs in its own
+    process group and is handed to *on_proc* the instant it spawns, so a caller can kill it (and any
+    children) on Stop. Raises :class:`subprocess.TimeoutExpired` (after killing the group) on timeout."""
+    proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            **_spawn_kwargs())
+    if on_proc is not None:
+        on_proc(proc)
+    try:
+        out, err = proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        kill_proc_tree(proc)
+        proc.communicate()   # reap the killed child so no handle/zombie leaks
+        raise
+    return proc.returncode, out or "", err or ""
+
+
 def run_hashcat(hash_file: str, wordlist: str, on_line: Line,
                 tools: Optional[dict[str, ToolStatus]] = None,
-                timeout: Optional[float] = None) -> CrackResult:
+                timeout: Optional[float] = None,
+                on_proc: Optional[ProcSink] = None) -> CrackResult:
     """Run a hashcat mode-22000 dictionary attack, then read the result back via ``--show``.
-    Returns a :class:`CrackResult`. Raises ValueError on bad input / missing tool."""
+    Returns a :class:`CrackResult`. Raises ValueError on bad input / missing tool. *on_proc* receives the
+    spawned child so a UI's Stop can kill it (see :func:`kill_proc_tree`)."""
     validate_wordlist(wordlist)
     tools = tools or detect_tools()
     hc = tools.get(HASHCAT, ToolStatus(HASHCAT))
@@ -419,10 +495,9 @@ def run_hashcat(hash_file: str, wordlist: str, on_line: Line,
     rc: Optional[int] = None
     stderr_txt = ""
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
-        rc = r.returncode
-        stderr_txt = (r.stderr or "").strip()
-        for ln in (r.stdout or "").splitlines():
+        rc, out, err = _run_tool(argv, timeout, on_proc=on_proc)
+        stderr_txt = err.strip()
+        for ln in out.splitlines():
             low = ln.lower()
             if any(k in low for k in ("recovered", "exhausted", "status", "cracked")):
                 on_line(f"[hashcat] {ln.strip()}")
@@ -453,8 +528,10 @@ def run_hashcat(hash_file: str, wordlist: str, on_line: Line,
 
 def run_aircrack(capture: str, wordlist: str, on_line: Line,
                  tools: Optional[dict[str, ToolStatus]] = None,
-                 bssid: str = "", timeout: Optional[float] = None) -> CrackResult:
-    """Run an aircrack-ng dictionary attack directly on the *capture* (CPU fallback path)."""
+                 bssid: str = "", timeout: Optional[float] = None,
+                 on_proc: Optional[ProcSink] = None) -> CrackResult:
+    """Run an aircrack-ng dictionary attack directly on the *capture* (CPU fallback path). *on_proc*
+    receives the spawned child so a UI's Stop can kill it (see :func:`kill_proc_tree`)."""
     validate_capture(capture)
     validate_wordlist(wordlist)
     tools = tools or detect_tools()
@@ -465,8 +542,7 @@ def run_aircrack(capture: str, wordlist: str, on_line: Line,
     argv = build_aircrack_argv(capture, wordlist, ac.path or AIRCRACK, bssid=bssid)
     on_line("[crack] aircrack-ng dictionary attack started")
     try:
-        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
-        out = r.stdout or ""
+        _, out, _err = _run_tool(argv, timeout, on_proc=on_proc)
     except subprocess.TimeoutExpired:
         on_line("[crack] aircrack-ng timed out (partial wordlist tried)")
         return CrackResult(cracked=False, detail="timed out before exhausting the wordlist")
