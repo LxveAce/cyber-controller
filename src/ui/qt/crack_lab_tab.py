@@ -15,9 +15,11 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+from pathlib import Path
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QObject, Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -29,6 +31,8 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -36,6 +40,7 @@ from PyQt5.QtWidgets import (
 from src.core import crack_pipeline as cp
 from src.core import tool_installer as ti
 from src.core import wordlist_manager as wm
+from src.core.capture_export import CAPTURE_CSV_COLUMNS, export_captures_csv
 
 log = logging.getLogger(__name__)
 
@@ -361,12 +366,31 @@ class _ToolsDialog(QDialog):
             w.wait(2000)
 
 
-class CrackLabTab(QWidget):
-    """Reachable UI for the offline WPA dictionary attack (capture -> wordlist -> crack)."""
+class _CaptureBridge(QObject):
+    """Marshals CaptureStore bus callbacks (any thread) onto the Qt GUI thread."""
 
-    def __init__(self) -> None:
+    changed = pyqtSignal()
+
+
+class CrackLabTab(QWidget):
+    """Reachable UI for the offline WPA dictionary attack (capture -> wordlist -> crack).
+
+    Constructor takes the optional cross-comm *hub*; when present, the Captures table auto-populates
+    from the shared :class:`~src.core.capture_store.CaptureStore` (a row appears when a device
+    captures a handshake) and a solved crack writes back onto its record. With ``hub=None`` the tab
+    degrades to manual-only (empty Captures table, no crash) — graceful-degrade like the hub.
+    """
+
+    def __init__(self, hub=None) -> None:
         super().__init__()
         self._worker: _CrackWorker | None = None
+
+        # Shared capture log (auto-populates the Captures table). None when the hub is unavailable.
+        self._captures = getattr(hub, "captures", None) if hub is not None else None
+        self._cap_row_keys: list[str] = []      # table row index -> CaptureRecord.key
+        self._active_capture_key = ""      # record a double-click loaded (for crack write-back)
+        self._cap_bridge = _CaptureBridge()
+        self._cap_bridge.changed.connect(self._refresh_captures, Qt.QueuedConnection)
         # Scroll-wrap the content so the engine/capture/wordlist rows never clip on a small/deck window
         # (setWidgetResizable lets the log still expand to fill when there's room).
         _scroll = QScrollArea(self)
@@ -407,6 +431,26 @@ class CrackLabTab(QWidget):
         browse_cap.clicked.connect(self._pick_capture)
         cap_row.addWidget(browse_cap)
         root.addLayout(cap_row)
+
+        # ── Captures (auto-populated from live device captures) ──────────
+        cap_box = QGroupBox("Captured handshakes")
+        cb = QVBoxLayout(cap_box)
+        hdr = QHBoxLayout()
+        hdr.addWidget(QLabel("Auto-logged as devices capture; double-click a row to load it."))
+        hdr.addStretch(1)
+        self._export_captures_btn = QPushButton("Export CSV…")
+        self._export_captures_btn.setToolTip(
+            "Write the capture log to a spreadsheet-safe CSV (includes any recovered passwords).")
+        self._export_captures_btn.clicked.connect(self._on_export_captures)
+        hdr.addWidget(self._export_captures_btn)
+        cb.addLayout(hdr)
+        self._captures_table = QTableWidget(0, len(CAPTURE_CSV_COLUMNS))
+        self._captures_table.setHorizontalHeaderLabels([c.upper() for c in CAPTURE_CSV_COLUMNS])
+        self._captures_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._captures_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._captures_table.cellDoubleClicked.connect(self._on_capture_activated)
+        cb.addWidget(self._captures_table)
+        root.addWidget(cap_box)
 
         # wordlist picker
         wl_row = QHBoxLayout()
@@ -459,6 +503,75 @@ class CrackLabTab(QWidget):
 
         self._refresh_tools()
         self._refresh_wordlists()
+
+        # Subscribe to the shared capture log and paint any captures already present. Bus callbacks
+        # arrive on the ingest thread, so they only poke the bridge signal (queued to GUI thread).
+        if self._captures is not None:
+            for topic in ("capture.added", "capture.updated", "capture.removed",
+                          "capture.cleared", "capture.cracked"):
+                self._captures.bus.subscribe(topic, self._on_capture_event)
+            self._refresh_captures()
+
+    # ── captures ─────────────────────────────────────────────────────
+    def _on_capture_event(self, _topic: str, _payload) -> None:
+        """CaptureStore bus callback (any thread) — request a GUI-thread table refresh."""
+        self._cap_bridge.changed.emit()
+
+    def _refresh_captures(self) -> None:
+        """Rebuild the Captures table from the shared store snapshot (GUI thread only)."""
+        if self._captures is None:
+            return
+        caps = self._captures.all()
+        self._cap_row_keys = [c.key for c in caps]
+        self._captures_table.setRowCount(len(caps))
+        for row, c in enumerate(caps):
+            d = c.to_dict()
+            for col, name in enumerate(CAPTURE_CSV_COLUMNS):
+                val = d.get(name)
+                item = QTableWidgetItem("" if val is None else str(val))
+                if c.crack_status == "cracked":
+                    item.setForeground(Qt.darkGreen)   # a solved capture reads green across its row
+                self._captures_table.setItem(row, col, item)
+
+    def _on_capture_activated(self, row: int, _col: int) -> None:
+        """Double-click a capture row -> load its file into the cracker (reuses the run flow)."""
+        if self._captures is None or not (0 <= row < len(self._cap_row_keys)):
+            return
+        rec = self._captures.get(self._cap_row_keys[row])
+        if rec is None:
+            return
+        path = rec.pcap_path or rec.hc22000_path
+        if path:
+            self._capture_edit.setText(path)
+            self._active_capture_key = rec.key
+            self._bssid_edit.setText(rec.bssid)   # helps the aircrack backend target this AP
+        elif rec.pmkid:
+            # Inline ESP32-DIV PMKID (no file on disk yet). Staging it to a .hc22000 is a separate
+            # slice; be honest rather than write a possibly-malformed hashline.
+            QMessageBox.information(
+                self, "Inline PMKID",
+                "This capture is an inline PMKID with no saved file yet. Save/convert it to a "
+                ".hc22000 first, then Browse… to load it.")
+        else:
+            QMessageBox.information(
+                self, "No file", "This capture has no saved .pcap/.hc22000 file to crack yet.")
+
+    def _on_export_captures(self) -> None:
+        """Write the capture log to a CSV the operator chooses (synchronous — the write is fast)."""
+        if self._captures is None or not self._captures.all():
+            QMessageBox.information(self, "Export", "No captures to export yet.")
+            return
+        default = str(Path.home() / "cyber-controller-captures.csv")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export captures to CSV", default, "CSV (*.csv);;All files (*)")
+        if not path:
+            return
+        try:
+            n = export_captures_csv(self._captures.all(), path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        QMessageBox.information(self, "Export", f"Wrote {n} capture(s) to {path}")
 
     # ── populate ─────────────────────────────────────────────────────
     def _refresh_tools(self) -> None:
@@ -595,6 +708,12 @@ class CrackLabTab(QWidget):
             self._result_label.setText(f"✓ KEY FOUND for {who}: {result.password}")
         else:
             self._result_label.setText(f"no key recovered — {result.detail or 'not in wordlist'}")
+        # Durable capture <-> outcome link: if this run came from double-clicking a logged capture,
+        # write the recovered key back onto its record (turns the row green via capture.cracked).
+        if result.cracked and self._captures is not None and self._active_capture_key:
+            wordlist = self._wordlist_combo.currentData() or ""
+            self._captures.mark_cracked(
+                self._active_capture_key, result.password, result.detail or "", wordlist)
 
     def _reset_run_buttons(self) -> None:
         self._run_btn.setEnabled(bool(cp.available_backends(cp.detect_tools())))

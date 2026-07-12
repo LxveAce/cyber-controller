@@ -536,7 +536,8 @@ class CyberControllerWindow(QMainWindow):
         # crack pipeline + wordlist manager (capture -> wordlist -> per-run consent -> hashcat/aircrack).
         # Dictionary-only; the consent gate is never bypassed.
         from src.ui.qt.crack_lab_tab import CrackLabTab
-        self._crack_lab_tab = CrackLabTab()
+        # Pass the cross-comm hub so the Captures table auto-populates from the shared capture log.
+        self._crack_lab_tab = CrackLabTab(self._hub)
         self._operate_surface.addTab(self._crack_lab_tab, label_icon("Crack Lab"), "Crack Lab")
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
