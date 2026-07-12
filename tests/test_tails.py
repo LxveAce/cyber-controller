@@ -92,6 +92,46 @@ def test_host_allowlist():
         tails._require_tails_url("http://download.tails.net/x.img")  # non-https
 
 
+# ── verify_gpg: a MISSING key defers to SHA-256 (None); only a BAD signature refuses (False) ──
+
+def _mock_gpg(monkeypatch, status):
+    import shutil
+    monkeypatch.setattr(shutil, "which", lambda cand: "gpg" if cand in ("gpg", "gpg2") else None)
+
+    class _P:
+        def __init__(self):
+            self.stdout, self.stderr = status, ""
+
+    monkeypatch.setattr(tails.subprocess, "run", lambda *a, **k: _P())
+
+
+def test_verify_gpg_missing_key_defers_to_sha(monkeypatch):
+    # gpg installed but the Tails signing key isn't imported -> NO_PUBKEY/ERRSIG, no VALIDSIG. Must return
+    # None (defer to SHA-256), NOT False — else a checksum-verifiable image is hard-refused with a
+    # misleading "signature NOT valid" for everyone who never imported the key.
+    _mock_gpg(monkeypatch, "[GNUPG:] ERRSIG 0123 1 8 00 1\n[GNUPG:] NO_PUBKEY 0123456789ABCDEF\n")
+    assert tails.verify_gpg("img", "sig", _silent) is None
+
+
+def test_verify_gpg_bad_signature_refuses(monkeypatch):
+    # A genuinely bad/forged signature (BADSIG, no missing-key marker) must still hard-refuse (False).
+    _mock_gpg(monkeypatch, f"[GNUPG:] BADSIG {tails.TAILS_SIGNING_KEY_FINGERPRINT} signer\n")
+    assert tails.verify_gpg("img", "sig", _silent) is False
+
+
+def test_verify_gpg_valid_tails_key(monkeypatch):
+    fpr = tails.TAILS_SIGNING_KEY_FINGERPRINT
+    _mock_gpg(monkeypatch, f"[GNUPG:] VALIDSIG {fpr}\n[GNUPG:] GOODSIG\n")
+    assert tails.verify_gpg("img", "sig", _silent) is True
+
+
+def test_verify_gpg_good_sig_from_wrong_key_is_not_valid(monkeypatch):
+    # A good signature from a DIFFERENT key (VALIDSIG but fingerprint mismatch) is a genuine foreign-sig
+    # refusal (False), not a missing-key defer.
+    _mock_gpg(monkeypatch, "[GNUPG:] VALIDSIG DEADBEEFDEADBEEF\n[GNUPG:] GOODSIG\n")
+    assert tails.verify_gpg("img", "sig", _silent) is False
+
+
 # ── download_image: streamed socket must be closed deterministically ──
 #
 # Regression for a leaked streamed connection: download_image() opens each hop with stream=True,

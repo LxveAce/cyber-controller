@@ -288,6 +288,14 @@ class FlashEngine:
         with self._lock:
             return bool(port) and port in self._busy_ports
 
+    def active_ports(self) -> list[str]:
+        """Snapshot of the ports currently mid flash/backup/erase. The scalar :attr:`status` is a single
+        SHARED field, but different ports flash in parallel (multi-board), so a finished op sets it to
+        DONE even while another port is still writing — a surface polling ``status`` alone can read "done"
+        mid-flash. Consult this for an honest per-port picture (e.g. the web /api/health)."""
+        with self._lock:
+            return sorted(self._busy_ports)
+
     @contextmanager
     def _port_guard(self, port: str):
         """Reserve *port* for a single serial operation. Raises :class:`_PortBusy` if it's already in use.

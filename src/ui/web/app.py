@@ -665,13 +665,18 @@ def create_app(
     @requires_auth
     def api_health():
         devices = device_manager.list_devices()
+        # The engine's scalar status is a single shared field; with parallel multi-board flashing a
+        # finished op sets it to DONE while another port is still writing. Report per-port truth: while
+        # any port is busy, never surface a terminal status (a poller would re-enable controls mid-flash).
+        active = flash_engine.active_ports()
         return jsonify(
             {
                 "status": "ok",
                 "device_count": len(devices),
                 "connected_count": len([d for d in devices if d.connected]),
                 "target_count": target_pool.count,
-                "flash_status": flash_engine.status.value,
+                "flash_status": "flashing" if active else flash_engine.status.value,
+                "busy_ports": active,
             }
         )
 

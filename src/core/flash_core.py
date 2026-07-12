@@ -2364,7 +2364,14 @@ class GenericProfile(FirmwareProfile):
         if sf["source"] == "pinned":
             out = {}
             for nm, meta in sf["pinned_files"].items():
-                path = download_to(_pinned_url(self.cfg, meta["source"], nm), cache, nm, on_line)
+                # Namespace the cache dest by profile id (as the repo_tree branch above already does) so two
+                # profiles that pin a support file with the SAME basename (e.g. "bootloader.bin") don't
+                # collide in the one shared cache dir. Without this, the second profile's download_to
+                # reused the first's cached bytes — its sha256 then mismatched and the flash aborted with a
+                # misleading "pinned firmware integrity check failed" tamper error for the rest of the
+                # process lifetime. download_to keeps its deterministic same-name -> same-dest reuse; we
+                # just make the name unique per profile.
+                path = download_to(_pinned_url(self.cfg, meta["source"], nm), cache, f"{self.id}_{nm}", on_line)
                 if sf.get("verify_sha256"):
                     verify_sha256(path, meta["sha256"], on_line)
                 out[meta["offset"]] = path
