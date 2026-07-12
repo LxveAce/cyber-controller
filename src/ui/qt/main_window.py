@@ -97,6 +97,26 @@ class _UpdateCheckWorker(QThread):
         self.done.emit(result)
 
 
+class _PortScanWorker(QThread):
+    """Enumerate serial ports off the GUI thread. serial.tools.list_ports.comports() does blocking
+    SetupAPI/registry I/O that can take seconds on a machine with many virtual/Bluetooth COM ports, so
+    running it in the Scan-Ports / F5 slot froze the event loop. Any failure yields an empty list so the
+    scan can never crash the app."""
+
+    done = pyqtSignal(object)  # list[Device]
+
+    def __init__(self, device_manager) -> None:
+        super().__init__()
+        self._dm = device_manager
+
+    def run(self) -> None:
+        try:
+            devices = list(self._dm.scan_ports())
+        except Exception:  # noqa: BLE001 — a scan failure must never crash the UI
+            devices = []
+        self.done.emit(devices)
+
+
 class _SelfUpdateWorker(QThread):
     """Download + verify + stage the new release binary off the UI thread. Emits the staged path on
     success or an error string; the swap/relaunch (:func:`self_update.apply`) is left to the UI
@@ -197,6 +217,7 @@ class CyberControllerWindow(QMainWindow):
         self._sidebar_timer = QTimer(self)
         self._sidebar_timer.timeout.connect(self._refresh_sidebar_devices)
         self._sidebar_timer.start(3000)
+        self._scan_worker: "_PortScanWorker | None" = None  # in-flight Scan-Ports enumeration (off-GUI-thread)
 
     # ── Menu bar ─────────────────────────────────────────────────────
 
@@ -429,9 +450,9 @@ class CyberControllerWindow(QMainWindow):
         sidebar_layout.addLayout(quick_actions)
 
         # Scan ports button
-        scan_btn = QPushButton("Scan Ports")
-        scan_btn.clicked.connect(self._on_sidebar_scan)
-        sidebar_layout.addWidget(scan_btn)
+        self._scan_btn = QPushButton("Scan Ports")
+        self._scan_btn.clicked.connect(self._on_sidebar_scan)
+        sidebar_layout.addWidget(self._scan_btn)
 
         top_layout.addWidget(sidebar)
 
@@ -1318,11 +1339,25 @@ class CyberControllerWindow(QMainWindow):
             self._show_subtab(self._connect_surface, self._device_tab)
 
     def _on_sidebar_scan(self) -> None:
-        """Scan ports and refresh the sidebar."""
-        for dev in self._dm.scan_ports():
+        """Scan ports off the GUI thread, then register + refresh the sidebar when it reports back.
+
+        comports() does blocking SetupAPI/registry I/O (seconds on a machine with many virtual COM ports);
+        running it inline froze the event loop on every F5 / Scan-Ports press. The worker keeps the UI live
+        and add_device()/refresh run back on the GUI thread via the queued ``done`` signal."""
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            return  # a scan is already in flight — don't orphan its QThread
+        self._scan_btn.setEnabled(False)
+        self._scan_worker = _PortScanWorker(self._dm)
+        self._scan_worker.done.connect(self._on_ports_scanned)
+        self._scan_worker.finished.connect(lambda: setattr(self, "_scan_worker", None))
+        self._scan_worker.start()
+
+    def _on_ports_scanned(self, devices) -> None:
+        for dev in devices:
             if not self._dm.get_device(dev.port):
                 self._dm.add_device(dev)
         self._refresh_sidebar_devices()
+        self._scan_btn.setEnabled(True)
 
     # ── Status bar ───────────────────────────────────────────────────
 
@@ -2069,9 +2104,9 @@ class CyberControllerWindow(QMainWindow):
                     _shutdown()
                 except Exception:  # noqa: BLE001 — teardown must never raise
                     pass
-        # The update / self-update check threads (started on launch + on manual check) are held only on
-        # self, so join them here too.
-        for attr in ("_update_worker", "_self_update_worker"):
+        # The update / self-update check threads (started on launch + on manual check) and the sidebar
+        # port-scan worker are held only on self, so join them here too.
+        for attr in ("_update_worker", "_self_update_worker", "_scan_worker"):
             w = getattr(self, attr, None)
             if w is not None:
                 try:

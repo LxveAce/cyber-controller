@@ -1019,12 +1019,24 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
         # ── load button (dialog; not unit-tested) ─────────────────────
         def _on_load(self) -> None:
-            from PyQt5.QtWidgets import QFileDialog
+            from PyQt5.QtCore import Qt
+            from PyQt5.QtWidgets import QApplication, QFileDialog
             path, _ = QFileDialog.getOpenFileName(
                 self, "Open Flock scan (cameras.geojson)", self._flock_data_dir(),
                 "GeoJSON (*.geojson *.json);;All files (*)")
-            if path:
+            if not path:
+                return
+            # A nationwide DeFlock export is tens of thousands of points; json.load + reprojecting every
+            # one runs on the GUI thread (the QGraphics scene build has to). It can't be moved to a worker,
+            # so give visible feedback + block re-entry: a busy cursor so the pause reads as "working" not
+            # "hung", and a disabled Load button so a second click can't stack another parse on the first.
+            self._btn_load.setEnabled(False)
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
                 self.load_geojson_file(path)
+            finally:
+                QApplication.restoreOverrideCursor()
+                self._btn_load.setEnabled(True)
 
         def _open_data_folder(self) -> None:
             """Reveal the canonical Flock data folder in the OS file manager (best-effort)."""
