@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 
+from src.core.capture_store import CaptureStore
 from src.core.cross_comm import AutoRouter, EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.drivers import driver_for
@@ -35,7 +36,8 @@ class CrossCommHub:
         dm: The DeviceManager node registry (what's connected, what it can do).
         bus: The EventBus every node/target/action change publishes to.
         pool: The shared TargetPool (discovery view over the bus).
-        ingestor: Feeds each connected device's parsed serial output into the pool.
+        captures: The shared CaptureStore (captured WPA handshakes / PMKIDs, over the bus).
+        ingestor: Feeds each device's parsed serial output into the pool (and the capture log).
         router: AutoRouter — routing rules as event subscribers; fires via :meth:`send_to_port`.
         broadcast: BroadcastEngine — one verb fans out to every capable node in its native command.
         action_resolver: Maps a target to firmware-specific actions per node. May be ``None`` if the
@@ -52,10 +54,16 @@ class CrossCommHub:
         self.bus = bus or EventBus()
         self.pool = pool if pool is not None else TargetPool(self.bus)
 
+        # The shared capture log — captured WPA handshakes / PMKIDs, keyed like the pool and on
+        # the same bus (capture.* mirroring target.*). The ingestor auto-registers a capture
+        # whenever a device reports one; the Crack Lab's Captures list rides capture.added live.
+        self.captures = CaptureStore(self.bus)
+
         # Feeds parsed APs/clients from each connected device into the shared pool, completing the loop:
         # a scan on device A -> target.added -> AutoRouter -> a command on device B. The hub owns the one
         # instance everyone shares AND auto-attaches it to every connection the moment it opens (below).
-        self.ingestor = TargetIngestor(self.pool)
+        # It also feeds captured handshakes/PMKIDs into the shared capture log.
+        self.ingestor = TargetIngestor(self.pool, captures=self.captures)
 
         # Attach the ingestor to EVERY connection the DeviceManager opens — Devices-tab Connect, Wardrive,
         # Broadcast, or an injected NodeLink — so a scan on ANY opened device feeds the pool, not only a

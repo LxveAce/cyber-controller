@@ -13,17 +13,21 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
+from src.models.capture import CaptureRecord
 from src.models.target import Target, TargetType
 
 log = logging.getLogger(__name__)
 
 
 class TargetIngestor:
-    """Bridges connected devices' serial output into a shared :class:`TargetPool`."""
+    """Bridges connected devices' serial output into a shared :class:`TargetPool` (and, when given a
+    :class:`~src.core.capture_store.CaptureStore`, the shared capture log too)."""
 
-    def __init__(self, pool: Any) -> None:
+    def __init__(self, pool: Any, captures: Any = None) -> None:
         self._pool = pool
+        self._captures = captures     # optional CaptureStore; None on the Devices-tab ingestor
         self._attached: dict[str, Callable[[str], None]] = {}  # port -> on_line cb (for detach)
+        self._recent_capture: dict[str, str] = {}  # port -> last capture key (for pcap_saved)
 
     def attach(self, conn: Any, protocol: Any) -> Callable[[str], None]:
         """Register an on_line handler on *conn* that parses each line with *protocol* and adds any
@@ -52,6 +56,12 @@ class TargetIngestor:
             target = self._event_to_target(ev, port)
             if target is not None:
                 self._pool.add(target)  # publishes 'target.added' -> AutoRouter
+            # Capture log — runs in addition to the target branch (a pcap_saved line has no Target
+            # but still registers a capture). Only when a CaptureStore is given (the hub ingestor).
+            if self._captures is not None:
+                cap = self._event_to_capture(ev, port)
+                if cap is not None:
+                    self._captures.add(cap)  # publishes 'capture.added' -> Crack Lab Captures list
 
         conn.on_line(on_line)
         self._attached[port] = on_line
@@ -198,3 +208,71 @@ class TargetIngestor:
             return t
 
         return None
+
+    def _event_to_capture(self, ev: Any, port: str) -> CaptureRecord | None:
+        """Map a ParsedEvent to a :class:`CaptureRecord` for the shared capture log — the WPA/WPA2
+        handshake & PMKID capture events the firmwares emit but :meth:`_event_to_target` drops (not
+        routable targets). Joins ssid/channel/rssi from the pool by BSSID so a captured handshake
+        carries the network name it was advertising. Returns None for non-capture events.
+
+        Only real crackable-material captures are logged: ``handshake_captured`` (EAPOL 4-way),
+        ``pmkid_captured`` (an inline, directly-crackable PMKID) and ``pcap_saved`` (a written file,
+        attached to the most-recent capture). GhostESP's ``capture`` event is an evil-portal
+        CREDENTIAL grab (username/password), NOT a handshake, so it is deliberately excluded.
+        """
+        d = getattr(ev, "data", {}) or {}
+        et = getattr(ev, "event_type", "")
+        raw = getattr(ev, "raw", "") or ""
+
+        if et == "handshake_captured":
+            rec = CaptureRecord(bssid=str(d.get("bssid", "")).strip(), capture_type="eapol",
+                                device_source=port, raw=raw)
+            self._join_from_pool(rec)
+            self._recent_capture[port] = rec.key
+            return rec
+
+        if et == "pmkid_captured":
+            rec = CaptureRecord(bssid=str(d.get("bssid", "")).strip(), capture_type="pmkid",
+                                pmkid=str(d.get("pmkid", "")).strip(), device_source=port, raw=raw)
+            self._join_from_pool(rec)
+            self._recent_capture[port] = rec.key
+            return rec
+
+        if et == "pcap_saved":
+            path = str(d.get("path", "")).strip()
+            recent_key = self._recent_capture.get(port)
+            recent = None
+            if recent_key and self._captures is not None:
+                recent = self._captures.get(recent_key)
+            if recent is not None:
+                # Attach the file to the capture it belongs to (the handshake that just preceded
+                # it on this port). Re-adding with the same key upserts pcap_path onto that row.
+                return CaptureRecord(bssid=recent.bssid, capture_type=recent.capture_type,
+                                     pcap_path=path, device_source=port, raw=raw)
+            # No preceding capture on the port: a bare pcap with no announced BSSID. Log it so
+            # the file is tracked/crackable (it collapses under the empty key — accepted edge case).
+            return CaptureRecord(bssid="", capture_type="eapol", pcap_path=path,
+                                 device_source=port, raw=raw)
+
+        return None
+
+    def _join_from_pool(self, rec: CaptureRecord) -> None:
+        """Fill ssid/channel/rssi on a capture from the matching pool AP (case-insensitive BSSID
+        match), so a captured handshake carries the network it was seen advertising. Best-effort: a
+        capture whose AP was never scanned just keeps its empty fields."""
+        if not rec.bssid or self._pool is None:
+            return
+        try:
+            aps = self._pool.by_type(TargetType.AP)
+        except Exception:  # noqa: BLE001 — a non-standard pool must never break capture logging
+            return
+        want = rec.bssid.lower()
+        for ap in aps:
+            if str(getattr(ap, "mac", "")).lower() == want:
+                if getattr(ap, "ssid", ""):
+                    rec.ssid = ap.ssid
+                if getattr(ap, "channel", 0):
+                    rec.channel = ap.channel
+                if getattr(ap, "rssi", 0):
+                    rec.rssi = ap.rssi
+                break
