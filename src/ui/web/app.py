@@ -311,7 +311,12 @@ def create_app(
     @app.route("/")
     @requires_auth
     def dashboard():
-        devices = device_manager.list_devices()
+        # Merged live scan, not the raw registry: a board plugged in BEFORE the server started is seeded
+        # into the hotplug monitor's _known_ports without an add_device, so list_devices() alone reports
+        # "0 devices" on the landing page while /devices (which already uses this helper) shows it. Count
+        # what's actually attached. connected_count still keys off d.connected, so a scanned-but-unconnected
+        # port correctly reads present-not-connected.
+        devices = _devices_for_display()
         n_connected = len([d for d in devices if d.connected])
         return render_template(
             "dashboard.html",
@@ -448,6 +453,14 @@ def create_app(
             return jsonify({"error": f"Port {port} is busy with another operation"}), 409
         _audit("flash", user=session.get("user"), port=port, profile=profile_name)
 
+        # Free the UART before esptool takes it. A web-opened monitor connection (/api/connect, /terminal)
+        # still holds this port: on Windows the handle is exclusive so esptool's open fails with
+        # "Access is denied" and the flash dies with no hint to disconnect; on POSIX the reader thread and
+        # esptool read the same tty concurrently and corrupt the flash. Force-release any managed
+        # connection (no owner) so the port is clear before flashing. (The /api/connect + /api/command
+        # busy-guards below stop a client from re-grabbing it mid-flash.)
+        device_manager.close_connection(port)
+
         def progress_cb(pct: int, msg: str) -> None:
             socketio.emit("flash_progress", {"port": port, "percent": pct, "message": msg})
 
@@ -481,6 +494,10 @@ def create_app(
         port = str(data.get("port", ""))
         if not port:
             return jsonify({"error": "port is required"}), 400
+        # Refuse to open a serial connection on a port that is mid-flash: esptool owns the UART and a
+        # second opener would contend with it (brick risk). 409 mirrors /api/flash's own busy answer.
+        if flash_engine.is_port_busy(port):
+            return jsonify({"error": f"Port {port} is busy with a flash operation"}), 409
         if device_manager.get_device(port) is None:
             match = next((d for d in device_manager.scan_ports() if d.port == port), None)
             if match is None:
@@ -524,6 +541,10 @@ def create_app(
             return jsonify({"error": "command too long"}), 400
         if not _known_port(port):
             return jsonify({"error": f"Unknown/unregistered port: {port}"}), 400
+        # Never push operator bytes onto a UART that esptool is mid-flash on — a stray write during the
+        # flash can brick the board. 409, consistent with /api/flash and /api/connect.
+        if flash_engine.is_port_busy(port):
+            return jsonify({"error": f"Port {port} is busy with a flash operation"}), 409
 
         conn = device_manager.get_connection(port)
         if not conn or not conn.is_connected:
@@ -654,7 +675,9 @@ def create_app(
     @app.route("/api/devices")
     @requires_auth
     def api_devices():
-        return jsonify([d.to_dict() for d in device_manager.list_devices()])
+        # Merged live scan (see dashboard): count/list what's physically attached, not just the registry,
+        # so a board present before server start isn't reported as absent.
+        return jsonify([d.to_dict() for d in _devices_for_display()])
 
     @app.route("/api/targets")
     @requires_auth
@@ -664,7 +687,7 @@ def create_app(
     @app.route("/api/health")
     @requires_auth
     def api_health():
-        devices = device_manager.list_devices()
+        devices = _devices_for_display()
         # The engine's scalar status is a single shared field; with parallel multi-board flashing a
         # finished op sets it to DONE while another port is still writing. Report per-port truth: while
         # any port is busy, never surface a terminal status (a poller would re-enable controls mid-flash).
@@ -693,7 +716,12 @@ def create_app(
             log.warning("Rejected unauthenticated WebSocket from %s", _client_ip())
             _audit("ws_reject_unauth")
             return False
-        if not csrf_valid(session.get("csrf"), (auth or {}).get("csrf")):
+        # Coerce a non-dict handshake `auth` (client-controlled: could be a JSON string/array/number) to {}
+        # so the CSRF read below can't AttributeError past the clean refuse-and-audit path — mirrors the
+        # isinstance guard in on_subscribe_serial / on_send_command. `auth or {}` only handles falsy.
+        if not isinstance(auth, dict):
+            auth = {}
+        if not csrf_valid(session.get("csrf"), auth.get("csrf")):
             log.warning("Rejected WebSocket with bad CSRF from %s", _client_ip())
             _audit("ws_reject_csrf")
             return False
