@@ -183,6 +183,7 @@ class NetworkTab(QWidget):
         self._send_cmd = send_cmd
         self._bus = event_bus
         self._nodes: "dict[str, _Node]" = {}
+        self._device_fp: tuple = ()   # last-seen device fingerprint; drives the device-change poll
 
         root = QVBoxLayout(self)
         # Toolbar lives in its own container so Simple mode can hide the whole control row at once.
@@ -237,6 +238,16 @@ class NetworkTab(QWidget):
                 except Exception:  # noqa: BLE001 — never let bus wiring break tab construction
                     pass
 
+        # Device-change refresh. The bus carries only target.* events; DeviceManager emits no
+        # device events. So a reflash (disconnect/reconnect, new firmware) fired nothing the graph
+        # heard and it went stale. This visibility-gated poll rebuilds when the device fingerprint
+        # (ports + connected + firmware) changes, so the graph self-heals after a reflash. Cheap:
+        # rebuilds only on a real change, and rebuild() keeps the dragged layout. Started on show,
+        # stopped on hide (mirrors device_tab._timer).
+        self._device_timer = QTimer(self)
+        self._device_timer.setInterval(2500)
+        self._device_timer.timeout.connect(self._poll_devices)
+
     def _on_bus_target_event(self, _topic: str, _payload) -> None:
         """EventBus callback (any thread) — request a debounced GUI-thread rebuild of the graph."""
         self._targets_changed.emit()
@@ -249,13 +260,35 @@ class NetworkTab(QWidget):
         else:
             self._dirty = True
 
+    def _device_fingerprint(self) -> tuple:
+        """A cheap snapshot of the device set — (port, connected, firmware) per device. It moves
+        when a board connects, disconnects, or returns from a reflash (new firmware /
+        re-detect), which is exactly what should re-trigger a graph rebuild."""
+        return tuple(
+            (getattr(d, "port", ""), bool(getattr(d, "connected", False)),
+             getattr(d, "firmware", "") or "")
+            for d in self._devices()
+        )
+
+    def _poll_devices(self) -> None:
+        """Visibility-gated device-change check (see the _device_timer wiring). Rebuilds only when
+        the fingerprint changed, so a reflashed board resurfaces in the graph without waiting on a
+        target.* event that a stalled ingest may never send."""
+        if self.isVisible() and self._device_fingerprint() != self._device_fp:
+            self.rebuild()   # rebuild() refreshes _device_fp, so it won't re-fire until it changes
+
     def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
         super().showEvent(ev)
-        if self._dirty:
+        self._device_timer.start()   # resume the device-change poll while the tab is visible
+        if self._dirty or self._device_fingerprint() != self._device_fp:
             self._dirty = False
-            self.rebuild()          # catch up on any target changes that arrived while hidden
+            self.rebuild()   # catch up on target/device changes (e.g. a reflash) while hidden
         else:
             self._view.fit_content()   # re-frame in case the view was resized while hidden
+
+    def hideEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().hideEvent(ev)
+        self._device_timer.stop()    # don't poll an off-screen graph
 
     # ── interface mode (dual-depth Simple / Pro) ─────────────────────
     def set_ui_mode(self, mode: str) -> None:
@@ -338,6 +371,9 @@ class NetworkTab(QWidget):
                 restored.add(k)
         self._auto_arrange(skip=restored)
         self._view.fit_content()   # frame the (re)built graph until the user zooms
+        # Record the device set this build reflects, so the poll only re-fires on a real change
+        # (a target.* rebuild also refreshes it — no redundant device-poll rebuild right after).
+        self._device_fp = self._device_fingerprint()
 
     @staticmethod
     def _target_kind(t) -> str:
