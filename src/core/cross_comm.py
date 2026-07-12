@@ -67,6 +67,13 @@ class EventBus:
 
 # ── Target Pool ──────────────────────────────────────────────────────
 
+# Hard cap on the number of live targets. Randomized/rotating BLE and Wi-Fi MACs, or a flood of
+# SubGHz signals, could otherwise grow the pool without bound and exhaust memory (prune() only runs
+# if a caller invokes it on a timer, which nothing guarantees). When full, the least-recently-seen
+# target is evicted to admit a new one. 5000 comfortably covers any real environment's active set.
+_MAX_TARGETS = 5000
+
+
 class TargetPool:
     """Thread-safe shared collection of discovered wireless targets.
 
@@ -112,6 +119,7 @@ class TargetPool:
             True if this is a new target, False if updated.
         """
         updated_payload: dict | None = None
+        evicted: Target | None = None
         with self._lock:
             existing = self._targets.get(target.key)
             if existing:
@@ -137,9 +145,17 @@ class TargetPool:
                     existing.device_source = target.device_source
                 updated_payload = existing.to_dict()
             else:
+                # Bound the pool before inserting: when full, evict the least-recently-seen target
+                # so a stream of never-before-seen keys (rotating MACs, SubGHz flood) can't grow it
+                # without limit. min() over last_seen is O(n) but only runs at the cap.
+                if len(self._targets) >= _MAX_TARGETS:
+                    oldest_key = min(self._targets, key=lambda k: self._targets[k].last_seen)
+                    evicted = self._targets.pop(oldest_key)
                 self._targets[target.key] = target
         # Publish OUTSIDE the lock: the non-reentrant pool lock must not be held across subscriber
         # callbacks, or a blocking subscriber that reads the pool would deadlock the reader thread.
+        if evicted is not None:
+            self.bus.publish("target.removed", evicted.to_dict())
         if updated_payload is not None:
             self.bus.publish("target.updated", updated_payload)
             return False

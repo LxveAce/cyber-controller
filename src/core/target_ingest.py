@@ -89,8 +89,9 @@ class TargetIngestor:
         Covers the identifier-bearing discovery events across all firmwares so a
         HaleHound / DIV / Marauder / BW16 device can feed the AutoRouter, not just
         WiFi APs: ap_found + Guardian rogue_ap -> AP; client_found -> CLIENT;
-        ble_found -> BLE; subghz_found -> SUBGHZ (keyed by frequency, since SubGHz
-        has no MAC); nfc_found -> NFC (keyed by UID). Events with no stable
+        ble_found -> BLE; subghz_found -> SUBGHZ (keyed by frequency+protocol+
+        signal, since SubGHz has no MAC and one band carries many distinct
+        signals); nfc_found -> NFC (keyed by UID). Events with no stable
         identifier (nrf24/mousejack/iot) stay terminal-only — they aren't pool
         targets. Unknown/info events return None.
         """
@@ -151,15 +152,25 @@ class TargetIngestor:
             freq = str(d.get("frequency", "")).strip()
             if not freq:
                 return None
+            # Firmwares disagree on field names: HaleHound emits 'modulation'/'data', the Flipper
+            # emits 'protocol'/'key'. Fall back across both so a Flipper SubGHz capture keeps its
+            # decoded protocol label AND its Key payload (the field that identifies the signal)
+            # instead of landing in the pool blank.
+            proto = str(d.get("modulation") or d.get("protocol") or "")
+            sig = str(d.get("data") or d.get("key") or "")
+            # Key by frequency + protocol + signal payload, NOT frequency alone. A single band
+            # (433.92 MHz is shared by countless remotes) carries many distinct signals; keying on
+            # freq alone collapsed every one into a single target, so a second remote's capture
+            # merely "updated" the first and vanished. Composing the identity keeps distinct signals
+            # distinct while a genuine re-observation of the SAME signal still dedupes. Empty parts
+            # drop out, so a freq-only device degrades to the old freq key (backward compatible), and
+            # the raw frequency stays available in extra['frequency'] for any freq-only consumer.
+            mac = ":".join(p for p in (freq, proto, sig) if p)
             return Target(
-                mac=freq, target_type=TargetType.SUBGHZ,
-                # Firmwares disagree on field names: HaleHound emits 'modulation'/'data', the Flipper
-                # emits 'protocol'/'key'. Fall back across both so a Flipper SubGHz capture keeps its
-                # decoded protocol label AND its Key payload (the field that identifies the signal)
-                # instead of landing in the pool blank.
-                ssid=str(d.get("modulation") or d.get("protocol") or ""),
+                mac=mac, target_type=TargetType.SUBGHZ,
+                ssid=proto,
                 rssi=int(d.get("rssi", 0) or 0), device_source=port,
-                extra={"data": d.get("data") or d.get("key") or ""},
+                extra={"data": sig, "frequency": freq},
             )
 
         if et == "nfc_found":
