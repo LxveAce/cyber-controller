@@ -1066,6 +1066,13 @@ class FlashEngine:
         from src.core.backends import adb_backend
 
         on_line = _percent_adapter(progress)
+        # adb_backend.full_install() hardcodes the RayHunter installer, so this handler only knows how to
+        # flash RayHunter. Guard on core_id so a FUTURE profile that reuses backend="adb" fails LOUD here
+        # instead of silently installing RayHunter's network installer onto an unrelated device.
+        if profile.core_id != "rayhunter":
+            on_line(f"[adb] no ADB install flow for profile '{profile.core_id}' — this backend only "
+                    "supports 'rayhunter'. Add a dispatch branch before flashing another ADB device.")
+            return False
         if not adb_backend.find_adb():
             on_line("[adb] adb not found. Install Android platform-tools.")
             return False
