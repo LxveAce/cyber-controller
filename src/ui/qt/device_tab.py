@@ -381,6 +381,17 @@ class DeviceTab(QWidget):
             self._device_list.addItem(item)
             if dev.port == selected_port:
                 self._device_list.setCurrentItem(item)
+        # Auto-select the first device when nothing is active yet, so the bottom-left Connect/
+        # Disconnect buttons (which act on _active_port) work after a scan. QListWidget.addItem
+        # never auto-selects, and the re-select above only matches an ALREADY-chosen port — so on
+        # first populate currentItem() stayed None, _active_port stayed "", and the buttons hit the
+        # `if not port: return` guard and silently no-opped (looked dead). Guarded on an empty
+        # _active_port so a later user pick is preserved; fires _on_device_selected (which sets
+        # _active_port + the connect/disconnect enable states).
+        if not self._active_port and self._device_list.count():
+            first = self._device_list.item(0)
+            if first is not None and bool(first.flags() & Qt.ItemIsSelectable):
+                self._device_list.setCurrentItem(first)
         # Empty-state guidance (same shape as software_tab's empty-combo entry): a single
         # non-selectable hint row telling the user the next step.
         if self._device_list.count() == 0:
