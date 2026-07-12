@@ -623,6 +623,8 @@ class TargetsTab(QWidget):
 
             # Publish result on the event bus (we handle it ourselves since we
             # passed event_bus=None to execute_action to avoid double-publishing).
+            # chain_events lets the CaptureCorrelator arm a capture-confirm window for a fired
+            # deauth/capture action (it keys on target_mac) — punch-list #2 slice 5.
             self._bus.publish("action.executed", {
                 "action": action_name,
                 "port": port,
@@ -630,6 +632,7 @@ class TargetsTab(QWidget):
                 "target_ssid": target.ssid,
                 "status": status,
                 "detail": detail,
+                "chain_events": list(getattr(action, "chain_events", None) or []),
             })
 
             # Update status bar via parent window

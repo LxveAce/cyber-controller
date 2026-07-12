@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import logging
 
+from src.core.capture_correlate import CaptureCorrelator
 from src.core.capture_store import CaptureStore
 from src.core.cross_comm import AutoRouter, EventBus, TargetPool
 from src.core.device_manager import DeviceManager
@@ -37,6 +38,7 @@ class CrossCommHub:
         bus: The EventBus every node/target/action change publishes to.
         pool: The shared TargetPool (discovery view over the bus).
         captures: The shared CaptureStore (captured WPA handshakes / PMKIDs, over the bus).
+        correlator: CaptureCorrelator — ties a fired deauth to the handshake it produces.
         ingestor: Feeds each device's parsed serial output into the pool (and the capture log).
         router: AutoRouter — routing rules as event subscribers; fires via :meth:`send_to_port`.
         broadcast: BroadcastEngine — one verb fans out to every capable node in its native command.
@@ -58,6 +60,12 @@ class CrossCommHub:
         # the same bus (capture.* mirroring target.*). The ingestor auto-registers a capture
         # whenever a device reports one; the Crack Lab's Captures list rides capture.added live.
         self.captures = CaptureStore(self.bus)
+
+        # Capture-confirm correlator (punch-list #2, slice 5): a bus-only observer that ties a fired
+        # deauth (action.executed with a target BSSID + chain_events) to the handshake it produces
+        # (a capture.added for that BSSID inside a window) -> capture.confirmed. No radio/commands.
+        # A Qt timer in the window drives correlator.sweep() to surface honest timeouts.
+        self.correlator = CaptureCorrelator(self.bus)
 
         # Feeds parsed APs/clients from each connected device into the shared pool, completing the loop:
         # a scan on device A -> target.added -> AutoRouter -> a command on device B. The hub owns the one

@@ -862,6 +862,19 @@ class CyberControllerWindow(QMainWindow):
         self._activity_log = activity_log()
         self._activity_log.line.connect(self._pterm_on_activity)
 
+        # Capture-confirm correlator (punch-list #2 slice 5): surface a deauth->handshake match and
+        # its honest timeouts as activity-log lines. Bus callbacks fire on the ingest thread; emit
+        # queues onto this GUI thread safely (activity_log.line is a Qt signal). A 5s timer drives
+        # correlator.sweep() so a window that passes with no capture reports at the right time.
+        hub = getattr(self, "_hub", None)
+        if hub is not None and getattr(hub, "correlator", None) is not None:
+            self._bus.subscribe("capture.confirmed", self._on_capture_confirmed)
+            self._bus.subscribe("capture.timeout", self._on_capture_timeout)
+            self._capture_sweep_timer = QTimer(self)
+            self._capture_sweep_timer.setInterval(5000)
+            self._capture_sweep_timer.timeout.connect(hub.correlator.sweep)
+            self._capture_sweep_timer.start()
+
         # Refresh device checklist
         self._pterm_refresh_ports()
 
@@ -1148,6 +1161,23 @@ class CyberControllerWindow(QMainWindow):
         self._pterm_output.append(
             f'<span style="color:{color};">[{html.escape(source)}]</span> {html.escape(text)}'
         )
+
+    # ── Capture-confirm correlator notices (punch-list #2 slice 5) ────
+    def _on_capture_confirmed(self, _topic: str, payload: dict) -> None:
+        """A deauth was followed by a matching handshake in the window — surface the good news."""
+        bssid = payload.get("bssid") or "?"
+        elapsed = payload.get("elapsed_s")
+        tail = f" ({elapsed:g}s after deauth)" if isinstance(elapsed, (int, float)) else ""
+        self._activity_log.emit_line(
+            "capture", f"handshake captured from {bssid}{tail} — deauth confirmed", "success")
+
+    def _on_capture_timeout(self, _topic: str, payload: dict) -> None:
+        """A deauth window passed with no matching handshake — report it (no false success)."""
+        bssid = payload.get("bssid") or "?"
+        win = payload.get("window_s")
+        span = f"{win:g}s" if isinstance(win, (int, float)) else "the window"
+        self._activity_log.emit_line(
+            "capture", f"no handshake from {bssid} within {span} of the deauth", "warn")
 
     # ── Dead Man's Switch auth UI ────────────────────────────────────
 
