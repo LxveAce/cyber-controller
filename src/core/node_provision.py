@@ -76,9 +76,19 @@ def _acquire_file_lock(timeout: float = 10.0, stale: float = 30.0) -> Optional[t
         try:
             fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         except FileExistsError:
-            try:  # steal a lock left behind by a crashed holder
+            # Steal a lock left behind by a crashed holder — but ATOMICALLY. Unlinking the stale file BY
+            # NAME is racy: two processes that both read it as stale would each unlink then O_EXCL-create,
+            # and the second unlink deletes the FIRST's fresh lockfile, so both end up "holding" the lock
+            # and can reserve overlapping tx_epochs → catastrophic AES-GCM nonce reuse. os.rename is
+            # atomic: only one racer can move that specific inode; the losers' rename raises (the name is
+            # already gone, or on Windows a still-open live holder can't be renamed) and they retry. The
+            # winner deletes the renamed-away file and loops to O_EXCL-create its own.
+            try:
                 if time.time() - os.path.getmtime(path) > stale:
-                    os.unlink(path)
+                    stolen = f"{path}.stale.{os.getpid()}.{time.monotonic_ns()}"
+                    os.rename(path, stolen)  # atomic claim; a losing racer gets FileNotFoundError here
+                    with contextlib.suppress(OSError):
+                        os.unlink(stolen)
                     continue
             except OSError:
                 pass
