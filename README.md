@@ -6,7 +6,7 @@
 
 ### One dashboard to flash, drive, and coordinate every radio in your cyberdeck.
 
-**Flash. Control. Coordinate.** — 49 firmware profiles, 5 flash backends, 4 interfaces, one screen.
+**Flash. Control. Coordinate.** — 49 firmware profiles, 8 flash backends, 4 interfaces, one screen.
 
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release&color=39FF14)](https://github.com/LxveAce/cyber-controller/releases)
 [![Firmwares](https://img.shields.io/badge/firmware%20profiles-49-success?style=for-the-badge)](#-supported-firmware)
@@ -38,7 +38,7 @@ The full version-by-version history — every fix, every hardening pass, every a
 
 ## ✨ Highlights
 
-**🔥 Flash** — **49 firmware profiles** across 5 backends. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress — see the beta caveats) auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+**🔥 Flash** — **49 firmware profiles** across 8 backends. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress — see the beta caveats) auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
 
 **🎮 Control** — a protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **13 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
 
