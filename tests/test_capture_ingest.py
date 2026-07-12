@@ -131,3 +131,54 @@ def test_hub_exposes_and_wires_capture_store():
     hub = CrossCommHub(DeviceManager())
     assert isinstance(hub.captures, CaptureStore)
     assert hub.ingestor._captures is hub.captures   # the hub ingestor feeds the capture log
+
+
+def test_pcap_attach_does_not_bump_times_seen():
+    # Red-team fix: a handshake that also writes a pcap is ONE capture, not two — the file-attach
+    # must not inflate times_seen (it now routes through CaptureStore.attach_file, not a full add).
+    pool = TargetPool(EventBus())
+    store = CaptureStore()
+    ing = TargetIngestor(pool, captures=store)
+    hs = ParsedEvent(event_type="handshake_captured", data={"bssid": "AA:BB:CC:DD:EE:FF"}, raw="HS")
+    pcap = ParsedEvent(event_type="pcap_saved", data={"path": "/sd/hs.pcapng"}, raw="PCAP")
+    conn = _Conn("COM7")
+    ing.attach(conn, _Proto({"HS": hs, "PCAP": pcap}))
+    conn.feed("HS")
+    conn.feed("PCAP")
+    c = store.get("eapol:aa:bb:cc:dd:ee:ff")
+    assert c is not None and c.pcap_path == "/sd/hs.pcapng" and c.times_seen == 1
+
+
+def test_second_unrelated_pcap_does_not_clobber_handshake_file():
+    # Red-team fix: a LATER raw pcap on the same port (no intervening handshake) must NOT overwrite
+    # the earlier handshake's pcap_path — the attach is one-shot; the raw pcap lands on its own row.
+    pool = TargetPool(EventBus())
+    store = CaptureStore()
+    ing = TargetIngestor(pool, captures=store)
+    hs = ParsedEvent(event_type="handshake_captured", data={"bssid": "AA:BB:CC:DD:EE:FF"}, raw="HS")
+    p1 = ParsedEvent(event_type="pcap_saved", data={"path": "/sd/hs.pcapng"}, raw="P1")
+    p2 = ParsedEvent(event_type="pcap_saved", data={"path": "/sd/raw_0.pcap"}, raw="P2")
+    conn = _Conn("COM7")
+    ing.attach(conn, _Proto({"HS": hs, "P1": p1, "P2": p2}))
+    conn.feed("HS")
+    conn.feed("P1")                    # attaches to the handshake, then pops recent-key (one-shot)
+    conn.feed("P2")                    # a raw pcap, no handshake -> must not touch the HS record
+    hs_rec = store.get("eapol:aa:bb:cc:dd:ee:ff")
+    assert hs_rec is not None and hs_rec.pcap_path == "/sd/hs.pcapng"   # unchanged
+    bare = store.get("eapol:")
+    assert bare is not None and bare.pcap_path == "/sd/raw_0.pcap"       # logged separately
+
+
+def test_detach_clears_recent_capture_state():
+    # Red-team fix: detach must drop the port's pending pcap-attach target so a pcap written by the
+    # NEXT device on that port can't be attached to the previous device's stale handshake record.
+    pool = TargetPool(EventBus())
+    store = CaptureStore()
+    ing = TargetIngestor(pool, captures=store)
+    hs = ParsedEvent(event_type="handshake_captured", data={"bssid": "AA:BB:CC:DD:EE:FF"}, raw="HS")
+    conn = _Conn("COM7")
+    ing.attach(conn, _Proto({"HS": hs}))
+    conn.feed("HS")
+    assert ing._recent_capture.get("COM7")          # armed
+    ing.detach(conn)
+    assert "COM7" not in ing._recent_capture

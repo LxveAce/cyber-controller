@@ -426,6 +426,10 @@ class CrackLabTab(QWidget):
         cap_row.addWidget(QLabel("Capture:"))
         self._capture_edit = QLineEdit()
         self._capture_edit.setPlaceholderText("a .pcapng/.pcap/.cap/.hc22000 file you captured")
+        # Typing a new path by hand breaks the double-click binding, so a solved crack won't get
+        # written back onto a capture the user is no longer cracking (textEdited fires on user edits
+        # only, NOT on the programmatic setText a row double-click does).
+        self._capture_edit.textEdited.connect(self._forget_active_capture)
         cap_row.addWidget(self._capture_edit, 1)
         browse_cap = QPushButton("Browse…")
         browse_cap.clicked.connect(self._pick_capture)
@@ -614,6 +618,11 @@ class CrackLabTab(QWidget):
             "Captures (*.pcapng *.pcap *.cap *.hc22000);;All files (*)")
         if path:
             self._capture_edit.setText(path)
+            self._forget_active_capture()   # a browsed file is not the double-clicked record
+
+    def _forget_active_capture(self, *_args) -> None:
+        """Drop the capture<->crack write-back binding (the loaded file no longer maps to a row)."""
+        self._active_capture_key = ""
 
     def _pick_byo_wordlist(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -714,6 +723,7 @@ class CrackLabTab(QWidget):
             wordlist = self._wordlist_combo.currentData() or ""
             self._captures.mark_cracked(
                 self._active_capture_key, result.password, result.detail or "", wordlist)
+            self._forget_active_capture()   # one write-back per load; a re-run must re-bind
 
     def _reset_run_buttons(self) -> None:
         self._run_btn.setEnabled(bool(cp.available_backends(cp.detect_tools())))

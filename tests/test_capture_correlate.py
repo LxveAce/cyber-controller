@@ -132,3 +132,43 @@ def test_hub_wires_correlator_and_capture_confirms_end_to_end():
     hub.captures.add(CaptureRecord(bssid="AA:BB:CC:DD:EE:FF", capture_type="eapol",
                                    device_source="COM7"))
     assert len(confirmed) == 1 and confirmed[0]["bssid"] == "AA:BB:CC:DD:EE:FF"
+
+
+def test_arm_emits_timeout_for_displaced_expired_window():
+    # Red-team fix: an expired-but-unswept window pruned by a later arm() must still emit its honest
+    # capture.timeout (the lazy prune used to delete it silently, losing the "no handshake" line).
+    bus, clock = EventBus(), _Clock()
+    CaptureCorrelator(bus, clock=clock, window_s=20.0)
+    timeouts = _recorder(bus, "capture.timeout")
+    _fire_deauth(bus, bssid="AA:BB:CC:DD:EE:FF")     # window expires at t+20
+    clock.t += 25.0
+    _fire_deauth(bus, bssid="11:22:33:44:55:66")     # this arm prunes the expired AA window
+    assert [t["bssid"] for t in timeouts] == ["AA:BB:CC:DD:EE:FF"]
+
+
+def test_capture_event_emits_timeout_for_expired_window():
+    # Same fix via the _on_capture path: an unrelated capture that triggers the prune must not
+    # swallow the expired window's timeout.
+    bus, clock = EventBus(), _Clock()
+    CaptureCorrelator(bus, clock=clock, window_s=20.0)
+    timeouts = _recorder(bus, "capture.timeout")
+    _fire_deauth(bus, bssid="AA:BB:CC:DD:EE:FF")
+    clock.t += 25.0
+    _capture(bus, bssid="99:99:99:99:99:99")         # unrelated capture triggers the prune
+    assert [t["bssid"] for t in timeouts] == ["AA:BB:CC:DD:EE:FF"]
+
+
+def test_two_windows_same_bssid_confirms_newest_not_oldest():
+    # Red-team fix: with two windows armed for the same AP, the BSSID-only fallback must confirm the
+    # MOST-RECENTLY-armed one (newer intent), leaving the older window pending (it times out later).
+    bus, clock = EventBus(), _Clock()
+    corr = CaptureCorrelator(bus, clock=clock, window_s=20.0)
+    confirmed = _recorder(bus, "capture.confirmed")
+    _fire_deauth(bus, bssid="AA:BB:CC:DD:EE:FF", port="COM3")   # armed_at t
+    clock.t += 2.0
+    _fire_deauth(bus, bssid="AA:BB:CC:DD:EE:FF", port="COM5")   # armed_at t+2 (newest)
+    clock.t += 1.0
+    _capture(bus, bssid="AA:BB:CC:DD:EE:FF", port="COM7")       # no exact port -> bssid fallback
+    assert len(confirmed) == 1
+    assert confirmed[0]["elapsed_s"] == 1.0          # 1s since the newest window, not 3s (the old)
+    assert corr.pending_count == 1                   # the older COM3 window is still pending

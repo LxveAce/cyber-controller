@@ -72,6 +72,9 @@ class TargetIngestor:
         """Best-effort removal of the on_line handler for *conn*."""
         port = getattr(conn, "port", "?")
         cb = self._attached.pop(port, None)
+        # Drop the port's pending pcap-attach target too, so a pcap written by the NEXT device to
+        # occupy this port can't be attached to the previous device's stale handshake record.
+        self._recent_capture.pop(port, None)
         remover = getattr(conn, "remove_line_callback", None)  # optional API
         if cb and callable(remover):
             try:
@@ -241,14 +244,14 @@ class TargetIngestor:
         if et == "pcap_saved":
             path = str(d.get("path", "")).strip()
             recent_key = self._recent_capture.get(port)
-            recent = None
-            if recent_key and self._captures is not None:
-                recent = self._captures.get(recent_key)
-            if recent is not None:
-                # Attach the file to the capture it belongs to (the handshake that just preceded
-                # it on this port). Re-adding with the same key upserts pcap_path onto that row.
-                return CaptureRecord(bssid=recent.bssid, capture_type=recent.capture_type,
-                                     pcap_path=path, device_source=port, raw=raw)
+            if (recent_key and self._captures is not None
+                    and self._captures.get(recent_key) is not None):
+                # Attach the file to the capture it belongs to (the handshake that just preceded it
+                # on this port). One-shot: pop the key so a LATER unrelated pcap can't clobber this
+                # record's pcap_path, and use attach_file so the write doesn't bump times_seen.
+                self._captures.attach_file(recent_key, pcap_path=path)
+                self._recent_capture.pop(port, None)
+                return None
             # No preceding capture on the port: a bare pcap with no announced BSSID. Log it so
             # the file is tracked/crackable (it collapses under the empty key — accepted edge case).
             return CaptureRecord(bssid="", capture_type="eapol", pcap_path=path,

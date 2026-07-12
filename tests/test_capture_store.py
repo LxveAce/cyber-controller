@@ -111,3 +111,21 @@ def test_all_returns_snapshot_copy():
     snap = store.all()
     snap.clear()                       # mutating the returned list must not affect the store
     assert store.count == 1
+
+
+def test_attach_file_sets_path_without_bumping_times_seen():
+    # Red-team fix (#2 slice-5 review): a pcap file-attach is bookkeeping, not a re-observation, so
+    # it must set the path but NOT bump times_seen (a full add() upsert would over-count).
+    store = CaptureStore()
+    store.add(CaptureRecord(bssid="AA:BB:CC:DD:EE:FF", capture_type="eapol"))
+    key = "eapol:aa:bb:cc:dd:ee:ff"
+    events = _bus_recorder(store.bus)
+    assert store.attach_file(key, pcap_path="/sd/hs.pcapng") is True
+    rec = store.get(key)
+    assert rec.pcap_path == "/sd/hs.pcapng" and rec.times_seen == 1
+    assert [t for t, _ in events] == ["capture.updated"]   # repaints the row, no new-row event
+
+
+def test_attach_file_missing_key_returns_false():
+    store = CaptureStore()
+    assert store.attach_file("eapol:zz", pcap_path="/x") is False

@@ -60,9 +60,10 @@ class CaptureCorrelator:
         now = self._clock()
         deadline = now + (self._window_s if window_s is None else window_s)
         with self._lock:
-            self._prune_locked(now)
+            expired = self._take_expired_locked(now)
             self._pending[(bssid.lower(), port)] = {
                 "deadline": deadline, "action": action_name, "armed_at": now, "bssid": bssid}
+        self._emit_timeouts(expired)   # a window this arm displaced still gets its honest timeout
 
     # ── confirming ───────────────────────────────────────────────────
     def _on_capture(self, _topic: str, payload: dict) -> None:
@@ -73,14 +74,16 @@ class CaptureCorrelator:
         port = str(payload.get("device_source") or "")
         now = self._clock()
         with self._lock:
-            self._prune_locked(now)
+            expired = self._take_expired_locked(now)
             meta = self._pending.pop((bssid.lower(), port), None)
             if meta is None:
-                # The capture's port may be blank or differ from the arm port; match on BSSID alone.
-                for k in list(self._pending):
-                    if k[0] == bssid.lower():
-                        meta = self._pending.pop(k)
-                        break
+                # The capture's port may be blank or differ from the arm port; match on BSSID alone,
+                # preferring the MOST-RECENTLY-armed window (so a second deauth on the same AP takes
+                # the newer intent instead of an older, likely-already-satisfied one).
+                cands = [k for k in self._pending if k[0] == bssid.lower()]
+                if cands:
+                    meta = self._pending.pop(max(cands, key=lambda k: self._pending[k]["armed_at"]))
+        self._emit_timeouts(expired)
         if meta is None:
             return
         elapsed = max(0.0, now - meta["armed_at"])
@@ -93,24 +96,27 @@ class CaptureCorrelator:
         })
 
     # ── expiry ───────────────────────────────────────────────────────
-    def _prune_locked(self, now: float) -> None:
-        """Drop expired windows silently (caller holds the lock) so no stale confirm can fire."""
-        for k in [k for k, m in self._pending.items() if m["deadline"] <= now]:
-            del self._pending[k]
+    def _take_expired_locked(self, now: float) -> list[dict]:
+        """Remove and return the metas of every window past its deadline (caller holds the lock)."""
+        keys = [k for k, m in self._pending.items() if m["deadline"] <= now]
+        return [self._pending.pop(k) for k in keys]
+
+    def _emit_timeouts(self, expired: list[dict]) -> None:
+        """Publish ``capture.timeout`` for each expired window — call OUTSIDE the lock."""
+        for meta in expired:
+            self._bus.publish("capture.timeout", {
+                "bssid": meta["bssid"], "action": meta["action"], "window_s": self._window_s})
 
     def sweep(self) -> list[str]:
         """Publish ``capture.timeout`` for every window that has expired; return their BSSIDs.
 
-        Driven by a Qt timer so the honest "no handshake within the window" case is surfaced with
-        correct timing (rather than only when a later event happens to prune it)."""
+        Driven by a Qt timer so the honest "no handshake within the window" case is surfaced even if
+        no other bus event happens to displace the window first."""
         now = self._clock()
         with self._lock:
-            timed_out = [self._pending.pop(k) for k, m in list(self._pending.items())
-                         if m["deadline"] <= now]
-        for meta in timed_out:
-            self._bus.publish("capture.timeout", {
-                "bssid": meta["bssid"], "action": meta["action"], "window_s": self._window_s})
-        return [meta["bssid"] for meta in timed_out]
+            expired = self._take_expired_locked(now)
+        self._emit_timeouts(expired)
+        return [meta["bssid"] for meta in expired]
 
     @property
     def pending_count(self) -> int:

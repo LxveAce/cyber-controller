@@ -53,6 +53,7 @@ class CaptureStore:
             True if this is a new capture, False if it updated an existing one.
         """
         updated_payload: dict | None = None
+        added_payload: dict | None = None
         with self._lock:
             existing = self._captures.get(record.key)
             if existing is not None:
@@ -60,12 +61,34 @@ class CaptureStore:
                 updated_payload = existing.to_dict()
             else:
                 self._captures[record.key] = record
+                # Snapshot the added payload INSIDE the lock too: a concurrent same-key add() could
+                # otherwise mutate this record (update_from) mid-serialization, tearing the payload.
+                added_payload = record.to_dict()
         # Publish OUTSIDE the lock: the non-reentrant lock must not be held across callbacks, or a
         # subscriber that reads the store would deadlock the ingest thread (mirrors TargetPool.add).
         if updated_payload is not None:
             self.bus.publish("capture.updated", updated_payload)
             return False
-        self.bus.publish("capture.added", record.to_dict())
+        self.bus.publish("capture.added", added_payload)
+        return True
+
+    def attach_file(self, key: str, pcap_path: str = "", hc22000_path: str = "") -> bool:
+        """Attach a written capture file to an existing record WITHOUT counting a re-observation.
+
+        A ``pcap_saved`` line is bookkeeping for a capture already logged, not a fresh sighting, so
+        it must not bump ``times_seen`` the way a full :meth:`add` upsert would. Returns True if the
+        key existed. Publishes ``capture.updated`` so the Captures list repaints with the file path.
+        """
+        with self._lock:
+            rec = self._captures.get(key)
+            if rec is None:
+                return False
+            if pcap_path:
+                rec.pcap_path = pcap_path
+            if hc22000_path:
+                rec.hc22000_path = hc22000_path
+            payload = rec.to_dict()
+        self.bus.publish("capture.updated", payload)
         return True
 
     def remove(self, key: str) -> CaptureRecord | None:

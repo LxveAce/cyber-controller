@@ -102,3 +102,43 @@ def test_hub_none_degrades_without_crash(qapp, monkeypatch):
     monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: 0)
     tab._on_export_captures()                   # must not raise
     tab._on_capture_activated(0, 0)             # must not raise
+
+
+def test_browse_clears_writeback_binding_so_wrong_record_is_not_marked(qapp, monkeypatch):
+    # Red-team fix: double-click A binds the write-back to A; Browsing to an unrelated file B must
+    # DROP that binding, so cracking B does not write B's password onto record A (a false confirm).
+    hub = _hub_with_store()
+    rec = _rec()
+    hub.captures.add(rec)
+    tab = CrackLabTab(hub)
+    tab._on_capture_activated(0, 0)
+    assert tab._active_capture_key == rec.key
+    monkeypatch.setattr(QFileDialog, "getOpenFileName",
+                        lambda *a, **k: ("/some/other.pcapng", "Captures"))
+    tab._pick_capture()
+    assert tab._active_capture_key == ""            # browsing dropped the binding
+    tab._on_done(SimpleNamespace(cracked=True, password="wrong", ssid="", bssid="", detail=""))
+    assert hub.captures.get(rec.key).crack_status == "uncracked"   # A untouched
+
+
+def test_writeback_binding_cleared_after_a_successful_writeback(qapp):
+    # One write-back per load: after a solved crack writes onto A, the binding clears so a later
+    # unrelated run can't re-mark A.
+    hub = _hub_with_store()
+    rec = _rec()
+    hub.captures.add(rec)
+    tab = CrackLabTab(hub)
+    tab._active_capture_key = rec.key
+    tab._on_done(SimpleNamespace(cracked=True, password="hunter2", ssid="", bssid="", detail=""))
+    assert hub.captures.get(rec.key).crack_status == "cracked"
+    assert tab._active_capture_key == ""
+
+
+def test_capture_confirm_label_is_not_hardcoded_deauth():
+    # Red-team fix: the activity-log notice must name the actual arming action — only a Deauth AP
+    # reads as "deauth"; a Capture Handshake / Evil Portal action must not claim a deauth fired.
+    from src.ui.qt.main_window import CyberControllerWindow as W
+    assert W._capture_trigger({"action": "Deauth AP"}) == "deauth"
+    assert W._capture_trigger({"action": "Capture Handshake"}) == "Capture Handshake"
+    assert W._capture_trigger({"action": "Evil Portal"}) == "Evil Portal"
+    assert W._capture_trigger({}) == "action"

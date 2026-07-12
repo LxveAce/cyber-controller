@@ -1163,21 +1163,36 @@ class CyberControllerWindow(QMainWindow):
         )
 
     # ── Capture-confirm correlator notices (punch-list #2 slice 5) ────
+    @staticmethod
+    def _capture_trigger(payload: dict) -> str:
+        """Name the action that armed the window — 'deauth' for a Deauth AP, else the action itself.
+
+        Not every chain-event action is a deauth (a Capture Handshake / Evil Portal action also arms
+        a window), so the notice must not hardcode 'deauth' or it claims an attack that never fired.
+        """
+        action = str(payload.get("action") or "").strip()
+        if "deauth" in action.lower():
+            return "deauth"
+        return action or "action"
+
     def _on_capture_confirmed(self, _topic: str, payload: dict) -> None:
-        """A deauth was followed by a matching handshake in the window — surface the good news."""
+        """An armed action was followed by a matching handshake in the window — surface it."""
         bssid = payload.get("bssid") or "?"
+        trigger = self._capture_trigger(payload)
+        verdict = "deauth confirmed" if trigger == "deauth" else "capture confirmed"
         elapsed = payload.get("elapsed_s")
-        tail = f" ({elapsed:g}s after deauth)" if isinstance(elapsed, (int, float)) else ""
+        tail = f" ({elapsed:g}s after {trigger})" if isinstance(elapsed, (int, float)) else ""
         self._activity_log.emit_line(
-            "capture", f"handshake captured from {bssid}{tail} — deauth confirmed", "success")
+            "capture", f"handshake captured from {bssid}{tail} — {verdict}", "success")
 
     def _on_capture_timeout(self, _topic: str, payload: dict) -> None:
-        """A deauth window passed with no matching handshake — report it (no false success)."""
+        """An armed window passed with no matching handshake — report it (no false success)."""
         bssid = payload.get("bssid") or "?"
+        trigger = self._capture_trigger(payload)
         win = payload.get("window_s")
         span = f"{win:g}s" if isinstance(win, (int, float)) else "the window"
         self._activity_log.emit_line(
-            "capture", f"no handshake from {bssid} within {span} of the deauth", "warn")
+            "capture", f"no handshake from {bssid} within {span} of the {trigger}", "warn")
 
     # ── Dead Man's Switch auth UI ────────────────────────────────────
 
