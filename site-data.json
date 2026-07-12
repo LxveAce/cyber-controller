@@ -22,7 +22,7 @@
       ]
     }
   },
-  "cc_version": "1.7.1",
+  "cc_version": "1.7.2",
   "profile_count": 49,
   "parser_count": 13,
   "parsers": [
@@ -100,7 +100,7 @@
     "dead_mans_switch": "1.0.0",
     "catalyst_ui": "4.0.3",
     "tag_studio": "0.3.1",
-    "cyber_controller": "1.7.1"
+    "cyber_controller": "1.7.2"
   },
   "latest_release": {
     "tag": "v1.6.9",

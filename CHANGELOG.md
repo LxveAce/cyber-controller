@@ -5,6 +5,27 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.7.2] — 2026-07-12
+Feature release: the Crack Lab now keeps a live, exportable log of every WPA handshake / PMKID your
+devices capture, and ties a targeted deauth to the handshake it produces. Backend correlation only —
+CC issues firmware CLI commands and never authors radio frames.
+- **New: an auto-populating "Captured handshakes" list in the Crack Lab.** Every handshake / PMKID a
+  connected device reports appears the instant it's captured, carrying all its metadata (SSID, BSSID,
+  channel, client MAC, EAPOL vs PMKID, RSSI, source device + firmware, and the on-device `.pcap`/`.hc22000`
+  path). Double-click a row to load it straight into the cracker; when a crack succeeds, the recovered key
+  is written back onto that record and the row turns green.
+- **New: export the capture log to CSV or JSON.** One button writes the whole log to a spreadsheet-safe CSV
+  (every attacker-influenced field is neutralised against CSV-injection) or JSON. Recovered passwords are
+  included (the crack flow is consent-gated) — the dialog says so.
+- **New: smarter deauth capture-confirm.** Firing a targeted Deauth AP now arms a short window; if a
+  handshake for that AP is captured inside it, CC logs a first-class "handshake captured — deauth confirmed"
+  line (and an honest "no handshake within the window" if none arrives). Non-deauth capture actions are
+  labelled accurately, never as a deauth.
+- **Reliability:** a later unrelated capture file can no longer overwrite an earlier handshake's saved-file
+  reference; a single handshake that also writes a `.pcap` is counted once, not twice; a recovered key can
+  no longer be mis-attributed to a capture you're no longer cracking; timeout notices fire with correct
+  timing. (Found and fixed via an adversarial red-team of the new pipeline.)
+
 ## [1.7.1] — 2026-07-12
 Patch release: two fixes for regressions found during live 1.7.0 QA. No feature changes.
 - **Fixed: the Devices-tab Connect/Disconnect buttons did nothing.** The buttons act on the selected device,
