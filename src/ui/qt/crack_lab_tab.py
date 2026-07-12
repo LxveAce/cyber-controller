@@ -98,16 +98,25 @@ class _CrackWorker(QThread):
                                          tools=tools, bssid=self._bssid, on_proc=self._register_proc)
             else:
                 # hashcat path: convert the capture to .hc22000 first (unless already one)
+                result = None
                 if os.path.splitext(self._capture)[1].lower() == ".hc22000":
                     hash_file = self._capture
                 else:
                     fd, hash_file = tempfile.mkstemp(suffix=".hc22000", prefix="cc_wifi_")
                     os.close(fd)
                     tmp_hash = hash_file  # ours to clean up (never the user's own .hc22000)
-                    n = cp.convert_capture(self._capture, hash_file, emit, tools=tools)
+                    # Pass on_proc so Stop can kill hcxpcapngtool mid-convert (a large capture is slow).
+                    n = cp.convert_capture(self._capture, hash_file, emit, tools=tools,
+                                           on_proc=self._register_proc)
                     emit(f"[convert] {n} crackable hash(es) extracted.")
-                result = cp.run_hashcat(hash_file, self._wordlist, emit, tools=tools,
-                                        on_proc=self._register_proc)
+                    if n == 0:
+                        # No PMKID/handshake in this capture — the honest negative. Feeding an empty
+                        # .hc22000 to hashcat would exit nonzero and mis-report a "tool failure".
+                        result = cp.CrackResult(
+                            cracked=False, detail="no PMKID or handshake found in this capture")
+                if result is None:
+                    result = cp.run_hashcat(hash_file, self._wordlist, emit, tools=tools,
+                                            on_proc=self._register_proc)
         except Exception as exc:  # never let a worker exception kill the thread silently
             log.exception("wifi-audit crack worker failed")
             result = cp.CrackResult(detail=f"error: {exc}")
@@ -117,9 +126,11 @@ class _CrackWorker(QThread):
                     os.remove(tmp_hash)
                 except OSError:
                     pass
-        if self._stop:
+        if self._stop and not result.cracked:
             # The user cancelled: the killed child's nonzero exit would otherwise read as a tool error,
-            # so report an honest "stopped" instead.
+            # so report an honest "stopped" instead. But a crack that ALREADY succeeded (the key verified
+            # in the race window between the crack returning and this stop check) must NOT be thrown away
+            # — a recovered key survives a late Stop.
             result = cp.CrackResult(detail="stopped")
         self.done.emit(result)
 
@@ -744,7 +755,10 @@ class CrackLabTab(QWidget):
         # Durable capture <-> outcome link: if this run came from double-clicking a logged capture,
         # write the recovered key back onto its record (turns the row green via capture.cracked).
         if result.cracked and self._captures is not None and self._active_capture_key:
-            wordlist = self._wordlist_combo.currentData() or ""
+            # Record the wordlist the run ACTUALLY used (captured on the worker at launch), not whatever
+            # the combo shows now — during a run the wordlist selector and its Refresh button stay live,
+            # so re-reading the widget could stamp the record with a list that did NOT recover the key.
+            wordlist = self._worker._wordlist if self._worker is not None else ""
             self._captures.mark_cracked(
                 self._active_capture_key, result.password, result.detail or "", wordlist)
             self._forget_active_capture()   # one write-back per load; a re-run must re-bind

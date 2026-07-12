@@ -74,9 +74,14 @@ def _iter_pcapng(data: bytes) -> Iterator[tuple[int, bytes]]:
                 linktypes[iface_count] = lt
             iface_count += 1  # keep interface_id alignment even if this IDB is short
         elif btype == 0x00000006:  # Enhanced Packet Block
-            if len(body) >= 16:
-                iface_id, _th, _tl, caplen = struct.unpack(end + "IIII", body[0:16])
-                frame = body[16:16 + caplen]
+            # EPB leading fields (5x u32 = 20 bytes) BEFORE packet data: Interface ID, Timestamp High,
+            # Timestamp Low, Captured Packet Length, Original Packet Length. Packet data starts at
+            # body[20:], NOT body[16:] — skipping only four fields prefixed every frame with the 4-byte
+            # Original-Length value and shifted it left by 4, so no 802.11 header aligned and a real
+            # pcapng (hcxdumptool/Wireshark, the primary modern format) yielded zero handshakes.
+            if len(body) >= 20:
+                iface_id, _th, _tl, caplen, _origlen = struct.unpack(end + "IIIII", body[0:20])
+                frame = body[20:20 + caplen]
                 yield linktypes.get(iface_id, _LT_DOT11), frame
         elif btype == 0x00000003:  # Simple Packet Block
             if len(body) >= 4:
