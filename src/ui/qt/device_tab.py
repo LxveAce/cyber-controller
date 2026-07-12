@@ -459,8 +459,32 @@ class DeviceTab(QWidget):
             self._btn_connect.setEnabled(not connected)
             self._btn_disconnect.setEnabled(connected)
             self._btn_send.setEnabled(connected)
+            self._sync_firmware_combo_to(dev)  # re-point the global combo at THIS device before judging it
         self._update_health_label()
         self._update_bj_panel()
+
+    def _sync_firmware_combo_to(self, dev) -> None:
+        """Re-point the (global) firmware combo at the SELECTED device, so _selected_protocol /
+        _update_bj_panel / the Send-enable logic judge the device the user just clicked — not whichever
+        firmware was last picked for another port. Without this, choosing 'BlueJammer' for device A then
+        clicking device B showed B the BlueJammer panel + disabled Send.
+
+        Only pin the combo to a concrete firmware when THIS device's firmware was explicitly FORCED
+        (Device.firmware_forced) — otherwise fall back to Auto-detect, so an auto-detected device keeps its
+        post-probe re-autodetect (which requires the combo to read Auto-detect) instead of being frozen to
+        the connect-time default. Signals are blocked so this re-sync doesn't re-fire _update_bj_panel /
+        _persist_firmware; the caller updates the panel right after."""
+        forced = bool(getattr(dev, "firmware_forced", False))
+        fw = getattr(dev, "firmware", "") or ""
+        display = PROTOCOL_DISPLAY_NAMES.get(fw) if (forced and fw) else None
+        target = display if (display and self._firmware_combo.findText(display) >= 0) else _AUTO_DETECT
+        if self._firmware_combo.currentText() == target:
+            return
+        blocked = self._firmware_combo.blockSignals(True)
+        try:
+            self._firmware_combo.setCurrentText(target)
+        finally:
+            self._firmware_combo.blockSignals(blocked)
 
     # ── Connect / Disconnect ─────────────────────────────────────────
 

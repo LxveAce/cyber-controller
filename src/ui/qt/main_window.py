@@ -73,6 +73,13 @@ from src.version import __version__ as _VERSION
 
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
+# Backstop for closeEvent: an update-check QThread still blocked on a slow/black-hole network at exit is
+# moved here so its Python wrapper isn't garbage-collected when the window is destroyed. That GC — not the
+# running thread itself — is what fires the C++ QThread destructor mid-run and aborts the process
+# ('QThread: Destroyed while thread is still running'). Holding a reference lets the thread finish (or the
+# process exit) without the abort.
+_KEEPALIVE_WORKERS: set = set()
+
 
 class _UpdateCheckWorker(QThread):
     """Run the in-app update check off the UI thread and emit the result object.
@@ -2105,15 +2112,24 @@ class CyberControllerWindow(QMainWindow):
                 except Exception:  # noqa: BLE001 — teardown must never raise
                     pass
         # The update / self-update check threads (started on launch + on manual check) and the sidebar
-        # port-scan worker are held only on self, so join them here too.
-        for attr in ("_update_worker", "_self_update_worker", "_scan_worker"):
+        # port-scan worker are held only on self, so join them here too. The update workers do a network op
+        # with a 6s socket timeout (updater.DEFAULT_TIMEOUT) plus unbounded DNS, so wait LONGER than that —
+        # a 3s wait would return while the worker is still blocked, and destroying its QThread on GC then
+        # aborts the process ('QThread: Destroyed while thread is still running'). comports() (the scan
+        # worker) is fast, so 3s is plenty there. Any worker still blocked after the wait is parked in a
+        # module keep-alive set so its wrapper isn't GC'd mid-run.
+        from src.core import updater as _updater
+        _update_wait = int(_updater.DEFAULT_TIMEOUT * 1000) + 1000  # > the 6s socket timeout
+        for attr, wait_ms in (("_update_worker", _update_wait), ("_self_update_worker", _update_wait),
+                              ("_scan_worker", 3000)):
             w = getattr(self, attr, None)
-            if w is not None:
-                try:
-                    if w.isRunning():
-                        w.wait(3000)
-                except RuntimeError:  # C++ side already gone
-                    pass
+            if w is None:
+                continue
+            try:
+                if w.isRunning() and not w.wait(wait_ms) and w.isRunning():
+                    _KEEPALIVE_WORKERS.add(w)  # still blocked (black-hole net) — don't let GC destroy it
+            except RuntimeError:  # C++ side already gone
+                pass
         # Save splitter state
         self._qsettings.setValue("main_splitter_state", self._main_splitter.saveState())
         # Remember which tabs were popped out (+ their window geometry), then re-dock them so no

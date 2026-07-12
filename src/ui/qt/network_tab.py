@@ -450,8 +450,27 @@ class NetworkTab(QWidget):
                 return
         try:
             self._send_cmd(port, cmd)
-        except Exception:  # noqa: BLE001
-            pass
+        except Exception as exc:  # noqa: BLE001 — surface the failure instead of swallowing it
+            self._publish_action(cmd, port, "failed", str(exc))
+            return
+        self._publish_action(cmd, port, "sent", cmd)
+
+    def _publish_action(self, action_name: str, port: str, status: str, detail: str) -> None:
+        """Surface a manual graph-node send (success OR failure) to the Action History bus + the status bar,
+        mirroring TargetsTab._execute_action. Before this, network-tab sends swallowed every failure with a
+        bare `except: pass` and never published action.executed, so a failed Deauth/Beacon/Karma was fully
+        invisible and no manual send reached the advertised Action History. Uses the field names the history
+        renderer reads (action / port / status / detail)."""
+        if self._bus is not None:
+            try:
+                self._bus.publish("action.executed", {
+                    "action": action_name, "port": port, "status": status, "detail": detail,
+                })
+            except Exception:  # noqa: BLE001 — telemetry must never break the send path
+                pass
+        window = self.window()
+        if window is not None and hasattr(window, "statusBar"):
+            window.statusBar().showMessage(f"{action_name} {status} on {port}: {detail}", 5000)
 
     def _run_target_action(self, action, port: str) -> None:
         if self._dm is None:
@@ -478,11 +497,18 @@ class NetworkTab(QWidget):
             )
             if reply != QMessageBox.Yes:
                 return
+        action_name = getattr(action, "name", "action")
+        detail = getattr(action, "command_template", "") or ""
         try:
             from src.core.action_resolver import execute_action
-            execute_action(action, port, self._dm)
-        except Exception:  # noqa: BLE001
-            pass
+            # event_bus omitted on purpose: execute_action's built-in publish uses different field names
+            # (device/command) than the Action History renderer reads, so we publish below with the right
+            # ones (action/port/status/detail) for both success and failure — mirroring TargetsTab.
+            ok = execute_action(action, port, self._dm)
+        except Exception as exc:  # noqa: BLE001 — surface the failure instead of swallowing it
+            self._publish_action(action_name, port, "failed", str(exc))
+            return
+        self._publish_action(action_name, port, "success" if ok else "failed", detail)
 
     # ── layout ───────────────────────────────────────────────────────
     def _auto_arrange(self, skip: "Optional[set]" = None) -> None:
