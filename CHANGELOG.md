@@ -5,6 +5,17 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.7.1] — 2026-07-12
+Patch release: two fixes for regressions found during live 1.7.0 QA. No feature changes.
+- **Fixed: the Devices-tab Connect/Disconnect buttons did nothing.** The buttons act on the selected device,
+  but the list never auto-selected a row after a scan — so the active port stayed empty and clicking
+  Connect/Disconnect silently no-opped. The list now auto-selects the first device when nothing is active,
+  so the buttons work immediately after a scan (a device you've explicitly picked is still respected).
+- **Fixed: the Network graph went stale after reflashing a board.** The graph only refreshed on target
+  (scan-result) events and never on device changes, so a reflash (disconnect → reconnect, often re-detected
+  with new firmware) left it frozen. It now also refreshes when the connected-device set changes, so it
+  self-heals across a reflash — while still preserving any layout you dragged.
+
 ## [1.7.0] — 2026-07-11
 - **Renamed the "Wi-Fi Audit" tab to "Crack Lab."** The tab is the full offline handshake→convert→crack
   pipeline (capture → `hcxpcapngtool` → `hashcat`/`aircrack-ng` + wordlists), so the name now reflects what it
