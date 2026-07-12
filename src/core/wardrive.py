@@ -56,8 +56,14 @@ class ApObservation:
 
 # ── NMEA GPS parsing ─────────────────────────────────────────────────
 
-def _dm_to_dd(dm: str, hemi: str) -> Optional[float]:
-    """Convert an NMEA ddmm.mmmm / dddmm.mmmm value + hemisphere to signed decimal degrees."""
+def _dm_to_dd(dm: str, hemi: str, limit: float = 180.0) -> Optional[float]:
+    """Convert an NMEA ddmm.mmmm / dddmm.mmmm value + hemisphere to signed decimal degrees.
+
+    Returns None for an out-of-range magnitude (pass ``limit=90`` for latitude, ``180`` for longitude).
+    A single glitched degree digit on the UART (e.g. 4807.038 -> 9807.038 = 98.1 deg) would otherwise
+    yield an impossible-but-``has_fix`` coordinate stamped onto every logged WiGLE/Flock row — points
+    that corrupt the map/heatmap and are rejected by wigle.net on upload. Reject them as "no position".
+    """
     if not dm:
         return None
     try:
@@ -69,6 +75,8 @@ def _dm_to_dd(dm: str, hemi: str) -> Optional[float]:
     dd = deg + minutes / 60.0
     if hemi.upper() in ("S", "W"):
         dd = -dd
+    if abs(dd) > limit:
+        return None
     return dd
 
 
@@ -88,8 +96,8 @@ def parse_nmea(line: str) -> Optional[GpsFix]:
     try:
         if kind == "GGA" and len(parts) >= 10:
             utc = parts[1]
-            lat = _dm_to_dd(parts[2], parts[3])
-            lon = _dm_to_dd(parts[4], parts[5])
+            lat = _dm_to_dd(parts[2], parts[3], 90.0)
+            lon = _dm_to_dd(parts[4], parts[5], 180.0)
             fix_q = parts[6]
             # Altitude (field 9), satellites (field 7) and HDOP (field 8) are ancillary — each is guarded on
             # its own so a garbled one never discards an otherwise-valid position fix, only leaves that figure
@@ -113,8 +121,8 @@ def parse_nmea(line: str) -> Optional[GpsFix]:
         if kind == "RMC" and len(parts) >= 7:
             utc = parts[1]
             status = parts[2]
-            lat = _dm_to_dd(parts[3], parts[4])
-            lon = _dm_to_dd(parts[5], parts[6])
+            lat = _dm_to_dd(parts[3], parts[4], 90.0)
+            lon = _dm_to_dd(parts[5], parts[6], 180.0)
             has_fix = status.upper() == "A" and lat is not None and lon is not None
             if lat is None or lon is None:
                 return GpsFix(0.0, 0.0, 0.0, False, utc)
@@ -498,9 +506,33 @@ def summarize_wigle_csv(text: str) -> dict:
     }
     channels: "Counter[int]" = Counter()
     rssis = []
+
+    def _row_rssi(r: list) -> Optional[int]:
+        try:
+            v = int(r[6])
+        except (ValueError, IndexError):
+            return None
+        return v if v != 0 else None  # 0 is the "no reading" sentinel, not a real strength
+
+    # The session's WiGLE file is APPEND-ONLY: it writes a fresh row each time a known BSSID is re-seen at
+    # a STRONGER RSSI, so one network can own several rows. Counting raw rows over-reports EVERY headline
+    # stat on any normal drive (RSSI improves as you approach an AP), contradicting the module's own
+    # "de-duplicated by BSSID" contract. De-dup by MAC first — strongest-RSSI row wins, mirroring the
+    # session's in-memory dedup — then tally over the unique networks.
+    best: dict = {}
     for row in csv.reader(io.StringIO(text)):
         if len(row) < 14 or not _MAC_RE.fullmatch(row[0].strip()):
             continue  # skips the pre-header (too few cols), the "MAC,..." header, and non-data rows
+        mac = row[0].strip().upper()
+        prev = best.get(mac)
+        if prev is None:
+            best[mac] = row
+            continue
+        cur_r, prev_r = _row_rssi(row), _row_rssi(prev)
+        if cur_r is not None and (prev_r is None or cur_r > prev_r):
+            best[mac] = row  # a real, stronger reading beats the 0 sentinel / a weaker one
+
+    for row in best.values():
         summary["networks"] += 1
         auth = row[2].upper()
         if "WEP" in auth:
@@ -516,12 +548,9 @@ def summarize_wigle_csv(text: str) -> dict:
         if ch:
             channels[ch] += 1
             summary["band_24ghz" if ch <= 14 else "band_5ghz"] += 1
-        try:
-            rssi = int(row[6])
-            if rssi != 0:
-                rssis.append(rssi)
-        except ValueError:
-            pass
+        rssi = _row_rssi(row)
+        if rssi is not None:
+            rssis.append(rssi)
         if row[7].strip():   # a latitude present -> this network was logged with a GPS fix
             summary["with_gps"] += 1
     summary["top_channels"] = channels.most_common(5)
