@@ -176,3 +176,72 @@ def test_missing_tools_text() -> None:
                "hashcat": ToolStatus("hashcat", path="/x"),
                "aircrack-ng": ToolStatus("aircrack-ng")}
     assert missing_tools_text("hashcat", present) == ""  # nothing missing -> empty
+
+
+# ── honest-negative / verify-never-fake guards ───────────────────────
+
+def test_run_hashcat_reports_tool_error_not_false_negative(tmp_path, monkeypatch) -> None:
+    """A hashcat run that exits nonzero-and-not-exhausted (e.g. no OpenCL device, a malformed .hc22000)
+    tested NOTHING. It must be reported as a tool error — not laundered into a clean 'key not in
+    wordlist' negative that falsely blames the operator's wordlist."""
+    wl = tmp_path / "w.txt"
+    wl.write_text("aaaaaaaa\n", encoding="utf-8")
+    hf = tmp_path / "hash.hc22000"
+    hf.write_text("WPA*01*x\n", encoding="utf-8")
+    tools = {cp.HASHCAT: ToolStatus(cp.HASHCAT, path="/x/hashcat")}
+
+    class _R:
+        returncode = 255
+        stdout = ""
+        stderr = "clHostMemAlloc(): CL_OUT_OF_HOST_MEMORY\nNo devices found/left"
+
+    monkeypatch.setattr(cp.subprocess, "run", lambda *a, **k: _R())
+    monkeypatch.setattr(cp, "_read_show_results", lambda *a, **k: [])   # potfile empty
+    res = cp.run_hashcat(str(hf), str(wl), lambda *_a: None, tools=tools)
+    assert not res.cracked
+    assert "not in wordlist" not in res.detail          # NOT a false negative
+    assert "exit 255" in res.detail and "No devices" in res.detail
+
+
+def test_run_hashcat_exhausted_stays_an_honest_negative(tmp_path, monkeypatch) -> None:
+    """exit 1 = dictionary exhausted is a legitimate negative and must still read 'not in wordlist'."""
+    wl = tmp_path / "w.txt"
+    wl.write_text("aaaaaaaa\n", encoding="utf-8")
+    hf = tmp_path / "h.hc22000"
+    hf.write_text("x\n", encoding="utf-8")
+    tools = {cp.HASHCAT: ToolStatus(cp.HASHCAT, path="/x/hashcat")}
+
+    class _R:
+        returncode = 1
+        stdout = "Status.......: Exhausted"
+        stderr = ""
+
+    monkeypatch.setattr(cp.subprocess, "run", lambda *a, **k: _R())
+    monkeypatch.setattr(cp, "_read_show_results", lambda *a, **k: [])
+    res = cp.run_hashcat(str(hf), str(wl), lambda *_a: None, tools=tools)
+    assert not res.cracked and "not in wordlist" in res.detail
+
+
+def test_run_native_no_matching_bssid_is_honest_negative(tmp_path, monkeypatch) -> None:
+    """run_native with a BSSID that matches no handshake must NOT silently fall back to cracking ALL
+    handshakes (a different, non-targeted AP within the capture). It returns an honest negative and
+    never reaches the cracker."""
+    from src.core import native_crack as nc
+    from src.core import wpa_capture as wc
+
+    cap = tmp_path / "c.pcap"
+    cap.write_bytes(b"\x00" * 64)                        # exists + valid ext (parse_capture is mocked)
+    wl = tmp_path / "w.txt"
+    wl.write_text("aaaaaaaa\n", encoding="utf-8")
+    hs = nc.Handshake(kind="pmkid", essid="Real", ap_mac=bytes.fromhex("aabbccddeeff"),
+                      sta_mac=bytes.fromhex("112233445566"), pmkid=b"\x00" * 16)
+    monkeypatch.setattr(wc, "parse_capture", lambda _p: [hs])
+
+    def _must_not_crack(*_a, **_k):
+        raise AssertionError("run_native fell back to cracking despite a non-matching BSSID")
+
+    monkeypatch.setattr(nc, "crack", _must_not_crack)
+    res = cp.run_native(str(cap), str(wl), lambda *_a: None, bssid="00:00:00:00:00:00")
+    assert not res.cracked
+    assert res.hashes_extracted == 0
+    assert "no handshake for BSSID" in res.detail

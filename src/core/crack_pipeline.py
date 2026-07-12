@@ -171,7 +171,15 @@ def run_native(capture: str, wordlist: str, on_line: Line,
     if bssid:
         want = bssid.lower().replace(":", "").replace("-", "")
         filtered = [h for h in handshakes if h.ap_mac.hex() == want]
-        handshakes = filtered or handshakes
+        if not filtered:
+            # Honest negative: the operator targeted a specific BSSID that has no handshake in this
+            # capture (a typo, or its handshake wasn't captured). Do NOT silently fall back to ALL
+            # handshakes — that would crack a DIFFERENT, non-targeted AP within the capture. aircrack's
+            # -b targets strictly; match that.
+            on_line(f"[native] no handshake for BSSID {bssid} in this capture — nothing to crack")
+            return CrackResult(cracked=False, hashes_extracted=0,
+                               detail=f"no handshake for BSSID {bssid} in this capture")
+        handshakes = filtered
     on_line(f"[native] {len(handshakes)} crackable PMKID/handshake(s) in this capture")
     res = native_crack.crack(handshakes, wordlist, on_line, should_stop)
     return CrackResult(cracked=res.cracked, ssid=res.essid, bssid=res.bssid, password=res.password,
@@ -408,8 +416,12 @@ def run_hashcat(hash_file: str, wordlist: str, on_line: Line,
 
     argv = build_hashcat_argv(hash_file, wordlist, hc.path or HASHCAT)
     on_line(f"[crack] hashcat -m {HASHCAT_MODE_WPA} -a 0 (dictionary) started")
+    rc: Optional[int] = None
+    stderr_txt = ""
     try:
         r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+        rc = r.returncode
+        stderr_txt = (r.stderr or "").strip()
         for ln in (r.stdout or "").splitlines():
             low = ln.lower()
             if any(k in low for k in ("recovered", "exhausted", "status", "cracked")):
@@ -418,13 +430,25 @@ def run_hashcat(hash_file: str, wordlist: str, on_line: Line,
         on_line("[crack] hashcat timed out (partial wordlist tried)")
 
     creds = _read_show_results(hash_file, wordlist, hc.path or HASHCAT, on_line)
-    if not creds:
-        return CrackResult(cracked=False, detail="key not in wordlist (dictionary exhausted)")
-    first = creds[0]
-    res = CrackResult(cracked=True, ssid=first["ssid"], bssid=first["bssid"],
-                      password=first["password"], detail="key recovered", extra=creds[1:])
-    on_line(f"[crack] KEY RECOVERED for {res.ssid or res.bssid}: {res.password}")
-    return res
+    if creds:
+        first = creds[0]
+        res = CrackResult(cracked=True, ssid=first["ssid"], bssid=first["bssid"],
+                          password=first["password"], detail="key recovered", extra=creds[1:])
+        on_line(f"[crack] KEY RECOVERED for {res.ssid or res.bssid}: {res.password}")
+        return res
+    # No key recovered. hashcat exit codes: 0 = cracked, 1 = exhausted (both legitimate). ANY other exit
+    # is a TOOL FAILURE that tested nothing (no OpenCL/CUDA device, a malformed .hc22000, etc.). Reporting
+    # that as "key not in wordlist" is a false negative — the engine's verify-never-fake contract requires
+    # surfacing the real error and its stderr instead of a misleading clean negative.
+    if rc is not None and rc not in (0, 1):
+        detail = f"hashcat failed (exit {rc}) — the wordlist was NOT tested; the negative is not trustworthy"
+        last = stderr_txt.splitlines()[-1].strip() if stderr_txt else ""
+        if last:
+            on_line(f"[hashcat] {last}")
+            detail += f": {last}"
+        on_line(f"[crack] {detail}")
+        return CrackResult(cracked=False, detail=detail)
+    return CrackResult(cracked=False, detail="key not in wordlist (dictionary exhausted)")
 
 
 def run_aircrack(capture: str, wordlist: str, on_line: Line,

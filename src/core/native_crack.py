@@ -41,6 +41,10 @@ class Handshake:
     essid: str
     ap_mac: bytes
     sta_mac: bytes
+    #: Raw SSID octets — the EXACT 802.11 PBKDF2 salt. ``essid`` (str) is a lossy decode for display
+    #: only; a non-UTF-8 SSID salted with the re-encoded str would give a wrong PMK (silent false
+    #: negative), so verify() prefers these bytes when present.
+    essid_bytes: bytes = b""
     pmkid: bytes = b""
     anonce: bytes = b""
     snonce: bytes = b""
@@ -49,10 +53,14 @@ class Handshake:
     key_version: int = 2
 
 
-def pmk(psk: str, essid: str) -> bytes:
-    """The Pairwise Master Key: PBKDF2-HMAC-SHA1(passphrase, essid, 4096, 32). C-accelerated."""
-    return hashlib.pbkdf2_hmac("sha1", psk.encode("utf-8", "ignore"),
-                               essid.encode("utf-8", "ignore"), 4096, 32)
+def pmk(psk: str, essid) -> bytes:
+    """The Pairwise Master Key: PBKDF2-HMAC-SHA1(passphrase, essid, 4096, 32). C-accelerated.
+
+    *essid* is the salt. Pass the raw SSID **octets** (bytes) — the exact 802.11 salt — whenever they
+    are available; a *str* is accepted too (re-encoded UTF-8) for the canonical test vectors and for
+    handshakes whose raw octets weren't preserved."""
+    salt = bytes(essid) if isinstance(essid, (bytes, bytearray)) else str(essid).encode("utf-8", "ignore")
+    return hashlib.pbkdf2_hmac("sha1", psk.encode("utf-8", "ignore"), salt, 4096, 32)
 
 
 def compute_pmkid(the_pmk: bytes, ap_mac: bytes, sta_mac: bytes) -> bytes:
@@ -82,7 +90,7 @@ def compute_mic(the_pmk: bytes, hs: "Handshake") -> bytes:
 
 def verify(hs: "Handshake", psk: str) -> bool:
     """True iff *psk* reproduces this handshake's captured PMKID / MIC exactly (constant-time compare)."""
-    p = pmk(psk, hs.essid)
+    p = pmk(psk, hs.essid_bytes or hs.essid)   # raw SSID octets are the correct salt; str is a fallback
     if hs.kind == "pmkid":
         return hmac.compare_digest(compute_pmkid(p, hs.ap_mac, hs.sta_mac), hs.pmkid)
     if hs.kind == "eapol":
@@ -115,8 +123,8 @@ def _mac_str(mac: bytes) -> str:
 def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[Line] = None,
           should_stop: Optional[Stop] = None, *, progress_every: int = 2000) -> NativeResult:
     """Try each passphrase in *wordlist_path* against the *handshakes* until one verifies or the list
-    is exhausted. Returns a :class:`NativeResult`. WPA passphrases are 8..63 chars — shorter/longer
-    candidates can't be a WPA key and are skipped for speed.
+    is exhausted. Returns a :class:`NativeResult`. WPA passphrases are 8..63 BYTES (UTF-8) —
+    shorter/longer candidates can't be a WPA key and are skipped for speed.
 
     Cooperative: calls ``should_stop()`` periodically so a UI can cancel; streams progress via
     ``on_line``. Reports a hit ONLY on an exact PMKID/MIC match (verify-never-fake)."""
@@ -145,7 +153,10 @@ def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[L
     with open(wordlist_path, "r", encoding="utf-8", errors="ignore") as f:
         for raw in f:
             psk = raw.rstrip("\r\n")
-            if len(psk) < 8 or len(psk) > 63:
+            # WPA-PSK length is defined in OCTETS, not Unicode code points. Gate on the byte length of
+            # the same UTF-8 encoding the crypto uses, or a valid 8..63-byte key with a multibyte char
+            # (e.g. "señor12" = 7 code points, 8 bytes) would be skipped and reported "not in wordlist".
+            if not 8 <= len(psk.encode("utf-8", "ignore")) <= 63:
                 continue
             tried += 1
             for hs in handshakes:
