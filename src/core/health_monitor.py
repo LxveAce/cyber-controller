@@ -222,6 +222,13 @@ class HealthMonitor:
                     cached["status"] = "disconnected"
             except Exception:
                 cached["status"] = "error"
+        elif cached.get("status") in ("connected", "no-reply"):
+            # The port was previously LIVE but now has no connection object: it was closed/released (e.g.
+            # the Devices-tab Disconnect pops it) even though the board may stay physically plugged.
+            # Without this the status stayed frozen at "connected", so the Health panel showed a closed
+            # device as connected forever. Flip to disconnected; last_seen stays frozen. A never-connected
+            # "registered" device keeps its registered status (it was never live).
+            cached["status"] = "disconnected"
 
         return dict(cached)
 

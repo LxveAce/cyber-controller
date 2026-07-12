@@ -157,12 +157,9 @@ class NodeLink:
         self._error_callbacks: list[Callable[[Exception], None]] = []
         self._rx_advance_cb: Callable[[], None] | None = None
 
-        # Wire onto the gateway ONCE for our lifetime: inbound frames -> our decode path, and the
-        # gateway's state transitions -> our subscribers. Both survive connect/disconnect cycles.
-        self._gateway.on_line(self._on_gateway_line)
-        gw_state = getattr(self._gateway, "on_state_change", None)
-        if callable(gw_state):
-            gw_state(self._emit_state)
+        # Wire onto the gateway: inbound frames -> our decode path, and the gateway's state transitions
+        # -> our subscribers. connect() re-attaches too, so both genuinely survive disconnect/connect cycles.
+        self._attach_to_gateway()
 
     # ── Properties (mirror the gateway) ──────────────────────────────
     @property
@@ -230,6 +227,17 @@ class NodeLink:
         path; throttle any actual persistence inside it."""
         self._rx_advance_cb = cb
 
+    def _attach_to_gateway(self) -> None:
+        """Hook OUR line + state callbacks onto the (borrowed) gateway. Idempotent — it detaches first so a
+        connect() after a disconnect() re-attaches exactly once rather than stacking a duplicate that would
+        double-emit every line/state. Called from __init__ and connect() so the callbacks truly survive
+        disconnect/connect cycles (the class contract), matching SerialConnection's reconnect behaviour."""
+        self._detach_from_gateway()   # remove-before-add: never stack duplicate callbacks
+        self._gateway.on_line(self._on_gateway_line)
+        gw_state = getattr(self._gateway, "on_state_change", None)
+        if callable(gw_state):
+            gw_state(self._emit_state)
+
     def _detach_from_gateway(self) -> None:
         """Unhook OUR line + state callbacks from the (borrowed) gateway. Fully symmetric so a closed
         NodeLink leaves no dead callback behind on a gateway that outlives it (which leaked the NodeLink +
@@ -245,6 +253,10 @@ class NodeLink:
 
     # ── Lifecycle ────────────────────────────────────────────────────
     def connect(self) -> None:
+        # Re-attach our callbacks first: disconnect()/close() detach them, so without this a reused
+        # NodeLink would reconnect the shared gateway but then receive zero inbound frames / state
+        # changes (deaf) while is_connected still read True.
+        self._attach_to_gateway()
         self._gateway.connect()
 
     def disconnect(self) -> None:

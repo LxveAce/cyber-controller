@@ -311,9 +311,14 @@ class AutoRouter:
                     cutoff = now - max((r.cooldown for r in rules), default=60.0)
                     self._cooldowns = {k: t for k, t in self._cooldowns.items() if t >= cutoff}
 
-            # Validate the MAC shape before it is interpolated; reject anything odd outright.
-            if mac and not _MAC_RE.match(str(mac)):
-                log.warning("AutoRouter: rejecting target with malformed MAC %r", mac)
+            # Validate the MAC shape only when the rule actually interpolates it. Non-WiFi targets
+            # legitimately carry a non-MAC identifier in `mac` (SubGHz frequency, NFC/RFID UID, a BW16
+            # index key), and a rule whose template doesn't use {mac} must still route them — the old
+            # unconditional gate silently dropped every non-WiFi target with a "malformed MAC" warning.
+            # _safe_render already sanitizes every value, so this check only rejects a clearly-malformed
+            # MAC before it lands in a {mac} slot.
+            if "{mac}" in rule.command_template and mac and not _MAC_RE.match(str(mac)):
+                log.warning("AutoRouter: rejecting {mac} target with malformed MAC %r", mac)
                 continue
             cmd = _safe_render(rule.command_template, mac, ssid, channel)
             # Log the match at INFO with only rule + target key (whose MAC diagnostics.redact scrubs in any

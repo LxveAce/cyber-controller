@@ -144,6 +144,36 @@ def test_close_spares_shared_gateway_and_removes_both_callbacks():
     assert b._on_gateway_line in gw._line_cbs and b._emit_state in gw._state_cbs, "node B stays wired"
 
 
+def test_reconnect_reattaches_callbacks_so_link_is_not_deaf():
+    # A NodeLink reused across a disconnect->connect cycle must keep receiving inbound frames. connect()
+    # now re-attaches the gateway callbacks that disconnect() detaches; without the fix the reconnected
+    # link was DEAF (is_connected True, but zero inbound frames decoded — contradicting its own docstring).
+    host, host_gw, node, node_gw = _pair()
+    got: list[str] = []
+    node.on_line(got.append)
+
+    host.write("before")
+    pump(host_gw, node_gw)
+    assert got == ["before"]
+
+    node.disconnect()
+    node.connect()                       # reuse the SAME NodeLink object
+
+    host.write("after")
+    pump(host_gw, node_gw)
+    assert got == ["before", "after"], "reconnected NodeLink must not be deaf to inbound frames"
+
+
+def test_reconnect_does_not_stack_duplicate_gateway_callbacks():
+    # _attach_to_gateway is idempotent (detach-before-attach), so repeated reconnects must not stack a
+    # duplicate line hook on the shared gateway (which would double-decode every inbound frame).
+    _, _, node, node_gw = _pair()
+    n_line = len(node_gw._line_cbs)
+    node.disconnect(); node.connect()
+    node.disconnect(); node.connect()
+    assert len(node_gw._line_cbs) == n_line, "reconnect must not stack duplicate line callbacks"
+
+
 def test_on_rx_advance_fires_only_on_accepted_frames():
     # The anti-replay head advances only when a frame is ACCEPTED, so the persistence hook must fire then
     # — and never for a dropped (garbage/forged/replayed) frame.
