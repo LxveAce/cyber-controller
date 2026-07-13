@@ -8,6 +8,9 @@ cross-checked against the firmware source (``components/lxveos_cli/src/lxveos_cl
 
 from __future__ import annotations
 
+import types
+
+from src.core.handshake import DEFAULT_PROBE_COMMANDS, detect_firmware, learn_vocabulary
 from src.protocols import get_protocol, resolve_protocol_name
 from src.protocols.lxveos import LxveOSProtocol
 
@@ -18,6 +21,17 @@ _STATUS = (
 )
 _INFO = [
     "fw    : LxveOS 0.1.0-m0", "board : bare_esp32_headless", "chip  : esp32", "ui    : headless",
+]
+
+# A representative slice of the real COM23 reply to the default probe command (`help`): the command
+# summaries LxveOS prints, followed by its linenoise prompt. Captured live in beat 224.
+_HELP_REPLY = [
+    "help", "help  [<string>] [-v <0|1>]",
+    "Print the summary of all registered commands if no arguments are given,",
+    "agree", "Accept the authorized-use terms to unlock commands",
+    "info", "status", "One machine-readable status line (Cyber Controller bridge format)",
+    "caps", "sysinfo", "loglevel", "nvs", "reboot",
+    "lxveos>",
 ]
 
 
@@ -88,3 +102,26 @@ def test_commands_are_all_passive_no_tx():
     names = {c.name for c in cmds}
     assert {"info", "status", "help", "reboot"} <= names
     assert all(c.danger == "" for c in cmds), "no LxveOS M0 command should be flagged dangerous"
+
+
+# ── auto-detect integration (handshake.detect_firmware / learn_vocabulary) ──
+
+def test_default_probe_reply_auto_detects_lxveos():
+    # CC probes an unknown text-CLI device with `help` (DEFAULT_PROBE_COMMANDS). LxveOS's reply +
+    # `lxveos>` prompt must resolve to the lxveos protocol, not fall back to generic — HW-confirmed
+    # on the live COM23 board (beat 224).
+    assert DEFAULT_PROBE_COMMANDS == ("help",)
+    assert detect_firmware(_HELP_REPLY) == "lxveos"
+
+
+def test_status_line_alone_auto_detects_lxveos():
+    # Even a lone bridge line (e.g. the M1 framed boot identity) identifies the unit.
+    assert detect_firmware([_STATUS]) == "lxveos"
+
+
+def test_learn_vocabulary_confirms_lxveos_commands_from_help():
+    # The `help` reply advertises LxveOS's real command names; learn_vocabulary must confirm them
+    # against get_commands(), so command drift would surface instead of silently mis-sending.
+    dev = types.SimpleNamespace(firmware="lxveos", driver_type="text-cli")
+    vocab = learn_vocabulary(_HELP_REPLY, dev)
+    assert {"info", "status", "caps", "sysinfo", "reboot"} <= vocab
