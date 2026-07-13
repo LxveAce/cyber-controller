@@ -181,7 +181,6 @@ class CrossCommTab(QWidget):
         # janking the app. Coalesce the target.* burst into one rebuild via a single-shot timer (the event
         # log + action history still update immediately per event). _debounced_refresh_pool skips while
         # hidden; the 5s safety-net _timer below catches anything deferred.
-        self._pool_dirty = False
         self._pool_refresh_timer = QTimer(self)
         self._pool_refresh_timer.setSingleShot(True)
         self._pool_refresh_timer.setInterval(400)
@@ -381,12 +380,10 @@ class CrossCommTab(QWidget):
             self._append_action_history(payload)
 
     def _debounced_refresh_pool(self) -> None:
-        """Rebuild the pool table only while visible; if hidden, mark dirty and defer to the next
-        showEvent so a scan burst doesn't repeatedly rebuild an off-screen table."""
+        """Rebuild the pool table only while visible; if hidden, skip — the next showEvent
+        refreshes anyway, so a scan burst doesn't repeatedly rebuild an off-screen table."""
         if self.isVisible():
             self._refresh_pool()
-        else:
-            self._pool_dirty = True
 
     def _append_event(self, topic: str, payload: dict[str, Any]) -> None:
         summary = self._summarize_payload(topic, payload)
@@ -567,7 +564,6 @@ class CrossCommTab(QWidget):
 
     def showEvent(self, event) -> None:  # noqa: N802 — Qt naming
         super().showEvent(event)
-        self._pool_dirty = False  # about to refresh; clear any deferred-while-hidden flag
         self._refresh_pool()
         self._refresh_rules()
         self._timer.start()

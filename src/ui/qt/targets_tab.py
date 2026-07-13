@@ -149,7 +149,6 @@ class TargetsTab(QWidget):
         # (_apply_filter) — O(N^2) on the GUI thread during a wardrive, which janks the app. A single-shot
         # timer coalesces a burst into one rebuild (mirrors NetworkTab), and _debounced_refresh skips the
         # rebuild while hidden. The 3s safety-net _timer below still catches anything the debounce defers.
-        self._dirty = False   # a bus event arrived while hidden -> refresh on the next show
         self._refresh_timer = QTimer(self)
         self._refresh_timer.setSingleShot(True)
         self._refresh_timer.setInterval(400)
@@ -300,12 +299,10 @@ class TargetsTab(QWidget):
     # ── Refresh ──────────────────────────────────────────────────────
 
     def _debounced_refresh(self) -> None:
-        """Rebuild only while visible; if hidden, mark dirty and defer to the next showEvent so a scan
+        """Rebuild only while visible; if hidden, skip — the next showEvent refreshes, so a scan
         burst doesn't repeatedly rebuild an off-screen table."""
         if self.isVisible():
             self._refresh()
-        else:
-            self._dirty = True
 
     def _refresh(self) -> None:
         """Rebuild the table from :meth:`TargetPool.all`."""
@@ -723,7 +720,6 @@ class TargetsTab(QWidget):
 
     def showEvent(self, event) -> None:  # noqa: N802 — Qt naming
         super().showEvent(event)
-        self._dirty = False  # about to refresh; clear any deferred-while-hidden flag
         self._refresh()
         self._timer.start()
 

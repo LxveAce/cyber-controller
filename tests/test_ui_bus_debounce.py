@@ -63,6 +63,7 @@ def test_targets_tab_coalesces_burst_into_one_refresh(qapp):
 
 
 def test_targets_tab_defers_rebuild_while_hidden(qapp):
+    from PyQt5.QtGui import QShowEvent
     tab = _targets_tab()
     tab.hide()
     calls = {"n": 0}
@@ -70,7 +71,9 @@ def test_targets_tab_defers_rebuild_while_hidden(qapp):
 
     tab._debounced_refresh()  # hidden -> defer, don't rebuild an off-screen table
     assert calls["n"] == 0
-    assert tab._dirty is True
+
+    tab.showEvent(QShowEvent())  # the next show refreshes the deferred update
+    assert calls["n"] == 1
 
 
 def test_cross_comm_tab_coalesces_burst_into_one_pool_refresh(qapp):
