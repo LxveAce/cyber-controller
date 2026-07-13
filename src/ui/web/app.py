@@ -446,6 +446,15 @@ def create_app(
             profile = flash_engine.load_profile(profile_path)
         except Exception as exc:  # noqa: BLE001 — a malformed profile must surface as a clean 400, not an opaque 500
             return jsonify({"error": f"Invalid firmware profile ({profile_path.name}): {exc}"}), 400
+        # Honor an explicit board/variant pick from the caller (empty string -> per-chip default, i.e.
+        # unchanged behavior). The engine's _resolve_variant() matches this against the release assets by
+        # name/label and falls back to the default with a warning if it doesn't fit the detected chip.
+        # Without this, a board whose default asset is built for a larger flash (e.g. Bruce's default is a
+        # 16MB image) can only be flashed with that non-booting default from the web UI — the desktop UI
+        # could already pass a variant. Kept symmetric with the engine's long-standing profile.variant.
+        requested_variant = str(data.get("variant", "")).strip()
+        if requested_variant:
+            profile.variant = requested_variant
         # Reject fast if the port is already mid flash/backup/erase — a second esptool on the same UART
         # can brick the board. (The engine's per-port guard is the hard backstop against the TOCTOU
         # window; this 409 is the clean API answer so a scripted caller doesn't kick off a doomed thread.)
