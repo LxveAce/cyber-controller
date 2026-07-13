@@ -491,6 +491,33 @@ def create_app(
         threading.Thread(target=flash_thread, daemon=True).start()
         return jsonify({"status": "flashing", "port": port, "profile": profile_name})
 
+    @app.route("/api/variants")
+    @requires_auth
+    def api_variants():
+        """List the selectable firmware variants for a profile so the flash page can offer a board
+        picker. GET /api/variants?profile=<name> -> {"variants": [{"name","label","chip"}]}.
+
+        A read-only companion to the beat-171 /api/flash `variant` field: the picker's chosen name is
+        POSTed straight back as that field. Never 500s — list_variants() swallows an offline/API-error
+        release fetch and returns [], so the picker just shows "Default (auto-detect)" and the flash
+        falls to the per-chip default (unchanged behavior). GET, so no CSRF (it mutates nothing)."""
+        profile_name = str(request.args.get("profile", ""))
+        if not profile_name:
+            return jsonify({"error": "profile is required"}), 400
+        profile_path = profiles.get(profile_name)
+        if not profile_path:
+            return jsonify({"error": f"Unknown profile: {profile_name}"}), 404
+        try:
+            profile = flash_engine.load_profile(profile_path)
+        except Exception as exc:  # noqa: BLE001 — malformed profile -> clean 400, not opaque 500
+            return jsonify({"error": f"Invalid firmware profile ({profile_path.name}): {exc}"}), 400
+        variants = [
+            {"name": v.get("name", ""), "label": v.get("label", ""), "chip": v.get("chip", "")}
+            for v in flash_engine.list_variants(profile)
+            if v.get("name")
+        ]
+        return jsonify({"variants": variants})
+
     @app.route("/api/connect", methods=["POST"])
     @requires_auth
     @requires_csrf

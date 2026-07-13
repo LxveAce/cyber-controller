@@ -27,6 +27,16 @@
         </select>
     </div>
 
+    <div class="form-group">
+        <label for="variant-select">Board / Variant</label>
+        <select id="variant-select" class="form-control">
+            <option value="">Default (auto-detect by chip)</option>
+        </select>
+        <div id="variant-hint" class="form-hint">Pick a profile to list its board builds. Leave on
+            "Default" unless your board's screen stays blank after flashing — some boards share one
+            chip ID (CYD / M5 / etc.) so the auto-pick can guess the wrong display driver.</div>
+    </div>
+
     <button id="btn-flash" class="btn btn-accent btn-block">Flash</button>
 
     <div class="progress-container">
@@ -43,9 +53,52 @@
 
 {% block scripts %}
 <script nonce="{{ csp_nonce }}">
+    // Populate the Board/Variant picker for the chosen profile. Variants come from the firmware's
+    // latest GitHub release (resolved server-side via the same engine the flash uses), so the page
+    // loads fast and only pays the network fetch when a profile is actually picked. On any failure
+    // (offline, profile has no download release) we quietly leave just "Default" — the flash then
+    // uses the per-chip default, exactly as before this picker existed.
+    let variantReqSeq = 0;  // guards against a slow response for an older profile clobbering a newer one
+    function loadVariants() {
+        const profile = document.getElementById('profile-select').value;
+        const sel = document.getElementById('variant-select');
+        const hint = document.getElementById('variant-hint');
+        const DEFAULT_OPT = '<option value="">Default (auto-detect by chip)</option>';
+        sel.innerHTML = DEFAULT_OPT;
+        if (!profile) return;
+        const seq = ++variantReqSeq;
+        sel.disabled = true;
+        hint.textContent = 'Loading board builds…';
+        fetch('/api/variants?profile=' + encodeURIComponent(profile))
+            .then(r => r.json())
+            .then(data => {
+                if (seq !== variantReqSeq) return;  // a newer profile pick already superseded this
+                sel.disabled = false;
+                const variants = (data && data.variants) || [];
+                if (!variants.length) {
+                    hint.textContent = 'No selectable variants (uses the per-chip default).';
+                    return;
+                }
+                for (const v of variants) {
+                    const opt = document.createElement('option');
+                    opt.value = v.name;
+                    opt.textContent = v.label ? (v.name + ' — ' + v.label) : v.name;
+                    sel.appendChild(opt);
+                }
+                hint.textContent = 'Leave on "Default" unless your board\'s screen stays blank — '
+                    + 'boards sharing one chip ID can get the wrong display driver auto-picked.';
+            })
+            .catch(() => {
+                if (seq !== variantReqSeq) return;
+                sel.disabled = false;
+                hint.textContent = 'Could not list variants (offline?); the per-chip default will be used.';
+            });
+    }
+
     function startFlash() {
         const port = document.getElementById('port-select').value;
         const profile = document.getElementById('profile-select').value;
+        const variant = document.getElementById('variant-select').value;
         const btn = document.getElementById('btn-flash');
         const logEl = document.getElementById('flash-log');
         const statusEl = document.getElementById('flash-status');
@@ -66,7 +119,7 @@
         fetch('/api/flash', {
             method: 'POST',
             headers: {'Content-Type': 'application/json', 'X-CSRF-Token': window.CSRF_TOKEN},
-            body: JSON.stringify({port: port, profile_id: profile}),
+            body: JSON.stringify({port: port, profile_id: profile, variant: variant}),
         })
         .then(r => r.json())
         .then(data => {
@@ -118,5 +171,6 @@
 
     // Moved off an inline onclick= for the strict nonce CSP.
     document.getElementById('btn-flash').addEventListener('click', startFlash);
+    document.getElementById('profile-select').addEventListener('change', loadVariants);
 </script>
 {% endblock %}
