@@ -92,3 +92,20 @@ def test_api_channels_surveys_the_live_pool():
     assert data["total_aps"] == 4
     assert data["per_channel"] == {"1": 3, "6": 1}   # JSON keys are strings
     assert data["recommend_24"] == 11                # 1 and 6 are busy -> pick clear 11
+
+
+def test_targets_page_renders_vendor_column_and_channel_panel():
+    pool = TargetPool(EventBus())
+    t = Target(mac="D4:8A:FC:10:20:30", target_type=TargetType.AP, channel=1, ssid="Lab")
+    t.vendor = "Espressif Inc."
+    pool.add(t)
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), pool)
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+
+    html = client.get("/targets").get_data(as_text=True)
+    assert "<th>Vendor</th>" in html            # the new OUI-vendor column header
+    assert "Espressif Inc." in html             # the target's vendor is server-rendered
+    assert 'id="channel-survey"' in html        # the clear-channel survey panel is present
+    assert 'id="ch-recommend"' in html

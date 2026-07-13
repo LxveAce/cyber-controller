@@ -11,12 +11,18 @@
     <button id="btn-refresh-targets" class="btn btn-sm">Refresh</button>
 </div>
 
+<div class="toolbar" id="channel-survey">
+    <span class="toolbar-info">Clearest 2.4 GHz channel: <strong id="ch-recommend">--</strong></span>
+    <span class="toolbar-info" id="ch-occupancy">2.4 GHz occupancy: --</span>
+</div>
+
 <div class="table-container">
     <table class="data-table">
         <thead>
             <tr>
                 <th>MAC</th>
                 <th>SSID</th>
+                <th>Vendor</th>
                 <th>RSSI</th>
                 <th>Ch</th>
                 <th>Source</th>
@@ -28,6 +34,7 @@
             <tr>
                 <td class="mono">{{ t.mac }}</td>
                 <td>{{ t.ssid or '--' }}</td>
+                <td>{{ t.vendor or '--' }}</td>
                 <td class="mono">{{ t.rssi }}</td>
                 <td class="mono">{{ t.channel }}</td>
                 <td class="mono">{{ t.device_source }}</td>
@@ -35,7 +42,7 @@
             </tr>
             {% else %}
             <tr>
-                <td colspan="6" class="empty-state">No targets discovered yet.</td>
+                <td colspan="7" class="empty-state">No targets discovered yet.</td>
             </tr>
             {% endfor %}
         </tbody>
@@ -53,14 +60,14 @@
                 const summary = document.getElementById('target-summary');
                 summary.textContent = targets.length + ' targets';
 
-                // Build rows with DOM APIs + textContent. SSID / MAC / source come from
+                // Build rows with DOM APIs + textContent. SSID / MAC / vendor / source come from
                 // over-the-air scan data (attacker-controlled), so they must NEVER be
                 // interpolated into innerHTML — that was a stored-XSS sink.
                 tbody.replaceChildren();
                 if (targets.length === 0) {
                     const tr = document.createElement('tr');
                     const td = document.createElement('td');
-                    td.colSpan = 6;
+                    td.colSpan = 7;
                     td.className = 'empty-state';
                     td.textContent = 'No targets discovered yet.';
                     tr.appendChild(td);
@@ -78,6 +85,7 @@
                     const tr = document.createElement('tr');
                     addCell(tr, t.mac || '', 'mono');
                     addCell(tr, t.ssid || '--', null);
+                    addCell(tr, t.vendor || '--', null);
                     addCell(tr, (t.rssi ?? 0), 'mono');
                     addCell(tr, (t.channel ?? 0), 'mono');
                     addCell(tr, t.device_source || '', 'mono');
@@ -88,14 +96,42 @@
             .catch(() => {});
     }
 
-    function onTargetDiscovered(data) {
+    // Passive channel-occupancy survey (clear-channel picker). Read-only; renders /api/channels.
+    function refreshChannels() {
+        fetch('/api/channels')
+            .then(r => r.json())
+            .then(d => {
+                const rec = document.getElementById('ch-recommend');
+                const occ = document.getElementById('ch-occupancy');
+                if (d.recommend_24 === null || d.recommend_24 === undefined) {
+                    rec.textContent = '-- (no 2.4 GHz APs)';
+                } else {
+                    rec.textContent = 'ch ' + d.recommend_24 + ' (overlap load ' + d.recommend_24_load + ')';
+                }
+                const per = d.per_channel || {};
+                const parts = Object.keys(per)
+                    .map(k => parseInt(k, 10))
+                    .filter(k => k <= 14)
+                    .sort((a, b) => a - b)
+                    .map(k => 'ch' + k + ' ×' + per[String(k)]);
+                occ.textContent = '2.4 GHz occupancy: ' + (parts.length ? parts.join(', ') : 'none');
+            })
+            .catch(() => {});
+    }
+
+    function refreshAll() {
         refreshTargets();
+        refreshChannels();
+    }
+
+    function onTargetDiscovered(data) {
+        refreshAll();
     }
 
     // Moved off an inline onclick= for the strict nonce CSP.
-    document.getElementById('btn-refresh-targets').addEventListener('click', refreshTargets);
+    document.getElementById('btn-refresh-targets').addEventListener('click', refreshAll);
 
     // Auto-refresh every 10 seconds
-    setInterval(refreshTargets, 10000);
+    setInterval(refreshAll, 10000);
 </script>
 {% endblock %}
