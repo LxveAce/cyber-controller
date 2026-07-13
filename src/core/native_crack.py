@@ -41,6 +41,10 @@ class Handshake:
     essid: str
     ap_mac: bytes
     sta_mac: bytes
+    #: Raw SSID octets — the EXACT 802.11 PBKDF2 salt. ``essid`` (str) is a lossy decode for display
+    #: only; a non-UTF-8 SSID salted with the re-encoded str would give a wrong PMK (silent false
+    #: negative), so verify() prefers these bytes when present.
+    essid_bytes: bytes = b""
     pmkid: bytes = b""
     anonce: bytes = b""
     snonce: bytes = b""
@@ -49,10 +53,19 @@ class Handshake:
     key_version: int = 2
 
 
-def pmk(psk: str, essid: str) -> bytes:
-    """The Pairwise Master Key: PBKDF2-HMAC-SHA1(passphrase, essid, 4096, 32). C-accelerated."""
-    return hashlib.pbkdf2_hmac("sha1", psk.encode("utf-8", "ignore"),
-                               essid.encode("utf-8", "ignore"), 4096, 32)
+def _octets(v) -> bytes:
+    """Raw octets of a passphrase/SSID: bytes are fed verbatim (the exact 802.11 input, as hashcat/
+    aircrack do with a wordlist); a str is re-encoded UTF-8 (canonical test vectors, or handshakes
+    whose raw SSID octets weren't preserved)."""
+    return bytes(v) if isinstance(v, (bytes, bytearray)) else str(v).encode("utf-8", "ignore")
+
+
+def pmk(psk, essid) -> bytes:
+    """The Pairwise Master Key: PBKDF2-HMAC-SHA1(passphrase, essid, 4096, 32). C-accelerated.
+
+    Both *psk* and *essid* accept raw octets (bytes, fed verbatim) or a str (re-encoded UTF-8). A WPA
+    passphrase and SSID are byte strings, so passing the exact octets avoids a lossy round-trip."""
+    return hashlib.pbkdf2_hmac("sha1", _octets(psk), _octets(essid), 4096, 32)
 
 
 def compute_pmkid(the_pmk: bytes, ap_mac: bytes, sta_mac: bytes) -> bytes:
@@ -80,9 +93,9 @@ def compute_mic(the_pmk: bytes, hs: "Handshake") -> bytes:
     return hmac.new(kck, hs.eapol, algo).digest()[:16]
 
 
-def verify(hs: "Handshake", psk: str) -> bool:
+def verify(hs: "Handshake", psk: "str | bytes") -> bool:
     """True iff *psk* reproduces this handshake's captured PMKID / MIC exactly (constant-time compare)."""
-    p = pmk(psk, hs.essid)
+    p = pmk(psk, hs.essid_bytes or hs.essid)   # raw SSID octets are the correct salt; str is a fallback
     if hs.kind == "pmkid":
         return hmac.compare_digest(compute_pmkid(p, hs.ap_mac, hs.sta_mac), hs.pmkid)
     if hs.kind == "eapol":
@@ -112,11 +125,21 @@ def _mac_str(mac: bytes) -> str:
     return ":".join(f"{b:02x}" for b in mac) if mac else ""
 
 
+def _display_psk(psk: bytes) -> "tuple[str, str]":
+    """Render a matched passphrase (raw octets) for display, plus a note. Almost every WPA key is
+    ASCII/UTF-8 and decodes exactly; a genuinely non-UTF-8 key can't be a clean str, so we show a
+    lossy 'replace' rendering AND its exact hex in the note — never presenting mojibake as the key."""
+    try:
+        return psk.decode("utf-8"), ""
+    except UnicodeDecodeError:
+        return psk.decode("utf-8", "replace"), f" (non-UTF-8 key; exact bytes = {psk.hex()})"
+
+
 def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[Line] = None,
           should_stop: Optional[Stop] = None, *, progress_every: int = 2000) -> NativeResult:
     """Try each passphrase in *wordlist_path* against the *handshakes* until one verifies or the list
-    is exhausted. Returns a :class:`NativeResult`. WPA passphrases are 8..63 chars — shorter/longer
-    candidates can't be a WPA key and are skipped for speed.
+    is exhausted. Returns a :class:`NativeResult`. WPA passphrases are 8..63 raw BYTES —
+    shorter/longer candidates can't be a WPA key and are skipped for speed.
 
     Cooperative: calls ``should_stop()`` periodically so a UI can cancel; streams progress via
     ``on_line``. Reports a hit ONLY on an exact PMKID/MIC match (verify-never-fake)."""
@@ -142,17 +165,24 @@ def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[L
     handshakes = usable
     ref = handshakes[0]
     tried = 0
-    with open(wordlist_path, "r", encoding="utf-8", errors="ignore") as f:
+    # Read the wordlist as RAW BYTES, not decoded text. A WPA passphrase is 8..63 OCTETS fed verbatim
+    # to PBKDF2 (IEEE 802.11i), so hashcat/aircrack read the file as bytes too. Decoding it as UTF-8
+    # first (errors="ignore") silently DROPPED invalid bytes from non-UTF-8 rockyou lines, corrupting
+    # the candidate so the real key was never tried (a false "not in wordlist") — the passphrase-side
+    # twin of the essid_bytes salt fix. A valid-UTF-8 line yields byte-identical results to before.
+    with open(wordlist_path, "rb") as f:
         for raw in f:
-            psk = raw.rstrip("\r\n")
-            if len(psk) < 8 or len(psk) > 63:
+            psk = raw.rstrip(b"\r\n")
+            if not 8 <= len(psk) <= 63:  # WPA-PSK octet-length gate, exact on the raw bytes
                 continue
             tried += 1
             for hs in handshakes:
                 if verify(hs, psk):
-                    log(f"[native] KEY FOUND for {hs.essid or _mac_str(hs.ap_mac)}: {psk}")
+                    shown, note = _display_psk(psk)
+                    log(f"[native] KEY FOUND for {hs.essid or _mac_str(hs.ap_mac)}: {shown}{note}")
                     return NativeResult(cracked=True, essid=hs.essid, bssid=_mac_str(hs.ap_mac),
-                                        password=psk, tried=tried, detail="key recovered (native)")
+                                        password=shown, tried=tried,
+                                        detail="key recovered (native)" + note)
             if tried % progress_every == 0:
                 if stop():
                     return NativeResult(tried=tried, detail="stopped")

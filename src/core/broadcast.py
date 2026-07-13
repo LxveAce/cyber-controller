@@ -47,6 +47,7 @@ class BroadcastVerb(Enum):
     BLE_SPAM = "ble_spam"
     MESH_RELAY = "mesh_relay"
     STOP_ALL = "stop_all"  # universal kill-switch, always safe, never gated
+    CUSTOM = "custom"  # a raw per-firmware command (§OP); not in BROADCAST_ACTIONS -> no verb btn
 
 
 @dataclass(frozen=True)
@@ -158,6 +159,35 @@ class BroadcastEngine:
         dev = self._dm.get_device(port)
         if dev is not None:
             self._plan_device(dev, verb, plan)
+        return plan
+
+    def plan_raw(
+        self, port: str, command: str, *, pre_commands: tuple[str, ...] = (),
+        label: str = "", category: ActionCategory = ActionCategory.UTILITY,
+    ) -> BroadcastPlan:
+        """Plan a single RAW command on ONE device — the per-firmware Operate buttons (§OP). Goes
+        through the SAME path as a verb (danger classified via ``safety.classify`` -> the confirm
+        gate in ``_launch``; then activity log / per-firmware line-ending / threaded egress in
+        :meth:`dispatch`), with a synthetic CUSTOM action instead of a registry verb. Skips (not
+        silently) when the port has no device/firmware. Adds NO capability — the command is one
+        the firmware already exposes (the caller sources them from ``grouped_quick_commands``)."""
+        from src.core import safety
+        from src.protocols import get_protocol
+        action = BroadcastAction(
+            verb=BroadcastVerb.CUSTOM, label=(label or command), icon="",
+            category=category, description=f"Custom command: {command}")
+        plan = BroadcastPlan(action=action)
+        dev = self._dm.get_device(port)
+        fw = ((getattr(dev, "firmware", "") or "").strip()) if dev is not None else ""
+        if not fw:
+            plan.skipped.append((port, "(unknown)", "firmware unknown"))
+            return plan
+        try:
+            info = self._command_info_for(get_protocol(fw), command)
+        except Exception:  # noqa: BLE001 — unknown firmware/registry: classify the bare string
+            info = None
+        danger = safety.classify(command, info)
+        plan.concrete.append(ConcreteCommand(port, fw, tuple(pre_commands), command, danger))
         return plan
 
     def _plan_device(self, device: Any, verb: BroadcastVerb, plan: BroadcastPlan) -> None:

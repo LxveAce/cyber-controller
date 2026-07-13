@@ -73,6 +73,13 @@ from src.version import __version__ as _VERSION
 
 _GITHUB_URL = "https://github.com/LxveAce/cyber-controller"
 
+# Backstop for closeEvent: an update-check QThread still blocked on a slow/black-hole network at exit is
+# moved here so its Python wrapper isn't garbage-collected when the window is destroyed. That GC — not the
+# running thread itself — is what fires the C++ QThread destructor mid-run and aborts the process
+# ('QThread: Destroyed while thread is still running'). Holding a reference lets the thread finish (or the
+# process exit) without the abort.
+_KEEPALIVE_WORKERS: set = set()
+
 
 class _UpdateCheckWorker(QThread):
     """Run the in-app update check off the UI thread and emit the result object.
@@ -95,6 +102,26 @@ class _UpdateCheckWorker(QThread):
         except Exception:  # noqa: BLE001 — the check must never crash the app
             result = updater.CheckResult(status=updater.OFFLINE)
         self.done.emit(result)
+
+
+class _PortScanWorker(QThread):
+    """Enumerate serial ports off the GUI thread. serial.tools.list_ports.comports() does blocking
+    SetupAPI/registry I/O that can take seconds on a machine with many virtual/Bluetooth COM ports, so
+    running it in the Scan-Ports / F5 slot froze the event loop. Any failure yields an empty list so the
+    scan can never crash the app."""
+
+    done = pyqtSignal(object)  # list[Device]
+
+    def __init__(self, device_manager) -> None:
+        super().__init__()
+        self._dm = device_manager
+
+    def run(self) -> None:
+        try:
+            devices = list(self._dm.scan_ports())
+        except Exception:  # noqa: BLE001 — a scan failure must never crash the UI
+            devices = []
+        self.done.emit(devices)
 
 
 class _SelfUpdateWorker(QThread):
@@ -197,6 +224,7 @@ class CyberControllerWindow(QMainWindow):
         self._sidebar_timer = QTimer(self)
         self._sidebar_timer.timeout.connect(self._refresh_sidebar_devices)
         self._sidebar_timer.start(3000)
+        self._scan_worker: "_PortScanWorker | None" = None  # in-flight Scan-Ports enumeration (off-GUI-thread)
 
     # ── Menu bar ─────────────────────────────────────────────────────
 
@@ -429,9 +457,9 @@ class CyberControllerWindow(QMainWindow):
         sidebar_layout.addLayout(quick_actions)
 
         # Scan ports button
-        scan_btn = QPushButton("Scan Ports")
-        scan_btn.clicked.connect(self._on_sidebar_scan)
-        sidebar_layout.addWidget(scan_btn)
+        self._scan_btn = QPushButton("Scan Ports")
+        self._scan_btn.clicked.connect(self._on_sidebar_scan)
+        sidebar_layout.addWidget(self._scan_btn)
 
         top_layout.addWidget(sidebar)
 
@@ -536,7 +564,8 @@ class CyberControllerWindow(QMainWindow):
         # crack pipeline + wordlist manager (capture -> wordlist -> per-run consent -> hashcat/aircrack).
         # Dictionary-only; the consent gate is never bypassed.
         from src.ui.qt.crack_lab_tab import CrackLabTab
-        self._crack_lab_tab = CrackLabTab()
+        # Pass the cross-comm hub so the Captures table auto-populates from the shared capture log.
+        self._crack_lab_tab = CrackLabTab(self._hub)
         self._operate_surface.addTab(self._crack_lab_tab, label_icon("Crack Lab"), "Crack Lab")
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
@@ -861,6 +890,19 @@ class CyberControllerWindow(QMainWindow):
         self._activity_log = activity_log()
         self._activity_log.line.connect(self._pterm_on_activity)
 
+        # Capture-confirm correlator (punch-list #2 slice 5): surface a deauth->handshake match and
+        # its honest timeouts as activity-log lines. Bus callbacks fire on the ingest thread; emit
+        # queues onto this GUI thread safely (activity_log.line is a Qt signal). A 5s timer drives
+        # correlator.sweep() so a window that passes with no capture reports at the right time.
+        hub = getattr(self, "_hub", None)
+        if hub is not None and getattr(hub, "correlator", None) is not None:
+            self._bus.subscribe("capture.confirmed", self._on_capture_confirmed)
+            self._bus.subscribe("capture.timeout", self._on_capture_timeout)
+            self._capture_sweep_timer = QTimer(self)
+            self._capture_sweep_timer.setInterval(5000)
+            self._capture_sweep_timer.timeout.connect(hub.correlator.sweep)
+            self._capture_sweep_timer.start()
+
         # Refresh device checklist
         self._pterm_refresh_ports()
 
@@ -933,13 +975,38 @@ class CyberControllerWindow(QMainWindow):
         self._pterm_port_colors[port] = color
         return color
 
+    @staticmethod
+    def _resolve_pterm_connect_ports(
+        checked: "list[str]", listed: "list[str]"
+    ) -> "tuple[list[str], str | None]":
+        """Ports a persistent-terminal (bottom-left) Connect click should open.
+
+        Ticked devices win. If NONE are ticked, fall back to the sole listed device so the button
+        works without a manual pre-tick — the owner-reported "bottom-left Connect still doesn't
+        work" was exactly this: Connect no-opped on an empty check-selection (v1.7.1 fixed the
+        *Devices-tab* buttons, not these). Disconnect already fell back to "all connected"; Connect
+        did not. With zero or several listed devices, connect nothing and return a message
+        (auto-connecting ALL on an empty selection opens ports the user didn't intend)."""
+        if checked:
+            return checked, None
+        if len(listed) == 1:
+            return listed, None
+        if not listed:
+            return [], "No devices -- plug one in or use Scan Ports first"
+        return [], "Multiple devices -- tick the one(s) to connect, then Connect"
+
     def _pterm_on_connect(self) -> None:
-        """Connect the persistent terminal to all checked ports."""
-        ports = self._pterm_checked_ports()
-        if not ports:
-            self._pterm_output.append(
-                '<span style="color:#f85149;">[No devices checked -- check one or more devices]</span>'
-            )
+        """Connect the persistent terminal to the checked ports (or the sole listed device when
+        nothing is ticked — see :meth:`_resolve_pterm_connect_ports`)."""
+        listed = [
+            self._pterm_device_list.item(i).data(Qt.UserRole)
+            for i in range(self._pterm_device_list.count())
+        ]
+        ports, msg = self._resolve_pterm_connect_ports(
+            self._pterm_checked_ports(), [p for p in listed if p]
+        )
+        if msg is not None:
+            self._pterm_output.append(f'<span style="color:#f85149;">[{msg}]</span>')
             return
         for port in ports:
             existing = self._pterm_conns.get(port)
@@ -989,11 +1056,14 @@ class CyberControllerWindow(QMainWindow):
         self._refresh_sidebar_devices()
 
     def _pterm_on_disconnect(self) -> None:
-        """Disconnect the persistent terminal from all checked ports."""
+        """Disconnect the persistent terminal from the checked ports (or all connected when nothing
+        is ticked). Always gives feedback: with nothing connected the loop runs zero times, so we
+        print an explicit no-op line instead of silence — the "Disconnect does nothing" half."""
         ports = self._pterm_checked_ports()
         if not ports:
             # If nothing checked, disconnect all
             ports = list(self._pterm_conns.keys())
+        disconnected = 0
         for port in ports:
             if port not in self._pterm_conns:
                 continue
@@ -1014,9 +1084,15 @@ class CyberControllerWindow(QMainWindow):
             except Exception:
                 pass
             del self._pterm_conns[port]
+            disconnected += 1
             color = self._pterm_port_colors.get(port, "#8b949e")
             self._pterm_output.append(
                 f'<span style="color:{color};">[{port}] Disconnected</span>'
+            )
+        if disconnected == 0:
+            # Nothing was connected (or the checked ports weren't open) — never leave it silent.
+            self._pterm_output.append(
+                '<span style="color:#f85149;">[No connected devices to disconnect]</span>'
             )
         self._pterm_refresh_ports()
         self._refresh_sidebar_devices()
@@ -1148,6 +1224,38 @@ class CyberControllerWindow(QMainWindow):
             f'<span style="color:{color};">[{html.escape(source)}]</span> {html.escape(text)}'
         )
 
+    # ── Capture-confirm correlator notices (punch-list #2 slice 5) ────
+    @staticmethod
+    def _capture_trigger(payload: dict) -> str:
+        """Name the action that armed the window — 'deauth' for a Deauth AP, else the action itself.
+
+        Not every chain-event action is a deauth (a Capture Handshake / Evil Portal action also arms
+        a window), so the notice must not hardcode 'deauth' or it claims an attack that never fired.
+        """
+        action = str(payload.get("action") or "").strip()
+        if "deauth" in action.lower():
+            return "deauth"
+        return action or "action"
+
+    def _on_capture_confirmed(self, _topic: str, payload: dict) -> None:
+        """An armed action was followed by a matching handshake in the window — surface it."""
+        bssid = payload.get("bssid") or "?"
+        trigger = self._capture_trigger(payload)
+        verdict = "deauth confirmed" if trigger == "deauth" else "capture confirmed"
+        elapsed = payload.get("elapsed_s")
+        tail = f" ({elapsed:g}s after {trigger})" if isinstance(elapsed, (int, float)) else ""
+        self._activity_log.emit_line(
+            "capture", f"handshake captured from {bssid}{tail} — {verdict}", "success")
+
+    def _on_capture_timeout(self, _topic: str, payload: dict) -> None:
+        """An armed window passed with no matching handshake — report it (no false success)."""
+        bssid = payload.get("bssid") or "?"
+        trigger = self._capture_trigger(payload)
+        win = payload.get("window_s")
+        span = f"{win:g}s" if isinstance(win, (int, float)) else "the window"
+        self._activity_log.emit_line(
+            "capture", f"no handshake from {bssid} within {span} of the {trigger}", "warn")
+
     # ── Dead Man's Switch auth UI ────────────────────────────────────
 
     def _dms_password_prompt(self) -> str | None:
@@ -1272,11 +1380,25 @@ class CyberControllerWindow(QMainWindow):
             self._show_subtab(self._connect_surface, self._device_tab)
 
     def _on_sidebar_scan(self) -> None:
-        """Scan ports and refresh the sidebar."""
-        for dev in self._dm.scan_ports():
+        """Scan ports off the GUI thread, then register + refresh the sidebar when it reports back.
+
+        comports() does blocking SetupAPI/registry I/O (seconds on a machine with many virtual COM ports);
+        running it inline froze the event loop on every F5 / Scan-Ports press. The worker keeps the UI live
+        and add_device()/refresh run back on the GUI thread via the queued ``done`` signal."""
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            return  # a scan is already in flight — don't orphan its QThread
+        self._scan_btn.setEnabled(False)
+        self._scan_worker = _PortScanWorker(self._dm)
+        self._scan_worker.done.connect(self._on_ports_scanned)
+        self._scan_worker.finished.connect(lambda: setattr(self, "_scan_worker", None))
+        self._scan_worker.start()
+
+    def _on_ports_scanned(self, devices) -> None:
+        for dev in devices:
             if not self._dm.get_device(dev.port):
                 self._dm.add_device(dev)
         self._refresh_sidebar_devices()
+        self._scan_btn.setEnabled(True)
 
     # ── Status bar ───────────────────────────────────────────────────
 
@@ -2015,7 +2137,7 @@ class CyberControllerWindow(QMainWindow):
         # through the DeviceManager, but dm.shutdown() only force-closes ports — it never sends the firmware
         # STOP verb, so join their shutdown() here too or an ESP32 is left scanning after the GUI is gone.
         for _tab_attr in ("_software_tab", "_flock_heatmap", "_wardrive_tab", "_wardrive_multi_tab",
-                          "_crack_lab_tab"):
+                          "_crack_lab_tab", "_device_tab"):
             _tab = getattr(self, _tab_attr, None)
             _shutdown = getattr(_tab, "shutdown", None)
             if callable(_shutdown):
@@ -2023,16 +2145,25 @@ class CyberControllerWindow(QMainWindow):
                     _shutdown()
                 except Exception:  # noqa: BLE001 — teardown must never raise
                     pass
-        # The update / self-update check threads (started on launch + on manual check) are held only on
-        # self, so join them here too.
-        for attr in ("_update_worker", "_self_update_worker"):
+        # The update / self-update check threads (started on launch + on manual check) and the sidebar
+        # port-scan worker are held only on self, so join them here too. The update workers do a network op
+        # with a 6s socket timeout (updater.DEFAULT_TIMEOUT) plus unbounded DNS, so wait LONGER than that —
+        # a 3s wait would return while the worker is still blocked, and destroying its QThread on GC then
+        # aborts the process ('QThread: Destroyed while thread is still running'). comports() (the scan
+        # worker) is fast, so 3s is plenty there. Any worker still blocked after the wait is parked in a
+        # module keep-alive set so its wrapper isn't GC'd mid-run.
+        from src.core import updater as _updater
+        _update_wait = int(_updater.DEFAULT_TIMEOUT * 1000) + 1000  # > the 6s socket timeout
+        for attr, wait_ms in (("_update_worker", _update_wait), ("_self_update_worker", _update_wait),
+                              ("_scan_worker", 3000)):
             w = getattr(self, attr, None)
-            if w is not None:
-                try:
-                    if w.isRunning():
-                        w.wait(3000)
-                except RuntimeError:  # C++ side already gone
-                    pass
+            if w is None:
+                continue
+            try:
+                if w.isRunning() and not w.wait(wait_ms) and w.isRunning():
+                    _KEEPALIVE_WORKERS.add(w)  # still blocked (black-hole net) — don't let GC destroy it
+            except RuntimeError:  # C++ side already gone
+                pass
         # Save splitter state
         self._qsettings.setValue("main_splitter_state", self._main_splitter.saveState())
         # Remember which tabs were popped out (+ their window geometry), then re-dock them so no

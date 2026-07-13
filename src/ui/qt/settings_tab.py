@@ -59,6 +59,8 @@ class SettingsTab(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._settings = load_settings()
+        self._dirty = False    # True once the user edits a field; blocks showEvent's disk-reload from
+        self._loading = False  # clobbering it. _loading guards programmatic _load_into_ui from self-marking.
         self._build_ui()
         self._connect_signals()
         self._load_into_ui(self._settings)
@@ -251,11 +253,32 @@ class SettingsTab(QWidget):
         self._secure_container_check.toggled.connect(self._on_secure_container_toggled)
         self._gate_setup_btn.clicked.connect(self._on_gate_setup)
         self._check_updates_btn.clicked.connect(self.check_updates_requested)
+        # Mark the tab dirty on any user edit so showEvent's disk-reload won't silently discard it. These
+        # fire on programmatic setText/setChecked too, but _mark_dirty ignores those (the _loading guard).
+        self._baud_combo.currentTextChanged.connect(self._mark_dirty)
+        self._flash_baud_combo.currentTextChanged.connect(self._mark_dirty)
+        self._vault_dir_edit.textChanged.connect(self._mark_dirty)
+        self._confirm_dangerous_check.toggled.connect(self._mark_dirty)
+        self._updates_enabled_check.toggled.connect(self._mark_dirty)
+        self._suppress_warnings_check.toggled.connect(self._mark_dirty)
+        self._secure_container_check.toggled.connect(self._mark_dirty)
+
+    def _mark_dirty(self, *_args) -> None:
+        if not self._loading:
+            self._dirty = True
 
     # ── Load / gather ────────────────────────────────────────────────
 
     def _load_into_ui(self, settings: dict) -> None:
-        """Populate widgets from a settings dict."""
+        """Populate widgets from a settings dict. Sets _loading so the change signals wired in
+        _connect_signals don't mistake this programmatic repopulation for a user edit."""
+        self._loading = True
+        try:
+            self._load_into_ui_inner(settings)
+        finally:
+            self._loading = False
+
+    def _load_into_ui_inner(self, settings: dict) -> None:
         serial = settings.get("serial", {})
         self._set_combo_text(self._baud_combo, str(serial.get("default_baud", 115200)))
 
@@ -341,6 +364,7 @@ class SettingsTab(QWidget):
         self._settings = self._gather()
         try:
             save_settings(self._settings)
+            self._dirty = False  # persisted — the widgets now match disk, so a reload is safe again
             QMessageBox.information(self, "Settings", "Settings saved successfully.")
         except Exception as exc:  # noqa: BLE001 — surface any I/O error to the user
             log.exception("Failed to save settings")
@@ -360,6 +384,7 @@ class SettingsTab(QWidget):
                 k: (dict(v) if isinstance(v, dict) else v) for k, v in DEFAULTS.items()
             }
             self._load_into_ui(self._settings)
+            self._dirty = True  # defaults differ from disk until Saved — don't let a tab switch revert them
 
     def _on_suppress_toggled(self, checked: bool) -> None:
         """One-time acknowledgement when ENABLING 'suppress all warnings'.
@@ -438,10 +463,14 @@ class SettingsTab(QWidget):
     # ── Qt overrides ─────────────────────────────────────────────────
 
     def showEvent(self, event) -> None:  # noqa: N802 — Qt naming
-        """Reload settings from disk whenever the tab becomes visible."""
+        """Reload settings from disk when the tab becomes visible — but ONLY if there are no unsaved edits,
+        so a tab round-trip (leave and return without Save) can't silently discard what the user typed. The
+        reload exists to avoid showing values another component wrote; keep refreshing self._settings + the
+        gate status regardless so external writes still surface, and only skip the widget repopulation."""
         super().showEvent(event)
         self._settings = load_settings()
-        self._load_into_ui(self._settings)
+        if not self._dirty:
+            self._load_into_ui(self._settings)
         self._refresh_gate_status()
 
     # ── Accessors / helpers ──────────────────────────────────────────

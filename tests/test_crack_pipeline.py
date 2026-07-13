@@ -58,6 +58,9 @@ def test_available_backends_matrix() -> None:
 
 def test_detect_tools_all_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cp.shutil, "which", lambda _n: None)
+    # detect_tools uses `which(name) or _installed_fallback(name)`, so a box with hashcat/aircrack
+    # in the CC tools dir would resolve via the fallback and stay present=True — stub it too.
+    monkeypatch.setattr(cp, "_installed_fallback", lambda _n: None)
     tools = detect_tools()
     assert set(tools) == {"hcxpcapngtool", "hashcat", "aircrack-ng"}
     assert all(not t.present for t in tools.values())
@@ -176,3 +179,128 @@ def test_missing_tools_text() -> None:
                "hashcat": ToolStatus("hashcat", path="/x"),
                "aircrack-ng": ToolStatus("aircrack-ng")}
     assert missing_tools_text("hashcat", present) == ""  # nothing missing -> empty
+
+
+# ── honest-negative / verify-never-fake guards ───────────────────────
+
+def test_run_hashcat_reports_tool_error_not_false_negative(tmp_path, monkeypatch) -> None:
+    """A hashcat run that exits nonzero-and-not-exhausted (e.g. no OpenCL device, a malformed .hc22000)
+    tested NOTHING. It must be reported as a tool error — not laundered into a clean 'key not in
+    wordlist' negative that falsely blames the operator's wordlist."""
+    wl = tmp_path / "w.txt"
+    wl.write_text("aaaaaaaa\n", encoding="utf-8")
+    hf = tmp_path / "hash.hc22000"
+    hf.write_text("WPA*01*x\n", encoding="utf-8")
+    tools = {cp.HASHCAT: ToolStatus(cp.HASHCAT, path="/x/hashcat")}
+    stderr = "clHostMemAlloc(): CL_OUT_OF_HOST_MEMORY\nNo devices found/left"
+    monkeypatch.setattr(cp, "_run_tool", lambda argv, timeout, on_proc=None: (255, "", stderr))
+    monkeypatch.setattr(cp, "_read_show_results", lambda *a, **k: [])   # potfile empty
+    res = cp.run_hashcat(str(hf), str(wl), lambda *_a: None, tools=tools)
+    assert not res.cracked
+    assert "not in wordlist" not in res.detail          # NOT a false negative
+    assert "exit 255" in res.detail and "No devices" in res.detail
+
+
+def test_run_hashcat_exhausted_stays_an_honest_negative(tmp_path, monkeypatch) -> None:
+    """exit 1 = dictionary exhausted is a legitimate negative and must still read 'not in wordlist'."""
+    wl = tmp_path / "w.txt"
+    wl.write_text("aaaaaaaa\n", encoding="utf-8")
+    hf = tmp_path / "h.hc22000"
+    hf.write_text("x\n", encoding="utf-8")
+    tools = {cp.HASHCAT: ToolStatus(cp.HASHCAT, path="/x/hashcat")}
+    monkeypatch.setattr(cp, "_run_tool", lambda argv, timeout, on_proc=None: (1, "Status.......: Exhausted", ""))
+    monkeypatch.setattr(cp, "_read_show_results", lambda *a, **k: [])
+    res = cp.run_hashcat(str(hf), str(wl), lambda *_a: None, tools=tools)
+    assert not res.cracked and "not in wordlist" in res.detail
+
+
+def test_run_native_no_matching_bssid_is_honest_negative(tmp_path, monkeypatch) -> None:
+    """run_native with a BSSID that matches no handshake must NOT silently fall back to cracking ALL
+    handshakes (a different, non-targeted AP within the capture). It returns an honest negative and
+    never reaches the cracker."""
+    from src.core import native_crack as nc
+    from src.core import wpa_capture as wc
+
+    cap = tmp_path / "c.pcap"
+    cap.write_bytes(b"\x00" * 64)                        # exists + valid ext (parse_capture is mocked)
+    wl = tmp_path / "w.txt"
+    wl.write_text("aaaaaaaa\n", encoding="utf-8")
+    hs = nc.Handshake(kind="pmkid", essid="Real", ap_mac=bytes.fromhex("aabbccddeeff"),
+                      sta_mac=bytes.fromhex("112233445566"), pmkid=b"\x00" * 16)
+    monkeypatch.setattr(wc, "parse_capture", lambda _p: [hs])
+
+    def _must_not_crack(*_a, **_k):
+        raise AssertionError("run_native fell back to cracking despite a non-matching BSSID")
+
+    monkeypatch.setattr(nc, "crack", _must_not_crack)
+    res = cp.run_native(str(cap), str(wl), lambda *_a: None, bssid="00:00:00:00:00:00")
+    assert not res.cracked
+    assert res.hashes_extracted == 0
+    assert "no handshake for BSSID" in res.detail
+
+
+# ── .hc22000 prebuilt-hashfile input (hashcat-only) ──────────────────
+
+def test_validate_crack_input_accepts_hc22000_for_hashcat(tmp_path):
+    hf = tmp_path / "x.hc22000"
+    hf.write_text("WPA*01*deadbeef\n", encoding="utf-8")
+    assert cp.validate_crack_input(str(hf), "hashcat") == str(hf)
+
+
+def test_validate_crack_input_rejects_hc22000_for_native_and_aircrack(tmp_path):
+    hf = tmp_path / "x.hc22000"
+    hf.write_text("x\n", encoding="utf-8")
+    for backend in ("native", "aircrack"):
+        with pytest.raises(ValueError, match="hashcat engine"):
+            cp.validate_crack_input(str(hf), backend)
+
+
+def test_validate_crack_input_missing_hashfile_raises(tmp_path):
+    with pytest.raises(ValueError, match="not found"):
+        cp.validate_crack_input(str(tmp_path / "nope.hc22000"), "hashcat")
+
+
+def test_validate_crack_input_delegates_a_capture_to_validate_capture(tmp_path):
+    cap = tmp_path / "c.pcap"
+    cap.write_bytes(b"\x00" * 8)
+    assert cp.validate_crack_input(str(cap), "native") == str(cap)
+    txt = tmp_path / "c.txt"
+    txt.write_bytes(b"x")
+    with pytest.raises(ValueError, match="not a capture file"):
+        cp.validate_crack_input(str(txt), "hashcat")
+
+
+# ── Stop actually kills the crack child (no orphaned aircrack/hashcat process) ──
+
+def test_run_tool_returns_rc_stdout_stderr_and_registers_the_child():
+    import sys
+    seen = []
+    rc, out, err = cp._run_tool(
+        [sys.executable, "-c", "import sys; print('hi'); sys.stderr.write('boom'); sys.exit(3)"],
+        timeout=30, on_proc=seen.append)
+    assert rc == 3
+    assert out.strip() == "hi" and "boom" in err
+    assert len(seen) == 1 and seen[0].pid   # the spawned child was handed to on_proc (so Stop can kill it)
+
+
+def test_kill_proc_tree_terminates_a_running_child():
+    import subprocess as sp
+    import sys
+    proc = sp.Popen([sys.executable, "-c", "import time; time.sleep(30)"], **cp._spawn_kwargs())
+    try:
+        assert proc.poll() is None          # alive
+        cp.kill_proc_tree(proc)
+        proc.wait(timeout=10)
+        assert proc.poll() is not None      # dead — Stop kills the child instead of orphaning it
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+
+
+def test_kill_proc_tree_is_safe_on_none_and_finished():
+    import subprocess as sp
+    import sys
+    cp.kill_proc_tree(None)                  # no crash on a run that never spawned a child
+    proc = sp.Popen([sys.executable, "-c", "pass"], **cp._spawn_kwargs())
+    proc.wait(timeout=10)
+    cp.kill_proc_tree(proc)                  # already-exited child: no error

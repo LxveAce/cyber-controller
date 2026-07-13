@@ -67,3 +67,27 @@ def test_save_then_load_roundtrip(tmp_path) -> None:
 def test_empty_passphrase_rejected() -> None:
     with pytest.raises(ValueError):
         SecureStorage("")
+
+
+def test_save_is_atomic_a_failed_commit_keeps_the_prior_entry(tmp_path, monkeypatch) -> None:
+    """A crash/power-loss mid-write must NOT destroy an existing entry. save() now writes a temp file +
+    fsync + os.replace, so a failure at the atomic rename (simulated power loss) leaves the previous
+    complete ciphertext intact and still decryptable. The old O_TRUNC-in-place write truncated the .enc
+    to 0 first, so the same crash left a partial blob whose GCM tag failed to verify — the entry lost."""
+    import os
+
+    store = SecureStorage("file-pass")
+    path = tmp_path / "vault.bin"
+    store.save({"keep": "me"}, path)              # a good, complete entry on disk
+    good_before = path.read_bytes()
+
+    def boom(*_a, **_k):
+        raise OSError("simulated power loss at commit")
+
+    monkeypatch.setattr(os, "replace", boom)
+    with pytest.raises(OSError):
+        store.save({"keep": "OVERWRITE"}, path)   # commit fails mid-save
+
+    assert path.read_bytes() == good_before        # prior ciphertext intact — not truncated
+    assert store.load(path) == {"keep": "me"}      # and still decryptable
+    assert not list(tmp_path.glob("vault.bin.*.tmp"))  # the temp file was cleaned up

@@ -95,7 +95,13 @@ class FlipperProtocol(BaseProtocol):
             rssi: float | None = None
             rssi_m = _RE_SUBGHZ_RSSI.search(line)
             if rssi_m:
-                rssi = int(float(rssi_m.group(2)))
+                # A huge-magnitude RSSI (e.g. hundreds of digits) makes float() return inf, and
+                # int(inf) raises OverflowError — which would kill the reader thread. Treat any
+                # unconvertible RSSI as "unknown" (None) rather than crashing the parse loop.
+                try:
+                    rssi = int(float(rssi_m.group(2)))
+                except (ValueError, OverflowError):
+                    rssi = None
             data = {
                 "protocol": m.group(1),
                 "key": m.group(2),

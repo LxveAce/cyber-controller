@@ -345,7 +345,12 @@ class MacroTab(QWidget):
                 QMessageBox.Yes | QMessageBox.No,
             )
             if reply == QMessageBox.Yes:
-                self._recorder.delete_macro(path)
+                try:
+                    self._recorder.delete_macro(path)
+                except Exception as exc:  # noqa: BLE001 — surface a delete failure (OS error, secure-store
+                    # error) as a dialog instead of letting it escape the slot and abort the app.
+                    QMessageBox.critical(self, "Delete Error", f"Failed to delete macro:\n{exc}")
+                    return
                 self._refresh_macro_list()
                 self._current_macro = None
                 self._clear_display()
@@ -496,7 +501,14 @@ class MacroTab(QWidget):
     def _on_save(self) -> None:
         if not self._current_macro:
             return
-        path = self._recorder.save_macro(self._current_macro)
+        try:
+            path = self._recorder.save_macro(self._current_macro)
+        except Exception as exc:  # noqa: BLE001 — save_macro raises on a locked secure-container gate or any
+            # disk/OS error. It must surface as a dialog, not escape this clicked-slot: with no sys.excepthook
+            # installed PyQt aborts the whole app, and the just-recorded macro would be lost with no warning.
+            # Mirrors settings_tab._on_save + the load path above.
+            QMessageBox.critical(self, "Save Error", f"Failed to save macro:\n{exc}")
+            return
         self._refresh_macro_list()
         self._progress.setFormat(f"Saved: {path.name}")
 

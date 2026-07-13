@@ -51,15 +51,16 @@ class _Bridge(QObject):
 
 
 class _DeviceSection(QFrame):
-    """One connected device: header + a force-any-firmware combo + capability chips + its verb buttons."""
+    """One connected device: header + a force-any-firmware combo + capability chips + its OWN
+    per-firmware command buttons (from ``grouped_quick_commands`` — §OP), grouped by category."""
 
     def __init__(self, port: str, engine: BroadcastEngine, device_manager,
-                 on_verb: Callable[[str, BroadcastVerb], None]) -> None:
+                 on_cmd: Callable[[str, str, str], None]) -> None:
         super().__init__()
         self._port = port
         self._engine = engine
         self._dm = device_manager
-        self._on_verb = on_verb
+        self._on_cmd = on_cmd
         self._syncing = False
         self._last_fw: str | None = None
         self.setObjectName("card")
@@ -128,24 +129,38 @@ class _DeviceSection(QFrame):
         cap_txt = ("Capabilities: " + ", ".join(caps)) if caps else "No known capabilities for this firmware"
         self._caps.setText(cap_txt + ("  (firmware forced)" if forced else ""))
 
-        # Only rebuild the verb buttons when the firmware actually changed (avoids flicker on refresh).
+        # Only rebuild the buttons when the firmware actually changed (avoids flicker on refresh).
         if dev.firmware == self._last_fw:
             return
         self._last_fw = dev.firmware
         _clear_layout(self._btn_grid)
-        verbs = self._engine.supported_verbs(dev.firmware)
+        # Personalized per-firmware buttons (§OP): each firmware shows its OWN one-tap commands,
+        # grouped by category, instead of the firmware-agnostic verb set — from the unit-tested
+        # grouped_quick_commands() (the same generator the web/tk remotes use), so a button can't
+        # fire a command the firmware lacks. Passive/CLI-only: reorganizes EXISTING commands, adds
+        # no new capability. The generic universal fan-out row lives on the BroadcastBar above.
+        from src.core.quick_commands import grouped_quick_commands
+        groups = grouped_quick_commands(dev.firmware)
         cols = 3
-        for i, verb in enumerate(verbs):
-            action = BROADCAST_ACTIONS[verb]
-            btn = QPushButton(f"{action.icon} {action.label}")
-            btn.setObjectName("broadcast_btn")
-            if action.category == ActionCategory.ATTACK:
-                btn.setProperty("danger", "true")
-            btn.clicked.connect(lambda _=False, v=verb: self._on_verb(self._port, v))
-            self._btn_grid.addWidget(btn, i // cols, i % cols)
-        if not verbs:
-            hint = QLabel("No broadcast actions for this firmware — force a different firmware above to "
-                          "expose its commands.")
+        row = 0
+        for category, cmds in groups:
+            header = QLabel(category)
+            header.setObjectName("muted")
+            self._btn_grid.addWidget(header, row, 0, 1, cols)
+            row += 1
+            for i, qc in enumerate(cmds):
+                btn = QPushButton(qc.label)
+                btn.setObjectName("broadcast_btn")
+                if qc.danger:  # lab-only / illegal-tx -> label (never block), like the verb styling
+                    btn.setProperty("danger", "true")
+                btn.setToolTip(f"{qc.command}" + (f"  ({qc.danger})" if qc.danger else ""))
+                btn.clicked.connect(
+                    lambda _=False, c=qc.command, lbl=qc.label: self._on_cmd(self._port, c, lbl))
+                self._btn_grid.addWidget(btn, row + i // cols, i % cols)
+            row += (len(cmds) + cols - 1) // cols
+        if not groups:
+            hint = QLabel("No one-tap commands for this firmware — force a different firmware, "
+                          "or use the terminal for commands that need arguments.")
             hint.setObjectName("muted")
             hint.setWordWrap(True)
             self._btn_grid.addWidget(hint, 0, 0, 1, cols)
@@ -265,7 +280,7 @@ class BroadcastBar(QWidget):
                 self._sections.pop(port).setParent(None)
         for port in connected:
             if port and port not in self._sections:
-                sec = _DeviceSection(port, self._engine, self._dm, self._on_device_verb_clicked)
+                sec = _DeviceSection(port, self._engine, self._dm, self._on_device_cmd_clicked)
                 self._sections[port] = sec
                 self._sections_layout.addWidget(sec)
         for sec in self._sections.values():
@@ -313,6 +328,11 @@ class BroadcastBar(QWidget):
     def _on_device_verb_clicked(self, port: str, verb: BroadcastVerb) -> None:
         """A per-device section button: run *verb* on just that one device."""
         self._launch(self._engine.plan_for_port(port, verb))
+
+    def _on_device_cmd_clicked(self, port: str, command: str, label: str) -> None:
+        """A per-firmware Operate button (§OP): run one raw *command* on just that device, through
+        the same confirm gate / activity log / threaded egress as a verb (via ``plan_raw``)."""
+        self._launch(self._engine.plan_raw(port, command, label=label))
 
     def _launch(self, plan) -> None:
         if not plan.concrete:

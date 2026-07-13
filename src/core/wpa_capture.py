@@ -74,9 +74,14 @@ def _iter_pcapng(data: bytes) -> Iterator[tuple[int, bytes]]:
                 linktypes[iface_count] = lt
             iface_count += 1  # keep interface_id alignment even if this IDB is short
         elif btype == 0x00000006:  # Enhanced Packet Block
-            if len(body) >= 16:
-                iface_id, _th, _tl, caplen = struct.unpack(end + "IIII", body[0:16])
-                frame = body[16:16 + caplen]
+            # EPB leading fields (5x u32 = 20 bytes) BEFORE packet data: Interface ID, Timestamp High,
+            # Timestamp Low, Captured Packet Length, Original Packet Length. Packet data starts at
+            # body[20:], NOT body[16:] — skipping only four fields prefixed every frame with the 4-byte
+            # Original-Length value and shifted it left by 4, so no 802.11 header aligned and a real
+            # pcapng (hcxdumptool/Wireshark, the primary modern format) yielded zero handshakes.
+            if len(body) >= 20:
+                iface_id, _th, _tl, caplen, _origlen = struct.unpack(end + "IIIII", body[0:20])
+                frame = body[20:20 + caplen]
                 yield linktypes.get(iface_id, _LT_DOT11), frame
         elif btype == 0x00000003:  # Simple Packet Block
             if len(body) >= 4:
@@ -119,21 +124,20 @@ def _dot11_addrs(f: bytes) -> tuple[int, int, bytes, bytes, bytes, int]:
     return (ftype, subtype, f[4:10], f[10:16], f[16:22], hdr)
 
 
-def _ssid_from_beacon(f: bytes, hdr_len: int) -> str:
-    """Extract the SSID element from a beacon / probe-response management body (skips the 12-byte fixed
-    params: timestamp+beacon-interval+capabilities). SSID is element id 0."""
+def _ssid_from_beacon(f: bytes, hdr_len: int) -> bytes:
+    """Extract the raw SSID octets from a beacon / probe-response management body (skips the 12-byte
+    fixed params: timestamp+beacon-interval+capabilities). SSID is element id 0. Returns the EXACT
+    octets — they are the PBKDF2 salt, so they must not be lossily decoded here; the caller derives a
+    display str separately."""
     body = f[hdr_len + 12:]
     i = 0
     while i + 2 <= len(body):
         eid, elen = body[i], body[i + 1]
         val = body[i + 2:i + 2 + elen]
         if eid == 0:  # SSID
-            try:
-                return val.decode("utf-8", "ignore")
-            except Exception:  # noqa: BLE001
-                return ""
+            return val
         i += 2 + elen
-    return ""
+    return b""
 
 
 def _pmkid_from_keydata(kd: bytes) -> bytes:
@@ -163,7 +167,7 @@ def parse_capture(path: str) -> list[Handshake]:
     except OSError:
         return []
 
-    ssids: dict[bytes, str] = {}
+    ssids: dict[bytes, bytes] = {}                         # BSSID -> raw SSID octets (the PBKDF2 salt)
     pmkids: list[tuple[bytes, bytes, bytes]] = []          # (ap, sta, pmkid)
     m1: dict[tuple[bytes, bytes], bytes] = {}              # (ap,sta) -> anonce
     eapol_hs: list[Handshake] = []
@@ -193,14 +197,17 @@ def parse_capture(path: str) -> list[Handshake]:
 
     out: list[Handshake] = []
     for ap, sta, pmkid in pmkids:
-        essid = ssids.get(ap, "")
-        if essid:
-            out.append(Handshake(kind="pmkid", essid=essid, ap_mac=ap, sta_mac=sta, pmkid=pmkid))
+        raw = ssids.get(ap, b"")
+        if raw:
+            out.append(Handshake(kind="pmkid", essid=raw.decode("utf-8", "replace"), essid_bytes=raw,
+                                 ap_mac=ap, sta_mac=sta, pmkid=pmkid))
     # Resolve each EAPOL handshake's ESSID now that ALL beacons have been seen — a handshake captured
     # before its AP's beacon still gets its network name (without this it'd be dropped as saltless).
     for hs in eapol_hs:
-        hs.essid = ssids.get(hs.ap_mac, "")
-        if hs.essid:
+        raw = ssids.get(hs.ap_mac, b"")
+        hs.essid_bytes = raw                       # exact octets = the PBKDF2 salt (crack path)
+        hs.essid = raw.decode("utf-8", "replace")  # display only
+        if raw:
             out.append(hs)
     return out
 

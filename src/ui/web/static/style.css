@@ -360,6 +360,13 @@ select.form-control {
     cursor: pointer;
 }
 
+.form-hint {
+    margin-top: 6px;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--fg-muted);
+}
+
 /* ── Flash page ─────────────────────────────────────────────────── */
 
 .flash-form {

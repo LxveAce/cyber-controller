@@ -97,6 +97,41 @@ def test_native_declines_aes_cmac_handshake(tmp_path):
     assert "CMAC" in res.detail or "hashcat" in res.detail
 
 
+def test_crack_tries_multibyte_8_byte_passphrase(tmp_path):
+    """WPA-PSK length is 8..63 BYTES, not code points. A passphrase that is 8 bytes but fewer than 8
+    Unicode characters (a multibyte char) must still be tried — the old len(str) gate skipped it and
+    falsely reported 'not in wordlist' even when the key was present."""
+    pw = "señor12"                               # 'señor12': 7 code points, 8 UTF-8 bytes (ñ = 2)
+    assert len(pw) == 7 and len(pw.encode("utf-8")) == 8
+    ap = bytes.fromhex("fc690c158264")
+    sta = bytes.fromhex("f4747f87f9f4")
+    real_pmkid = nc.compute_pmkid(nc.pmk(pw, "netbyte"), ap, sta)
+    hs = nc.Handshake(kind="pmkid", essid="netbyte", ap_mac=ap, sta_mac=sta, pmkid=real_pmkid)
+    wl = tmp_path / "w.txt"
+    wl.write_text("aaaaaaaa\n" + pw + "\n", encoding="utf-8")
+    res = nc.crack([hs], str(wl))
+    assert res.cracked and res.password == pw
+
+
+def test_crack_uses_raw_essid_octets_as_salt(tmp_path):
+    """A non-UTF-8 SSID must be salted with its EXACT octets, not a lossy str round-trip. essid_bytes
+    carries the raw octets; the crack must succeed through those bytes even though the display str (a
+    lossy decode) would produce a different, wrong PMK."""
+    raw_essid = b"caf\xe9-net"                         # Latin-1 é (0xE9) — NOT valid UTF-8
+    pw = "password1"
+    ap = bytes.fromhex("fc690c158264")
+    sta = bytes.fromhex("f4747f87f9f4")
+    real_pmkid = nc.compute_pmkid(nc.pmk(pw, raw_essid), ap, sta)   # salt = the raw octets
+    hs = nc.Handshake(kind="pmkid", essid=raw_essid.decode("utf-8", "replace"),
+                      essid_bytes=raw_essid, ap_mac=ap, sta_mac=sta, pmkid=real_pmkid)
+    # The lossy str salt would NOT reproduce the pmkid — proving the raw-octet path is load-bearing.
+    assert nc.compute_pmkid(nc.pmk(pw, hs.essid), ap, sta) != real_pmkid
+    wl = tmp_path / "w.txt"
+    wl.write_text("nope1234\n" + pw + "\n", encoding="utf-8")
+    res = nc.crack([hs], str(wl))
+    assert res.cracked and res.password == pw
+
+
 def test_native_cracks_supported_and_skips_cmac(tmp_path):
     # A mixed capture (one AES-CMAC v3 handshake + one crackable WPA2 v2 handshake) must still recover
     # the key from the supported one — the unsupported handshake is skipped, not a run-stopper.
@@ -107,3 +142,34 @@ def test_native_cracks_supported_and_skips_cmac(tmp_path):
     wl.write_text("nope1234\nhashcat!\n", encoding="utf-8")
     res = nc.crack([cmac, good], str(wl))
     assert res.cracked and res.password == "hashcat!"
+
+
+def test_pmk_accepts_bytes_and_str_identically():
+    """pmk() now takes the passphrase as bytes (fed verbatim, like hashcat) OR a str (re-encoded
+    UTF-8). For an ASCII/UTF-8 key the two paths must be byte-identical, so the new bytes path can't
+    regress the canonical str vectors."""
+    assert nc.pmk(b"password", b"IEEE") == nc.pmk("password", "IEEE")
+    assert nc.pmk("ThisIsAPassword", "ThisIsASSID") == nc.pmk(b"ThisIsAPassword", b"ThisIsASSID")
+
+
+def test_crack_reads_wordlist_as_raw_bytes_not_lossy_utf8(tmp_path):
+    """The passphrase-side twin of the essid_bytes salt fix. A wordlist entry with a non-UTF-8 byte
+    is a valid WPA key (raw octets), but the OLD reader (utf-8, errors='ignore') DROPPED the invalid
+    byte — turning 'secret\\xff9' into 'secret9' and hashing the wrong bytes, so the real key was
+    never tried (a false 'not in wordlist'). Reading raw bytes tries it verbatim."""
+    key = b"secret\xff9"                                # 8 octets, WPA-valid len, NOT valid UTF-8
+    assert len(key) == 8
+    ap = bytes.fromhex("fc690c158264")
+    sta = bytes.fromhex("f4747f87f9f4")
+    real_pmkid = nc.compute_pmkid(nc.pmk(key, b"NetX"), ap, sta)   # raw-byte passphrase salt+key
+    hs = nc.Handshake(kind="pmkid", essid="NetX", essid_bytes=b"NetX",
+                      ap_mac=ap, sta_mac=sta, pmkid=real_pmkid)
+    # The lossy-decoded candidate ('secret9', what the old reader produced) must NOT match — proving
+    # the raw-byte read is load-bearing, not incidental.
+    assert not nc.verify(hs, key.decode("utf-8", "ignore"))
+    wl = tmp_path / "w.bin"
+    wl.write_bytes(b"tooearly\n" + key + b"\nafterwards\n")
+    res = nc.crack([hs], str(wl))
+    assert res.cracked
+    assert res.password.startswith("secret")           # lossy 'replace' render for display
+    assert key.hex() in res.detail                     # exact octets preserved honestly in the note

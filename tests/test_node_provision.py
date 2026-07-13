@@ -225,6 +225,42 @@ def test_release_only_removes_its_own_lockfile(tmp_path, monkeypatch):
     os.unlink(lockpath)                 # cleanup (fd already closed by _release_file_lock)
 
 
+def test_stale_lock_is_stolen_atomically_and_leaves_no_debris(tmp_path, monkeypatch):
+    """A lockfile left by a CRASHED holder (mtime older than `stale`) must be stealable so the system
+    doesn't deadlock — but the steal must claim the inode via os.rename (atomic), not unlink-by-name.
+    After a successful steal exactly one lockfile (the new holder's) exists and no `.stale.*` debris
+    is left behind."""
+    import os
+
+    monkeypatch.setenv("CC_VAULT_DIR", str(tmp_path))
+    lockpath = tmp_path / NP._LOCK_NAME
+    lockpath.write_bytes(b"")                       # simulate a crashed holder's leftover lock
+    os.utime(lockpath, (0, 0))                      # far in the past -> older than `stale`
+
+    handle = NP._acquire_file_lock(timeout=1.0, stale=30.0)
+    try:
+        assert handle is not None                  # the stale lock was stolen, not a deadlock
+        assert lockpath.exists()                   # the new holder created its own fresh lockfile
+        debris = list(tmp_path.glob(NP._LOCK_NAME + ".stale.*"))
+        assert debris == [], f"steal left rename debris behind: {debris}"
+    finally:
+        NP._release_file_lock(handle)
+    assert not lockpath.exists()                    # released by identity
+
+
+def test_fresh_lock_is_not_stolen(tmp_path, monkeypatch):
+    """Mutual exclusion still holds: a FRESH (non-stale) lock held by another holder must NOT be
+    stealable — a second acquirer times out rather than double-acquiring (which would allow overlapping
+    epoch reservations and AES-GCM nonce reuse)."""
+    monkeypatch.setenv("CC_VAULT_DIR", str(tmp_path))
+    first = NP._acquire_file_lock()                 # fresh lock, held
+    try:
+        with pytest.raises(NP.NodeProvisionError):
+            NP._acquire_file_lock(timeout=0.2, stale=30.0)   # can't steal a fresh lock
+    finally:
+        NP._release_file_lock(first)
+
+
 def test_open_forwards_role_and_seeds_rx_state():
     v = FakeVault()
     NP.provision_node(v, 6, key=FAKE_KEY, role="node")

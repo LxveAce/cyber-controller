@@ -52,6 +52,63 @@ def test_builds_device_and_target_nodes_with_edge(qapp):
     assert tab._nodes["dev:COM7"]._edges, "device node should have an edge to its discovered target"
 
 
+def test_reflash_refreshes_graph_via_device_poll(qapp):
+    """Regression (#5, "network graph went stale after reflashing"): the graph only reacted to
+    target.* bus events, and DeviceManager emits NO device-lifecycle events — so a reflashed board
+    (disconnect→reconnect, re-detected with new firmware) fired nothing the graph heard and it
+    froze. The device poll must rebuild when the fingerprint changes, and NOT churn otherwise."""
+    tab, _sent = _make_tab()   # device COM7 @ firmware "marauder", connected
+    tab.isVisible = lambda: True   # deterministic: exercise the poll without offscreen show()
+
+    calls = []
+    real_rebuild = tab.rebuild
+
+    def _spy():
+        calls.append(1)
+        real_rebuild()
+
+    tab.rebuild = _spy
+
+    # Unchanged device set -> poll is a no-op (cheap; no rebuild churn every tick).
+    tab._poll_devices()
+    assert calls == [], "poll must not rebuild when the device set is unchanged"
+
+    # Simulate a reflash: the board comes back re-detected with different firmware.
+    dev = tab._dm.get_device("COM7")
+    dev.firmware = "ghostesp"
+    assert tab._device_fingerprint() != tab._device_fp, "a firmware change must move the fp"
+    tab._poll_devices()
+    assert calls == [1], "poll must rebuild exactly once when the device changed (graph un-stales)"
+    assert tab._device_fp == tab._device_fingerprint(), "rebuild must refresh the recorded fp"
+
+    # Now that the graph reflects the current device set, further ticks must not keep rebuilding.
+    tab._poll_devices()
+    assert calls == [1], "poll must not re-fire once the fingerprint is current again"
+
+
+def test_device_disconnect_reconnect_cycle_refreshes_graph(qapp):
+    """A reflash tears the link down then brings it back — connected True→False→True must each
+    move the fingerprint so the graph tracks the board across the cycle (not just a fw change)."""
+    tab, _sent = _make_tab()
+    tab.isVisible = lambda: True
+    dev = tab._dm.get_device("COM7")
+
+    fp_connected = tab._device_fp
+    dev.connected = False                     # disconnect (start of reflash)
+    assert tab._device_fingerprint() != fp_connected
+    tab._poll_devices()
+    fp_disconnected = tab._device_fp
+    assert fp_disconnected == tab._device_fingerprint()
+
+    dev.connected = True                      # reconnect (flash done, board back)
+    assert tab._device_fingerprint() != fp_disconnected
+    calls = []
+    real = tab.rebuild
+    tab.rebuild = lambda: (calls.append(1), real())[1]
+    tab._poll_devices()
+    assert calls == [1], "the reconnect after a reflash must rebuild the graph"
+
+
 def test_device_node_command_routes_through_send_cmd(qapp):
     tab, sent = _make_tab()
     dev_node = tab._nodes["dev:COM7"]

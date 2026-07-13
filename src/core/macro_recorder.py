@@ -73,6 +73,24 @@ def is_offensive_macro(macro: Macro) -> bool:
     return False
 
 
+#: Clamp ceiling for a step delay (1 hour). A hand-edited macro could carry an absurd delay_ms that would
+#: otherwise wedge playback in an effectively unbounded interruptible-sleep.
+_MAX_DELAY_MS = 3_600_000
+
+
+def _coerce_delay_ms(value: Any) -> int:
+    """Normalize a step's delay to a sane non-negative int in [0, _MAX_DELAY_MS].
+
+    Macro JSON is hand-editable / untrusted: a delay_ms of ``"100"`` (string), ``None``, a negative, or an
+    absurd value would otherwise crash the playback loop's ``delay_ms > 0`` compare (TypeError) or hang it.
+    """
+    try:
+        ms = int(value)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(ms, _MAX_DELAY_MS))
+
+
 @dataclass
 class MacroStep:
     """A single step in a macro sequence.
@@ -120,8 +138,13 @@ class Macro:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Macro:
-        """Deserialize from a dict."""
-        steps = [MacroStep(**s) for s in data.get("steps", [])]
+        """Deserialize from a dict. Macro JSON is hand-editable, so each step's delay_ms is coerced to a
+        sane non-negative int here — a string/None/huge/negative delay would otherwise crash or hang playback."""
+        steps = []
+        for s in data.get("steps", []):
+            step = MacroStep(**s)
+            step.delay_ms = _coerce_delay_ms(step.delay_ms)
+            steps.append(step)
         return cls(
             name=data.get("name", "Untitled"),
             description=data.get("description", ""),
@@ -218,8 +241,8 @@ class MacroRecorder:
         """Return the builtin filenames already seeded once (empty set if absent/unreadable)."""
         try:
             data = json.loads(ledger_path.read_text(encoding="utf-8"))
-        except (FileNotFoundError, json.JSONDecodeError, OSError):
-            return set()
+        except (FileNotFoundError, json.JSONDecodeError, UnicodeDecodeError, OSError):
+            return set()  # invalid UTF-8 / bad JSON -> treat as unseeded (safe re-seed), never crash start
         names = data.get("seeded", []) if isinstance(data, dict) else data
         return {str(n) for n in names} if isinstance(names, list) else set()
 
@@ -414,6 +437,13 @@ class MacroRecorder:
             if complete:
                 complete(True, "Playback complete")
 
+        except Exception as exc:
+            # Any unexpected playback error (e.g. a malformed step surviving from a hand-edited macro) MUST
+            # still notify the caller — otherwise this daemon thread dies silently and the UI's Play button
+            # stays disabled forever ("Playing…" wedged). Route it through the completion callback.
+            log.exception("Macro playback failed: %s", macro.name)
+            if complete:
+                complete(False, f"Playback error: {exc}")
         finally:
             with self._lock:
                 self._playing = False
@@ -522,7 +552,9 @@ class MacroRecorder:
                         "created_at": data.get("created_at", ""),
                         "secured": False,
                     })
-                except (json.JSONDecodeError, OSError):
+                except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+                    # UnicodeDecodeError (invalid UTF-8 in one file) must be caught too, or a single bad
+                    # file in the macros dir crashes the entire listing and hides every other macro.
                     continue
         # Macros saved while the secure container was active (only listable while unlocked).
         try:

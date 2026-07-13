@@ -266,19 +266,25 @@ def install_tool(spec: ToolInstallSpec, directory: Optional[str] = None,
     log(f"[install] {msg}")
 
     try:
-        exe_path = _extract_zip_subtree(tmp.name, spec, tool_dir, log)
-    finally:
-        _rm(tmp.name)
+        try:
+            exe_path = _extract_zip_subtree(tmp.name, spec, tool_dir, log)
+        finally:
+            _rm(tmp.name)
 
-    if not os.path.isfile(exe_path):
-        raise RuntimeError(f"expected {spec.exe_name} not found after extract (archive layout changed?)")
-    if os.name != "nt":
-        os.chmod(exe_path, os.stat(exe_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        if not os.path.isfile(exe_path):
+            raise RuntimeError(f"expected {spec.exe_name} not found after extract (archive layout changed?)")
+        if os.name != "nt":
+            os.chmod(exe_path, os.stat(exe_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
 
-    if not _launches(exe_path):
-        raise RuntimeError(
-            f"{spec.tool} installed to {exe_path} but the binary would not launch (it may need system "
-            "libraries). Install it another way — nothing was left on PATH.")
+        if not _launches(exe_path):
+            raise RuntimeError(
+                f"{spec.tool} installed to {exe_path} but the binary would not launch (it may need system "
+                "libraries). Install it another way — nothing was left on PATH.")
+    except Exception:
+        # Fail clean: an extract that raised, wrote the wrong layout, or produced a non-launching binary must
+        # not leave a partial tree behind for installed_tools()/detect_tools() to later resolve as usable.
+        shutil.rmtree(tool_dir, ignore_errors=True)
+        raise
     log(f"[install] {spec.tool} ready: {exe_path}")
     return exe_path
 

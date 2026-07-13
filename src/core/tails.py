@@ -102,8 +102,23 @@ def verify_gpg(img_path: str, sig_path: str, on_line: Line) -> Optional[bool]:
         on_line(f"[tails] gpg verify error: {exc}")
         return None
     status = proc.stdout + proc.stderr
+    flat = status.replace(" ", "")
     fpr = TAILS_SIGNING_KEY_FINGERPRINT
-    good = ("VALIDSIG" in status or "GOODSIG" in status) and fpr in status.replace(" ", "")
+    have_good = ("VALIDSIG" in status or "GOODSIG" in status)
+    if not have_good:
+        # Tell apart "can't verify" from "bad signature". The normal fresh-box case is that the Tails
+        # signing key simply isn't in the keyring (we never auto-import it), so gpg emits NO_PUBKEY/ERRSIG
+        # with no VALIDSIG. That is NOT a forged signature — treat it like a missing gpg and defer to the
+        # SHA-256 anchor (None) so a genuine, checksum-verifiable image still flashes. Only a real
+        # bad/forged signature (BADSIG, no missing-key marker) hard-refuses (False). Mirrors
+        # os_catalog.verify_gpg_detached, which had this right.
+        if "NO_PUBKEY" in flat or "ERRSIG" in flat:
+            on_line("[tails] the Tails signing key isn't in your keyring — can't verify the GPG signature; "
+                    "deferring to the SHA-256 check (import the Tails key for full PGP assurance).")
+            return None
+        on_line("[tails] GPG signature NOT valid for the Tails signing key")
+        return False
+    good = fpr.replace(" ", "") in flat
     on_line("[tails] GPG signature " + ("VALID (Tails signing key)" if good else "NOT valid for the Tails key"))
     return good
 

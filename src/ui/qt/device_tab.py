@@ -7,8 +7,9 @@ import logging
 import os
 import re
 import threading
+from collections import deque
 
-from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QCheckBox,
@@ -81,6 +82,86 @@ class _LineSignal(QObject):
 class _ProbeSignal(QObject):
     """Bridge the background connect-time probe result back onto the Qt thread."""
     probe_done = pyqtSignal(str)  # port whose probe just finished
+
+
+# Garbage-collecting a still-running QThread fires the C++ destructor mid-run and aborts the process
+# ('QThread: Destroyed while thread is still running'). If the BlueJammer worker's in-flight web-UI
+# call outlasts shutdown's bounded wait (a black-hole net — urlopen's 4s timeout misses a hung DNS
+# resolve), we park the worker here so its reference survives until it finishes and the
+# process exits cleanly. Mirrors main_window._KEEPALIVE_WORKERS (c324a97).
+_BJ_KEEPALIVE_WORKERS: set = set()
+
+
+class _BjCommandQueue(QThread):
+    """Serialize BlueJammer control ops (arm / STOP) through ONE long-lived worker draining a FIFO, so
+    press-order == device-order.
+
+    Each op does a blocking HTTP call (urlopen timeout=4) to the device web UI; running it in the
+    clicked-slot froze the whole UI — worst of all on the safety STOP. The *earlier* fix offloaded each
+    press to its own QThread, which unfroze the UI but removed all ordering: a fast STOP after a slow
+    Arm could reach the device AFTER the arm, leaving a jammer emitting while the label read stale
+    (audit §F2). This restores ordering without re-blocking the UI:
+
+    * one worker drains a FIFO — ops leave in the exact order they were enqueued;
+    * **STOP is never dropped by an in-flight guard** — it purges any queued not-yet-started Arm (a
+      later STOP supersedes a pending Arm) and enqueues itself, so the device deterministically ends
+      Idle. STOP stays dispatchable at all times;
+    * each op carries a monotonic id; the GUI only shows a result that is still the newest op, so an
+      Arm that a later STOP overtook can't overwrite the label with a stale 'Armed'.
+
+    The action closure returns the exact status string to display (it catches its own
+    ControlUnavailable/PermissionError so the message matches); results/‘busy’ transitions reach the
+    GUI thread via queued signals. :meth:`request_stop` + a bounded ``wait`` on close abandons any
+    queued (not-yet-started) op and joins the in-flight one."""
+
+    done = pyqtSignal(int, str)        # (op_id, result_text) — delivered on the GUI thread
+    busy_changed = pyqtSignal(bool)    # True while an op is queued/running (Arm buttons disabled)
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._cond = threading.Condition()
+        self._deque: "deque" = deque()   # (op_id, kind, action); kind in {"arm", "stop"}
+        self._processing = False
+        self._stopping = False
+
+    def _busy_locked(self) -> bool:
+        return self._processing or bool(self._deque)
+
+    def enqueue(self, op_id: int, kind: str, action) -> None:
+        """Append an op. A STOP first drops any queued not-yet-started Arm (it supersedes them) so the
+        device can't be left armed by an Arm sitting behind the STOP; STOP itself is always kept."""
+        with self._cond:
+            if kind == "stop":
+                self._deque = deque(op for op in self._deque if op[1] == "stop")
+            self._deque.append((op_id, kind, action))
+            busy = self._busy_locked()
+            self._cond.notify_all()
+        self.busy_changed.emit(busy)
+
+    def request_stop(self) -> None:
+        """Ask the worker to exit after the in-flight op (if any); abandons queued not-yet-started ops."""
+        with self._cond:
+            self._stopping = True
+            self._cond.notify_all()
+
+    def run(self) -> None:
+        while True:
+            with self._cond:
+                while not self._deque and not self._stopping:
+                    self._cond.wait()
+                if self._stopping:
+                    return
+                op_id, _kind, action = self._deque.popleft()
+                self._processing = True
+            try:
+                result = action()
+            except Exception as exc:  # noqa: BLE001 — a worker exception must never abort the app
+                result = f"BlueJammer action failed: {exc}"
+            with self._cond:
+                self._processing = False
+                busy = self._busy_locked()
+            self.done.emit(op_id, result)
+            self.busy_changed.emit(busy)
 
 
 class DeviceTab(QWidget):
@@ -225,6 +306,12 @@ class DeviceTab(QWidget):
         # Operating a jammer outside an authorized, shielded, lawful context is illegal (47 U.S.C. §333).
         self._bj_map: ControlMap = ControlMap()
         self._bj_controller: "BlueJammerController | None" = None
+        # One long-lived worker serializes every arm/STOP so press-order == device-order (audit §F2).
+        # Lazily created on first op; joined on close. `_bj_op_seq` tags each op so only the newest
+        # op's result may write the status label; `_bj_queue_busy` disables Arm while an op is pending.
+        self._bj_queue: "_BjCommandQueue | None" = None
+        self._bj_op_seq: int = 0
+        self._bj_queue_busy: bool = False
         self._bj_panel = QFrame()
         self._bj_panel.setObjectName("card")
         self._bj_panel.setStyleSheet("QFrame#card{border:1px solid #f0883e;background:rgba(240,136,62,0.09);}")
@@ -381,6 +468,17 @@ class DeviceTab(QWidget):
             self._device_list.addItem(item)
             if dev.port == selected_port:
                 self._device_list.setCurrentItem(item)
+        # Auto-select the first device when nothing is active yet, so the bottom-left Connect/
+        # Disconnect buttons (which act on _active_port) work after a scan. QListWidget.addItem
+        # never auto-selects, and the re-select above only matches an ALREADY-chosen port — so on
+        # first populate currentItem() stayed None, _active_port stayed "", and the buttons hit the
+        # `if not port: return` guard and silently no-opped (looked dead). Guarded on an empty
+        # _active_port so a later user pick is preserved; fires _on_device_selected (which sets
+        # _active_port + the connect/disconnect enable states).
+        if not self._active_port and self._device_list.count():
+            first = self._device_list.item(0)
+            if first is not None and bool(first.flags() & Qt.ItemIsSelectable):
+                self._device_list.setCurrentItem(first)
         # Empty-state guidance (same shape as software_tab's empty-combo entry): a single
         # non-selectable hint row telling the user the next step.
         if self._device_list.count() == 0:
@@ -426,8 +524,32 @@ class DeviceTab(QWidget):
             self._btn_connect.setEnabled(not connected)
             self._btn_disconnect.setEnabled(connected)
             self._btn_send.setEnabled(connected)
+            self._sync_firmware_combo_to(dev)  # re-point the global combo at THIS device before judging it
         self._update_health_label()
         self._update_bj_panel()
+
+    def _sync_firmware_combo_to(self, dev) -> None:
+        """Re-point the (global) firmware combo at the SELECTED device, so _selected_protocol /
+        _update_bj_panel / the Send-enable logic judge the device the user just clicked — not whichever
+        firmware was last picked for another port. Without this, choosing 'BlueJammer' for device A then
+        clicking device B showed B the BlueJammer panel + disabled Send.
+
+        Only pin the combo to a concrete firmware when THIS device's firmware was explicitly FORCED
+        (Device.firmware_forced) — otherwise fall back to Auto-detect, so an auto-detected device keeps its
+        post-probe re-autodetect (which requires the combo to read Auto-detect) instead of being frozen to
+        the connect-time default. Signals are blocked so this re-sync doesn't re-fire _update_bj_panel /
+        _persist_firmware; the caller updates the panel right after."""
+        forced = bool(getattr(dev, "firmware_forced", False))
+        fw = getattr(dev, "firmware", "") or ""
+        display = PROTOCOL_DISPLAY_NAMES.get(fw) if (forced and fw) else None
+        target = display if (display and self._firmware_combo.findText(display) >= 0) else _AUTO_DETECT
+        if self._firmware_combo.currentText() == target:
+            return
+        blocked = self._firmware_combo.blockSignals(True)
+        try:
+            self._firmware_combo.setCurrentText(target)
+        finally:
+            self._firmware_combo.blockSignals(blocked)
 
     # ── Connect / Disconnect ─────────────────────────────────────────
 
@@ -816,17 +938,55 @@ class DeviceTab(QWidget):
     def _bj_on_event(self, kind: str, mode: "Mode", transport: str) -> None:
         self._terminal.append(f"[BlueJammer {kind}: {mode.value} via {transport}]")
 
+    def _bj_ensure_queue(self) -> "_BjCommandQueue":
+        """Lazily create + start the single serializing worker (see :class:`_BjCommandQueue`)."""
+        q = self._bj_queue
+        if q is None:
+            q = _BjCommandQueue()
+            q.done.connect(self._bj_on_result)            # queued (cross-thread) -> GUI thread
+            q.busy_changed.connect(self._bj_on_queue_busy)
+            self._bj_queue = q
+            q.start()
+        return q
+
+    def _bj_enqueue(self, kind: str, action, pending_text: str) -> None:
+        """Enqueue an arm/STOP op onto the serializing worker. Shows *pending_text* immediately (the
+        blocking HTTP call runs off the GUI thread); the op is tagged with a monotonic id so only the
+        newest op's result may later overwrite the label."""
+        self._bj_ensure_queue()
+        self._bj_op_seq += 1
+        self._bj_status.setText(pending_text)
+        assert self._bj_queue is not None  # just ensured
+        self._bj_queue.enqueue(self._bj_op_seq, kind, action)
+
+    def _bj_on_result(self, op_id: int, text: str) -> None:
+        """Show an op's result ONLY if it is still the newest enqueued op — a superseded op (e.g. an
+        Arm that a later STOP overtook and purged) must not overwrite the label with a stale status."""
+        if op_id == self._bj_op_seq:
+            self._bj_status.setText(text)
+
+    def _bj_on_queue_busy(self, busy: bool) -> None:
+        """Disable Arm while any op is queued/running (STOP stays dispatchable); re-enable on drain."""
+        self._bj_queue_busy = busy
+        self._bj_refresh_arm_enabled()
+
     def _bj_stop(self) -> None:
         """STOP (set Idle) — the always-available safety action; never gated."""
         if self._bj_controller is None:
             self._bj_build_controller()
-        try:
-            self._bj_controller.stop()
-            self._bj_status.setText("STOP sent — Idle (emission halted).")
-        except ControlUnavailable as exc:
-            self._bj_status.setText(
-                f"In-app STOP unavailable ({exc})  →  cut power / press the device button / set Idle in the web UI."
-            )
+        controller = self._bj_controller
+        if controller is None:  # _bj_build_controller always assigns; defensive narrowing
+            return
+
+        def act() -> str:
+            try:
+                controller.stop()
+                return "STOP sent — Idle (emission halted)."
+            except ControlUnavailable as exc:
+                return (f"In-app STOP unavailable ({exc})  →  cut power / press the device button / "
+                        "set Idle in the web UI.")
+
+        self._bj_enqueue("stop", act, "STOP…  (sending to the device web UI)")
 
     def _bj_set_mode(self, mode: "Mode") -> None:
         """Arm a jamming mode — gated by the RF-shielded attestation + a per-press confirm + a validated map."""
@@ -845,19 +1005,51 @@ class DeviceTab(QWidget):
             return
         if self._bj_controller is None:
             self._bj_build_controller()
-        try:
-            self._bj_controller.set_mode(mode, confirm_unsafe=True)
-            self._bj_status.setText(f"Armed: {mode.value}.")
-        except ControlUnavailable as exc:
-            self._bj_status.setText(
-                f"Arm unavailable ({exc})  Load a validated control map captured from your device, or use the web UI."
-            )
-        except PermissionError as exc:
-            self._bj_status.setText(str(exc))
+        controller = self._bj_controller
+        if controller is None:  # _bj_build_controller always assigns; defensive narrowing
+            return
 
-    def _bj_attest_changed(self, on: bool) -> None:
+        def act() -> str:
+            try:
+                controller.set_mode(mode, confirm_unsafe=True)
+                return f"Armed: {mode.value}."
+            except ControlUnavailable as exc:
+                return (f"Arm unavailable ({exc})  Load a validated control map captured from your device, "
+                        "or use the web UI.")
+            except PermissionError as exc:
+                return str(exc)
+
+        self._bj_enqueue("arm", act, f"Arming {mode.value}…")
+
+    def shutdown(self, wait_ms: int = 5000) -> None:
+        """Stop the BlueJammer serializing worker before the tab (and window) is torn down, so its
+        unparented QThread isn't destroyed mid-run ('QThread: Destroyed while thread is still running')
+        on exit. Abandons any queued (not-yet-started) op and joins the in-flight one with a bounded
+        wait (each op is a short <=4s HTTP call). Invoked from MainWindow.closeEvent.
+
+        Backstop: if the in-flight op outlasts *wait_ms* (a black-hole net — urlopen's 4s socket
+        timeout doesn't cover a hung DNS resolve), the still-running worker is PARKED in a module
+        keep-alive set instead of GC-destroyed mid-run (which aborts the process). Mirrors
+        main_window's keep-alive handling. Wrapped for the C++-already-gone race."""
+        q = self._bj_queue
+        if q is None:
+            return
+        q.request_stop()
+        try:
+            if q.isRunning() and not q.wait(wait_ms) and q.isRunning():
+                _BJ_KEEPALIVE_WORKERS.add(q)  # still blocked — don't let GC destroy it
+        except RuntimeError:  # C++ side already gone
+            pass
+
+    def _bj_attest_changed(self, on: bool) -> None:  # noqa: ARG002 — state read in _bj_refresh_arm_enabled
+        self._bj_refresh_arm_enabled()
+
+    def _bj_refresh_arm_enabled(self) -> None:
+        """Arm is enabled only when the RF-shielded attestation is checked AND no control op is pending
+        (a queued/running arm or STOP). STOP is never gated here — it must stay dispatchable."""
+        on = self._bj_attest.isChecked() and not self._bj_queue_busy
         for b in self._bj_arm_btns:
-            b.setEnabled(bool(on))
+            b.setEnabled(on)
 
     def _bj_load_map(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -1052,6 +1244,17 @@ class DeviceTab(QWidget):
             except Exception:
                 pass
             self._active_conn.write(cmd)
+            # Terminal Send is a SECOND door into the device — it writes the connection
+            # directly, not via the routed CrossCommHub sink. A hand-typed `clearlist -a`/
+            # `reboot` here must ALSO flush the port's parser scan ordinals, or a later
+            # `select -a {index}` (Deauth-AP) mis-binds to a stale index. Same reset the sink
+            # uses, so both write paths stay in lockstep. Guarded — never break a send; a
+            # no-op when this tab has no shared ingestor / the command isn't a clear/reboot.
+            if self._ingestor is not None:
+                try:
+                    self._ingestor.note_command_sent(self._active_port, cmd)
+                except Exception:  # noqa: BLE001 — scan-state bookkeeping must never fail a send
+                    pass
             # Feed the just-sent command into an in-progress macro recording (no-op when not recording).
             if self._recorder is not None:
                 self._recorder.record_command(cmd)

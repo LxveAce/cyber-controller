@@ -69,9 +69,10 @@ def test_esp32_support_files_have_no_boot_app0(monkeypatch):
     support = flash_core.get_profile("bluejammer-esp32").support_files("esp32", "/tmp", lambda s: None)
     assert set(support.keys()) == {"0x1000", "0x8000"}
     assert "0xe000" not in support and "0xE000" not in support
-    # both support files were fetched (and would have been hash-verified)
-    assert "BlueJammer-V2.ino.bootloader.bin" in fetched
-    assert "BlueJammer-V2.ino.partitions.bin" in fetched
+    # both support files were fetched (and would have been hash-verified). Names are namespaced by
+    # profile id so a shared basename can't collide across profiles in the one cache dir.
+    assert "bluejammer-esp32_BlueJammer-V2.ino.bootloader.bin" in fetched
+    assert "bluejammer-esp32_BlueJammer-V2.ino.partitions.bin" in fetched
 
 
 # ── BW16 controller: AmebaD bundle reuse ─────────────────────────────

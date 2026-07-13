@@ -4,6 +4,40 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [1.7.2] — 2026-07-12
+Feature release: the Crack Lab now keeps a live, exportable log of every WPA handshake / PMKID your
+devices capture, and ties a targeted deauth to the handshake it produces. Backend correlation only —
+CC issues firmware CLI commands and never authors radio frames.
+- **New: an auto-populating "Captured handshakes" list in the Crack Lab.** Every handshake / PMKID a
+  connected device reports appears the instant it's captured, carrying all its metadata (SSID, BSSID,
+  channel, client MAC, EAPOL vs PMKID, RSSI, source device + firmware, and the on-device `.pcap`/`.hc22000`
+  path). Double-click a row to load it straight into the cracker; when a crack succeeds, the recovered key
+  is written back onto that record and the row turns green.
+- **New: export the capture log to CSV or JSON.** One button writes the whole log to a spreadsheet-safe CSV
+  (every attacker-influenced field is neutralised against CSV-injection) or JSON. Recovered passwords are
+  included (the crack flow is consent-gated) — the dialog says so.
+- **New: smarter deauth capture-confirm.** Firing a targeted Deauth AP now arms a short window; if a
+  handshake for that AP is captured inside it, CC logs a first-class "handshake captured — deauth confirmed"
+  line (and an honest "no handshake within the window" if none arrives). Non-deauth capture actions are
+  labelled accurately, never as a deauth.
+- **Reliability:** a later unrelated capture file can no longer overwrite an earlier handshake's saved-file
+  reference; a single handshake that also writes a `.pcap` is counted once, not twice; a recovered key can
+  no longer be mis-attributed to a capture you're no longer cracking; timeout notices fire with correct
+  timing. (Found and fixed via an adversarial red-team of the new pipeline.)
+
+## [1.7.1] — 2026-07-12
+Patch release: two fixes for regressions found during live 1.7.0 QA. No feature changes.
+- **Fixed: the Devices-tab Connect/Disconnect buttons did nothing.** The buttons act on the selected device,
+  but the list never auto-selected a row after a scan — so the active port stayed empty and clicking
+  Connect/Disconnect silently no-opped. The list now auto-selects the first device when nothing is active,
+  so the buttons work immediately after a scan (a device you've explicitly picked is still respected).
+- **Fixed: the Network graph went stale after reflashing a board.** The graph only refreshed on target
+  (scan-result) events and never on device changes, so a reflash (disconnect → reconnect, often re-detected
+  with new firmware) left it frozen. It now also refreshes when the connected-device set changes, so it
+  self-heals across a reflash — while still preserving any layout you dragged.
+
+## [1.7.0] — 2026-07-11
 - **Renamed the "Wi-Fi Audit" tab to "Crack Lab."** The tab is the full offline handshake→convert→crack
   pipeline (capture → `hcxpcapngtool` → `hashcat`/`aircrack-ng` + wordlists), so the name now reflects what it
   does. Same consent-gated, dictionary-only behaviour; only the label + code symbols (`crack_lab_tab.py` /
@@ -48,7 +82,21 @@ All notable changes to Cyber Controller are documented here. This project adhere
   sets it when the variant is a UF2-family board, so the engine's `_uf2_family_backend` routes it
   correctly; esptool variants keep chip auto-detect untouched. (Physical drag-drop still HW-gated.)
 
-## [1.7.0] — 2026-07-09
+### Not everything in 1.7 is 100% yet — and that's on purpose
+The core is solid and the suite is green (2107 passing), so 1.7.0 ships now. A few things are still being sharpened and
+land in follow-up releases — we'd rather ship the working core and keep rolling out improvements than sit on it:
+- **The Flock offline map** rides along behind a "work in progress" banner. The scanning → Targets → network-graph flow
+  is done; the map's polish is what's next.
+- **Native cracking covers WPA/WPA2-PSK.** WPA3/SAE (and the AES-CMAC handshakes) route to hashcat for now — native
+  support arrives once the test vectors are locked down. Nothing is silently mis-verified: an unsupported handshake says so.
+- **Stopping a bundled external tool** (aircrack-ng / hashcat) ends the run but can let the tool finish its current chunk;
+  the native engine — the default — stops instantly. Tightening the external-tool stop is on the list.
+- **The one-click bundled-aircrack install** is checksum-verified but hasn't had a fresh-machine end-to-end pass yet. You
+  never need it — native cracking is built in — and that path gets its real-machine pass next.
+
+More lands as it's ready.
+
+## [1.7.0-beta] — 2026-07-09
 
 _Beta. Multi-firmware release: the offline Wi-Fi crack pipeline + wordlist manager, the BlueStress and ESP-AT
 firmware integrations (44 profiles), the nRF BlueNullifier 2 study target, auto-detect per-firmware parser

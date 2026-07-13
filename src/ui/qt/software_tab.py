@@ -56,6 +56,22 @@ class _ResolveWorker(QThread):
         self.done.emit(r, "\n".join(lines))
 
 
+class _DriveScanWorker(QThread):
+    """Enumerate removable drives off the UI thread. On Windows detect_sd_cards spawns a PowerShell
+    subprocess (cold-start 1-3s, capped at 15s); running it in a slot froze the whole event loop — and
+    because this tab is built eagerly at startup, the freeze was on the app-launch path."""
+
+    done = pyqtSignal(object, str)  # (list[dict] of drives | None, error text)
+
+    def run(self) -> None:
+        try:
+            drives = list(sd.detect_sd_cards(lambda *_: None))
+        except Exception as exc:  # noqa: BLE001 — a drive-scan failure must never crash the UI
+            self.done.emit(None, str(exc))
+            return
+        self.done.emit(drives, "")
+
+
 class _OSFlashWorker(QThread):
     """Download (if needed) + verify + write an OS image to a removable device."""
 
@@ -123,6 +139,7 @@ class SoftwareTab(QWidget):
         self._local_image: str | None = None
         self._resolver: _ResolveWorker | None = None
         self._worker: _OSFlashWorker | None = None
+        self._drive_scan: _DriveScanWorker | None = None
         self._build_ui()
         self._load_catalog()
         self._refresh_drives()
@@ -179,9 +196,9 @@ class SoftwareTab(QWidget):
         self._drive_combo.setMinimumWidth(200)
         self._drive_combo.setToolTip("Only removable drives are listed. THE ENTIRE DRIVE IS ERASED.")
         drive_layout.addWidget(self._drive_combo)
-        btn_refresh = QPushButton("Refresh drives")
-        btn_refresh.clicked.connect(self._refresh_drives)
-        drive_layout.addWidget(btn_refresh)
+        self._btn_refresh_drives = QPushButton("Refresh drives")
+        self._btn_refresh_drives.clicked.connect(self._refresh_drives)
+        drive_layout.addWidget(self._btn_refresh_drives)
         self._btn_local = QPushButton("Use local image…")
         self._btn_local.setToolTip("Flash an OS image (.iso/.img) you already downloaded instead of fetching it.")
         self._btn_local.clicked.connect(self._browse_local)
@@ -246,15 +263,30 @@ class SoftwareTab(QWidget):
                                     "Click 'Check latest' to resolve the current release.")
 
     def _refresh_drives(self) -> None:
+        # Enumerate off the UI thread — on Windows detect_sd_cards spawns a PowerShell subprocess (up to
+        # 15s) and this runs at startup, so doing it inline froze the app launch. A worker keeps the event
+        # loop live; the combo shows a placeholder until the scan reports back.
+        if self._drive_scan is not None and self._drive_scan.isRunning():
+            return  # a scan is already in flight — don't orphan its QThread
+        self._btn_refresh_drives.setEnabled(False)
         self._drive_combo.clear()
-        try:
-            for c in sd.detect_sd_cards(lambda *_: None):
-                gb = (c.get("size") or 0) / (1 << 30)
-                self._drive_combo.addItem(f"{c['device']}  {c.get('name', '')}  {gb:.1f} GB", c["device"])
-        except Exception as exc:  # noqa: BLE001
-            self._log(f"Drive scan failed: {exc}")
+        self._drive_combo.addItem("Scanning drives…", None)
+        self._drive_scan = _DriveScanWorker()
+        self._drive_scan.done.connect(self._on_drives_scanned)
+        # Clear the ref only once the thread has truly finished, so a fresh scan can't drop a running worker.
+        self._drive_scan.finished.connect(lambda: setattr(self, "_drive_scan", None))
+        self._drive_scan.start()
+
+    def _on_drives_scanned(self, drives, error: str) -> None:
+        self._drive_combo.clear()
+        if error:
+            self._log(f"Drive scan failed: {error}")
+        for c in (drives or []):
+            gb = (c.get("size") or 0) / (1 << 30)
+            self._drive_combo.addItem(f"{c['device']}  {c.get('name', '')}  {gb:.1f} GB", c["device"])
         if self._drive_combo.count() == 0:
             self._drive_combo.addItem("No removable drives found", None)
+        self._btn_refresh_drives.setEnabled(True)
 
     # ── Dual-depth (Simple / Pro) ────────────────────────────────────
 
@@ -367,7 +399,7 @@ class SoftwareTab(QWidget):
         worker that also means a multi-GB removable-disk write cut off mid-stream. Blocking until the worker
         finishes is deliberate: a destructive write must not be interrupted. Invoked from
         MainWindow.closeEvent."""
-        for w in (self._resolver, self._worker):
+        for w in (self._resolver, self._worker, self._drive_scan):
             if w is not None and w.isRunning():
                 w.wait()
 

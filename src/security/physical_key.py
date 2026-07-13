@@ -190,12 +190,24 @@ def _config_file_lock():
                 pass
 
 
-def _locked_config_update(mutate):
+def _locked_config_update(mutate, *, skip_if_corrupt: bool = False):
     """Atomically load→mutate→save the gate config under both locks. `mutate(cfg)` edits cfg in
-    place; if it returns False the write is skipped (nothing changed). Returns mutate's value."""
+    place; if it returns False the write is skipped (nothing changed). Returns mutate's value.
+
+    *skip_if_corrupt* is set by the attempt-COUNTER writers (record_failed_attempt / record_successful_
+    unlock). When the on-disk config is present but unreadable — the SEC-C2 ``__corrupt__`` fail-closed
+    sentinel — those writers must NOT rewrite it: save_config() strips ``__corrupt__``, so a counter
+    write would launder the corrupt file into a clean NO-FACTOR default and silently destroy the
+    fail-closed state (a configured gate becomes a no-op, or a vault-present gate becomes a permanent
+    data-loss lockout). record_failed_attempt is reachable PRE-AUTH from the web remote on any wrong
+    credential, so it must be inert on a corrupt config. Authoritative reconfigure writers (set
+    password/key/policy) leave this False so the OWNER can still recover by overwriting a corrupt
+    config. Returns None when the update is skipped for a corrupt config."""
     with _STATE_LOCK:
         with _config_file_lock():
             cfg = load_config()
+            if skip_if_corrupt and cfg.get("__corrupt__"):
+                return None
             result = mutate(cfg)
             if result is not False:
                 save_config(cfg)
@@ -244,7 +256,7 @@ def record_successful_unlock() -> None:
         cfg["failed_attempts"] = 0
         cfg["last_failure_ts"] = 0
         cfg["wipe_failures"] = 0  # a successful unlock disarms the wipe counter too
-    _locked_config_update(_reset)
+    _locked_config_update(_reset, skip_if_corrupt=True)
 
 
 def record_failed_attempt(*, allow_wipe: bool = True) -> dict:
@@ -267,10 +279,14 @@ def record_failed_attempt(*, allow_wipe: bool = True) -> dict:
         if allow_wipe:  # only LOCAL failures may arm the physical duress wipe
             cfg["wipe_failures"] = int(cfg.get("wipe_failures", 0) or 0) + 1
         return int(cfg.get("wipe_on_failures", 0) or 0), int(cfg.get("wipe_failures", 0) or 0)
-    wipe_at, wipe_fails = _locked_config_update(_inc)
+    res = _locked_config_update(_inc, skip_if_corrupt=True)
     wiped = False
-    if allow_wipe and wipe_at > 0 and wipe_fails >= wipe_at:  # duress wipe outside the lock (it may be slow)
-        wiped = trigger_duress_wipe()
+    # res is None when the config is present-but-corrupt: the counter is deliberately NOT written (the
+    # gate stays fail-closed via config_is_corrupt), so there is no increment to evaluate for a wipe.
+    if res is not None:
+        wipe_at, wipe_fails = res
+        if allow_wipe and wipe_at > 0 and wipe_fails >= wipe_at:  # duress wipe outside the lock (may be slow)
+            wiped = trigger_duress_wipe()
     st = lockout_status()
     st["wipe_triggered"] = wiped
     return st

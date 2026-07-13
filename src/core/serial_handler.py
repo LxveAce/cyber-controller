@@ -13,6 +13,12 @@ import serial
 
 log = logging.getLogger(__name__)
 
+# Hard cap on an un-terminated line buffer. A device that streams bytes with no CR/LF (a wedged
+# firmware, a binary flood, or a hostile device) would otherwise grow `buf` without bound and
+# exhaust memory. When the buffer passes this without a terminator, flush it as one line so memory
+# stays bounded. 64 KiB is far larger than any real protocol line yet small enough to stay cheap.
+_MAX_LINE_CHARS = 64 * 1024
+
 
 class ConnectionState(Enum):
     """Serial connection lifecycle states."""
@@ -321,6 +327,11 @@ class SerialConnection:
                     for line in parts:
                         if line:
                             self._emit_line(line)
+                # Cap the un-terminated tail: a device streaming without any CR/LF would grow `buf`
+                # forever. Once it exceeds the cap, flush it as a line and reset so memory is bounded.
+                if len(buf) > _MAX_LINE_CHARS:
+                    self._emit_line(buf)
+                    buf = ""
             except serial.SerialException as exc:
                 if not self._stop_event.is_set():
                     log.error("Serial read error on %s: %s", self.port, exc)

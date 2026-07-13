@@ -41,12 +41,14 @@ from flask import (
 )
 from flask_socketio import SocketIO, emit
 
+from src.core import node_provision
+from src.core.channel_survey import survey_channels
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FirmwareProfile, FlashEngine
 from src.core.nodes_controller import NodesController
 from src.core.resources import resource_path
-from src.core import node_provision
+from src.core.target_freshness import summarize_freshness
 from src.security import physical_key
 from src.security.web_auth import (
     RateLimiter,
@@ -311,7 +313,12 @@ def create_app(
     @app.route("/")
     @requires_auth
     def dashboard():
-        devices = device_manager.list_devices()
+        # Merged live scan, not the raw registry: a board plugged in BEFORE the server started is seeded
+        # into the hotplug monitor's _known_ports without an add_device, so list_devices() alone reports
+        # "0 devices" on the landing page while /devices (which already uses this helper) shows it. Count
+        # what's actually attached. connected_count still keys off d.connected, so a scanned-but-unconnected
+        # port correctly reads present-not-connected.
+        devices = _devices_for_display()
         n_connected = len([d for d in devices if d.connected])
         return render_template(
             "dashboard.html",
@@ -383,6 +390,7 @@ def create_app(
         # the Qt Device View uses, via src.core.device_menus) as a navigable screen. Leaves fire the EXISTING
         # guarded /api/command; flagged commands are labelled + confirmed client-side (label-never-block).
         import json as _json
+
         from src.core.device_menus import menu_tree
         device = device_manager.get_device(port)
         tree = menu_tree(device.firmware) if device else None
@@ -441,12 +449,29 @@ def create_app(
             profile = flash_engine.load_profile(profile_path)
         except Exception as exc:  # noqa: BLE001 — a malformed profile must surface as a clean 400, not an opaque 500
             return jsonify({"error": f"Invalid firmware profile ({profile_path.name}): {exc}"}), 400
+        # Honor an explicit board/variant pick from the caller (empty string -> per-chip default, i.e.
+        # unchanged behavior). The engine's _resolve_variant() matches this against the release assets by
+        # name/label and falls back to the default with a warning if it doesn't fit the detected chip.
+        # Without this, a board whose default asset is built for a larger flash (e.g. Bruce's default is a
+        # 16MB image) can only be flashed with that non-booting default from the web UI — the desktop UI
+        # could already pass a variant. Kept symmetric with the engine's long-standing profile.variant.
+        requested_variant = str(data.get("variant", "")).strip()
+        if requested_variant:
+            profile.variant = requested_variant
         # Reject fast if the port is already mid flash/backup/erase — a second esptool on the same UART
         # can brick the board. (The engine's per-port guard is the hard backstop against the TOCTOU
         # window; this 409 is the clean API answer so a scripted caller doesn't kick off a doomed thread.)
         if flash_engine.is_port_busy(port):
             return jsonify({"error": f"Port {port} is busy with another operation"}), 409
         _audit("flash", user=session.get("user"), port=port, profile=profile_name)
+
+        # Free the UART before esptool takes it. A web-opened monitor connection (/api/connect, /terminal)
+        # still holds this port: on Windows the handle is exclusive so esptool's open fails with
+        # "Access is denied" and the flash dies with no hint to disconnect; on POSIX the reader thread and
+        # esptool read the same tty concurrently and corrupt the flash. Force-release any managed
+        # connection (no owner) so the port is clear before flashing. (The /api/connect + /api/command
+        # busy-guards below stop a client from re-grabbing it mid-flash.)
+        device_manager.close_connection(port)
 
         def progress_cb(pct: int, msg: str) -> None:
             socketio.emit("flash_progress", {"port": port, "percent": pct, "message": msg})
@@ -469,6 +494,33 @@ def create_app(
         threading.Thread(target=flash_thread, daemon=True).start()
         return jsonify({"status": "flashing", "port": port, "profile": profile_name})
 
+    @app.route("/api/variants")
+    @requires_auth
+    def api_variants():
+        """List the selectable firmware variants for a profile so the flash page can offer a board
+        picker. GET /api/variants?profile=<name> -> {"variants": [{"name","label","chip"}]}.
+
+        A read-only companion to the beat-171 /api/flash `variant` field: the picker's chosen name is
+        POSTed straight back as that field. Never 500s — list_variants() swallows an offline/API-error
+        release fetch and returns [], so the picker just shows "Default (auto-detect)" and the flash
+        falls to the per-chip default (unchanged behavior). GET, so no CSRF (it mutates nothing)."""
+        profile_name = str(request.args.get("profile", ""))
+        if not profile_name:
+            return jsonify({"error": "profile is required"}), 400
+        profile_path = profiles.get(profile_name)
+        if not profile_path:
+            return jsonify({"error": f"Unknown profile: {profile_name}"}), 404
+        try:
+            profile = flash_engine.load_profile(profile_path)
+        except Exception as exc:  # noqa: BLE001 — malformed profile -> clean 400, not opaque 500
+            return jsonify({"error": f"Invalid firmware profile ({profile_path.name}): {exc}"}), 400
+        variants = [
+            {"name": v.get("name", ""), "label": v.get("label", ""), "chip": v.get("chip", "")}
+            for v in flash_engine.list_variants(profile)
+            if v.get("name")
+        ]
+        return jsonify({"variants": variants})
+
     @app.route("/api/connect", methods=["POST"])
     @requires_auth
     @requires_csrf
@@ -481,6 +533,10 @@ def create_app(
         port = str(data.get("port", ""))
         if not port:
             return jsonify({"error": "port is required"}), 400
+        # Refuse to open a serial connection on a port that is mid-flash: esptool owns the UART and a
+        # second opener would contend with it (brick risk). 409 mirrors /api/flash's own busy answer.
+        if flash_engine.is_port_busy(port):
+            return jsonify({"error": f"Port {port} is busy with a flash operation"}), 409
         if device_manager.get_device(port) is None:
             match = next((d for d in device_manager.scan_ports() if d.port == port), None)
             if match is None:
@@ -524,6 +580,10 @@ def create_app(
             return jsonify({"error": "command too long"}), 400
         if not _known_port(port):
             return jsonify({"error": f"Unknown/unregistered port: {port}"}), 400
+        # Never push operator bytes onto a UART that esptool is mid-flash on — a stray write during the
+        # flash can brick the board. 409, consistent with /api/flash and /api/connect.
+        if flash_engine.is_port_busy(port):
+            return jsonify({"error": f"Port {port} is busy with a flash operation"}), 409
 
         conn = device_manager.get_connection(port)
         if not conn or not conn.is_connected:
@@ -654,24 +714,43 @@ def create_app(
     @app.route("/api/devices")
     @requires_auth
     def api_devices():
-        return jsonify([d.to_dict() for d in device_manager.list_devices()])
+        # Merged live scan (see dashboard): count/list what's physically attached, not just the registry,
+        # so a board present before server start isn't reported as absent.
+        return jsonify([d.to_dict() for d in _devices_for_display()])
 
     @app.route("/api/targets")
     @requires_auth
     def api_targets():
         return jsonify([t.to_dict() for t in target_pool.all()])
 
+    @app.route("/api/channels")
+    @requires_auth
+    def api_channels():
+        # Passive read-only channel-occupancy survey over the live pool (clear-2.4 GHz picker).
+        return jsonify(survey_channels(target_pool.all()))
+
+    @app.route("/api/freshness")
+    @requires_auth
+    def api_freshness():
+        # Passive read-only staleness summary — how many targets are live vs stale left-overs.
+        return jsonify(summarize_freshness(target_pool.all()))
+
     @app.route("/api/health")
     @requires_auth
     def api_health():
-        devices = device_manager.list_devices()
+        devices = _devices_for_display()
+        # The engine's scalar status is a single shared field; with parallel multi-board flashing a
+        # finished op sets it to DONE while another port is still writing. Report per-port truth: while
+        # any port is busy, never surface a terminal status (a poller would re-enable controls mid-flash).
+        active = flash_engine.active_ports()
         return jsonify(
             {
                 "status": "ok",
                 "device_count": len(devices),
                 "connected_count": len([d for d in devices if d.connected]),
                 "target_count": target_pool.count,
-                "flash_status": flash_engine.status.value,
+                "flash_status": "flashing" if active else flash_engine.status.value,
+                "busy_ports": active,
             }
         )
 
@@ -688,7 +767,12 @@ def create_app(
             log.warning("Rejected unauthenticated WebSocket from %s", _client_ip())
             _audit("ws_reject_unauth")
             return False
-        if not csrf_valid(session.get("csrf"), (auth or {}).get("csrf")):
+        # Coerce a non-dict handshake `auth` (client-controlled: could be a JSON string/array/number) to {}
+        # so the CSRF read below can't AttributeError past the clean refuse-and-audit path — mirrors the
+        # isinstance guard in on_subscribe_serial / on_send_command. `auth or {}` only handles falsy.
+        if not isinstance(auth, dict):
+            auth = {}
+        if not csrf_valid(session.get("csrf"), auth.get("csrf")):
             log.warning("Rejected WebSocket with bad CSRF from %s", _client_ip())
             _audit("ws_reject_csrf")
             return False
@@ -754,6 +838,11 @@ def create_app(
             return
         if not _known_port(port):
             emit("serial_output", {"port": port, "line": f"[Unknown port {port}]"})
+            return
+        # Never push operator bytes onto a UART esptool is mid-flash on — a stray write can
+        # brick the board. Mirrors the /api/command 409 guard; /terminal needs the same shield.
+        if flash_engine.is_port_busy(port):
+            emit("serial_output", {"port": port, "line": f"[Port {port} is busy with a flash]"})
             return
         conn = device_manager.get_connection(port)
         if conn and conn.is_connected:

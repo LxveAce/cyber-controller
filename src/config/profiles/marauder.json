@@ -124,7 +124,7 @@
     "repo": "https://github.com/justcallmekoko/ESP32Marauder",
     "latest": "https://github.com/justcallmekoko/ESP32Marauder/releases/latest"
   },
-  "note": "justcallmekoko/ESP32Marauder. Release ships app .bin only; bootloader/partitions/boot_app0 pulled from the repo FlashFiles/ tree per chip family. Cardputer support-file audit (2026-07-03): upstream FlashFiles/ has only FlipperZeroDevBoard, FlipperZeroMultiBoardS3, MarauderV4 (NO Cardputer-specific dir), so M5Cardputer/ADV correctly use the esp32s3 FlipperZeroMultiBoardS3 support set — the known Marauder-on-Cardputer roughness is upstream (generic S3 support files), not a profile bug. Real-hardware flash pending the Stage-5 gate.",
+  "note": "justcallmekoko/ESP32Marauder. Release ships app .bin only; bootloader/partitions/boot_app0 pulled from the repo FlashFiles/ tree per chip family. Cardputer support-file audit (2026-07-03): upstream FlashFiles/ has only FlipperZeroDevBoard, FlipperZeroMultiBoardS3, MarauderV4 (NO Cardputer-specific dir), so M5Cardputer/ADV correctly use the esp32s3 FlipperZeroMultiBoardS3 support set — the known Marauder-on-Cardputer roughness is upstream (generic S3 support files), not a profile bug. Real-hardware flash pending the Stage-5 gate. v1.13.0 variant reconciliation (2026-07-12): the resolver auto-tracks the latest upstream release, but upstream v1.13.0 added a dual_mini_c5 asset (dual-band ESP32-C5 Mini) with no chip_map rule, so it was defaulting to chip esp32 — added chip_map + label_map entries so it resolves to esp32c5. All 24 v1.13.0 assets now map to the correct chip + a human label.",
   "repo": "justcallmekoko/ESP32Marauder",
   "core_id": "marauder",
   "supports_suicide": true,
@@ -171,6 +171,7 @@
         ["_flipper", "esp32s2"],
         ["rev_feather", "esp32s2"],
         ["mini_v3", "esp32c5"],
+        ["dual_mini_c5", "esp32c5"],
         ["esp32c5devkitc1", "esp32c5"],
         ["m5nanoc6", "esp32c6"]
       ]
@@ -187,6 +188,7 @@
         "kit": "Marauder Kit (Huzzah32)",
         "mini": "Marauder Mini",
         "mini_v3": "Marauder Mini v3 (ESP32-C5)",
+        "dual_mini_c5": "Marauder Dual Mini (ESP32-C5, dual-band)",
         "marauder_dev_board_pro": "Dev Board Pro / BFFB (serial)",
         "multiboardS3": "Flipper MultiBoard / ESP32-S3",
         "flipper": "Flipper Zero WiFi Dev Board (ESP32-S2)",

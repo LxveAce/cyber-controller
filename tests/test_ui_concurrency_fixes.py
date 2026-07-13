@@ -17,6 +17,12 @@ Regression coverage for three confirmed defects:
      the gate TWICE (a wrong/extra attempt the DMS can read as tamper -> wipe/brick). Fix: the Devices
      tab is the sole DMS owner for any port it has connected; the terminal defers on those ports.
 
+  #4 (cc-flash-audit 2026-07-12) The sequential Flash Queue worker (_batch_worker) was NOT in
+     shutdown()'s join set, so closing the window mid-batch destroyed a running QThread mid esptool-
+     write (half-written flash = brick) or fired callbacks into deleted widgets. AND a flash opened
+     esptool on the exclusive COM port without first releasing an open serial monitor -> Windows
+     'Access is denied' aborted the flash. Fix: join _batch_worker; release the port before esptool.
+
 Offscreen; builds a real CyberControllerWindow so the wiring under test is exercised end-to-end.
 """
 
@@ -171,5 +177,53 @@ def test_dms_pterm_still_handles_port_it_owns_alone(qapp, isolated_settings):
         line = "suicide-gate: enter 'unlock <password>'"
         win._pterm_on_line("COM7", line)
         assert calls == [line], "terminal must handle DMS on a port it owns alone"
+    finally:
+        win.close()
+
+
+# ── #4 cc-flash-audit: batch-worker teardown + pre-flash port release ─────────
+
+def test_flashtab_shutdown_joins_batch_worker(qapp, isolated_settings):
+    # A sequential Flash Queue runs each item on _batch_worker, which is NOT in _bg_workers. shutdown()
+    # must join it too — else closing the window mid-batch destroys a running QThread mid esptool-write
+    # (half-written flash bricks the board) or fires its callbacks into already-deleted widgets.
+    win = _make_window()
+    ft = win._flash_tab
+    batch_w = _FakeWorker()
+    ft._batch_worker = batch_w
+    try:
+        ft.shutdown()
+        assert batch_w.wait_ms is not None, "shutdown did not wait on the batch worker"
+        assert batch_w.isRunning() is False
+    finally:
+        win.close()
+
+
+def test_flash_releases_open_port_before_esptool(qapp, isolated_settings, monkeypatch):
+    # Before esptool opens the exclusive COM port, any open serial monitor on that port must be released
+    # via the DeviceManager, or esptool's second exclusive open raises 'Access is denied' on Windows and
+    # the flash never starts.
+    win = _make_window()
+    ft = win._flash_tab
+    released: list[str] = []
+    monkeypatch.setattr(ft._dm, "close_connection", lambda port, owner=None: released.append(port))
+    try:
+        ft._release_port_for_flash("COM7")
+        assert released == ["COM7"], "flash must release the port before spawning esptool"
+    finally:
+        win.close()
+
+
+def test_release_port_for_flash_never_raises(qapp, isolated_settings, monkeypatch):
+    # Releasing the port is best-effort — a DeviceManager error must be swallowed, never block a flash.
+    win = _make_window()
+    ft = win._flash_tab
+
+    def _boom(port, owner=None):
+        raise RuntimeError("dm exploded")
+
+    monkeypatch.setattr(ft._dm, "close_connection", _boom)
+    try:
+        ft._release_port_for_flash("COM7")  # must not raise
     finally:
         win.close()

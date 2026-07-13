@@ -35,6 +35,23 @@ def _combo_index(combo, needle):
     return -1
 
 
+def _drain_bj(tab, qapp):
+    """STOP/arm run the (blocking, up-to-4s) controller HTTP call on ONE serializing worker so the
+    GUI never freezes and press-order == device-order; results land in _bj_status via a queued signal.
+    Pump the event loop until the queue is idle so the final status is observable in a test."""
+    import time
+    q = tab._bj_queue
+    if q is not None:
+        for _ in range(1000):
+            qapp.processEvents()
+            with q._cond:
+                idle = not q._deque and not q._processing
+            if idle:
+                break
+            time.sleep(0.002)
+    qapp.processEvents()
+
+
 def test_panel_hidden_by_default(qapp):
     tab = _tab()
     assert tab._bj_panel.isHidden()
@@ -97,6 +114,7 @@ def test_stop_without_map_is_safe_and_guides(qapp):
     """STOP with no validated control map must NOT raise — it surfaces the fail-safe guidance."""
     tab = _tab()
     tab._bj_stop()  # must not raise
+    _drain_bj(tab, qapp)
     assert "unavailable" in tab._bj_status.text().lower()
     assert "web ui" in tab._bj_status.text().lower()
 
@@ -118,6 +136,7 @@ def test_arm_unavailable_without_validated_map(qapp, monkeypatch):
     tab._bj_attest.setChecked(True)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
     tab._bj_set_mode(Mode.WIFI)  # attested + confirmed, but no validated map -> fail-safe
+    _drain_bj(tab, qapp)
     assert "unavailable" in tab._bj_status.text().lower()
 
 
@@ -173,6 +192,7 @@ def test_loaded_validated_map_sends_stop(qapp, monkeypatch):
     tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
     tab._bj_build_controller()
     tab._bj_stop()
+    _drain_bj(tab, qapp)
     assert sent and sent[0][0] == "POST" and sent[0][1].endswith("/mode")
     assert "stop sent" in tab._bj_status.text().lower()
 
@@ -213,6 +233,7 @@ def test_stop_with_validated_map_but_unreachable_device_is_safe(qapp, monkeypatc
     tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
     tab._bj_build_controller()
     tab._bj_stop()  # must NOT raise (pre-fix: URLError escapes the slot)
+    _drain_bj(tab, qapp)
     assert "unavailable" in tab._bj_status.text().lower()
     assert "web ui" in tab._bj_status.text().lower()
 
@@ -236,4 +257,173 @@ def test_arm_with_validated_map_but_unreachable_device_is_safe(qapp, monkeypatch
     tab._bj_map = ControlMap(http_calls={Mode.WIFI: ("POST", "/mode", "wifi")}, validated=True)
     tab._bj_build_controller()
     tab._bj_set_mode(Mode.WIFI)  # must NOT raise (pre-fix: socket.timeout escapes both except clauses)
+    _drain_bj(tab, qapp)
     assert "unavailable" in tab._bj_status.text().lower()
+
+
+# ── GUI-thread offload (UI-audit Batch UI-3): STOP/arm must not block the event loop ──────────────
+
+def test_bj_stop_runs_off_the_gui_thread(qapp, monkeypatch):
+    """Regression: the controller HTTP call (blocking, up to 4s) must run on a worker thread, not the GUI
+    thread — otherwise pressing the safety STOP button froze the whole app for up to 4s."""
+    import threading
+
+    from src.core.bluejammer_control import ControlMap, Mode
+    from src.ui.qt.device_tab import DeviceTab
+
+    gui_ident = threading.get_ident()
+    seen: dict = {}
+
+    def _fake_req(method, url, body):
+        seen.setdefault("ident", threading.get_ident())
+        return 200
+
+    monkeypatch.setattr(DeviceTab, "_bj_http_request", staticmethod(_fake_req))
+    tab = _tab()
+    tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
+    tab._bj_build_controller()
+
+    tab._bj_stop()
+    assert tab._bj_queue is not None, "STOP should have started the serializing worker"
+    assert "stop…" in tab._bj_status.text().lower()  # immediate pending status, UI stays live
+
+    _drain_bj(tab, qapp)
+    assert seen.get("ident") is not None
+    assert seen["ident"] != gui_ident  # the blocking HTTP call ran off the GUI thread
+    assert "stop sent" in tab._bj_status.text().lower()
+
+
+def test_bj_shutdown_joins_workers(qapp, monkeypatch):
+    """shutdown() (called from MainWindow.closeEvent) must join in-flight BJ workers so no QThread is
+    destroyed mid-run on exit."""
+    from src.core.bluejammer_control import ControlMap, Mode
+    from src.ui.qt.device_tab import DeviceTab
+
+    monkeypatch.setattr(DeviceTab, "_bj_http_request", staticmethod(lambda *a, **k: 200))
+    tab = _tab()
+    tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
+    tab._bj_build_controller()
+
+    tab._bj_stop()
+    tab.shutdown()  # must join without hanging or raising
+    qapp.processEvents()
+    assert tab._bj_queue is not None and not tab._bj_queue.isRunning()
+
+
+def test_bj_shutdown_parks_worker_that_outlasts_the_wait(qapp, monkeypatch):
+    """Audit §F3: if the in-flight web-UI call outlasts shutdown's bounded wait (a black-hole net),
+    the still-running worker must be PARKED in the module keep-alive set — not GC-destroyed mid-run,
+    which aborts the process ('QThread: Destroyed while thread is still running')."""
+    import threading
+    import time
+
+    from src.core.bluejammer_control import ControlMap, Mode
+    from src.ui.qt import device_tab as dt
+
+    release = threading.Event()
+
+    def _blocking_req(method, url, body):
+        release.wait(10)   # block until the test releases it (hard cap so it can never hang CI)
+        return 200
+
+    monkeypatch.setattr(dt.DeviceTab, "_bj_http_request", staticmethod(_blocking_req))
+    dt._BJ_KEEPALIVE_WORKERS.clear()
+    tab = _tab()
+    tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
+    tab._bj_build_controller()
+
+    tab._bj_stop()                       # enqueue STOP -> worker enters the blocking op
+    q = tab._bj_queue
+    assert q is not None
+    in_flight = False
+    for _ in range(400):                 # wait until the op is actually in-flight (bounded)
+        qapp.processEvents()
+        with q._cond:
+            in_flight = q._processing
+        if in_flight:
+            break
+        time.sleep(0.005)
+    assert in_flight, "the blocking op should be running before we shut down"
+
+    tab.shutdown(wait_ms=50)             # can't finish in 50ms -> must be parked, not destroyed
+    assert q in dt._BJ_KEEPALIVE_WORKERS
+    assert q.isRunning()                 # still alive (held by the keep-alive ref)
+
+    release.set()                        # let the worker finish + exit so the test cleans up
+    q.wait(5000)
+    dt._BJ_KEEPALIVE_WORKERS.discard(q)
+
+
+# ── §F2: STOP send-ordering (single-worker FIFO; STOP supersedes a pending Arm) ──────────
+
+def test_arm_then_stop_last_payload_is_idle(qapp, monkeypatch):
+    """Audit §F2 acceptance: with a validated map, arming WiFi then pressing STOP must leave the
+    device Idle — the LAST payload on the wire is the Idle/STOP frame, never a stale Arm landing
+    after the STOP. The single serializing worker guarantees press-order == device-order."""
+    from PyQt5.QtWidgets import QMessageBox
+
+    from src.core.bluejammer_control import ControlMap, Mode
+    from src.ui.qt.device_tab import DeviceTab
+
+    sent = []
+    monkeypatch.setattr(
+        DeviceTab, "_bj_http_request",
+        staticmethod(lambda method, url, body: sent.append(body) or 200),
+    )
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    tab = _tab()
+    tab._bj_map = ControlMap(
+        http_calls={Mode.IDLE: ("POST", "/mode", "idle"), Mode.WIFI: ("POST", "/mode", "wifi")},
+        validated=True,
+    )
+    tab._bj_build_controller()
+    tab._bj_attest.setChecked(True)
+
+    tab._bj_set_mode(Mode.WIFI)   # enqueue Arm
+    tab._bj_stop()                # enqueue STOP — supersedes a still-pending Arm, always kept
+    _drain_bj(tab, qapp)
+
+    assert sent, "something should have reached the device"
+    assert sent[-1] == "idle", f"last payload must be the Idle/STOP frame, got {sent!r}"
+    assert "stop sent" in tab._bj_status.text().lower()
+
+
+def test_queue_stop_purges_pending_arms_but_keeps_stop(qapp):
+    """Unit: on the serializing queue, a STOP drops any queued not-yet-started Arm (superseding it)
+    and is itself always kept — never dropped by an in-flight guard. Enqueue before start() so
+    nothing has run yet, then inspect the FIFO directly (deterministic, no threading race)."""
+    from src.ui.qt.device_tab import _BjCommandQueue
+
+    q = _BjCommandQueue()
+    q.enqueue(1, "arm", lambda: "a1")
+    q.enqueue(2, "arm", lambda: "a2")
+    q.enqueue(3, "stop", lambda: "stop")   # supersedes both pending arms
+    assert [op[1] for op in q._deque] == ["stop"]
+    assert q._deque[0][0] == 3             # the STOP op id, intact
+    # A subsequent Arm after the STOP is legitimately kept (new intent, not superseded).
+    q.enqueue(4, "arm", lambda: "a4")
+    assert [op[1] for op in q._deque] == ["stop", "arm"]
+
+
+def test_arm_disabled_while_op_pending_reenabled_when_idle(qapp, monkeypatch):
+    """Audit §F2: Arm buttons are disabled while an op is queued/running (so a 2nd Arm can't race a
+    STOP), and re-enabled once the queue drains — STOP itself is never gated this way."""
+    from PyQt5.QtWidgets import QMessageBox
+
+    from src.core.bluejammer_control import ControlMap, Mode
+    from src.ui.qt.device_tab import DeviceTab
+
+    monkeypatch.setattr(DeviceTab, "_bj_http_request", staticmethod(lambda *a, **k: 200))
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
+    tab = _tab()
+    tab._bj_map = ControlMap(http_calls={Mode.WIFI: ("POST", "/mode", "wifi")}, validated=True)
+    tab._bj_build_controller()
+    tab._bj_attest.setChecked(True)
+    assert all(b.isEnabled() for b in tab._bj_arm_btns)   # attested + idle -> armable
+
+    tab._bj_set_mode(Mode.WIFI)   # enqueue emits busy_changed(True) synchronously on the GUI thread
+    assert all(not b.isEnabled() for b in tab._bj_arm_btns)  # disabled while the op is pending
+    assert tab._bj_stop_btn.isEnabled()                     # STOP stays dispatchable
+
+    _drain_bj(tab, qapp)
+    assert all(b.isEnabled() for b in tab._bj_arm_btns)     # re-enabled once idle (still attested)

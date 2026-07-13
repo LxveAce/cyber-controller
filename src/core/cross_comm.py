@@ -6,6 +6,7 @@ import logging
 import re
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -67,6 +68,13 @@ class EventBus:
 
 # ── Target Pool ──────────────────────────────────────────────────────
 
+# Hard cap on the number of live targets. Randomized/rotating BLE and Wi-Fi MACs, or a flood of
+# SubGHz signals, could otherwise grow the pool without bound and exhaust memory (prune() only runs
+# if a caller invokes it on a timer, which nothing guarantees). When full, the least-recently-seen
+# target is evicted to admit a new one. 5000 comfortably covers any real environment's active set.
+_MAX_TARGETS = 5000
+
+
 class TargetPool:
     """Thread-safe shared collection of discovered wireless targets.
 
@@ -79,7 +87,7 @@ class TargetPool:
     """
 
     def __init__(self, bus: EventBus | None = None) -> None:
-        self._targets: dict[str, Target] = {}
+        self._targets: OrderedDict[str, Target] = OrderedDict()
         self._lock = threading.Lock()
         self.bus = bus or EventBus()
 
@@ -112,6 +120,7 @@ class TargetPool:
             True if this is a new target, False if updated.
         """
         updated_payload: dict | None = None
+        evicted: Target | None = None
         with self._lock:
             existing = self._targets.get(target.key)
             if existing:
@@ -136,10 +145,20 @@ class TargetPool:
                     existing.extra["index"] = incoming_extra["index"]
                     existing.device_source = target.device_source
                 updated_payload = existing.to_dict()
+                self._targets.move_to_end(target.key)  # refresh recency for O(1) LRU eviction
             else:
+                # Bound the pool before inserting: when full, evict the least-recently-seen target
+                # so a stream of never-before-seen keys (rotating MACs, SubGHz flood) can't grow it
+                # without limit. The OrderedDict stays in recency order (move_to_end on every
+                # re-observation + append-on-insert), so the LRU victim is always at the front —
+                # evicting it is O(1), not the old O(n) min()-over-last_seen scan under the lock.
+                if len(self._targets) >= _MAX_TARGETS:
+                    _oldest_key, evicted = self._targets.popitem(last=False)
                 self._targets[target.key] = target
         # Publish OUTSIDE the lock: the non-reentrant pool lock must not be held across subscriber
         # callbacks, or a blocking subscriber that reads the pool would deadlock the reader thread.
+        if evicted is not None:
+            self.bus.publish("target.removed", evicted.to_dict())
         if updated_payload is not None:
             self.bus.publish("target.updated", updated_payload)
             return False
@@ -311,9 +330,14 @@ class AutoRouter:
                     cutoff = now - max((r.cooldown for r in rules), default=60.0)
                     self._cooldowns = {k: t for k, t in self._cooldowns.items() if t >= cutoff}
 
-            # Validate the MAC shape before it is interpolated; reject anything odd outright.
-            if mac and not _MAC_RE.match(str(mac)):
-                log.warning("AutoRouter: rejecting target with malformed MAC %r", mac)
+            # Validate the MAC shape only when the rule actually interpolates it. Non-WiFi targets
+            # legitimately carry a non-MAC identifier in `mac` (SubGHz frequency, NFC/RFID UID, a BW16
+            # index key), and a rule whose template doesn't use {mac} must still route them — the old
+            # unconditional gate silently dropped every non-WiFi target with a "malformed MAC" warning.
+            # _safe_render already sanitizes every value, so this check only rejects a clearly-malformed
+            # MAC before it lands in a {mac} slot.
+            if "{mac}" in rule.command_template and mac and not _MAC_RE.match(str(mac)):
+                log.warning("AutoRouter: rejecting {mac} target with malformed MAC %r", mac)
                 continue
             cmd = _safe_render(rule.command_template, mac, ssid, channel)
             # Log the match at INFO with only rule + target key (whose MAC diagnostics.redact scrubs in any

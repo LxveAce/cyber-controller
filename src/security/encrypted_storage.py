@@ -13,12 +13,14 @@ Security policy (hardened):
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import hmac
 import json
 import logging
 import os
 import struct
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -168,16 +170,27 @@ class SecureStorage:
         # encrypted vault isn't left readable by other local accounts.
         secure_dir(path.parent)
         blob = self.encrypt(data)
-        # Create with 0600 from the start (no world-readable window) where the OS supports it.
-        fd = os.open(str(path), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        # Durability: write to a temp file in the same directory, fsync it, then os.replace() onto the
+        # target. A plain O_TRUNC open truncates the existing .enc to zero before writing, so a crash or
+        # power loss mid-write leaves a partial blob whose GCM tag no longer verifies — the entry becomes
+        # permanently unreadable (fails closed to a ValueError on load). The atomic swap makes the write
+        # all-or-nothing, mirroring vault._atomic_write / physical_key.save_config. Create the temp with
+        # 0600 from the start (no world-readable window) where the OS supports it.
+        fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name + ".", suffix=".tmp")
         try:
+            with contextlib.suppress(OSError):
+                os.chmod(tmp, 0o600)  # best-effort on platforms without POSIX perms (Windows)
             with os.fdopen(fd, "wb") as fh:
                 fh.write(blob)
-        finally:
-            try:
-                os.chmod(path, 0o600)
-            except OSError:
-                pass  # best-effort on platforms without POSIX perms (Windows)
+                fh.flush()
+                os.fsync(fh.fileno())
+            os.replace(tmp, path)
+        except BaseException:
+            with contextlib.suppress(OSError):
+                os.unlink(tmp)
+            raise
+        with contextlib.suppress(OSError):
+            os.chmod(path, 0o600)  # best-effort on platforms without POSIX perms (Windows)
         restrict_to_current_user(path)  # L-1: explicit owner-only ACL on Windows
         log.info("Secure storage saved: %s", path)
 

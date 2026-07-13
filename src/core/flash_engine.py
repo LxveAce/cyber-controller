@@ -288,6 +288,14 @@ class FlashEngine:
         with self._lock:
             return bool(port) and port in self._busy_ports
 
+    def active_ports(self) -> list[str]:
+        """Snapshot of the ports currently mid flash/backup/erase. The scalar :attr:`status` is a single
+        SHARED field, but different ports flash in parallel (multi-board), so a finished op sets it to
+        DONE even while another port is still writing — a surface polling ``status`` alone can read "done"
+        mid-flash. Consult this for an honest per-port picture (e.g. the web /api/health)."""
+        with self._lock:
+            return sorted(self._busy_ports)
+
     @contextmanager
     def _port_guard(self, port: str):
         """Reserve *port* for a single serial operation. Raises :class:`_PortBusy` if it's already in use.
@@ -1058,6 +1066,13 @@ class FlashEngine:
         from src.core.backends import adb_backend
 
         on_line = _percent_adapter(progress)
+        # adb_backend.full_install() hardcodes the RayHunter installer, so this handler only knows how to
+        # flash RayHunter. Guard on core_id so a FUTURE profile that reuses backend="adb" fails LOUD here
+        # instead of silently installing RayHunter's network installer onto an unrelated device.
+        if profile.core_id != "rayhunter":
+            on_line(f"[adb] no ADB install flow for profile '{profile.core_id}' — this backend only "
+                    "supports 'rayhunter'. Add a dispatch branch before flashing another ADB device.")
+            return False
         if not adb_backend.find_adb():
             on_line("[adb] adb not found. Install Android platform-tools.")
             return False

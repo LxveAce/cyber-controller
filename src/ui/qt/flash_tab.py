@@ -810,6 +810,16 @@ class FlashTab(QWidget):
         )
         return resp == QMessageBox.Yes
 
+    def _release_port_for_flash(self, port: str) -> None:
+        """Free the exclusive COM port before esptool opens it. If the Devices tab (or any panel) holds
+        a serial monitor open on this port via the DeviceManager, esptool's second exclusive open raises
+        'Access is denied' on Windows and the flash never starts. A no-owner release force-closes it
+        regardless of owner; it is a safe no-op when nothing is connected on *port*."""
+        try:
+            self._dm.close_connection(port)
+        except Exception:  # noqa: BLE001 — releasing a port must never block a flash
+            log.debug("pre-flash port release failed for %s", port, exc_info=True)
+
     def _on_flash(self) -> None:
         # Concurrency guard: refuse a single flash while a single flash OR a batch is already running.
         # _btn_flash is disabled during a flash, but this stops a second _FlashWorker from ever overwriting
@@ -939,6 +949,7 @@ class FlashTab(QWidget):
         self._btn_flash_queue.setEnabled(False)
         self._progress.setValue(0)
 
+        self._release_port_for_flash(port)  # release an open monitor so esptool can claim the port
         self._worker = _FlashWorker(self._fe, port, profile)
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_flash_done)
@@ -1090,6 +1101,7 @@ class FlashTab(QWidget):
             log.debug("vault get_cached lookup failed", exc_info=True)
         self._log(f"Batch [{self._batch_idx + 1}/{len(self._batch_jobs)}]: flashing {profile.name} "
                   f"to {port} at {profile.baud} baud...")
+        self._release_port_for_flash(port)  # release an open monitor so esptool can claim the port
         self._batch_worker = _FlashWorker(self._fe, port, profile)
         self._batch_worker.progress.connect(self._on_progress)
         self._batch_worker.finished.connect(self._on_batch_item_done)
@@ -1140,7 +1152,12 @@ class FlashTab(QWidget):
         flash / detect / vault-download can't keep touching the board after the GUI is gone. A tab is a
         child widget, so it never gets its own closeEvent when the main window closes — the main window
         calls this from its closeEvent. (closeEvent below covers the popped-out / detached case.)"""
-        workers = list(self._bg_workers) + [self._worker, self._detect_worker, self._op_worker]
+        # _batch_worker MUST be joined too: a sequential Flash Queue runs each item on it, and closing
+        # the window mid-batch would otherwise destroy a still-running QThread mid esptool-write (a
+        # half-written flash bricks the board) or fire its finished/progress callbacks into already-
+        # deleted widgets. It is not in _bg_workers, so list it explicitly like the other singletons.
+        workers = list(self._bg_workers) + [
+            self._worker, self._batch_worker, self._detect_worker, self._op_worker]
         for w in workers:
             try:
                 if w is not None and w.isRunning():

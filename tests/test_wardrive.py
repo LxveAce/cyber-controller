@@ -241,6 +241,20 @@ def test_summarize_wigle_csv():
     assert s["top_channels"][0] == (6, 2)                      # channel 6 is busiest
 
 
+def test_summarize_wigle_csv_counts_gps_from_any_sighting_not_just_rssi_winner():
+    # An imported CSV can hold several rows per BSSID where the RSSI winner lacks a GPS fix
+    # but a weaker sighting has one. with_gps must credit the network, not read GPS off the winner.
+    text = (
+        wd.WIGLE_HEADER + "\n"
+        "AA:BB:CC:DD:EE:10,Roam,[WPA2][ESS],2026-06-27 00:00:00,6,2437,-70,48.1,11.5,0.0,0,,,WIFI\n"
+        "AA:BB:CC:DD:EE:10,Roam,[WPA2][ESS],2026-06-27 00:00:01,6,2437,-40,,,0.0,0,,,WIFI\n"
+    )
+    s = wd.summarize_wigle_csv(text)
+    assert s["networks"] == 1          # dedup still collapses the BSSID to one network
+    assert s["rssi_strongest"] == -40  # the no-GPS row is still the RSSI winner
+    assert s["with_gps"] == 1          # ...but the GPS fix from the weaker sighting is not lost
+
+
 def test_summarize_wigle_csv_header_only_and_empty():
     s = wd.summarize_wigle_csv("WigleWifi-1.6,x\n" + wd.WIGLE_HEADER + "\n")
     assert s["networks"] == 0 and s["top_channels"] == [] and s["rssi_strongest"] is None
