@@ -15,6 +15,20 @@ _RE_AP = re.compile(
     r"CH:\s*(\d+)\s*\|\s*RSSI:\s*(-?\d+)"
 )
 
+# GhostESP-Revival's `scanap` streams each AP as FOUR consecutive lines rather than the single
+# pipe-delimited line _RE_AP matches — e.g.
+#     [0] SSID: MyNet,
+#     BSSID: B4:BF:E9:11:19:AD,
+#     RSSI: -23,
+#     Channel: 1,
+# (note "Channel:" not "CH:"). We accumulate the fields and emit one ap_found on the closing
+# Channel line. The device's own ``[idx]`` is its ``select -a <idx>`` position, carried through.
+# Verified on real silicon (COM4, GhostESP flashed via CC) — the old single-line pattern got 0 APs.
+_RE_AP_ML_SSID = re.compile(r"^\[(\d+)\]\s*SSID:\s*(.*?),?\s*$")
+_RE_AP_ML_BSSID = re.compile(r"^BSSID:\s*([\da-fA-F:]{17}),?\s*$")
+_RE_AP_ML_RSSI = re.compile(r"^RSSI:\s*(-?\d+),?\s*$")
+_RE_AP_ML_CH = re.compile(r"^Channel:\s*(\d+),?\s*$")
+
 _RE_PROBE = re.compile(
     r"Probe\s+from\s+([\da-fA-F:]{17})\s+for\s+['\"](.+?)['\"]",
     re.IGNORECASE,
@@ -54,6 +68,9 @@ class GhostESPProtocol(BaseProtocol):
         # (gated on `select -a {index}`) is dropped by the resolver and never offered.
         self._ap_index = 0
         self._ap_indices: dict[str, int] = {}
+        # In-progress multi-line AP record (GhostESP-Revival streams SSID/BSSID/RSSI/Channel as
+        # separate lines); filled across parse_line calls, emitted on the closing Channel line.
+        self._ap_record: dict = {}
 
     def reset_scan_index(self) -> None:
         """Reset the AP scan ordinals — call when the device's AP list is cleared
@@ -99,6 +116,40 @@ class GhostESPProtocol(BaseProtocol):
                 },
                 raw=line,
             )
+
+        # Multi-line AP record (GhostESP-Revival). Fields arrive on separate lines; accumulate and
+        # emit one ap_found when the closing Channel line lands. Intermediate lines return None
+        # (else they fall through to a bogus `info`/`status` event).
+        m = _RE_AP_ML_SSID.match(line)
+        if m:
+            self._ap_record = {"index": int(m.group(1)), "ssid": m.group(2).strip()}
+            return None
+        m = _RE_AP_ML_BSSID.match(line)
+        if m:
+            if self._ap_record:
+                self._ap_record["bssid"] = m.group(1)
+            return None
+        m = _RE_AP_ML_RSSI.match(line)
+        if m:
+            if self._ap_record:
+                self._ap_record["rssi"] = int(m.group(1))
+            return None
+        m = _RE_AP_ML_CH.match(line)
+        if m:
+            rec, self._ap_record = self._ap_record, {}
+            if rec.get("bssid"):
+                return ParsedEvent(
+                    event_type="ap_found",
+                    data={
+                        "ssid": rec.get("ssid", ""),
+                        "bssid": rec["bssid"],
+                        "channel": int(m.group(1)),
+                        "rssi": rec.get("rssi", 0),
+                        "index": rec.get("index", self._assign_ap_index(rec["bssid"])),
+                    },
+                    raw=line,
+                )
+            return None
 
         # Probe request
         m = _RE_PROBE.search(line)
