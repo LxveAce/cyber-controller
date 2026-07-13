@@ -520,10 +520,14 @@ def summarize_wigle_csv(text: str) -> dict:
     # "de-duplicated by BSSID" contract. De-dup by MAC first — strongest-RSSI row wins, mirroring the
     # session's in-memory dedup — then tally over the unique networks.
     best: dict = {}
+    gps_macs: set = set()
     for row in csv.reader(io.StringIO(text)):
         if len(row) < 14 or not _MAC_RE.fullmatch(row[0].strip()):
             continue  # skips the pre-header (too few cols), the "MAC,..." header, and non-data rows
         mac = row[0].strip().upper()
+        # with_gps counts a BSSID sighted with a GPS fix on ANY row, not just the RSSI winner.
+        if row[7].strip():
+            gps_macs.add(mac)
         prev = best.get(mac)
         if prev is None:
             best[mac] = row
@@ -532,7 +536,7 @@ def summarize_wigle_csv(text: str) -> dict:
         if cur_r is not None and (prev_r is None or cur_r > prev_r):
             best[mac] = row  # a real, stronger reading beats the 0 sentinel / a weaker one
 
-    for row in best.values():
+    for mac, row in best.items():
         summary["networks"] += 1
         auth = row[2].upper()
         if "WEP" in auth:
@@ -551,7 +555,7 @@ def summarize_wigle_csv(text: str) -> dict:
         rssi = _row_rssi(row)
         if rssi is not None:
             rssis.append(rssi)
-        if row[7].strip():   # a latitude present -> this network was logged with a GPS fix
+        if mac in gps_macs:  # this BSSID had a GPS fix on at least one sighting
             summary["with_gps"] += 1
     summary["top_channels"] = channels.most_common(5)
     if rssis:
