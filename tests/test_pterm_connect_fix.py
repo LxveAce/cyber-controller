@@ -118,3 +118,15 @@ def test_pterm_connect_multiple_unticked_opens_nothing(qapp, monkeypatch):
         assert opened == [], "with several devices and none ticked, Connect must not open any"
     finally:
         win.close()
+
+
+def test_pterm_disconnect_gives_feedback_when_nothing_connected(qapp):
+    """The other half of the owner report: Disconnect used to run its loop zero times and print
+    NOTHING when nothing was connected. It must always give feedback so the button never looks dead."""
+    win, _dm = _build_window(qapp)
+    try:
+        assert win._pterm_conns == {}
+        win._pterm_on_disconnect()
+        assert "No connected devices to disconnect" in win._pterm_output.toPlainText()
+    finally:
+        win.close()

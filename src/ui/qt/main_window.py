@@ -1056,11 +1056,14 @@ class CyberControllerWindow(QMainWindow):
         self._refresh_sidebar_devices()
 
     def _pterm_on_disconnect(self) -> None:
-        """Disconnect the persistent terminal from all checked ports."""
+        """Disconnect the persistent terminal from the checked ports (or all connected when nothing
+        is ticked). Always gives feedback: with nothing connected the loop runs zero times, so print
+        an explicit no-op line instead of silence — the "Disconnect does nothing" half of the report."""
         ports = self._pterm_checked_ports()
         if not ports:
             # If nothing checked, disconnect all
             ports = list(self._pterm_conns.keys())
+        disconnected = 0
         for port in ports:
             if port not in self._pterm_conns:
                 continue
@@ -1081,9 +1084,15 @@ class CyberControllerWindow(QMainWindow):
             except Exception:
                 pass
             del self._pterm_conns[port]
+            disconnected += 1
             color = self._pterm_port_colors.get(port, "#8b949e")
             self._pterm_output.append(
                 f'<span style="color:{color};">[{port}] Disconnected</span>'
+            )
+        if disconnected == 0:
+            # Nothing was connected (or the checked ports weren't open) — never leave it silent.
+            self._pterm_output.append(
+                '<span style="color:#f85149;">[No connected devices to disconnect]</span>'
             )
         self._pterm_refresh_ports()
         self._refresh_sidebar_devices()
