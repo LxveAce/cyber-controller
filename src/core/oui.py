@@ -31,15 +31,20 @@ _table: dict[str, str] | None = None
 def normalize_oui(mac: str) -> str | None:
     """Return *mac*'s 24-bit OUI prefix (6 uppercase hex chars), or None if it has no IEEE vendor.
 
-    Strips the usual separators (``: - .`` and spaces). Returns None for anything without at least
-    6 leading hex digits and — importantly — for multicast (group bit) or locally-administered
+    Strips the usual separators (``: - .`` and spaces) and requires a full 12-hex (48-bit) MAC.
+    Returns None for a non-MAC and — importantly — for multicast (group bit) or locally-administered
     (randomized-privacy) MACs: those first octets are self-assigned, carry NO registered vendor, and
     resolving one would fabricate a manufacturer.
+
+    The 12-hex floor is load-bearing, not cosmetic: an index-only firmware (e.g. the BW16 Vampire)
+    mints a MAC-less synthetic key ``idx:{port}:{index}`` for APs it saw without a BSSID, and stray
+    hex characters in such a key can total ≥ 6 (``idx:COM7:196`` → ``DC7196`` → "Intel Corporate").
+    Demanding a whole MAC drops those so a MAC-less target never gets a phantom vendor.
     """
     if not mac:
         return None
     hex_only = _NON_HEX.sub("", mac)
-    if len(hex_only) < 6:
+    if len(hex_only) < 12:   # need a full 48-bit MAC — a partial/synthetic key has no real OUI
         return None
     first_octet = int(hex_only[:2], 16)
     if first_octet & 0b01:   # multicast / group address

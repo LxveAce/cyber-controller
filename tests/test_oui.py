@@ -20,7 +20,10 @@ def test_normalize_oui_strips_separators_and_uppercases(mac):
 
 @pytest.mark.parametrize("mac", [
     "",                       # empty
-    "D4:8A",                  # < 6 hex digits
+    "D4:8A",                  # too few hex digits
+    "D4:8A:FC",               # a bare 24-bit OUI, not a full MAC — must NOT resolve on its own
+    "idx:COM7:196",           # MAC-less synthetic index key (BW16 Vampire) — hex chars total DC7196
+    "idx:COM3:714",           # another synthetic key that used to phantom-resolve
     "zz:zz:zz:11:22:33",      # no hex
     "02:11:22:33:44:55",      # locally administered (randomized privacy MAC) — not vendor-assigned
     "01:00:5e:00:00:fb",      # multicast / group bit set
@@ -126,6 +129,16 @@ def test_ingest_leaves_vendor_empty_for_randomized_mac():
     pool = _drive(_Ev("ap_found", bssid="02:11:22:33:44:55", ssid="Rand"))
     (t,) = pool.all()
     assert t.vendor == ""               # a randomized privacy MAC must NOT get a fabricated vendor
+
+
+def test_ingest_leaves_vendor_empty_for_macless_index_key():
+    # An index-only firmware (BW16 Vampire) reports an AP with a scan index but NO bssid, so the
+    # ingestor keys it under the synthetic `idx:{port}:{idx}`. That is not a MAC and must never
+    # resolve to a vendor — this is the FABRICATE-0713 re-open (idx:COM7:196 used to phantom Intel).
+    pool = _drive(_Ev("ap_found", index=196, ssid="Vamp"))
+    (t,) = pool.all()
+    assert t.mac == "idx:COM7:196"      # the synthetic MAC-less key (port COM7 from _Conn)
+    assert t.vendor == ""               # no phantom vendor on a target that has no MAC at all
 
 
 def test_ingest_preserves_preset_flock_vendor():
