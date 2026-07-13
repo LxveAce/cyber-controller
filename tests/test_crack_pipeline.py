@@ -58,6 +58,9 @@ def test_available_backends_matrix() -> None:
 
 def test_detect_tools_all_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cp.shutil, "which", lambda _n: None)
+    # detect_tools uses `which(name) or _installed_fallback(name)`, so a box with hashcat/aircrack
+    # in the CC tools dir would resolve via the fallback and stay present=True — stub it too.
+    monkeypatch.setattr(cp, "_installed_fallback", lambda _n: None)
     tools = detect_tools()
     assert set(tools) == {"hcxpcapngtool", "hashcat", "aircrack-ng"}
     assert all(not t.present for t in tools.values())

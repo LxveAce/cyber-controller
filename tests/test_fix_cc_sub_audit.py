@@ -163,28 +163,35 @@ def test_pool_update_of_existing_never_evicts(monkeypatch) -> None:
 
 
 def test_pool_reobservation_refreshes_recency_and_shields_from_eviction(monkeypatch) -> None:
-    # Re-observing a target refreshes its recency so it is NOT the next eviction victim. The O(1)
-    # OrderedDict path (move_to_end on touch) enforces this even when targets share an identical
-    # last_seen (coarse clocks) — where the old min()-scan would tie and wrongly evict by insertion
-    # order instead of by genuine recency.
+    # Re-observing a target must shield it from being the next eviction victim. FREEZE the clock so
+    # every last_seen is identical: now insertion-order and recency-order diverge. The old
+    # min()-over-last_seen ties and evicts the FIRST-inserted key (:01, just re-observed — wrong);
+    # the O(1) OrderedDict (move_to_end on touch) evicts the true LRU (:02). Fails on the old code.
     import src.core.cross_comm as cross_comm
+    import src.models.target as target_mod
     from src.models.target import Target, TargetType
 
+    frozen = datetime(2020, 1, 1, tzinfo=timezone.utc)
+
+    class _FrozenDT(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return frozen
+
+    monkeypatch.setattr(target_mod, "datetime", _FrozenDT)  # freeze update_seen's last_seen stamp
     monkeypatch.setattr(cross_comm, "_MAX_TARGETS", 3)
     pool = cross_comm.TargetPool(cross_comm.EventBus())
-    stamp = datetime(2020, 1, 1, tzinfo=timezone.utc)
     for suffix in ("01", "02", "03"):
-        t = Target(mac=f"AA:BB:CC:00:00:{suffix}", target_type=TargetType.BLE)
-        t.last_seen = stamp  # identical timestamps: a min()-scan would tie on insertion order
-        pool.add(t)
+        pool.add(Target(mac=f"AA:BB:CC:00:00:{suffix}", target_type=TargetType.BLE))
 
-    # Re-observe the OLDEST (first-inserted) key: this moves it off the eviction front.
+    # Re-observe the OLDEST (first-inserted) key. The clock is frozen, so its last_seen does NOT
+    # advance — only the OrderedDict recency order moves it off the eviction front.
     assert pool.add(Target(mac="AA:BB:CC:00:00:01", target_type=TargetType.BLE, rssi=-40)) is False
 
-    # A new key now evicts :02 (the new LRU), NOT the just-re-observed :01.
+    # A new key now evicts :02 (the true LRU), NOT the just-re-observed :01.
     assert pool.add(Target(mac="AA:BB:CC:00:00:99", target_type=TargetType.BLE)) is True
     assert pool.count == 3
-    assert pool.get("ble:AA:BB:CC:00:00:01") is not None  # shielded by re-observation
+    assert pool.get("ble:AA:BB:CC:00:00:01") is not None  # shielded (fails on old code)
     assert pool.get("ble:AA:BB:CC:00:00:02") is None      # the genuine least-recently-seen went
     assert pool.get("ble:AA:BB:CC:00:00:99") is not None
 
