@@ -27,6 +27,7 @@ class TargetIngestor:
         self._pool = pool
         self._captures = captures     # optional CaptureStore; None on the Devices-tab ingestor
         self._attached: dict[str, Callable[[str], None]] = {}  # port -> on_line cb (for detach)
+        self._parsers: dict[str, Any] = {}  # port -> protocol instance (command sink resets it)
         self._recent_capture: dict[str, str] = {}  # port -> last capture key (for pcap_saved)
 
     def attach(self, conn: Any, protocol: Any) -> Callable[[str], None]:
@@ -65,6 +66,7 @@ class TargetIngestor:
 
         conn.on_line(on_line)
         self._attached[port] = on_line
+        self._parsers[port] = protocol  # so send_to_port can reset scan ordinals on a list-clear
         log.info("TargetIngestor attached to %s via %s", port, type(protocol).__name__)
         return on_line
 
@@ -72,6 +74,7 @@ class TargetIngestor:
         """Best-effort removal of the on_line handler for *conn*."""
         port = getattr(conn, "port", "?")
         cb = self._attached.pop(port, None)
+        self._parsers.pop(port, None)  # drop the per-port parser handle alongside its callback
         # Drop the port's pending pcap-attach target too, so a pcap written by the NEXT device to
         # occupy this port can't be attached to the previous device's stale handshake record.
         self._recent_capture.pop(port, None)
@@ -81,6 +84,12 @@ class TargetIngestor:
                 remover(cb)
             except Exception:
                 pass
+
+    def parser_for(self, port: str) -> Any:
+        """The protocol/parser instance the ingestor attached for *port* (or None). Lets the command
+        sink reset a parser's scan ordinals when a device list-clear (`clearlist -a`/reboot) fires —
+        the ordinals live on the per-connection parser, invisible to the pool."""
+        return self._parsers.get(port)
 
     @staticmethod
     def _event_to_target(ev: Any, port: str) -> Target | None:

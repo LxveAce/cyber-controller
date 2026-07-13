@@ -125,5 +125,26 @@ class CrossCommHub:
         dev = self.dm.get_device(port)
         try:
             driver_for(dev).deliver_text(conn, dev, command)
+            self._reset_scan_state_on_clear(port, command)
         except Exception:
             log.exception("send_to_port %s failed", port)
+
+    def _reset_scan_state_on_clear(self, port: str, command: str) -> None:
+        """When a routed command clears the device's scan list (`clearlist -a`/`-s`) or reboots it,
+        flush the parser's scan ordinals so the NEXT scan restarts `select ... {index}` at 0. Wired
+        in the COMMAND SINK — NOT on the UI `target.cleared` event: that pool wipe sends no device
+        command, so resetting there would desync the parser from the still-populated device list and
+        mis-bind a Deauth-AP index to the WRONG AP. Parsers lacking a reset method are skipped."""
+        norm = " ".join(command.strip().lower().split())
+        is_reboot = norm == "reboot" or norm.startswith("reboot ")
+        parser = self.ingestor.parser_for(port)
+        if parser is None:
+            return
+        if is_reboot or norm.startswith("clearlist -a"):
+            fn = getattr(parser, "reset_scan_index", None)
+            if callable(fn):
+                fn()
+        if is_reboot or norm.startswith("clearlist -s"):
+            fn = getattr(parser, "reset_station_index", None)
+            if callable(fn):
+                fn()

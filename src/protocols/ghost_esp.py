@@ -55,6 +55,13 @@ class GhostESPProtocol(BaseProtocol):
         self._ap_index = 0
         self._ap_indices: dict[str, int] = {}
 
+    def reset_scan_index(self) -> None:
+        """Reset the AP scan ordinals — call when the device's AP list is cleared
+        (`clearlist -a`/reboot) so the next scan restarts `select -a {index}` at 0. Wired from the
+        command sink; a UI-only Clear that never reaches the device must NOT call this."""
+        self._ap_index = 0
+        self._ap_indices.clear()
+
     def _assign_ap_index(self, bssid: str) -> int:
         existing = self._ap_indices.get(bssid)
         if existing is not None:
