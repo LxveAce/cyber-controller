@@ -310,6 +310,50 @@ def test_bj_shutdown_joins_workers(qapp, monkeypatch):
     assert tab._bj_queue is not None and not tab._bj_queue.isRunning()
 
 
+def test_bj_shutdown_parks_worker_that_outlasts_the_wait(qapp, monkeypatch):
+    """Audit §F3: if the in-flight web-UI call outlasts shutdown's bounded wait (a black-hole net),
+    the still-running worker must be PARKED in the module keep-alive set — not GC-destroyed mid-run,
+    which aborts the process ('QThread: Destroyed while thread is still running')."""
+    import threading
+    import time
+
+    from src.core.bluejammer_control import ControlMap, Mode
+    from src.ui.qt import device_tab as dt
+
+    release = threading.Event()
+
+    def _blocking_req(method, url, body):
+        release.wait(10)   # block until the test releases it (hard cap so it can never hang CI)
+        return 200
+
+    monkeypatch.setattr(dt.DeviceTab, "_bj_http_request", staticmethod(_blocking_req))
+    dt._BJ_KEEPALIVE_WORKERS.clear()
+    tab = _tab()
+    tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
+    tab._bj_build_controller()
+
+    tab._bj_stop()                       # enqueue STOP -> worker enters the blocking op
+    q = tab._bj_queue
+    assert q is not None
+    in_flight = False
+    for _ in range(400):                 # wait until the op is actually in-flight (bounded)
+        qapp.processEvents()
+        with q._cond:
+            in_flight = q._processing
+        if in_flight:
+            break
+        time.sleep(0.005)
+    assert in_flight, "the blocking op should be running before we shut down"
+
+    tab.shutdown(wait_ms=50)             # can't finish in 50ms -> must be parked, not destroyed
+    assert q in dt._BJ_KEEPALIVE_WORKERS
+    assert q.isRunning()                 # still alive (held by the keep-alive ref)
+
+    release.set()                        # let the worker finish + exit so the test cleans up
+    q.wait(5000)
+    dt._BJ_KEEPALIVE_WORKERS.discard(q)
+
+
 # ── §F2: STOP send-ordering (single-worker FIFO; STOP supersedes a pending Arm) ──────────
 
 def test_arm_then_stop_last_payload_is_idle(qapp, monkeypatch):

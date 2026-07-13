@@ -84,6 +84,14 @@ class _ProbeSignal(QObject):
     probe_done = pyqtSignal(str)  # port whose probe just finished
 
 
+# Garbage-collecting a still-running QThread fires the C++ destructor mid-run and aborts the process
+# ('QThread: Destroyed while thread is still running'). If the BlueJammer worker's in-flight web-UI
+# call outlasts shutdown's bounded wait (a black-hole net — urlopen's 4s timeout misses a hung DNS
+# resolve), we park the worker here so its reference survives until it finishes and the
+# process exits cleanly. Mirrors main_window._KEEPALIVE_WORKERS (c324a97).
+_BJ_KEEPALIVE_WORKERS: set = set()
+
+
 class _BjCommandQueue(QThread):
     """Serialize BlueJammer control ops (arm / STOP) through ONE long-lived worker draining a FIFO, so
     press-order == device-order.
@@ -1013,17 +1021,25 @@ class DeviceTab(QWidget):
 
         self._bj_enqueue("arm", act, f"Arming {mode.value}…")
 
-    def shutdown(self) -> None:
+    def shutdown(self, wait_ms: int = 5000) -> None:
         """Stop the BlueJammer serializing worker before the tab (and window) is torn down, so its
         unparented QThread isn't destroyed mid-run ('QThread: Destroyed while thread is still running')
         on exit. Abandons any queued (not-yet-started) op and joins the in-flight one with a bounded
-        wait (each op is a short <=4s HTTP call). Invoked from MainWindow.closeEvent."""
+        wait (each op is a short <=4s HTTP call). Invoked from MainWindow.closeEvent.
+
+        Backstop: if the in-flight op outlasts *wait_ms* (a black-hole net — urlopen's 4s socket
+        timeout doesn't cover a hung DNS resolve), the still-running worker is PARKED in a module
+        keep-alive set instead of GC-destroyed mid-run (which aborts the process). Mirrors
+        main_window's keep-alive handling. Wrapped for the C++-already-gone race."""
         q = self._bj_queue
         if q is None:
             return
         q.request_stop()
-        if q.isRunning():
-            q.wait(5000)
+        try:
+            if q.isRunning() and not q.wait(wait_ms) and q.isRunning():
+                _BJ_KEEPALIVE_WORKERS.add(q)  # still blocked — don't let GC destroy it
+        except RuntimeError:  # C++ side already gone
+            pass
 
     def _bj_attest_changed(self, on: bool) -> None:  # noqa: ARG002 — state read in _bj_refresh_arm_enabled
         self._bj_refresh_arm_enabled()
