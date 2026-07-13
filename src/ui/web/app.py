@@ -41,13 +41,14 @@ from flask import (
 )
 from flask_socketio import SocketIO, emit
 
+from src.core import node_provision
 from src.core.channel_survey import survey_channels
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FirmwareProfile, FlashEngine
 from src.core.nodes_controller import NodesController
 from src.core.resources import resource_path
-from src.core import node_provision
+from src.core.target_freshness import summarize_freshness
 from src.security import physical_key
 from src.security.web_auth import (
     RateLimiter,
@@ -389,6 +390,7 @@ def create_app(
         # the Qt Device View uses, via src.core.device_menus) as a navigable screen. Leaves fire the EXISTING
         # guarded /api/command; flagged commands are labelled + confirmed client-side (label-never-block).
         import json as _json
+
         from src.core.device_menus import menu_tree
         device = device_manager.get_device(port)
         tree = menu_tree(device.firmware) if device else None
@@ -726,6 +728,12 @@ def create_app(
     def api_channels():
         # Passive read-only channel-occupancy survey over the live pool (clear-2.4 GHz picker).
         return jsonify(survey_channels(target_pool.all()))
+
+    @app.route("/api/freshness")
+    @requires_auth
+    def api_freshness():
+        # Passive read-only staleness summary — how many targets are live vs stale left-overs.
+        return jsonify(summarize_freshness(target_pool.all()))
 
     @app.route("/api/health")
     @requires_auth

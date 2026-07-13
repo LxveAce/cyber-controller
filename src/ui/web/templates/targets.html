@@ -16,6 +16,11 @@
     <span class="toolbar-info" id="ch-occupancy">2.4 GHz occupancy: --</span>
 </div>
 
+<div class="toolbar" id="freshness">
+    <span class="toolbar-info">Pool freshness: <strong id="fresh-counts">--</strong></span>
+    <span class="toolbar-info" id="fresh-ages">last seen: --</span>
+</div>
+
 <div class="table-container">
     <table class="data-table">
         <thead>
@@ -119,9 +124,31 @@
             .catch(() => {});
     }
 
+    // Passive staleness summary — how many targets are live vs stale left-overs. Read-only.
+    function refreshFreshness() {
+        fetch('/api/freshness')
+            .then(r => r.json())
+            .then(d => {
+                const counts = document.getElementById('fresh-counts');
+                const ages = document.getElementById('fresh-ages');
+                if (!d.total) {
+                    counts.textContent = 'no targets yet';
+                    ages.textContent = 'last seen: --';
+                    return;
+                }
+                counts.textContent = d.fresh + ' live (≤' + d.fresh_within_sec + 's) / '
+                    + d.recent + ' going stale / ' + d.stale + ' stale';
+                const newest = (d.newest_age_sec === null) ? '--' : Math.round(d.newest_age_sec) + 's';
+                const oldest = (d.oldest_age_sec === null) ? '--' : Math.round(d.oldest_age_sec) + 's';
+                ages.textContent = 'last seen: newest ' + newest + ' ago, oldest ' + oldest + ' ago';
+            })
+            .catch(() => {});
+    }
+
     function refreshAll() {
         refreshTargets();
         refreshChannels();
+        refreshFreshness();
     }
 
     function onTargetDiscovered(data) {
