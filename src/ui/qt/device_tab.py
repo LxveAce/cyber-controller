@@ -264,6 +264,16 @@ class DeviceTab(QWidget):
         left_layout.addWidget(self._caps_label)
         self._update_capabilities()
 
+        # Live device telemetry — a firmware that reports itself over serial (LxveOS status/info ->
+        # device_info) fills Device.telemetry (fw/board/chip/ui + ops + heap). A read-only line
+        # under the caps chips, refreshed on selection AND per line. Blank if none reported.
+        self._telemetry_label = QLabel("")
+        self._telemetry_label.setObjectName("telemetry_label")
+        self._telemetry_label.setWordWrap(True)
+        self._telemetry_label.setStyleSheet("color:#6e7681;font-size:11px;")
+        left_layout.addWidget(self._telemetry_label)
+        self._update_telemetry()
+
         # Connect-time handshake result (CC-7): whether the firmware actually answers over the open link plus
         # an identifying banner — set by the background probe kicked off on connect. Distinct from the link
         # being open (that's the device-list color); this says the node is really talking.
@@ -530,7 +540,8 @@ class DeviceTab(QWidget):
             self._btn_send.setEnabled(connected)
             self._sync_firmware_combo_to(dev)  # re-point the global combo at THIS device before judging it
         self._update_health_label()
-        self._update_bj_panel()
+        self._update_bj_panel()  # also refreshes the caps chips off the newly-selected device
+        self._update_telemetry()  # telemetry is device-specific -> refresh on selection too
 
     def _sync_firmware_combo_to(self, dev) -> None:
         """Re-point the (global) firmware combo at the SELECTED device, so _selected_protocol /
@@ -921,6 +932,44 @@ class DeviceTab(QWidget):
             else:
                 chips.append(html.escape(c.upper()))
         return "Capabilities: " + "  ·  ".join(chips)
+
+    def _update_telemetry(self) -> None:
+        """Connected device's live telemetry (LxveOS ops/heap/identity from a device_info) as a
+        read-only line under the caps chips. Blank if it reported none. Cheap per line: re-renders
+        only when the rendered line changes."""
+        if not hasattr(self, "_telemetry_label"):
+            return
+        port = getattr(self, "_active_port", "")
+        dev = self._dm.get_device(port) if port else None
+        telem = getattr(dev, "telemetry", None) if dev is not None else None
+        line = self._telemetry_line(telem or {})
+        if line == getattr(self, "_last_telemetry_text", None):
+            return
+        self._last_telemetry_text = line
+        self._telemetry_label.setText(line)
+
+    @staticmethod
+    def _telemetry_line(t: dict) -> str:
+        """One compact line from a device_info telemetry dict. Only the present keys render, so both
+        the rich status line and the smaller info block render cleanly."""
+        if not t:
+            return ""
+        parts = []
+        ident = "/".join(str(t[k]) for k in ("board", "chip") if t.get(k))
+        if ident:
+            parts.append(ident)
+        if t.get("fw"):
+            parts.append(f"fw {t['fw']}")
+        if t.get("ui"):
+            parts.append(f"ui {t['ui']}")
+        ops = t.get("ops")
+        if isinstance(ops, dict):
+            parts.append(f"ops {ops.get('ready', 0)}/{ops.get('planned', 0)}/"
+                         f"{ops.get('unavailable', 0)} (ready/planned/unavailable)")
+        heap = t.get("heap")
+        if isinstance(heap, int):
+            parts.append(f"heap {heap // 1024} KB")
+        return "  ·  ".join(parts)
 
     def _apply_line_ending(self) -> None:
         """Apply the selected firmware's command terminator to the live connection (Flipper needs CR; most
@@ -1320,11 +1369,12 @@ class DeviceTab(QWidget):
         # terminal (command-echo/output injection on a security tool).
         self._terminal.append(html.escape(line))
         # A device_info line (LxveOS status/info) may have just updated this port's Device runtime
-        # caps via the ingestor (which ran first, on the serial thread, before this queued Qt slot).
-        # Refresh the caps chip line to match. _update_capabilities self-guards on an unchanged caps
-        # set, so calling it per line is cheap.
+        # caps + telemetry via the ingestor (which ran first on the serial thread, before this
+        # Qt slot). Refresh the caps chips + telemetry line to match. Both self-guard on unchanged
+        # content, so calling them per line is cheap.
         if port == getattr(self, "_active_port", ""):
             self._update_capabilities()
+            self._update_telemetry()
 
     # ── Command palette ──────────────────────────────────────────────
 
