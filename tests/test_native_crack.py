@@ -142,3 +142,34 @@ def test_native_cracks_supported_and_skips_cmac(tmp_path):
     wl.write_text("nope1234\nhashcat!\n", encoding="utf-8")
     res = nc.crack([cmac, good], str(wl))
     assert res.cracked and res.password == "hashcat!"
+
+
+def test_pmk_accepts_bytes_and_str_identically():
+    """pmk() now takes the passphrase as bytes (fed verbatim, like hashcat) OR a str (re-encoded
+    UTF-8). For an ASCII/UTF-8 key the two paths must be byte-identical, so the new bytes path can't
+    regress the canonical str vectors."""
+    assert nc.pmk(b"password", b"IEEE") == nc.pmk("password", "IEEE")
+    assert nc.pmk("ThisIsAPassword", "ThisIsASSID") == nc.pmk(b"ThisIsAPassword", b"ThisIsASSID")
+
+
+def test_crack_reads_wordlist_as_raw_bytes_not_lossy_utf8(tmp_path):
+    """The passphrase-side twin of the essid_bytes salt fix. A wordlist entry with a non-UTF-8 byte
+    is a valid WPA key (raw octets), but the OLD reader (utf-8, errors='ignore') DROPPED the invalid
+    byte — turning 'secret\\xff9' into 'secret9' and hashing the wrong bytes, so the real key was
+    never tried (a false 'not in wordlist'). Reading raw bytes tries it verbatim."""
+    key = b"secret\xff9"                                # 8 octets, WPA-valid len, NOT valid UTF-8
+    assert len(key) == 8
+    ap = bytes.fromhex("fc690c158264")
+    sta = bytes.fromhex("f4747f87f9f4")
+    real_pmkid = nc.compute_pmkid(nc.pmk(key, b"NetX"), ap, sta)   # raw-byte passphrase salt+key
+    hs = nc.Handshake(kind="pmkid", essid="NetX", essid_bytes=b"NetX",
+                      ap_mac=ap, sta_mac=sta, pmkid=real_pmkid)
+    # The lossy-decoded candidate ('secret9', what the old reader produced) must NOT match — proving
+    # the raw-byte read is load-bearing, not incidental.
+    assert not nc.verify(hs, key.decode("utf-8", "ignore"))
+    wl = tmp_path / "w.bin"
+    wl.write_bytes(b"tooearly\n" + key + b"\nafterwards\n")
+    res = nc.crack([hs], str(wl))
+    assert res.cracked
+    assert res.password.startswith("secret")           # lossy 'replace' render for display
+    assert key.hex() in res.detail                     # exact octets preserved honestly in the note
