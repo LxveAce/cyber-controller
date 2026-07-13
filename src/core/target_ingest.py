@@ -91,6 +91,30 @@ class TargetIngestor:
         the ordinals live on the per-connection parser, invisible to the pool."""
         return self._parsers.get(port)
 
+    def note_command_sent(self, port: str, command: str) -> None:
+        """Tell the ingestor a *command* was just written to *port* by ANY send path, so the port's
+        parser can flush its scan ordinals when the command clears the device's list (`clearlist -a`
+        / `-s`) or reboots it. Then the NEXT scan restarts `select ... {index}` at 0 and a Deauth-AP
+        index binds to the right row. This lives on the ingestor (which owns the per-port parser) so
+        EVERY door into the device shares it: the routed command sink (`CrossCommHub.send_to_port`)
+        AND the Devices-tab terminal Send — a hand-typed clear would otherwise leave the ordinals
+        stale (the same `select -a {index}` mis-bind, via a second write path). Never reset on a UI
+        pool wipe: that sends no device command, so the on-device list is untouched and a reset
+        would desync it. Parsers lacking a given reset method are skipped."""
+        parser = self._parsers.get(port)
+        if parser is None:
+            return
+        norm = " ".join(command.strip().lower().split())
+        is_reboot = norm == "reboot" or norm.startswith("reboot ")
+        if is_reboot or norm.startswith("clearlist -a"):
+            fn = getattr(parser, "reset_scan_index", None)
+            if callable(fn):
+                fn()
+        if is_reboot or norm.startswith("clearlist -s"):
+            fn = getattr(parser, "reset_station_index", None)
+            if callable(fn):
+                fn()
+
     @staticmethod
     def _event_to_target(ev: Any, port: str) -> Target | None:
         """Map a ParsedEvent to a Target for the shared pool.

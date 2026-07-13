@@ -1057,8 +1057,8 @@ class CyberControllerWindow(QMainWindow):
 
     def _pterm_on_disconnect(self) -> None:
         """Disconnect the persistent terminal from the checked ports (or all connected when nothing
-        is ticked). Always gives feedback: with nothing connected the loop runs zero times, so print
-        an explicit no-op line instead of silence — the "Disconnect does nothing" half of the report."""
+        is ticked). Always gives feedback: with nothing connected the loop runs zero times, so we
+        print an explicit no-op line instead of silence — the "Disconnect does nothing" half."""
         ports = self._pterm_checked_ports()
         if not ports:
             # If nothing checked, disconnect all

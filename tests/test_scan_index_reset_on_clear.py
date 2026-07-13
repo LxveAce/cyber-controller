@@ -96,6 +96,28 @@ def test_reboot_resets_marauder_index(monkeypatch):
     assert proto._ap_indices == {}
 
 
+def test_note_command_sent_resets_only_on_clear_or_reboot(monkeypatch):
+    """The shared reset lives on TargetIngestor.note_command_sent so EVERY send door (the routed
+    sink AND the Devices-tab terminal) can call it. It must reset on `clearlist -a`/`-s`/`reboot`
+    and be a no-op for ordinary commands — never touching a parser not cleared on the device."""
+    hub, conn, proto, port = _hub_with_marauder(monkeypatch)
+    conn.feed(*_ap("HomeNet", "aa:bb:cc:11:22:33"))
+    assert proto._ap_indices == {"aa:bb:cc:11:22:33": 0}
+
+    hub.ingestor.note_command_sent(port, "scanap")   # ordinary command -> no reset
+    assert proto._ap_indices == {"aa:bb:cc:11:22:33": 0}
+
+    hub.ingestor.note_command_sent(port, "  ClearList  -A  ")  # case/space-insensitive match
+    assert proto._ap_indices == {}
+
+
+def test_note_command_sent_unknown_port_is_safe():
+    """A command for a port with no attached parser is a silent no-op (never raises).
+    note_command_sent only reads self._parsers, so no pool/bus is needed."""
+    from src.core.target_ingest import TargetIngestor
+    TargetIngestor(pool=None).note_command_sent("COM_NONE", "clearlist -a")  # must not raise
+
+
 def test_ghostesp_and_esp32div_expose_resets():
     g = GhostESPProtocol()
     g._ap_indices["x"] = 5

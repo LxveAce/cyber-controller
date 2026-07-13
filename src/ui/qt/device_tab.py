@@ -1151,6 +1151,17 @@ class DeviceTab(QWidget):
             except Exception:
                 pass
             self._active_conn.write(cmd)
+            # Terminal Send is a SECOND door into the device — it writes the connection
+            # directly, not via the routed CrossCommHub sink. A hand-typed `clearlist -a`/
+            # `reboot` here must ALSO flush the port's parser scan ordinals, or a later
+            # `select -a {index}` (Deauth-AP) mis-binds to a stale index. Same reset the sink
+            # uses, so both write paths stay in lockstep. Guarded — never break a send; a
+            # no-op when this tab has no shared ingestor / the command isn't a clear/reboot.
+            if self._ingestor is not None:
+                try:
+                    self._ingestor.note_command_sent(self._active_port, cmd)
+                except Exception:  # noqa: BLE001 — scan-state bookkeeping must never fail a send
+                    pass
             # Feed the just-sent command into an in-progress macro recording (no-op when not recording).
             if self._recorder is not None:
                 self._recorder.record_command(cmd)
