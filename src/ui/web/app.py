@@ -41,6 +41,7 @@ from flask import (
 )
 from flask_socketio import SocketIO, emit
 
+from src.core.channel_survey import survey_channels
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FirmwareProfile, FlashEngine
@@ -719,6 +720,12 @@ def create_app(
     @requires_auth
     def api_targets():
         return jsonify([t.to_dict() for t in target_pool.all()])
+
+    @app.route("/api/channels")
+    @requires_auth
+    def api_channels():
+        # Passive read-only channel-occupancy survey over the live pool (clear-2.4 GHz picker).
+        return jsonify(survey_channels(target_pool.all()))
 
     @app.route("/api/health")
     @requires_auth
