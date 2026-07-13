@@ -1,0 +1,136 @@
+"""OUI → vendor lookup + its TargetIngestor wiring.
+
+Uses the REAL bundled IEEE table for the known-vendor + integration assertions (verify-never-fake:
+the values are the actual registry entries), and an injected table for the loader-isolation tests.
+"""
+from __future__ import annotations
+
+import pytest
+
+from src.core import oui
+
+# ── normalize_oui ─────────────────────────────────────────────────────────────────────────────────
+
+@pytest.mark.parametrize("mac", [
+    "D4:8A:FC:11:22:33", "d4-8a-fc-11-22-33", "d48a.fc11.2233", "D48AFC112233", "d4 8a fc 11 22 33",
+])
+def test_normalize_oui_strips_separators_and_uppercases(mac):
+    assert oui.normalize_oui(mac) == "D48AFC"
+
+
+@pytest.mark.parametrize("mac", [
+    "",                       # empty
+    "D4:8A",                  # < 6 hex digits
+    "zz:zz:zz:11:22:33",      # no hex
+    "02:11:22:33:44:55",      # locally administered (randomized privacy MAC) — not vendor-assigned
+    "01:00:5e:00:00:fb",      # multicast / group bit set
+    "FF:FF:FF:FF:FF:FF",      # broadcast
+])
+def test_normalize_oui_rejects_non_vendor_addresses(mac):
+    assert oui.normalize_oui(mac) is None
+
+
+# ── lookup_vendor against the REAL bundled table ──────────────────────────────
+
+def test_lookup_vendor_resolves_known_ieee_ouis():
+    assert "Espressif" in oui.lookup_vendor("D4:8A:FC:00:11:22")   # ESP32 vendor — CC's core domain
+    assert oui.lookup_vendor("F0:EE:7A:00:11:22") == "Apple, Inc."
+    assert oui.lookup_vendor("D8:3A:DD:00:11:22") == "Raspberry Pi Trading Ltd"
+
+
+def test_lookup_vendor_empty_for_unknown_and_randomized(monkeypatch):
+    assert oui.lookup_vendor("02:AA:BB:CC:DD:EE") == ""   # locally administered -> no vendor
+    assert oui.lookup_vendor("not-a-mac") == ""
+    monkeypatch.setattr(oui, "_table", {"D48AFC": "Espressif Inc."})
+    assert oui.lookup_vendor("3C:AB:CD:00:00:00") == ""   # valid OUI, just not in the table
+
+
+# ── BYO / refresh loaders (isolated table via monkeypatch) ──────────────────────
+
+def test_load_ieee_csv_merges_quoted_names_and_skips_private(monkeypatch):
+    monkeypatch.setattr(oui, "_table", {})  # isolate: don't touch the bundled table
+    csv_text = (
+        "Registry,Assignment,Organization Name,Organization Address\n"
+        'MA-L,3CAB01,"Acme, Inc.",1 Road City US\n'
+        "MA-L,3CAB02,Private,\n"
+        "MA-L,short,Bad Row,\n"
+    )
+    import tempfile
+    from pathlib import Path
+    f = Path(tempfile.mkdtemp()) / "oui.csv"
+    f.write_text(csv_text, encoding="utf-8")
+    added = oui.load_ieee_csv(f)
+    assert added == 1                                        # only the one valid, non-Private row
+    assert oui.lookup_vendor("3C:AB:01:00:00:00") == "Acme, Inc."   # comma-quoted name preserved
+    assert oui.lookup_vendor("3C:AB:02:00:00:00") == ""      # 'Private' skipped
+
+
+def test_load_manuf_merges_24bit_and_skips_sub_oui(monkeypatch):
+    monkeypatch.setattr(oui, "_table", {})
+    manuf = (
+        "# a comment line\n"
+        "08:AB:01\tAcmeShort\tAcme Corporation Long\n"
+        "08:AB:02/36\tSubBlock\n"          # a /36 MA-S block — must be skipped (we key on 24-bit)
+    )
+    import tempfile
+    from pathlib import Path
+    f = Path(tempfile.mkdtemp()) / "manuf"
+    f.write_text(manuf, encoding="utf-8")
+    added = oui.load_manuf(f)
+    assert added == 1
+    assert oui.lookup_vendor("08:AB:01:aa:bb:cc") == "AcmeShort"
+    assert oui.lookup_vendor("08:AB:02:aa:bb:cc") == ""      # the /36 sub-block was not merged
+
+
+# ── TargetIngestor wiring (real table, real ingestor path) ──────────────────────
+
+class _Ev:
+    def __init__(self, event_type: str, **data) -> None:
+        self.event_type = event_type
+        self.data = data
+
+
+class _Proto:
+    def __init__(self, ev: _Ev) -> None:
+        self._ev = ev
+
+    def parse_line(self, _line: str):
+        return self._ev
+
+
+class _Conn:
+    port = "COM7"
+
+    def on_line(self, _cb) -> None:  # attach registers here; test drives the returned cb directly
+        pass
+
+
+def _drive(ev: _Ev):
+    from src.core.cross_comm import EventBus, TargetPool
+    from src.core.target_ingest import TargetIngestor
+
+    pool = TargetPool(EventBus())
+    ing = TargetIngestor(pool)
+    cb = ing.attach(_Conn(), _Proto(ev))
+    cb("any raw line")   # -> parse_line -> _event_to_target -> vendor enrichment -> pool.add
+    return pool
+
+
+def test_ingest_populates_vendor_for_wifi_ap_from_oui():
+    pool = _drive(_Ev("ap_found", bssid="D4:8A:FC:10:20:30", ssid="Lab"))
+    (t,) = pool.all()
+    assert "Espressif" in t.vendor      # the Espressif AP now carries its vendor label
+
+
+def test_ingest_leaves_vendor_empty_for_randomized_mac():
+    pool = _drive(_Ev("ap_found", bssid="02:11:22:33:44:55", ssid="Rand"))
+    (t,) = pool.all()
+    assert t.vendor == ""               # a randomized privacy MAC must NOT get a fabricated vendor
+
+
+def test_ingest_preserves_preset_flock_vendor():
+    # An ALPR camera already carries "Flock Safety …"; the OUI enrichment must not overwrite it even
+    # though its MAC would otherwise resolve to Espressif.
+    pool = _drive(_Ev("alpr_found", mac="D4:8A:FC:10:20:30", ssid="cam"))
+    (t,) = pool.all()
+    assert t.vendor.startswith("Flock Safety")

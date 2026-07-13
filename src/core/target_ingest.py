@@ -13,8 +13,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Callable
 
+from src.core import oui
 from src.models.capture import CaptureRecord
 from src.models.target import Target, TargetType
+
+# Target types whose key is a real IEEE MAC, so an OUI→vendor lookup is meaningful. SubGHz (freq
+# key), NFC/RFID (tag serials) and ALPR (already carries a vendor) are excluded — a serial that
+# happened to be hex must never resolve to a phantom manufacturer.
+_MAC_TARGET_TYPES = (TargetType.AP, TargetType.CLIENT, TargetType.BLE)
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +62,9 @@ class TargetIngestor:
                 return
             target = self._event_to_target(ev, port)
             if target is not None:
+                if not target.vendor and target.target_type in _MAC_TARGET_TYPES:
+                    # OUI→vendor enrichment; "" for unknown / randomized MACs (never fabricated).
+                    target.vendor = oui.lookup_vendor(target.mac)
                 self._pool.add(target)  # publishes 'target.added' -> AutoRouter
             # Capture log — runs in addition to the target branch (a pcap_saved line has no Target
             # but still registers a capture). Only when a CaptureStore is given (the hub ingestor).
