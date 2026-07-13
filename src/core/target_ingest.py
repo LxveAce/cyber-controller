@@ -29,9 +29,14 @@ class TargetIngestor:
     """Bridges connected devices' serial output into a shared :class:`TargetPool` (and, when given a
     :class:`~src.core.capture_store.CaptureStore`, the shared capture log too)."""
 
-    def __init__(self, pool: Any, captures: Any = None) -> None:
+    def __init__(self, pool: Any, captures: Any = None, devices: Any = None) -> None:
         self._pool = pool
         self._captures = captures     # optional CaptureStore; None on the Devices-tab ingestor
+        # Optional device registry (has get_device(port) -> Device|None, e.g. DeviceManager).
+        # When given, a firmware that reports its own identity over serial (LxveOS status/info ->
+        # device_info) updates its Device's live identity + runtime caps. None -> dropped, as
+        # before (a device_info is neither a pool target nor a capture).
+        self._devices = devices
         self._attached: dict[str, Callable[[str], None]] = {}  # port -> on_line cb (for detach)
         self._parsers: dict[str, Any] = {}  # port -> protocol instance (command sink resets it)
         self._recent_capture: dict[str, str] = {}  # port -> last capture key (for pcap_saved)
@@ -72,6 +77,13 @@ class TargetIngestor:
                 cap = self._event_to_capture(ev, port)
                 if cap is not None:
                     self._captures.add(cap)  # publishes 'capture.added' -> Crack Lab Captures list
+            # Device identity — a firmware that reports itself over serial (LxveOS status/info ->
+            # device_info) refreshes its Device's live identity + runtime capabilities. Additive to
+            # the branches above (device_info is neither a target nor a capture). Only when a device
+            # registry was given; otherwise dropped, as before.
+            ev_type = getattr(ev, "event_type", "")
+            if self._devices is not None and ev_type == "device_info":
+                self._apply_device_info(ev, port)
 
         conn.on_line(on_line)
         self._attached[port] = on_line
@@ -123,6 +135,22 @@ class TargetIngestor:
             fn = getattr(parser, "reset_station_index", None)
             if callable(fn):
                 fn()
+
+    def _apply_device_info(self, ev: Any, port: str) -> None:
+        """Route a device_info event to the connected Device's live identity + runtime capabilities
+        (best-effort). The registry lookup and the Device update are each guarded so a bad line or
+        an exotic registry can never break serial ingestion."""
+        try:
+            dev = self._devices.get_device(port)
+        except Exception:
+            log.exception("TargetIngestor: device lookup failed on %s", port)
+            return
+        apply = getattr(dev, "apply_device_info", None)
+        if callable(apply):
+            try:
+                apply(getattr(ev, "data", {}) or {})
+            except Exception:
+                log.exception("TargetIngestor: apply_device_info failed on %s", port)
 
     @staticmethod
     def _event_to_target(ev: Any, port: str) -> Target | None:

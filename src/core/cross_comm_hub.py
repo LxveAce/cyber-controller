@@ -71,7 +71,7 @@ class CrossCommHub:
         # a scan on device A -> target.added -> AutoRouter -> a command on device B. The hub owns the one
         # instance everyone shares AND auto-attaches it to every connection the moment it opens (below).
         # It also feeds captured handshakes/PMKIDs into the shared capture log.
-        self.ingestor = TargetIngestor(self.pool, captures=self.captures)
+        self.ingestor = TargetIngestor(self.pool, captures=self.captures, devices=self.dm)
 
         # Attach the ingestor to EVERY connection the DeviceManager opens — Devices-tab Connect, Wardrive,
         # Broadcast, or an injected NodeLink — so a scan on ANY opened device feeds the pool, not only a

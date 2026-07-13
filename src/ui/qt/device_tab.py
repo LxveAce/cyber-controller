@@ -182,7 +182,9 @@ class DeviceTab(QWidget):
         self._recorder = recorder
         if self._pool is not None and self._ingestor is None:
             from src.core.target_ingest import TargetIngestor
-            self._ingestor = TargetIngestor(self._pool)
+            # Pass the DeviceManager so a device_info line (LxveOS status/info) updates the
+            # connected Device's runtime caps even on the standalone Devices-tab ingestor (no hub).
+            self._ingestor = TargetIngestor(self._pool, devices=self._dm)
         self._active_conn: SerialConnection | None = None
         self._active_port: str = ""
         self._dms_auth = None  # Optional DeadManAuth instance, set by main window

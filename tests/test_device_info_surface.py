@@ -1,0 +1,173 @@
+"""device_info surface — a firmware that reports its own identity over serial (LxveOS status/info)
+lands on the connected Device as live identity + RUNTIME capabilities.
+
+Before this, a parsed ``device_info`` event was dropped by the TargetIngestor (only ap_found/
+client_found/captures were consumed), so LxveOS — which reports its radios at runtime via the
+status line's ``caps=`` bitmask rather than a static per-firmware map — surfaced no capabilities
+at all. These tests cover the model consumer (Device.apply_device_info, runtime-aware
+capabilities) and the ingestor wire, end-to-end through the real hub over the verbatim COM23 output.
+"""
+from __future__ import annotations
+
+from src.models.device import Device
+from src.protocols.lxveos import LxveOSProtocol
+
+# Verbatim COM23 captures (LxveOS 0.1.0-m0, bare_esp32_headless) — as in the protocol tests.
+_STATUS = (
+    "LXVEOS/1 status board=bare_esp32_headless chip=esp32 ui=headless fw=0.1.0-m0 "
+    "panel=none caps=0x007 ops=12/3/6 heap=184988"
+)
+_INFO = [
+    "fw    : LxveOS 0.1.0-m0", "board : bare_esp32_headless", "chip  : esp32", "ui    : headless",
+]
+
+
+def _status_data() -> dict:
+    """The parsed device_info data for the real status line, straight from the real parser."""
+    return LxveOSProtocol().parse_line(_STATUS).data
+
+
+class _FakeConn:
+    """Minimal SerialConnection stand-in: records on_line callbacks and feeds lines (matches
+    test_target_ingest._FakeConn)."""
+
+    def __init__(self, port: str) -> None:
+        self.port = port
+        self._cbs: list = []
+
+    def on_line(self, cb) -> None:
+        self._cbs.append(cb)
+
+    def feed(self, line: str) -> None:
+        for cb in list(self._cbs):
+            cb(line)
+
+
+class _FakeDM:
+    """Minimal device registry: get_device(port) -> Device|None (all the ingestor needs)."""
+
+    def __init__(self, devices: dict) -> None:
+        self._devices = devices
+
+    def get_device(self, port: str):
+        return self._devices.get(port)
+
+
+# ── Device model consumer ────────────────────────────────────────────
+
+def test_apply_device_info_from_status_sets_runtime_caps_and_telemetry():
+    dev = Device(port="COM23", firmware="lxveos")
+    assert dev.runtime_capabilities == frozenset()
+    assert dev.capabilities == frozenset()  # static lxveos map declares none (caps are runtime)
+
+    changed = dev.apply_device_info(_status_data())
+    assert changed is True
+    # Runtime capabilities decoded from the real caps=0x007 bitmask.
+    assert dev.runtime_capabilities == frozenset({"wifi", "ble", "bt_classic"})
+    # capabilities now reflects what the board actually reported (was empty from the static map).
+    assert dev.capabilities == frozenset({"wifi", "ble", "bt_classic"})
+    # Live telemetry snapshot — identity + the ops/heap the status line carried.
+    assert dev.telemetry["fw"] == "0.1.0-m0"
+    assert dev.telemetry["board"] == "bare_esp32_headless"
+    assert dev.telemetry["chip"] == "esp32"
+    assert dev.telemetry["ui"] == "headless"
+    assert dev.telemetry["panel"] == "none"
+    assert dev.telemetry["ops"] == {"ready": 12, "planned": 3, "unavailable": 6}
+    assert dev.telemetry["heap"] == 184988
+    assert dev.telemetry["proto_version"] == 1
+    # The raw bitmask + decoded tokens are NOT duplicated into telemetry (they drive runtime caps).
+    assert "caps" not in dev.telemetry and "caps_tokens" not in dev.telemetry
+
+
+def test_capabilities_prefers_runtime_over_static():
+    # A firmware WITH a non-empty static map, then a device_info arrives: the runtime-reported
+    # set must win, so a device is described by what it actually said over the wire.
+    dev = Device(port="COM4", firmware="marauder")
+    assert dev.capabilities  # marauder declares static capabilities
+    dev.apply_device_info({"caps_tokens": ["only_runtime"]})
+    assert dev.capabilities == frozenset({"only_runtime"})
+
+
+def test_apply_device_info_from_info_block_fills_identity_without_caps():
+    # The 4-line info block carries identity but no caps= bitmask -> telemetry fills, runtime caps
+    # untouched (a capability-less report must not clear an already-known set).
+    p = LxveOSProtocol()
+    for line in _INFO[:-1]:
+        p.parse_line(line)
+    ev = p.parse_line(_INFO[-1])  # closing `ui :` emits the device_info
+    dev = Device(port="COM23", firmware="lxveos")
+    dev.runtime_capabilities = frozenset({"wifi"})  # pretend a prior status set this
+    changed = dev.apply_device_info(ev.data)
+    assert changed is True
+    assert dev.telemetry["board"] == "bare_esp32_headless" and dev.telemetry["fw"] == "0.1.0-m0"
+    assert dev.runtime_capabilities == frozenset({"wifi"})  # not cleared by a caps-less info block
+
+
+def test_apply_device_info_is_idempotent_and_rejects_non_dict():
+    dev = Device(port="COM23", firmware="lxveos")
+    assert dev.apply_device_info(_status_data()) is True
+    assert dev.apply_device_info(_status_data()) is False   # nothing changed the second time
+    assert dev.apply_device_info(None) is False             # tolerant of a non-dict
+    assert dev.apply_device_info("nope") is False
+
+
+def test_device_info_round_trips_through_dict():
+    dev = Device(port="COM23", firmware="lxveos")
+    dev.apply_device_info(_status_data())
+    restored = Device.from_dict(dev.to_dict())
+    assert restored.runtime_capabilities == frozenset({"wifi", "ble", "bt_classic"})
+    assert restored.telemetry["heap"] == 184988
+    assert restored.capabilities == frozenset({"wifi", "ble", "bt_classic"})
+
+
+# ── TargetIngestor wire ──────────────────────────────────────────────
+
+def test_ingestor_routes_device_info_to_the_ports_device():
+    from src.core.target_ingest import TargetIngestor
+
+    dev = Device(port="COM23", firmware="lxveos")
+    ingest = TargetIngestor(pool=_NullPool(), devices=_FakeDM({"COM23": dev}))
+    conn = _FakeConn("COM23")
+    ingest.attach(conn, LxveOSProtocol())
+    conn.feed(_STATUS)  # a real status line over the wire
+    assert dev.runtime_capabilities == frozenset({"wifi", "ble", "bt_classic"})
+    assert dev.telemetry["heap"] == 184988
+
+
+def test_ingestor_without_a_registry_drops_device_info_safely():
+    # Backward compat: the Targets-only ingestor (no device registry) must ignore a device_info
+    # line without error and without inventing a pool target.
+    from src.core.target_ingest import TargetIngestor
+
+    pool = _NullPool()
+    ingest = TargetIngestor(pool=pool)  # devices defaults to None
+    conn = _FakeConn("COM23")
+    ingest.attach(conn, LxveOSProtocol())
+    conn.feed(_STATUS)  # must not raise
+    assert pool.added == []  # a status line is not a Target
+
+
+def test_cross_comm_hub_end_to_end_populates_device_runtime_caps():
+    # The real path: DeviceManager opens a link -> CrossCommHub auto-attaches its ingestor (wired
+    # with devices=self.dm) -> a real LxveOS status line refreshes the Device's runtime caps.
+    from src.core.cross_comm_hub import CrossCommHub
+    from src.core.device_manager import DeviceManager
+
+    dm = DeviceManager()
+    CrossCommHub(dm)  # subscribes to on_connection_opened, wires the ingestor with devices=dm
+    dev = Device(port="COM23", name="LxveOS board", firmware="lxveos")
+    conn = _FakeConn("COM23")
+    dm.attach_connection(dev, conn)  # fires the hook -> hub attaches the lxveos-parsing ingestor
+    conn.feed(_STATUS)
+    assert dev.runtime_capabilities == frozenset({"wifi", "ble", "bt_classic"})
+    assert dev.capabilities == frozenset({"wifi", "ble", "bt_classic"})
+
+
+class _NullPool:
+    """A pool that records adds; a device_info never produces one, which these tests assert."""
+
+    def __init__(self) -> None:
+        self.added: list = []
+
+    def add(self, target) -> None:
+        self.added.append(target)

@@ -74,10 +74,44 @@ class Device:
     #   "no-cli"   -- driver_type is stream/controlmap, so there is no text CLI to probe (honest, not a failure)
     health: str = "unknown"
     fw_banner: str = ""  # an identifying line captured from the probe reply (best-effort)
+    # Capabilities the firmware reports about ITSELF at runtime over serial (a `device_info` event —
+    # e.g. LxveOS's `status` line `caps=` bitmask, decoded to tokens), as opposed to the static
+    # per-firmware map below. LxveOS reports its real radios at runtime, so a headless build that
+    # statically declares nothing still surfaces wifi/ble once spoken. Empty until one lands.
+    runtime_capabilities: "frozenset[str]" = frozenset()
+    #: Live device telemetry from the same device_info (fw version, board, chip, ui, panel, the
+    #: ready/planned/unavailable ops tally, free heap). Display-only; refreshed on each device_info.
+    telemetry: dict = field(default_factory=dict)
+
+    #: device_info keys kept as telemetry — identifying status-line fields EXCEPT the
+    #: raw caps bitmask + its decoded tokens (those drive runtime_capabilities instead).
+    _TELEMETRY_KEYS = ("fw", "board", "chip", "ui", "panel", "ops", "heap", "proto_version")
 
     def __post_init__(self) -> None:
         if not self.name:
             self.name = f"Device@{self.port}"
+
+    def apply_device_info(self, data: dict) -> bool:
+        """Absorb a parsed ``device_info`` event's data — from a firmware reporting its identity
+        over serial (e.g. LxveOS ``status``/``info``). Sets :attr:`runtime_capabilities` from the
+        decoded ``caps_tokens`` and refreshes :attr:`telemetry` (fw/board/chip/ui/panel/ops/heap).
+        Returns True if anything changed. Tolerant: absent keys are skipped, so both the rich
+        ``status`` line and the smaller ``info`` block are accepted, and a firmware that reports no
+        capabilities leaves ``runtime_capabilities`` untouched rather than clearing it."""
+        if not isinstance(data, dict):
+            return False
+        changed = False
+        tokens = data.get("caps_tokens")
+        if isinstance(tokens, (list, tuple, set, frozenset)):
+            new_caps = frozenset(str(t) for t in tokens)
+            if new_caps != self.runtime_capabilities:
+                self.runtime_capabilities = new_caps
+                changed = True
+        for key in self._TELEMETRY_KEYS:
+            if key in data and self.telemetry.get(key) != data[key]:
+                self.telemetry[key] = data[key]
+                changed = True
+        return changed
 
     @property
     def display_name(self) -> str:
@@ -91,7 +125,13 @@ class Device:
         """Capability tokens this node's firmware supports (wifi / ble / subghz / nfc / ir / gps / lora / …).
         A read-only view over the protocol capability map, so a connected device can be treated as a node with
         known abilities (network view + Broadcast/AutoRouter applicability). Empty for an unknown firmware or
-        one that declares none. The firmware identifier is the lookup key; the protocol enum is the fallback."""
+        one that declares none. The firmware identifier is the lookup key; the protocol enum is the fallback.
+
+        Prefers the firmware's RUNTIME-reported capabilities when a device_info has landed
+        (:attr:`runtime_capabilities`) — a board reporting its radios over serial (LxveOS) is
+        described by what it actually said, not by a static map that may declare nothing for it."""
+        if self.runtime_capabilities:
+            return self.runtime_capabilities
         from src.protocols import (
             capabilities_for,  # lazy: keep models independent of the protocols package
         )
@@ -126,6 +166,9 @@ class Device:
             "tags": self.tags,
             "health": self.health,
             "fw_banner": self.fw_banner,
+            # frozenset isn't JSON-serializable; persist as a sorted list, restored in from_dict.
+            "runtime_capabilities": sorted(self.runtime_capabilities),
+            "telemetry": dict(self.telemetry),
         }
 
     @classmethod
@@ -134,4 +177,7 @@ class Device:
         data = dict(data)
         data["protocol"] = Protocol(data.get("protocol", "unknown"))
         data["board_type"] = BoardType(data.get("board_type", "unknown"))
+        # runtime_capabilities round-trips through a list (see to_dict) -> back to a frozenset.
+        if "runtime_capabilities" in data:
+            data["runtime_capabilities"] = frozenset(data["runtime_capabilities"])
         return cls(**data)
