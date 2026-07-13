@@ -253,11 +253,13 @@ class DeviceTab(QWidget):
         fw_row.addWidget(self._firmware_combo, stretch=1)
         left_layout.addLayout(fw_row)
 
-        # Capability chips — surface what the selected firmware/board can do (this device's "node" role in
-        # the network). Driven off BaseProtocol.capabilities; updated when the firmware selection changes.
+        # Capability chips — this node's role in the network. Prefers a connected device's RUNTIME
+        # caps (a LxveOS status/info line updates them live) over the firmware's static map; refreshed
+        # on firmware change AND per incoming line (see _on_line_received).
         self._caps_label = QLabel("")
         self._caps_label.setObjectName("caps_label")
         self._caps_label.setWordWrap(True)
+        self._caps_label.setTextFormat(Qt.RichText)  # capN tokens render muted/distinct
         self._caps_label.setStyleSheet("color:#8b949e;font-size:11px;")
         left_layout.addWidget(self._caps_label)
         self._update_capabilities()
@@ -879,17 +881,46 @@ class DeviceTab(QWidget):
         self._update_capabilities()
 
     def _update_capabilities(self) -> None:
-        """Show the selected firmware's capability tokens (its 'node' role) as a chip line in the Devices
-        tab. Empty for firmwares that declare none (e.g. generic/raw)."""
+        """Show the active node's capability tokens (its 'node' role) as a chip line. Prefers a
+        connected device's RUNTIME-reported caps (a LxveOS status/info line updates them live) over
+        the firmware's static map. Cheap per line: re-renders only when the caps set changes."""
         if not hasattr(self, "_caps_label"):
             return
+        caps = self._current_capabilities()
+        key = tuple(caps)
+        if key == getattr(self, "_last_caps_key", None):
+            return
+        self._last_caps_key = key
+        self._caps_label.setText(self._caps_chip_html(caps))
+
+    def _current_capabilities(self) -> list:
+        """Sorted capability tokens for the active node: the connected device's runtime capabilities
+        when it reported any (device_info), else the selected firmware's static capability map."""
+        port = getattr(self, "_active_port", "")
+        dev = self._dm.get_device(port) if port else None
+        runtime = getattr(dev, "runtime_capabilities", None) if dev is not None else None
+        if runtime:
+            return sorted(runtime)
         try:
-            caps = sorted(getattr(self._selected_protocol(), "capabilities", frozenset()))
+            return sorted(getattr(self._selected_protocol(), "capabilities", frozenset()))
         except Exception:  # noqa: BLE001
-            caps = []
-        self._caps_label.setText(
-            ("Capabilities: " + "  ·  ".join(c.upper() for c in caps)) if caps else ""
-        )
+            return []
+
+    @staticmethod
+    def _caps_chip_html(caps: list) -> str:
+        """Render the caps line. Named slugs show upper-cased; an unknown future-bit token (``capN``,
+        a firmware bit CC has no slug for yet) shows muted + labelled 'unknown cap N', so an M1
+        capability the firmware lights up reads as visibly new rather than a cryptic code."""
+        if not caps:
+            return ""
+        chips = []
+        for c in caps:
+            if c.startswith("cap") and c[3:].isdigit():
+                chips.append(f'<span style="color:#6e7681;font-style:italic;">'
+                             f'unknown cap {html.escape(c[3:])}</span>')
+            else:
+                chips.append(html.escape(c.upper()))
+        return "Capabilities: " + "  ·  ".join(chips)
 
     def _apply_line_ending(self) -> None:
         """Apply the selected firmware's command terminator to the live connection (Flipper needs CR; most
@@ -1288,6 +1319,12 @@ class DeviceTab(QWidget):
         # (mightBeRichText), so escape it -- otherwise a board emitting <b>/<img>/<span> spoofs the
         # terminal (command-echo/output injection on a security tool).
         self._terminal.append(html.escape(line))
+        # A device_info line (LxveOS status/info) may have just updated this port's Device runtime
+        # caps via the ingestor (which ran first, on the serial thread, before this queued Qt slot).
+        # Refresh the caps chip line to match. _update_capabilities self-guards on an unchanged caps
+        # set, so calling it per line is cheap.
+        if port == getattr(self, "_active_port", ""):
+            self._update_capabilities()
 
     # ── Command palette ──────────────────────────────────────────────
 
