@@ -16,6 +16,8 @@ import pytest
 
 pytest.importorskip("flask")
 
+from flask import session
+
 import src.ui.web.app as webapp
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
@@ -105,3 +107,55 @@ def test_command_rejected_while_port_is_flashing(monkeypatch):
     resp = _csrf(_client(dm, fe), "/api/command", {"port": "COM5", "command": "help"})
     assert resp.status_code == 409
     assert "busy" in resp.get_json()["error"].lower()
+
+
+def _capture_socket_handlers(monkeypatch) -> dict:
+    """Stash the raw ``@socketio.on`` closures by name so we can drive one directly (SocketIO.on's
+    decorator returns the original handler, so we wrap it to capture the reference)."""
+    captured: dict = {}
+    orig_on = webapp.SocketIO.on
+
+    def patched_on(self, message, namespace=None):
+        deco = orig_on(self, message, namespace=namespace)
+
+        def capturing(handler):
+            captured[message] = handler
+            return deco(handler)
+
+        return capturing
+
+    monkeypatch.setattr(webapp.SocketIO, "on", patched_on)
+    return captured
+
+
+def test_ws_send_command_rejected_while_port_is_flashing(monkeypatch):
+    # The interactive /terminal Socket.IO path must refuse to write mid-flash, like its HTTP twin
+    # /api/command — a stray byte during esptool can brick the board.
+    captured = _capture_socket_handlers(monkeypatch)
+    emits: list = []
+    monkeypatch.setattr(webapp, "emit", lambda ev, payload=None, **k: emits.append(payload))
+
+    writes: list = []
+
+    class _Conn:
+        is_connected = True
+
+        def write(self, data):  # must never be reached while the port is flashing
+            writes.append(data)
+
+    dm = DeviceManager()
+    dm.add_device(Device(port="COM5", name="Marauder", firmware="marauder", connected=True))
+    monkeypatch.setattr(dm, "get_connection", lambda p: _Conn() if p == "COM5" else None)
+    fe = FlashEngine()
+    monkeypatch.setattr(fe, "is_port_busy", lambda port: port == "COM5")
+
+    app, _sio = webapp.create_app(dm, fe, EventBus(), TargetPool())
+    send_command = captured["send_command"]
+
+    with app.test_request_context(environ_base={"REMOTE_ADDR": "10.0.0.1"}):
+        session["authenticated"] = True
+        send_command({"port": "COM5", "command": "help"})
+
+    assert writes == []  # the guard returned before any byte hit the UART
+    busy = [p for p in emits if p and "busy" in str(p.get("line", "")).lower()]
+    assert busy and busy[0]["port"] == "COM5"  # operator saw the busy notice, not a silent drop

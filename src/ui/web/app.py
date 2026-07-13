@@ -824,6 +824,11 @@ def create_app(
         if not _known_port(port):
             emit("serial_output", {"port": port, "line": f"[Unknown port {port}]"})
             return
+        # Never push operator bytes onto a UART esptool is mid-flash on — a stray write can
+        # brick the board. Mirrors the /api/command 409 guard; /terminal needs the same shield.
+        if flash_engine.is_port_busy(port):
+            emit("serial_output", {"port": port, "line": f"[Port {port} is busy with a flash]"})
+            return
         conn = device_manager.get_connection(port)
         if conn and conn.is_connected:
             try:
