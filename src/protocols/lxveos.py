@@ -44,6 +44,27 @@ _RE_INFO_UI = re.compile(r"^ui\s*:\s*(\S+)\s*$")
 # The linenoise REPL prompt.
 _RE_PROMPT = re.compile(r"^lxveos>\s*$")
 
+# LxveOS capability bitmask -> slug, in the EXACT bit order of the firmware's `lxveos_cap_t` enum
+# (components/lxveos_caps: WIFI=bit0, BLE=1, BT_CLASSIC=2, DISPLAY=3, STORAGE=4, GPS=5, IR=6,
+# SUBGHZ=7, NRF24=8, NFC=9). These are the exact slugs `lxveos_cap_name()` calls the "CC bridge"
+# names. Verified against the source AND a live board (COM23 caps=0x007 -> wifi/ble/bt_classic).
+_CAP_SLUGS = (
+    "wifi", "ble", "bt_classic", "display", "storage", "gps", "ir", "subghz", "nrf24", "nfc",
+)
+
+
+def _decode_caps(mask: int) -> list[str]:
+    """Expand the ``caps`` bitmask into capability slugs (firmware bit order). A set bit beyond the
+    known range is surfaced as ``capN`` rather than dropped, so a future M1 capability the firmware
+    reports isn't silently lost (same forward-compat posture as the unknown-status-key handling)."""
+    out = []
+    bit = 0
+    while (1 << bit) <= mask:
+        if mask & (1 << bit):
+            out.append(_CAP_SLUGS[bit] if bit < len(_CAP_SLUGS) else f"cap{bit}")
+        bit += 1
+    return out
+
 
 def _coerce_status_field(key: str, val: str):
     """Type the known ``status`` fields; leave any unknown (future) key as a raw string."""
@@ -96,6 +117,9 @@ class LxveOSProtocol(BaseProtocol):
             data = {"proto_version": int(m.group(1)), "source": "status_line"}
             for key, val in _RE_KV.findall(m.group(2)):
                 data[key] = _coerce_status_field(key, val)
+            # Decode the raw caps bitmask into capability slugs (only if it parsed to an int).
+            if isinstance(data.get("caps"), int):
+                data["caps_tokens"] = _decode_caps(data["caps"])
             return ParsedEvent(event_type="device_info", data=data, raw=line)
 
         # Multi-line `info` output. Fields arrive on separate lines; accumulate and emit one

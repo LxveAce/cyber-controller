@@ -12,7 +12,7 @@ import types
 
 from src.core.handshake import DEFAULT_PROBE_COMMANDS, detect_firmware, learn_vocabulary
 from src.protocols import get_protocol, resolve_protocol_name
-from src.protocols.lxveos import LxveOSProtocol
+from src.protocols.lxveos import LxveOSProtocol, _decode_caps
 
 # verbatim COM23 captures
 _STATUS = (
@@ -49,8 +49,27 @@ def test_status_bridge_line_parses_with_typed_fields():
     assert d["board"] == "bare_esp32_headless" and d["chip"] == "esp32" and d["ui"] == "headless"
     assert d["fw"] == "0.1.0-m0" and d["panel"] == "none"
     assert d["caps"] == 0x007 and isinstance(d["caps"], int)  # hex bitmask -> int
+    assert d["caps_tokens"] == ["wifi", "ble", "bt_classic"]  # decoded from the live COM23 mask
     assert d["ops"] == {"ready": 12, "planned": 3, "unavailable": 6}
     assert d["heap"] == 184988 and isinstance(d["heap"], int)
+
+
+def test_caps_bitmask_decodes_in_firmware_bit_order():
+    # Bit order is the firmware's lxveos_cap_t enum (lxveos_caps): wifi=0 ble=1 bt_classic=2
+    # display=3 storage=4 gps=5 ir=6 subghz=7 nrf24=8 nfc=9. Locked so a bit-order drift is caught.
+    assert _decode_caps(0x000) == []
+    assert _decode_caps(0x007) == ["wifi", "ble", "bt_classic"]
+    assert _decode_caps(0x0a0) == ["gps", "subghz"]
+    assert _decode_caps(0x3ff) == [
+        "wifi", "ble", "bt_classic", "display", "storage", "gps", "ir", "subghz", "nrf24", "nfc",
+    ]
+
+
+def test_caps_decode_surfaces_unknown_future_bits():
+    # A set bit beyond the known M0 range must be surfaced (capN), not dropped — an M1 capability
+    # firmware reports can't silently vanish from the operator's view.
+    assert _decode_caps(0x400) == ["cap10"]
+    assert _decode_caps(0x401) == ["wifi", "cap10"]
 
 
 def test_status_tolerates_unknown_future_keys():
