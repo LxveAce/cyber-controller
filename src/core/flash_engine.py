@@ -449,7 +449,18 @@ class FlashEngine:
             return False
         variant = self._resolve_variant(core, assets, chip, profile.variant, on_line)
         if not variant:
-            on_line(f"[error] no firmware asset for chip {chip} in the {core_id} release")
+            # Source-only firmwares (resolver_params.on_error == "source_only_empty") publish
+            # releases with NO prebuilt binaries — a successful fetch legitimately yields an empty
+            # asset list. Say that honestly instead of the generic "no asset for chip", which reads
+            # like a wrong-chip/bug rather than "nothing to download". 9 profiles are source-only
+            # (halehound, minigotchi, flock_you, …). Only when the whole list is empty — a non-empty
+            # list with no match for THIS chip is a real chip gap, keep the generic message.
+            rp = profile.raw.get("resolver_params") or {}
+            if not assets and rp.get("on_error") == "source_only_empty":
+                on_line(f"[error] {core_id} publishes no prebuilt firmware binaries (source-only) "
+                        "— build it from source; there is nothing for the flasher to download")
+            else:
+                on_line(f"[error] no firmware asset for chip {chip} in the {core_id} release")
             return False
 
         cache = flash_core.cache_dir()
