@@ -975,13 +975,38 @@ class CyberControllerWindow(QMainWindow):
         self._pterm_port_colors[port] = color
         return color
 
+    @staticmethod
+    def _resolve_pterm_connect_ports(
+        checked: "list[str]", listed: "list[str]"
+    ) -> "tuple[list[str], str | None]":
+        """Ports a persistent-terminal (bottom-left) Connect click should open.
+
+        Ticked devices win. If NONE are ticked, fall back to the sole listed device so the button
+        works without a manual pre-tick — the owner-reported "bottom-left Connect still doesn't
+        work" was exactly this: Connect no-opped on an empty check-selection (v1.7.1 fixed the
+        *Devices-tab* buttons, not these). Disconnect already fell back to "all connected"; Connect
+        did not. With zero or several listed devices, connect nothing and return a message
+        (auto-connecting ALL on an empty selection opens ports the user didn't intend)."""
+        if checked:
+            return checked, None
+        if len(listed) == 1:
+            return listed, None
+        if not listed:
+            return [], "No devices -- plug one in or use Scan Ports first"
+        return [], "Multiple devices -- tick the one(s) to connect, then Connect"
+
     def _pterm_on_connect(self) -> None:
-        """Connect the persistent terminal to all checked ports."""
-        ports = self._pterm_checked_ports()
-        if not ports:
-            self._pterm_output.append(
-                '<span style="color:#f85149;">[No devices checked -- check one or more devices]</span>'
-            )
+        """Connect the persistent terminal to the checked ports (or the sole listed device when
+        nothing is ticked — see :meth:`_resolve_pterm_connect_ports`)."""
+        listed = [
+            self._pterm_device_list.item(i).data(Qt.UserRole)
+            for i in range(self._pterm_device_list.count())
+        ]
+        ports, msg = self._resolve_pterm_connect_ports(
+            self._pterm_checked_ports(), [p for p in listed if p]
+        )
+        if msg is not None:
+            self._pterm_output.append(f'<span style="color:#f85149;">[{msg}]</span>')
             return
         for port in ports:
             existing = self._pterm_conns.get(port)

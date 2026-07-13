@@ -259,11 +259,21 @@ class TargetsTab(QWidget):
 
         root.addWidget(self._table, stretch=1)
 
-        # Empty-state guidance — shown while the pool has no targets.
-        self._empty_hint = QLabel(
+        # Empty-state guidance — shown while the pool has no targets. The text adapts: a fresh
+        # session points the user at how to scan; right after a Clear it says the pool was emptied
+        # on purpose (so the owner-reported "the clear persists" reads as INTENTIONAL, not a stuck
+        # list) and that a fresh scan repopulates it — the data path re-adds re-observed APs
+        # (verified). Clear is a session wipe by design (tooltip: "affects all tabs").
+        self._HINT_NEVER_SCANNED = (
             "No targets yet — run a scan from Operate ▸ Broadcast, or send a scan command "
             "on the Devices tab. Discovered targets land here in the shared pool."
         )
+        self._HINT_AFTER_CLEAR = (
+            "Targets cleared — the shared pool was emptied on purpose (this affects all tabs). "
+            "Run a scan again and discovered targets will repopulate here."
+        )
+        self._cleared_empty = False  # True after a Clear until new targets arrive; picks the hint
+        self._empty_hint = QLabel(self._HINT_NEVER_SCANNED)
         self._empty_hint.setObjectName("muted")
         self._empty_hint.setWordWrap(True)
         root.addWidget(self._empty_hint)
@@ -278,7 +288,13 @@ class TargetsTab(QWidget):
             self._bus.subscribe(topic, self._bus_callback)
 
     def _bus_callback(self, _topic: str, _payload: dict[str, Any]) -> None:
-        """EventBus callback (any thread) — request a GUI-thread refresh."""
+        """EventBus callback (any thread) — track clear-vs-repopulate for the empty hint, then ask
+        for a GUI-thread refresh. A ``target.cleared`` means the empty state is a deliberate wipe;
+        the first ``target.added`` after means a scan is repopulating, so restore that hint."""
+        if _topic == "target.cleared":
+            self._cleared_empty = True
+        elif _topic == "target.added":
+            self._cleared_empty = False
         self._bridge.changed.emit()
 
     # ── Refresh ──────────────────────────────────────────────────────
@@ -320,8 +336,12 @@ class TargetsTab(QWidget):
             self._table.setItem(row, 7, seen_item)
         self._table.setSortingEnabled(True)
 
+        empty = len(targets) == 0
         self._count_label.setText(f"{len(targets)} target{'s' if len(targets) != 1 else ''}")
-        self._empty_hint.setVisible(len(targets) == 0)
+        self._empty_hint.setText(
+            self._HINT_AFTER_CLEAR if self._cleared_empty else self._HINT_NEVER_SCANNED
+        )
+        self._empty_hint.setVisible(empty)
 
         # Re-apply search + Live-view filter (the 3s safety-net timer also ages Live-view rows out here).
         self._apply_filter()
@@ -372,6 +392,7 @@ class TargetsTab(QWidget):
             QMessageBox.Yes | QMessageBox.No,
         )
         if reply == QMessageBox.Yes:
+            self._cleared_empty = True  # target.cleared sets it too; set here for an async bus
             self._pool.clear()
             self._refresh()
 
