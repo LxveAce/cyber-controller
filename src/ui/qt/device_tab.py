@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import threading
+from collections import deque
 
 from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor
@@ -83,25 +84,76 @@ class _ProbeSignal(QObject):
     probe_done = pyqtSignal(str)  # port whose probe just finished
 
 
-class _BjActionWorker(QThread):
-    """Run a BlueJammer controller op (STOP / arm) off the GUI thread. The op does a blocking HTTP call
-    (urlopen timeout=4) to the device web UI; running it in the clicked-slot froze the whole UI — worst of
-    all on the safety STOP button. The action closure returns the exact status string to display (it catches
-    its own ControlUnavailable/PermissionError so the message matches); the result is delivered to the GUI
-    thread via the queued ``done`` signal."""
+class _BjCommandQueue(QThread):
+    """Serialize BlueJammer control ops (arm / STOP) through ONE long-lived worker draining a FIFO, so
+    press-order == device-order.
 
-    done = pyqtSignal(str)
+    Each op does a blocking HTTP call (urlopen timeout=4) to the device web UI; running it in the
+    clicked-slot froze the whole UI — worst of all on the safety STOP. The *earlier* fix offloaded each
+    press to its own QThread, which unfroze the UI but removed all ordering: a fast STOP after a slow
+    Arm could reach the device AFTER the arm, leaving a jammer emitting while the label read stale
+    (audit §F2). This restores ordering without re-blocking the UI:
 
-    def __init__(self, action) -> None:
+    * one worker drains a FIFO — ops leave in the exact order they were enqueued;
+    * **STOP is never dropped by an in-flight guard** — it purges any queued not-yet-started Arm (a
+      later STOP supersedes a pending Arm) and enqueues itself, so the device deterministically ends
+      Idle. STOP stays dispatchable at all times;
+    * each op carries a monotonic id; the GUI only shows a result that is still the newest op, so an
+      Arm that a later STOP overtook can't overwrite the label with a stale 'Armed'.
+
+    The action closure returns the exact status string to display (it catches its own
+    ControlUnavailable/PermissionError so the message matches); results/‘busy’ transitions reach the
+    GUI thread via queued signals. :meth:`request_stop` + a bounded ``wait`` on close abandons any
+    queued (not-yet-started) op and joins the in-flight one."""
+
+    done = pyqtSignal(int, str)        # (op_id, result_text) — delivered on the GUI thread
+    busy_changed = pyqtSignal(bool)    # True while an op is queued/running (Arm buttons disabled)
+
+    def __init__(self) -> None:
         super().__init__()
-        self._action = action
+        self._cond = threading.Condition()
+        self._deque: "deque" = deque()   # (op_id, kind, action); kind in {"arm", "stop"}
+        self._processing = False
+        self._stopping = False
+
+    def _busy_locked(self) -> bool:
+        return self._processing or bool(self._deque)
+
+    def enqueue(self, op_id: int, kind: str, action) -> None:
+        """Append an op. A STOP first drops any queued not-yet-started Arm (it supersedes them) so the
+        device can't be left armed by an Arm sitting behind the STOP; STOP itself is always kept."""
+        with self._cond:
+            if kind == "stop":
+                self._deque = deque(op for op in self._deque if op[1] == "stop")
+            self._deque.append((op_id, kind, action))
+            busy = self._busy_locked()
+            self._cond.notify_all()
+        self.busy_changed.emit(busy)
+
+    def request_stop(self) -> None:
+        """Ask the worker to exit after the in-flight op (if any); abandons queued not-yet-started ops."""
+        with self._cond:
+            self._stopping = True
+            self._cond.notify_all()
 
     def run(self) -> None:
-        try:
-            msg = self._action()
-        except Exception as exc:  # noqa: BLE001 — a worker exception must never abort the app
-            msg = f"BlueJammer action failed: {exc}"
-        self.done.emit(msg)
+        while True:
+            with self._cond:
+                while not self._deque and not self._stopping:
+                    self._cond.wait()
+                if self._stopping:
+                    return
+                op_id, _kind, action = self._deque.popleft()
+                self._processing = True
+            try:
+                result = action()
+            except Exception as exc:  # noqa: BLE001 — a worker exception must never abort the app
+                result = f"BlueJammer action failed: {exc}"
+            with self._cond:
+                self._processing = False
+                busy = self._busy_locked()
+            self.done.emit(op_id, result)
+            self.busy_changed.emit(busy)
 
 
 class DeviceTab(QWidget):
@@ -246,7 +298,12 @@ class DeviceTab(QWidget):
         # Operating a jammer outside an authorized, shielded, lawful context is illegal (47 U.S.C. §333).
         self._bj_map: ControlMap = ControlMap()
         self._bj_controller: "BlueJammerController | None" = None
-        self._bj_workers: "list[_BjActionWorker]" = []  # in-flight STOP/arm workers (kept alive, joined on close)
+        # One long-lived worker serializes every arm/STOP so press-order == device-order (audit §F2).
+        # Lazily created on first op; joined on close. `_bj_op_seq` tags each op so only the newest
+        # op's result may write the status label; `_bj_queue_busy` disables Arm while an op is pending.
+        self._bj_queue: "_BjCommandQueue | None" = None
+        self._bj_op_seq: int = 0
+        self._bj_queue_busy: bool = False
         self._bj_panel = QFrame()
         self._bj_panel.setObjectName("card")
         self._bj_panel.setStyleSheet("QFrame#card{border:1px solid #f0883e;background:rgba(240,136,62,0.09);}")
@@ -873,26 +930,37 @@ class DeviceTab(QWidget):
     def _bj_on_event(self, kind: str, mode: "Mode", transport: str) -> None:
         self._terminal.append(f"[BlueJammer {kind}: {mode.value} via {transport}]")
 
-    def _bj_run_async(self, action, pending_text: str) -> None:
-        """Run a BlueJammer controller op off the GUI thread and show its result in the status label.
+    def _bj_ensure_queue(self) -> "_BjCommandQueue":
+        """Lazily create + start the single serializing worker (see :class:`_BjCommandQueue`)."""
+        q = self._bj_queue
+        if q is None:
+            q = _BjCommandQueue()
+            q.done.connect(self._bj_on_result)            # queued (cross-thread) -> GUI thread
+            q.busy_changed.connect(self._bj_on_queue_busy)
+            self._bj_queue = q
+            q.start()
+        return q
 
-        The controller op does a blocking HTTP call (urlopen timeout=4) to the device web UI; running it in
-        the clicked-slot froze the whole UI for up to 4s — the opposite of what a safety STOP should do.
-        Offloading to a QThread keeps the event loop live. A ref to the worker is kept until it finishes so
-        its unparented QThread isn't GC'd mid-run; :meth:`shutdown` joins any still-running worker on close."""
+    def _bj_enqueue(self, kind: str, action, pending_text: str) -> None:
+        """Enqueue an arm/STOP op onto the serializing worker. Shows *pending_text* immediately (the
+        blocking HTTP call runs off the GUI thread); the op is tagged with a monotonic id so only the
+        newest op's result may later overwrite the label."""
+        self._bj_ensure_queue()
+        self._bj_op_seq += 1
         self._bj_status.setText(pending_text)
-        worker = _BjActionWorker(action)
-        self._bj_workers.append(worker)
-        worker.done.connect(self._bj_status.setText)  # queued (cross-thread) -> runs on the GUI thread
-        worker.finished.connect(lambda w=worker: self._bj_cleanup_worker(w))
-        worker.start()
+        assert self._bj_queue is not None  # just ensured
+        self._bj_queue.enqueue(self._bj_op_seq, kind, action)
 
-    def _bj_cleanup_worker(self, worker: "_BjActionWorker") -> None:
-        try:
-            self._bj_workers.remove(worker)
-        except ValueError:
-            pass
-        worker.deleteLater()
+    def _bj_on_result(self, op_id: int, text: str) -> None:
+        """Show an op's result ONLY if it is still the newest enqueued op — a superseded op (e.g. an
+        Arm that a later STOP overtook and purged) must not overwrite the label with a stale status."""
+        if op_id == self._bj_op_seq:
+            self._bj_status.setText(text)
+
+    def _bj_on_queue_busy(self, busy: bool) -> None:
+        """Disable Arm while any op is queued/running (STOP stays dispatchable); re-enable on drain."""
+        self._bj_queue_busy = busy
+        self._bj_refresh_arm_enabled()
 
     def _bj_stop(self) -> None:
         """STOP (set Idle) — the always-available safety action; never gated."""
@@ -910,7 +978,7 @@ class DeviceTab(QWidget):
                 return (f"In-app STOP unavailable ({exc})  →  cut power / press the device button / "
                         "set Idle in the web UI.")
 
-        self._bj_run_async(act, "STOP…  (sending to the device web UI)")
+        self._bj_enqueue("stop", act, "STOP…  (sending to the device web UI)")
 
     def _bj_set_mode(self, mode: "Mode") -> None:
         """Arm a jamming mode — gated by the RF-shielded attestation + a per-press confirm + a validated map."""
@@ -943,20 +1011,29 @@ class DeviceTab(QWidget):
             except PermissionError as exc:
                 return str(exc)
 
-        self._bj_run_async(act, f"Arming {mode.value}…")
+        self._bj_enqueue("arm", act, f"Arming {mode.value}…")
 
     def shutdown(self) -> None:
-        """Join any in-flight BlueJammer control worker before the tab (and window) is torn down, so its
-        unparented QThread isn't destroyed mid-run ('QThread: Destroyed while thread is still running') on
-        exit. The op is a short (<=4s) HTTP call, so a bounded wait is safe. Invoked from
-        MainWindow.closeEvent."""
-        for w in list(self._bj_workers):
-            if w is not None and w.isRunning():
-                w.wait(5000)
+        """Stop the BlueJammer serializing worker before the tab (and window) is torn down, so its
+        unparented QThread isn't destroyed mid-run ('QThread: Destroyed while thread is still running')
+        on exit. Abandons any queued (not-yet-started) op and joins the in-flight one with a bounded
+        wait (each op is a short <=4s HTTP call). Invoked from MainWindow.closeEvent."""
+        q = self._bj_queue
+        if q is None:
+            return
+        q.request_stop()
+        if q.isRunning():
+            q.wait(5000)
 
-    def _bj_attest_changed(self, on: bool) -> None:
+    def _bj_attest_changed(self, on: bool) -> None:  # noqa: ARG002 — state read in _bj_refresh_arm_enabled
+        self._bj_refresh_arm_enabled()
+
+    def _bj_refresh_arm_enabled(self) -> None:
+        """Arm is enabled only when the RF-shielded attestation is checked AND no control op is pending
+        (a queued/running arm or STOP). STOP is never gated here — it must stay dispatchable."""
+        on = self._bj_attest.isChecked() and not self._bj_queue_busy
         for b in self._bj_arm_btns:
-            b.setEnabled(bool(on))
+            b.setEnabled(on)
 
     def _bj_load_map(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
