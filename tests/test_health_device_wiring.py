@@ -119,6 +119,26 @@ def test_poll_refresh_reflects_link_opened_after_detection():
     assert info["last_seen"], "last_seen must be refreshed once the device is live"
 
 
+def test_closed_link_flips_connected_to_disconnected():
+    # Regression: a device that was connected then has its serial link CLOSED (get_connection -> None,
+    # e.g. the Devices-tab Disconnect pops it) must stop reading "connected". The old code skipped the
+    # conn-None case entirely, so the status stayed frozen at "connected" forever while the board stayed
+    # physically plugged.
+    hm = HealthMonitor()
+    dm = _FakeDM()
+    hm.attach_device_manager(dm)
+    dm.fire_connected(SimpleNamespace(port="COM7"))
+    dm.conns["COM7"] = SimpleNamespace(is_connected=True)
+    hm._refresh_device_health()
+    assert hm.get_all_device_health()["COM7"]["status"] == "connected"
+
+    del dm.conns["COM7"]                       # operator disconnects; no live connection for the port
+    hm._refresh_device_health()
+    assert hm.get_all_device_health()["COM7"]["status"] == "disconnected", (
+        "a closed-but-plugged device must not keep reading connected"
+    )
+
+
 class _FakeDMWithDevices(_FakeDM):
     """_FakeDM that also answers get_device(port) -> the registered Device, mirroring
     DeviceManager.get_device so health can read the real firmware/probe-health."""

@@ -176,6 +176,17 @@ class CrossCommTab(QWidget):
         self._bridge = _BusBridge()
         self._bridge.event.connect(self._on_bus_event, Qt.QueuedConnection)
 
+        # Debounce the pool-table rebuild. The "*" subscription delivers one event PER (re-)observed AP
+        # during a scan, and a full _refresh_pool (rebuild every row) per event is O(N^2) on the GUI thread,
+        # janking the app. Coalesce the target.* burst into one rebuild via a single-shot timer (the event
+        # log + action history still update immediately per event). _debounced_refresh_pool skips while
+        # hidden; the 5s safety-net _timer below catches anything deferred.
+        self._pool_dirty = False
+        self._pool_refresh_timer = QTimer(self)
+        self._pool_refresh_timer.setSingleShot(True)
+        self._pool_refresh_timer.setInterval(400)
+        self._pool_refresh_timer.timeout.connect(self._debounced_refresh_pool)
+
         self._build_ui()
         self._subscribe_bus()
         self._refresh_pool()
@@ -363,9 +374,19 @@ class CrossCommTab(QWidget):
         """Handle a bus event on the Qt GUI thread."""
         self._append_event(topic, payload)
         if topic in ("target.added", "target.updated", "target.removed", "target.cleared"):
-            self._refresh_pool()
+            # Debounce the O(N) table rebuild — a scan burst fires this per AP (see __init__). The event
+            # log above already recorded this event immediately; only the pool table is coalesced.
+            self._pool_refresh_timer.start()
         if topic == "action.executed":
             self._append_action_history(payload)
+
+    def _debounced_refresh_pool(self) -> None:
+        """Rebuild the pool table only while visible; if hidden, mark dirty and defer to the next
+        showEvent so a scan burst doesn't repeatedly rebuild an off-screen table."""
+        if self.isVisible():
+            self._refresh_pool()
+        else:
+            self._pool_dirty = True
 
     def _append_event(self, topic: str, payload: dict[str, Any]) -> None:
         summary = self._summarize_payload(topic, payload)
@@ -546,6 +567,7 @@ class CrossCommTab(QWidget):
 
     def showEvent(self, event) -> None:  # noqa: N802 — Qt naming
         super().showEvent(event)
+        self._pool_dirty = False  # about to refresh; clear any deferred-while-hidden flag
         self._refresh_pool()
         self._refresh_rules()
         self._timer.start()

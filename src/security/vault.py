@@ -201,6 +201,18 @@ def set_factor(name: str, secret: bytes, unlock_with: Optional[dict] = None) -> 
     """
     hdr = _load_hdr()
     if not hdr:
+        # _load_hdr() returns {} for BOTH "no vault yet" AND "vault present but its header could not be
+        # read" (truncated/corrupt JSON, or a transient AV/indexer file lock). Re-provisioning in the
+        # latter case would mint a fresh random DEK and _save_hdr() over the header, orphaning vault.enc
+        # — every wrapped node key + the secure-container key becomes permanently undecryptable, with no
+        # error and no prompt. Fail closed: only create a brand-new vault when NOTHING is on disk.
+        if exists():
+            raise NeedExistingFactor(
+                f"cannot set the '{name}' keyslot: a vault is present but its header could not be read "
+                "(corrupt, truncated, or temporarily locked by another process). Refusing to "
+                "re-provision, which would permanently destroy the existing encrypted keys. Close "
+                "whatever is locking the file, restore the header, or remove the vault files to start over."
+            )
         dek = os.urandom(32)
         salt = os.urandom(16)
         nonce = os.urandom(12)

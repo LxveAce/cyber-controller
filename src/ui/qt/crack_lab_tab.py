@@ -15,9 +15,12 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import threading
+from pathlib import Path
 
-from PyQt5.QtCore import QThread, pyqtSignal
+from PyQt5.QtCore import QObject, Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -29,6 +32,8 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -36,6 +41,7 @@ from PyQt5.QtWidgets import (
 from src.core import crack_pipeline as cp
 from src.core import tool_installer as ti
 from src.core import wordlist_manager as wm
+from src.core.capture_export import CAPTURE_CSV_COLUMNS, export_captures_csv
 
 log = logging.getLogger(__name__)
 
@@ -53,12 +59,29 @@ class _CrackWorker(QThread):
         self._backend = backend
         self._bssid = bssid
         self._stop = False
+        # The aircrack/hashcat child process, once it spawns. request_stop() (GUI thread) and
+        # _register_proc() (worker thread) both touch it, so guard it with a lock.
+        self._proc = None
+        self._proc_lock = threading.Lock()
+
+    def _register_proc(self, proc) -> None:
+        """Called on the worker thread the instant a crack child spawns. If Stop already fired, kill it
+        immediately; otherwise stash it so request_stop() (GUI thread) can."""
+        with self._proc_lock:
+            self._proc = proc
+            if self._stop:
+                cp.kill_proc_tree(proc)
 
     def request_stop(self) -> None:
-        """Cooperative cancel — the native engine polls this between candidate batches, so Stop is a
-        clean exit rather than a hard QThread.terminate() (which, mid pure-Python crack loop, can
-        deadlock the GUI on the GIL)."""
+        """Cancel the run. The native engine polls ``self._stop`` between candidate batches (a clean exit
+        without QThread.terminate(), which mid pure-Python loop can deadlock the GUI on the GIL). The
+        aircrack/hashcat backends block in a subprocess with no cooperative poll, so ALSO kill the child
+        process here — QThread.terminate() would only kill this wrapper thread and orphan the running
+        aircrack/hashcat OS process (and skip the temp-file cleanup)."""
         self._stop = True
+        with self._proc_lock:
+            if self._proc is not None:
+                cp.kill_proc_tree(self._proc)
 
     def run(self) -> None:  # noqa: D401 - QThread entry point
         emit = self.line.emit
@@ -72,18 +95,28 @@ class _CrackWorker(QThread):
                                        should_stop=lambda: self._stop)
             elif self._backend == "aircrack":
                 result = cp.run_aircrack(self._capture, self._wordlist, emit,
-                                         tools=tools, bssid=self._bssid)
+                                         tools=tools, bssid=self._bssid, on_proc=self._register_proc)
             else:
                 # hashcat path: convert the capture to .hc22000 first (unless already one)
+                result = None
                 if os.path.splitext(self._capture)[1].lower() == ".hc22000":
                     hash_file = self._capture
                 else:
                     fd, hash_file = tempfile.mkstemp(suffix=".hc22000", prefix="cc_wifi_")
                     os.close(fd)
                     tmp_hash = hash_file  # ours to clean up (never the user's own .hc22000)
-                    n = cp.convert_capture(self._capture, hash_file, emit, tools=tools)
+                    # Pass on_proc so Stop can kill hcxpcapngtool mid-convert (a large capture is slow).
+                    n = cp.convert_capture(self._capture, hash_file, emit, tools=tools,
+                                           on_proc=self._register_proc)
                     emit(f"[convert] {n} crackable hash(es) extracted.")
-                result = cp.run_hashcat(hash_file, self._wordlist, emit, tools=tools)
+                    if n == 0:
+                        # No PMKID/handshake in this capture — the honest negative. Feeding an empty
+                        # .hc22000 to hashcat would exit nonzero and mis-report a "tool failure".
+                        result = cp.CrackResult(
+                            cracked=False, detail="no PMKID or handshake found in this capture")
+                if result is None:
+                    result = cp.run_hashcat(hash_file, self._wordlist, emit, tools=tools,
+                                            on_proc=self._register_proc)
         except Exception as exc:  # never let a worker exception kill the thread silently
             log.exception("wifi-audit crack worker failed")
             result = cp.CrackResult(detail=f"error: {exc}")
@@ -93,6 +126,12 @@ class _CrackWorker(QThread):
                     os.remove(tmp_hash)
                 except OSError:
                     pass
+        if self._stop and not result.cracked:
+            # The user cancelled: the killed child's nonzero exit would otherwise read as a tool error,
+            # so report an honest "stopped" instead. But a crack that ALREADY succeeded (the key verified
+            # in the race window between the crack returning and this stop check) must NOT be thrown away
+            # — a recovered key survives a late Stop.
+            result = cp.CrackResult(detail="stopped")
         self.done.emit(result)
 
 
@@ -361,12 +400,32 @@ class _ToolsDialog(QDialog):
             w.wait(2000)
 
 
-class CrackLabTab(QWidget):
-    """Reachable UI for the offline WPA dictionary attack (capture -> wordlist -> crack)."""
+class _CaptureBridge(QObject):
+    """Marshals CaptureStore bus callbacks (any thread) onto the Qt GUI thread."""
 
-    def __init__(self) -> None:
+    changed = pyqtSignal()
+
+
+class CrackLabTab(QWidget):
+    """Reachable UI for the offline WPA dictionary attack (capture -> wordlist -> crack).
+
+    Constructor takes the optional cross-comm *hub*; when present, the Captures table auto-populates
+    from the shared :class:`~src.core.capture_store.CaptureStore` (a row appears when a device
+    captures a handshake) and a solved crack writes back onto its record. With ``hub=None`` the tab
+    degrades to manual-only (empty Captures table, no crash) — graceful-degrade like the hub.
+    """
+
+    def __init__(self, hub=None) -> None:
         super().__init__()
         self._worker: _CrackWorker | None = None
+        self._backends_cache: list[str] = []   # detected crack backends; refreshed by _refresh_tools()
+
+        # Shared capture log (auto-populates the Captures table). None when the hub is unavailable.
+        self._captures = getattr(hub, "captures", None) if hub is not None else None
+        self._cap_row_keys: list[str] = []      # table row index -> CaptureRecord.key
+        self._active_capture_key = ""      # record a double-click loaded (for crack write-back)
+        self._cap_bridge = _CaptureBridge()
+        self._cap_bridge.changed.connect(self._refresh_captures, Qt.QueuedConnection)
         # Scroll-wrap the content so the engine/capture/wordlist rows never clip on a small/deck window
         # (setWidgetResizable lets the log still expand to fill when there's room).
         _scroll = QScrollArea(self)
@@ -402,11 +461,35 @@ class CrackLabTab(QWidget):
         cap_row.addWidget(QLabel("Capture:"))
         self._capture_edit = QLineEdit()
         self._capture_edit.setPlaceholderText("a .pcapng/.pcap/.cap/.hc22000 file you captured")
+        # Typing a new path by hand breaks the double-click binding, so a solved crack won't get
+        # written back onto a capture the user is no longer cracking (textEdited fires on user edits
+        # only, NOT on the programmatic setText a row double-click does).
+        self._capture_edit.textEdited.connect(self._forget_active_capture)
         cap_row.addWidget(self._capture_edit, 1)
         browse_cap = QPushButton("Browse…")
         browse_cap.clicked.connect(self._pick_capture)
         cap_row.addWidget(browse_cap)
         root.addLayout(cap_row)
+
+        # ── Captures (auto-populated from live device captures) ──────────
+        cap_box = QGroupBox("Captured handshakes")
+        cb = QVBoxLayout(cap_box)
+        hdr = QHBoxLayout()
+        hdr.addWidget(QLabel("Auto-logged as devices capture; double-click a row to load it."))
+        hdr.addStretch(1)
+        self._export_captures_btn = QPushButton("Export CSV…")
+        self._export_captures_btn.setToolTip(
+            "Write the capture log to a spreadsheet-safe CSV (includes any recovered passwords).")
+        self._export_captures_btn.clicked.connect(self._on_export_captures)
+        hdr.addWidget(self._export_captures_btn)
+        cb.addLayout(hdr)
+        self._captures_table = QTableWidget(0, len(CAPTURE_CSV_COLUMNS))
+        self._captures_table.setHorizontalHeaderLabels([c.upper() for c in CAPTURE_CSV_COLUMNS])
+        self._captures_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._captures_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._captures_table.cellDoubleClicked.connect(self._on_capture_activated)
+        cb.addWidget(self._captures_table)
+        root.addWidget(cap_box)
 
         # wordlist picker
         wl_row = QHBoxLayout()
@@ -460,6 +543,75 @@ class CrackLabTab(QWidget):
         self._refresh_tools()
         self._refresh_wordlists()
 
+        # Subscribe to the shared capture log and paint any captures already present. Bus callbacks
+        # arrive on the ingest thread, so they only poke the bridge signal (queued to GUI thread).
+        if self._captures is not None:
+            for topic in ("capture.added", "capture.updated", "capture.removed",
+                          "capture.cleared", "capture.cracked"):
+                self._captures.bus.subscribe(topic, self._on_capture_event)
+            self._refresh_captures()
+
+    # ── captures ─────────────────────────────────────────────────────
+    def _on_capture_event(self, _topic: str, _payload) -> None:
+        """CaptureStore bus callback (any thread) — request a GUI-thread table refresh."""
+        self._cap_bridge.changed.emit()
+
+    def _refresh_captures(self) -> None:
+        """Rebuild the Captures table from the shared store snapshot (GUI thread only)."""
+        if self._captures is None:
+            return
+        caps = self._captures.all()
+        self._cap_row_keys = [c.key for c in caps]
+        self._captures_table.setRowCount(len(caps))
+        for row, c in enumerate(caps):
+            d = c.to_dict()
+            for col, name in enumerate(CAPTURE_CSV_COLUMNS):
+                val = d.get(name)
+                item = QTableWidgetItem("" if val is None else str(val))
+                if c.crack_status == "cracked":
+                    item.setForeground(Qt.darkGreen)   # a solved capture reads green across its row
+                self._captures_table.setItem(row, col, item)
+
+    def _on_capture_activated(self, row: int, _col: int) -> None:
+        """Double-click a capture row -> load its file into the cracker (reuses the run flow)."""
+        if self._captures is None or not (0 <= row < len(self._cap_row_keys)):
+            return
+        rec = self._captures.get(self._cap_row_keys[row])
+        if rec is None:
+            return
+        path = rec.pcap_path or rec.hc22000_path
+        if path:
+            self._capture_edit.setText(path)
+            self._active_capture_key = rec.key
+            self._bssid_edit.setText(rec.bssid)   # helps the aircrack backend target this AP
+        elif rec.pmkid:
+            # Inline ESP32-DIV PMKID (no file on disk yet). Staging it to a .hc22000 is a separate
+            # slice; be honest rather than write a possibly-malformed hashline.
+            QMessageBox.information(
+                self, "Inline PMKID",
+                "This capture is an inline PMKID with no saved file yet. Save/convert it to a "
+                ".hc22000 first, then Browse… to load it.")
+        else:
+            QMessageBox.information(
+                self, "No file", "This capture has no saved .pcap/.hc22000 file to crack yet.")
+
+    def _on_export_captures(self) -> None:
+        """Write the capture log to a CSV the operator chooses (synchronous — the write is fast)."""
+        if self._captures is None or not self._captures.all():
+            QMessageBox.information(self, "Export", "No captures to export yet.")
+            return
+        default = str(Path.home() / "cyber-controller-captures.csv")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export captures to CSV", default, "CSV (*.csv);;All files (*)")
+        if not path:
+            return
+        try:
+            n = export_captures_csv(self._captures.all(), path)
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+            return
+        QMessageBox.information(self, "Export", f"Wrote {n} capture(s) to {path}")
+
     # ── populate ─────────────────────────────────────────────────────
     def _refresh_tools(self) -> None:
         tools = cp.detect_tools()
@@ -469,6 +621,10 @@ class CrackLabTab(QWidget):
             parts.append(f"{mark} {st.name}" + (f" ({st.version})" if st.version else ""))
         self._tools_label.setText("   ".join(parts) or "no tools detected")
         backends = cp.available_backends(tools)
+        # Cache the detected backends. detect_tools() spawns a --version subprocess per external tool, so
+        # re-probing it on the GUI thread after every run (in _reset_run_buttons) hitched the event loop.
+        # Refresh the cache here — where the tool set genuinely changes (startup, tool install/recheck).
+        self._backends_cache = backends
         self._backend_combo.clear()
         self._backend_combo.addItems(backends or ["(install hashcat or aircrack-ng)"])
         self._run_btn.setEnabled(bool(backends))
@@ -501,6 +657,11 @@ class CrackLabTab(QWidget):
             "Captures (*.pcapng *.pcap *.cap *.hc22000);;All files (*)")
         if path:
             self._capture_edit.setText(path)
+            self._forget_active_capture()   # a browsed file is not the double-clicked record
+
+    def _forget_active_capture(self, *_args) -> None:
+        """Drop the capture<->crack write-back binding (the loaded file no longer maps to a row)."""
+        self._active_capture_key = ""
 
     def _pick_byo_wordlist(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -532,7 +693,9 @@ class CrackLabTab(QWidget):
             QMessageBox.warning(self, "Crack Lab", "Choose a crack engine.")
             return
         try:
-            cp.validate_capture(capture)
+            # validate_crack_input accepts a prebuilt .hc22000 hashfile (hashcat-only) as well as a raw
+            # capture, so the advertised prebuilt-hashfile path actually runs instead of being rejected.
+            cp.validate_crack_input(capture, backend)
             cp.validate_wordlist(wordlist)
         except ValueError as exc:
             QMessageBox.warning(self, "Crack Lab", str(exc))
@@ -556,18 +719,12 @@ class CrackLabTab(QWidget):
         if not (w and w.isRunning()):
             return
         self._append_line("[stop] requested — cancelling…")
+        # request_stop() now cancels EVERY backend cleanly: native exits on the stop flag; aircrack/hashcat
+        # have their child process killed. The worker then finishes and its done signal resets the buttons
+        # + label — no QThread.terminate() (which orphaned the child process and skipped temp cleanup).
         w.request_stop()
         self._stop_btn.setEnabled(False)
         self._result_label.setText("stopping…")
-        if w._backend != "native":
-            # aircrack/hashcat block in subprocess with no cooperative poll, so terminate the worker
-            # as a last resort. The native default never needs this — it exits on the stop flag and
-            # its done signal resets the UI, avoiding a QThread.terminate() mid pure-Python crack
-            # loop (which can deadlock the GUI on the GIL).
-            w.terminate()
-            w.wait(2000)
-            self._reset_run_buttons()
-            self._result_label.setText("stopped")
 
     def shutdown(self) -> None:
         """Stop + join the crack worker so its QThread isn't destroyed mid-run when the app closes
@@ -595,7 +752,20 @@ class CrackLabTab(QWidget):
             self._result_label.setText(f"✓ KEY FOUND for {who}: {result.password}")
         else:
             self._result_label.setText(f"no key recovered — {result.detail or 'not in wordlist'}")
+        # Durable capture <-> outcome link: if this run came from double-clicking a logged capture,
+        # write the recovered key back onto its record (turns the row green via capture.cracked).
+        if result.cracked and self._captures is not None and self._active_capture_key:
+            # Record the wordlist the run ACTUALLY used (captured on the worker at launch), not whatever
+            # the combo shows now — during a run the wordlist selector and its Refresh button stay live,
+            # so re-reading the widget could stamp the record with a list that did NOT recover the key.
+            wordlist = self._worker._wordlist if self._worker is not None else ""
+            self._captures.mark_cracked(
+                self._active_capture_key, result.password, result.detail or "", wordlist)
+            self._forget_active_capture()   # one write-back per load; a re-run must re-bind
 
     def _reset_run_buttons(self) -> None:
-        self._run_btn.setEnabled(bool(cp.available_backends(cp.detect_tools())))
+        # Reuse the backends cached by _refresh_tools instead of re-running detect_tools() (which spawns
+        # tool subprocesses) on the GUI thread after every run. "native" is always available, so the
+        # cache is non-empty whenever a run is possible; an explicit "recheck" refreshes it.
+        self._run_btn.setEnabled(bool(self._backends_cache))
         self._stop_btn.setEnabled(False)

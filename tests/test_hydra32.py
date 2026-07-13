@@ -49,7 +49,12 @@ def test_hydra32_support_offsets(monkeypatch):
     # bootloader + partition-table + spiffs storage; single-factory layout = NO boot_app0
     assert set(support.keys()) == {"0x1000", "0x8000", "0x190000"}
     assert "0xe000" not in support and "0xE000" not in support
-    assert {"bootloader.bin", "partition-table.bin", "storage.bin"}.issubset(set(fetched))
+    # Pinned support-file cache names are namespaced by profile id so two profiles that pin the SAME
+    # basename (hydra32 and esp32_wifi_pentest both pin "bootloader.bin"/"partition-table.bin") can't
+    # collide in the shared cache dir — the collision caused a false "integrity check failed" abort.
+    assert {"hydra32_bootloader.bin", "hydra32_partition-table.bin",
+            "hydra32_storage.bin"}.issubset(set(fetched))
+    assert all(n.startswith("hydra32_") for n in fetched), f"names must be profile-namespaced: {fetched}"
 
 
 def test_hydra32_lawful_framing():

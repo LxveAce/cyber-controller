@@ -184,6 +184,45 @@ def test_factors_on_non_dict_header_fails_closed(v):
     assert v.factors() == []
 
 
+def test_set_factor_refuses_reprovision_on_unreadable_header(v):
+    """SEC (data-loss): a present-but-unreadable header (corrupt/truncated, or a transient AV/indexer
+    file lock) must NOT be treated as 'no vault'. _load_hdr() returns {} for both states, and the old
+    `if not hdr:` re-provisioned a fresh random DEK and _save_hdr()-clobbered the header, orphaning
+    vault.enc — every wrapped node key + the container key became permanently undecryptable. set_factor
+    must now fail closed (NeedExistingFactor) and leave the encrypted data untouched, so the original
+    factor still opens the original data once the header is restored."""
+    v.set_factor("password", b"hunter2")
+    v.open_vault({"password": b"hunter2"}).set("secret", "keep-me")
+    good_hdr = v._hdr_path().read_bytes()
+    enc_before = v._data_path().read_bytes()
+
+    v._hdr_path().write_text("{ this is not valid json", encoding="utf-8")  # _load_hdr() -> {}
+    with pytest.raises(v.NeedExistingFactor):
+        v.set_factor("password", b"new-password")        # must NOT silently re-provision
+
+    assert v._data_path().read_bytes() == enc_before      # vault.enc untouched — no destruction
+    v._hdr_path().write_bytes(good_hdr)                    # restore header
+    assert v.open_vault({"password": b"hunter2"}).get("secret") == "keep-me"   # original data intact
+
+
+def test_set_factor_refuses_reprovision_when_only_data_present(v):
+    """An orphaned vault.enc with no header (data already sealed under a lost DEK) must also fail closed
+    rather than re-provision a fresh vault that silently dangles the old ciphertext."""
+    v.set_factor("password", b"pw")
+    v.open_vault({"password": b"pw"}).set("x", 1)
+    v._hdr_path().unlink()                                 # header gone, vault.enc remains
+    assert v.exists() is True
+    with pytest.raises(v.NeedExistingFactor):
+        v.set_factor("password", b"pw")
+
+
+def test_set_factor_still_provisions_on_true_clean_slate(v):
+    """Guard against over-blocking: with NOTHING on disk, set_factor still provisions a fresh vault."""
+    assert v.exists() is False
+    v.set_factor("password", b"first")                    # must not raise
+    assert v.open_vault({"password": b"first"}) is not None
+
+
 def test_vault_save_is_atomic_a_failed_commit_keeps_old_data(v, monkeypatch):
     """A crash at the vault.enc write must NOT destroy the existing store. Vault.save now writes a
     temp file + fsync + os.replace, so a failure at the atomic rename (simulated power loss) leaves the

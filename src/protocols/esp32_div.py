@@ -99,6 +99,19 @@ class Esp32DivProtocol(BaseProtocol):
         self._sta_index = 0
         self._sta_indices: dict[str, int] = {}
 
+    def reset_scan_index(self) -> None:
+        """Reset the AP scan ordinals — call when the device's AP list is cleared
+        (`clearlist -a`/reboot) so `select ap {index}` restarts at 0. Wired from the command sink;
+        a UI-only Clear that never reaches the device must NOT call this."""
+        self._ap_index = 0
+        self._ap_indices.clear()
+
+    def reset_station_index(self) -> None:
+        """Reset the station scan ordinals — call on `clearlist -s`/reboot. DIV keeps a separate
+        station list, so `select sta {index}` restarts at 0 when the STATION list is cleared."""
+        self._sta_index = 0
+        self._sta_indices.clear()
+
     def _assign_ap_index(self, bssid: str) -> int:
         existing = self._ap_indices.get(bssid)
         if existing is not None:

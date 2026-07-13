@@ -893,6 +893,22 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             from pathlib import Path
             return str(Path(self._flock_data_dir()) / "live-drive.geojson")
 
+        def _new_checkpoint_path(self) -> str:
+            """A UNIQUE per-scan checkpoint file. Each _FlockWorker starts a fresh empty FlockSession and
+            os.replace()s its checkpoint file on the first located camera; with a single fixed filename a
+            second drive would silently overwrite (destroy) the first drive's saved cameras. Timestamping
+            per scan means a new drive can never clobber a prior one, and the Load dialog can reopen any of
+            them. (Nothing auto-loads the old fixed name, so keeping it for a fresh scan is unnecessary.)"""
+            from datetime import datetime
+            from pathlib import Path
+            stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+            base = Path(self._flock_data_dir()) / f"live-drive-{stamp}.geojson"
+            path, n = base, 1
+            while path.exists():  # guard the rare same-second restart
+                path = base.with_name(f"live-drive-{stamp}-{n}.geojson")
+                n += 1
+            return str(path)
+
         def _toggle_live(self) -> None:
             if self._live_worker is not None:            # running -> ask it to stop
                 self._live_worker.stop()
@@ -905,7 +921,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 return
             gps = self._gps_combo.currentText().strip()
             self._stop_gps_tracking()                    # a full scan opens the GPS port — release the standalone reader first
-            self._live_worker = _FlockWorker(gps, 9600, dev, 115200, self._default_checkpoint_path())
+            # A UNIQUE per-scan checkpoint file so this drive can't os.replace over a prior drive's cameras.
+            self._live_worker = _FlockWorker(gps, 9600, dev, 115200, self._new_checkpoint_path())
             self._live_worker.updated.connect(self._on_live_update)
             self._live_worker.status.connect(self._on_live_status)
             self._live_worker.location.connect(self._on_location_fix)
@@ -1019,12 +1036,24 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
         # ── load button (dialog; not unit-tested) ─────────────────────
         def _on_load(self) -> None:
-            from PyQt5.QtWidgets import QFileDialog
+            from PyQt5.QtCore import Qt
+            from PyQt5.QtWidgets import QApplication, QFileDialog
             path, _ = QFileDialog.getOpenFileName(
                 self, "Open Flock scan (cameras.geojson)", self._flock_data_dir(),
                 "GeoJSON (*.geojson *.json);;All files (*)")
-            if path:
+            if not path:
+                return
+            # A nationwide DeFlock export is tens of thousands of points; json.load + reprojecting every
+            # one runs on the GUI thread (the QGraphics scene build has to). It can't be moved to a worker,
+            # so give visible feedback + block re-entry: a busy cursor so the pause reads as "working" not
+            # "hung", and a disabled Load button so a second click can't stack another parse on the first.
+            self._btn_load.setEnabled(False)
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
                 self.load_geojson_file(path)
+            finally:
+                QApplication.restoreOverrideCursor()
+                self._btn_load.setEnabled(True)
 
         def _open_data_folder(self) -> None:
             """Reveal the canonical Flock data folder in the OS file manager (best-effort)."""

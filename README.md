@@ -6,7 +6,7 @@
 
 ### One dashboard to flash, drive, and coordinate every radio in your cyberdeck.
 
-**Flash. Control. Coordinate.** — 49 firmware profiles, 5 flash backends, 4 interfaces, one screen.
+**Flash. Control. Coordinate.** — 49 firmware profiles, 8 flash backends, 4 interfaces, one screen.
 
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release&color=39FF14)](https://github.com/LxveAce/cyber-controller/releases)
 [![Firmwares](https://img.shields.io/badge/firmware%20profiles-49-success?style=for-the-badge)](#-supported-firmware)
@@ -31,14 +31,14 @@ Built to run a multi-device cyberdeck on a 7″ touchscreen, headless over SSH, 
 <!-- STATUS-ROADMAP:START -->
 ## 📦 Latest release
 
-**[v1.6.9](https://github.com/LxveAce/cyber-controller/releases/latest)** — live scanning now flows straight into the Targets list, macros, Cross-Comm and an auto-refreshing network graph; a one-click in-app updater that patches in place and keeps your data; a faster Flock camera map; and Dead Man's Switch provisioning in the packaged build.
+**[v1.7.2](https://github.com/LxveAce/cyber-controller/releases/latest)** — the **Crack Lab**: a built-in native WPA/WPA2 cracker that works out of the box with nothing for antivirus to flag (hashcat/aircrack-ng are optional accelerators), a bundled offline wordlist, and a bottom terminal that's now a unified activity console + tool shell. Plus per-device Broadcast with force-any-firmware control, a whole-app performance pass, and a palette-driven reskin. Not everything in 1.7 is 100% yet (the Flock map is still shaping up, WPA3 routes to hashcat) — the core is solid and shipping now, with more landing as it's ready. **1.7.2** adds an auto-populating, exportable **Captured handshakes** log in the Crack Lab (CSV/JSON, double-click a capture to crack it) and smarter targeted-deauth that ties a deauth to the handshake it produces — plus the 1.7.1 fixes (Connect/Disconnect buttons, Network graph staying fresh after a reflash).
 
 The full version-by-version history — every fix, every hardening pass, every added firmware — lives in the **[Changelog](CHANGELOG.md)** and the **[Releases](https://github.com/LxveAce/cyber-controller/releases)**. Where it's headed next is on the **[roadmap at cybercontroller.org](https://cybercontroller.org/#firmware)**.
 <!-- STATUS-ROADMAP:END -->
 
 ## ✨ Highlights
 
-**🔥 Flash** — **49 firmware profiles** across 5 backends. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress — see the beta caveats) auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+**🔥 Flash** — **49 firmware profiles** across 8 backends. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress — see the beta caveats) auto-detects the chip (`esptool chip_id` first — never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
 
 **🎮 Control** — a protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **13 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
 

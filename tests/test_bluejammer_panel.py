@@ -35,6 +35,15 @@ def _combo_index(combo, needle):
     return -1
 
 
+def _drain_bj(tab, qapp):
+    """STOP/arm now run the (blocking, up-to-4s) controller HTTP call on a QThread so the GUI never
+    freezes; the result lands in _bj_status via a queued signal. Wait for the worker + pump the event
+    loop so the final status is observable in a test."""
+    for w in list(tab._bj_workers):
+        w.wait()
+    qapp.processEvents()
+
+
 def test_panel_hidden_by_default(qapp):
     tab = _tab()
     assert tab._bj_panel.isHidden()
@@ -97,6 +106,7 @@ def test_stop_without_map_is_safe_and_guides(qapp):
     """STOP with no validated control map must NOT raise — it surfaces the fail-safe guidance."""
     tab = _tab()
     tab._bj_stop()  # must not raise
+    _drain_bj(tab, qapp)
     assert "unavailable" in tab._bj_status.text().lower()
     assert "web ui" in tab._bj_status.text().lower()
 
@@ -118,6 +128,7 @@ def test_arm_unavailable_without_validated_map(qapp, monkeypatch):
     tab._bj_attest.setChecked(True)
     monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: QMessageBox.Yes)
     tab._bj_set_mode(Mode.WIFI)  # attested + confirmed, but no validated map -> fail-safe
+    _drain_bj(tab, qapp)
     assert "unavailable" in tab._bj_status.text().lower()
 
 
@@ -173,6 +184,7 @@ def test_loaded_validated_map_sends_stop(qapp, monkeypatch):
     tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
     tab._bj_build_controller()
     tab._bj_stop()
+    _drain_bj(tab, qapp)
     assert sent and sent[0][0] == "POST" and sent[0][1].endswith("/mode")
     assert "stop sent" in tab._bj_status.text().lower()
 
@@ -213,6 +225,7 @@ def test_stop_with_validated_map_but_unreachable_device_is_safe(qapp, monkeypatc
     tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
     tab._bj_build_controller()
     tab._bj_stop()  # must NOT raise (pre-fix: URLError escapes the slot)
+    _drain_bj(tab, qapp)
     assert "unavailable" in tab._bj_status.text().lower()
     assert "web ui" in tab._bj_status.text().lower()
 
@@ -236,4 +249,54 @@ def test_arm_with_validated_map_but_unreachable_device_is_safe(qapp, monkeypatch
     tab._bj_map = ControlMap(http_calls={Mode.WIFI: ("POST", "/mode", "wifi")}, validated=True)
     tab._bj_build_controller()
     tab._bj_set_mode(Mode.WIFI)  # must NOT raise (pre-fix: socket.timeout escapes both except clauses)
+    _drain_bj(tab, qapp)
     assert "unavailable" in tab._bj_status.text().lower()
+
+
+# ── GUI-thread offload (UI-audit Batch UI-3): STOP/arm must not block the event loop ──────────────
+
+def test_bj_stop_runs_off_the_gui_thread(qapp, monkeypatch):
+    """Regression: the controller HTTP call (blocking, up to 4s) must run on a worker thread, not the GUI
+    thread — otherwise pressing the safety STOP button froze the whole app for up to 4s."""
+    import threading
+
+    from src.core.bluejammer_control import ControlMap, Mode
+    from src.ui.qt.device_tab import DeviceTab
+
+    gui_ident = threading.get_ident()
+    seen: dict = {}
+
+    def _fake_req(method, url, body):
+        seen.setdefault("ident", threading.get_ident())
+        return 200
+
+    monkeypatch.setattr(DeviceTab, "_bj_http_request", staticmethod(_fake_req))
+    tab = _tab()
+    tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
+    tab._bj_build_controller()
+
+    tab._bj_stop()
+    assert tab._bj_workers, "STOP should have spawned a worker"
+    assert "stop…" in tab._bj_status.text().lower()  # immediate pending status, UI stays live
+
+    _drain_bj(tab, qapp)
+    assert seen.get("ident") is not None
+    assert seen["ident"] != gui_ident  # the blocking HTTP call ran off the GUI thread
+    assert "stop sent" in tab._bj_status.text().lower()
+
+
+def test_bj_shutdown_joins_workers(qapp, monkeypatch):
+    """shutdown() (called from MainWindow.closeEvent) must join in-flight BJ workers so no QThread is
+    destroyed mid-run on exit."""
+    from src.core.bluejammer_control import ControlMap, Mode
+    from src.ui.qt.device_tab import DeviceTab
+
+    monkeypatch.setattr(DeviceTab, "_bj_http_request", staticmethod(lambda *a, **k: 200))
+    tab = _tab()
+    tab._bj_map = ControlMap(http_calls={Mode.IDLE: ("POST", "/mode", "idle")}, validated=True)
+    tab._bj_build_controller()
+
+    tab._bj_stop()
+    tab.shutdown()  # must join without hanging or raising
+    qapp.processEvents()
+    assert all(not w.isRunning() for w in tab._bj_workers)

@@ -80,6 +80,63 @@ def test_dms_reply_goes_to_source_connection(qapp, monkeypatch):
     assert writes["B"] == [], "must NOT write the boot password to the wrong (selected) device"
 
 
+def test_scan_autoselects_first_device_so_connect_works(qapp, monkeypatch):
+    """The bottom-left Connect/Disconnect buttons act on _active_port, only set when a device row is
+    selected. QListWidget.addItem never auto-selects, so after a Scan the list showed a device but
+    nothing was current, _active_port stayed "", and the buttons hit the `if not port: return` guard
+    and silently no-opped — the "buttons don't work" report. _refresh_devices must auto-select the
+    first device so the buttons target it with no manual click."""
+    from src.core.device_manager import DeviceManager
+    from src.models.device import Device
+    from src.ui.qt.device_tab import DeviceTab
+
+    class _Conn:
+        is_connected = True
+
+        def on_line(self, *_a, **_k):
+            pass
+
+        def write(self, *_a, **_k):
+            pass
+
+    dm = DeviceManager()
+    dm.add_device(Device(port="COM7", name="Marauder"))
+    tab = DeviceTab(dm)
+    tab._refresh_devices()  # what Scan Ports / Refresh does
+
+    # Root cause: without an auto-select, _active_port stays "" and the buttons are dead.
+    assert tab._active_port == "COM7", "first device must be auto-selected"
+    assert tab._btn_connect.isEnabled(), "Connect must be enabled for the auto-selected device"
+
+    # And Connect now actually opens the link instead of returning early on an empty port.
+    captured: dict[str, str] = {}
+    monkeypatch.setattr(
+        dm, "open_connection",
+        lambda port, baud=115200, owner=None: captured.update(port=port) or _Conn(),
+    )
+    tab._on_connect()
+    assert captured.get("port") == "COM7", "Connect must open the auto-selected port, not no-op"
+
+
+def test_refresh_keeps_user_selection_not_forcing_first(qapp):
+    """Auto-select only fills an EMPTY _active_port — a later refresh must not yank the user's
+    chosen row back to the first device (multi-device selection stability)."""
+    from src.core.device_manager import DeviceManager
+    from src.models.device import Device
+    from src.ui.qt.device_tab import DeviceTab
+
+    dm = DeviceManager()
+    dm.add_device(Device(port="COM1", name="A"))
+    dm.add_device(Device(port="COM2", name="B"))
+    tab = DeviceTab(dm)
+    tab._refresh_devices()
+    assert tab._active_port == "COM1"  # auto-selected the first
+
+    tab._active_port = "COM2"          # user picks the second device
+    tab._refresh_devices()             # a periodic refresh must respect that choice
+    assert tab._active_port == "COM2", "refresh must not force the selection back to the first"
+
+
 def test_terminal_line_html_escaped(qapp):
     # Untrusted device serial lines are appended to a QTextEdit, which renders rich text when the line
     # begins with markup. They must be escaped so a board can't spoof the Serial Terminal with

@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import logging
 
+from src.core.capture_correlate import CaptureCorrelator
+from src.core.capture_store import CaptureStore
 from src.core.cross_comm import AutoRouter, EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.drivers import driver_for
@@ -35,7 +37,9 @@ class CrossCommHub:
         dm: The DeviceManager node registry (what's connected, what it can do).
         bus: The EventBus every node/target/action change publishes to.
         pool: The shared TargetPool (discovery view over the bus).
-        ingestor: Feeds each connected device's parsed serial output into the pool.
+        captures: The shared CaptureStore (captured WPA handshakes / PMKIDs, over the bus).
+        correlator: CaptureCorrelator — ties a fired deauth to the handshake it produces.
+        ingestor: Feeds each device's parsed serial output into the pool (and the capture log).
         router: AutoRouter — routing rules as event subscribers; fires via :meth:`send_to_port`.
         broadcast: BroadcastEngine — one verb fans out to every capable node in its native command.
         action_resolver: Maps a target to firmware-specific actions per node. May be ``None`` if the
@@ -52,10 +56,22 @@ class CrossCommHub:
         self.bus = bus or EventBus()
         self.pool = pool if pool is not None else TargetPool(self.bus)
 
+        # The shared capture log — captured WPA handshakes / PMKIDs, keyed like the pool and on
+        # the same bus (capture.* mirroring target.*). The ingestor auto-registers a capture
+        # whenever a device reports one; the Crack Lab's Captures list rides capture.added live.
+        self.captures = CaptureStore(self.bus)
+
+        # Capture-confirm correlator (punch-list #2, slice 5): a bus-only observer that ties a fired
+        # deauth (action.executed with a target BSSID + chain_events) to the handshake it produces
+        # (a capture.added for that BSSID inside a window) -> capture.confirmed. No radio/commands.
+        # A Qt timer in the window drives correlator.sweep() to surface honest timeouts.
+        self.correlator = CaptureCorrelator(self.bus)
+
         # Feeds parsed APs/clients from each connected device into the shared pool, completing the loop:
         # a scan on device A -> target.added -> AutoRouter -> a command on device B. The hub owns the one
         # instance everyone shares AND auto-attaches it to every connection the moment it opens (below).
-        self.ingestor = TargetIngestor(self.pool)
+        # It also feeds captured handshakes/PMKIDs into the shared capture log.
+        self.ingestor = TargetIngestor(self.pool, captures=self.captures)
 
         # Attach the ingestor to EVERY connection the DeviceManager opens — Devices-tab Connect, Wardrive,
         # Broadcast, or an injected NodeLink — so a scan on ANY opened device feeds the pool, not only a
@@ -109,5 +125,26 @@ class CrossCommHub:
         dev = self.dm.get_device(port)
         try:
             driver_for(dev).deliver_text(conn, dev, command)
+            self._reset_scan_state_on_clear(port, command)
         except Exception:
             log.exception("send_to_port %s failed", port)
+
+    def _reset_scan_state_on_clear(self, port: str, command: str) -> None:
+        """When a routed command clears the device's scan list (`clearlist -a`/`-s`) or reboots it,
+        flush the parser's scan ordinals so the NEXT scan restarts `select ... {index}` at 0. Wired
+        in the COMMAND SINK — NOT on the UI `target.cleared` event: that pool wipe sends no device
+        command, so resetting there would desync the parser from the still-populated device list and
+        mis-bind a Deauth-AP index to the WRONG AP. Parsers lacking a reset method are skipped."""
+        norm = " ".join(command.strip().lower().split())
+        is_reboot = norm == "reboot" or norm.startswith("reboot ")
+        parser = self.ingestor.parser_for(port)
+        if parser is None:
+            return
+        if is_reboot or norm.startswith("clearlist -a"):
+            fn = getattr(parser, "reset_scan_index", None)
+            if callable(fn):
+                fn()
+        if is_reboot or norm.startswith("clearlist -s"):
+            fn = getattr(parser, "reset_station_index", None)
+            if callable(fn):
+                fn()

@@ -8,7 +8,7 @@ import os
 import re
 import threading
 
-from PyQt5.QtCore import QObject, Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import QObject, Qt, QThread, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QCheckBox,
@@ -81,6 +81,27 @@ class _LineSignal(QObject):
 class _ProbeSignal(QObject):
     """Bridge the background connect-time probe result back onto the Qt thread."""
     probe_done = pyqtSignal(str)  # port whose probe just finished
+
+
+class _BjActionWorker(QThread):
+    """Run a BlueJammer controller op (STOP / arm) off the GUI thread. The op does a blocking HTTP call
+    (urlopen timeout=4) to the device web UI; running it in the clicked-slot froze the whole UI — worst of
+    all on the safety STOP button. The action closure returns the exact status string to display (it catches
+    its own ControlUnavailable/PermissionError so the message matches); the result is delivered to the GUI
+    thread via the queued ``done`` signal."""
+
+    done = pyqtSignal(str)
+
+    def __init__(self, action) -> None:
+        super().__init__()
+        self._action = action
+
+    def run(self) -> None:
+        try:
+            msg = self._action()
+        except Exception as exc:  # noqa: BLE001 — a worker exception must never abort the app
+            msg = f"BlueJammer action failed: {exc}"
+        self.done.emit(msg)
 
 
 class DeviceTab(QWidget):
@@ -225,6 +246,7 @@ class DeviceTab(QWidget):
         # Operating a jammer outside an authorized, shielded, lawful context is illegal (47 U.S.C. §333).
         self._bj_map: ControlMap = ControlMap()
         self._bj_controller: "BlueJammerController | None" = None
+        self._bj_workers: "list[_BjActionWorker]" = []  # in-flight STOP/arm workers (kept alive, joined on close)
         self._bj_panel = QFrame()
         self._bj_panel.setObjectName("card")
         self._bj_panel.setStyleSheet("QFrame#card{border:1px solid #f0883e;background:rgba(240,136,62,0.09);}")
@@ -381,6 +403,17 @@ class DeviceTab(QWidget):
             self._device_list.addItem(item)
             if dev.port == selected_port:
                 self._device_list.setCurrentItem(item)
+        # Auto-select the first device when nothing is active yet, so the bottom-left Connect/
+        # Disconnect buttons (which act on _active_port) work after a scan. QListWidget.addItem
+        # never auto-selects, and the re-select above only matches an ALREADY-chosen port — so on
+        # first populate currentItem() stayed None, _active_port stayed "", and the buttons hit the
+        # `if not port: return` guard and silently no-opped (looked dead). Guarded on an empty
+        # _active_port so a later user pick is preserved; fires _on_device_selected (which sets
+        # _active_port + the connect/disconnect enable states).
+        if not self._active_port and self._device_list.count():
+            first = self._device_list.item(0)
+            if first is not None and bool(first.flags() & Qt.ItemIsSelectable):
+                self._device_list.setCurrentItem(first)
         # Empty-state guidance (same shape as software_tab's empty-combo entry): a single
         # non-selectable hint row telling the user the next step.
         if self._device_list.count() == 0:
@@ -426,8 +459,32 @@ class DeviceTab(QWidget):
             self._btn_connect.setEnabled(not connected)
             self._btn_disconnect.setEnabled(connected)
             self._btn_send.setEnabled(connected)
+            self._sync_firmware_combo_to(dev)  # re-point the global combo at THIS device before judging it
         self._update_health_label()
         self._update_bj_panel()
+
+    def _sync_firmware_combo_to(self, dev) -> None:
+        """Re-point the (global) firmware combo at the SELECTED device, so _selected_protocol /
+        _update_bj_panel / the Send-enable logic judge the device the user just clicked — not whichever
+        firmware was last picked for another port. Without this, choosing 'BlueJammer' for device A then
+        clicking device B showed B the BlueJammer panel + disabled Send.
+
+        Only pin the combo to a concrete firmware when THIS device's firmware was explicitly FORCED
+        (Device.firmware_forced) — otherwise fall back to Auto-detect, so an auto-detected device keeps its
+        post-probe re-autodetect (which requires the combo to read Auto-detect) instead of being frozen to
+        the connect-time default. Signals are blocked so this re-sync doesn't re-fire _update_bj_panel /
+        _persist_firmware; the caller updates the panel right after."""
+        forced = bool(getattr(dev, "firmware_forced", False))
+        fw = getattr(dev, "firmware", "") or ""
+        display = PROTOCOL_DISPLAY_NAMES.get(fw) if (forced and fw) else None
+        target = display if (display and self._firmware_combo.findText(display) >= 0) else _AUTO_DETECT
+        if self._firmware_combo.currentText() == target:
+            return
+        blocked = self._firmware_combo.blockSignals(True)
+        try:
+            self._firmware_combo.setCurrentText(target)
+        finally:
+            self._firmware_combo.blockSignals(blocked)
 
     # ── Connect / Disconnect ─────────────────────────────────────────
 
@@ -816,17 +873,44 @@ class DeviceTab(QWidget):
     def _bj_on_event(self, kind: str, mode: "Mode", transport: str) -> None:
         self._terminal.append(f"[BlueJammer {kind}: {mode.value} via {transport}]")
 
+    def _bj_run_async(self, action, pending_text: str) -> None:
+        """Run a BlueJammer controller op off the GUI thread and show its result in the status label.
+
+        The controller op does a blocking HTTP call (urlopen timeout=4) to the device web UI; running it in
+        the clicked-slot froze the whole UI for up to 4s — the opposite of what a safety STOP should do.
+        Offloading to a QThread keeps the event loop live. A ref to the worker is kept until it finishes so
+        its unparented QThread isn't GC'd mid-run; :meth:`shutdown` joins any still-running worker on close."""
+        self._bj_status.setText(pending_text)
+        worker = _BjActionWorker(action)
+        self._bj_workers.append(worker)
+        worker.done.connect(self._bj_status.setText)  # queued (cross-thread) -> runs on the GUI thread
+        worker.finished.connect(lambda w=worker: self._bj_cleanup_worker(w))
+        worker.start()
+
+    def _bj_cleanup_worker(self, worker: "_BjActionWorker") -> None:
+        try:
+            self._bj_workers.remove(worker)
+        except ValueError:
+            pass
+        worker.deleteLater()
+
     def _bj_stop(self) -> None:
         """STOP (set Idle) — the always-available safety action; never gated."""
         if self._bj_controller is None:
             self._bj_build_controller()
-        try:
-            self._bj_controller.stop()
-            self._bj_status.setText("STOP sent — Idle (emission halted).")
-        except ControlUnavailable as exc:
-            self._bj_status.setText(
-                f"In-app STOP unavailable ({exc})  →  cut power / press the device button / set Idle in the web UI."
-            )
+        controller = self._bj_controller
+        if controller is None:  # _bj_build_controller always assigns; defensive narrowing
+            return
+
+        def act() -> str:
+            try:
+                controller.stop()
+                return "STOP sent — Idle (emission halted)."
+            except ControlUnavailable as exc:
+                return (f"In-app STOP unavailable ({exc})  →  cut power / press the device button / "
+                        "set Idle in the web UI.")
+
+        self._bj_run_async(act, "STOP…  (sending to the device web UI)")
 
     def _bj_set_mode(self, mode: "Mode") -> None:
         """Arm a jamming mode — gated by the RF-shielded attestation + a per-press confirm + a validated map."""
@@ -845,15 +929,30 @@ class DeviceTab(QWidget):
             return
         if self._bj_controller is None:
             self._bj_build_controller()
-        try:
-            self._bj_controller.set_mode(mode, confirm_unsafe=True)
-            self._bj_status.setText(f"Armed: {mode.value}.")
-        except ControlUnavailable as exc:
-            self._bj_status.setText(
-                f"Arm unavailable ({exc})  Load a validated control map captured from your device, or use the web UI."
-            )
-        except PermissionError as exc:
-            self._bj_status.setText(str(exc))
+        controller = self._bj_controller
+        if controller is None:  # _bj_build_controller always assigns; defensive narrowing
+            return
+
+        def act() -> str:
+            try:
+                controller.set_mode(mode, confirm_unsafe=True)
+                return f"Armed: {mode.value}."
+            except ControlUnavailable as exc:
+                return (f"Arm unavailable ({exc})  Load a validated control map captured from your device, "
+                        "or use the web UI.")
+            except PermissionError as exc:
+                return str(exc)
+
+        self._bj_run_async(act, f"Arming {mode.value}…")
+
+    def shutdown(self) -> None:
+        """Join any in-flight BlueJammer control worker before the tab (and window) is torn down, so its
+        unparented QThread isn't destroyed mid-run ('QThread: Destroyed while thread is still running') on
+        exit. The op is a short (<=4s) HTTP call, so a bounded wait is safe. Invoked from
+        MainWindow.closeEvent."""
+        for w in list(self._bj_workers):
+            if w is not None and w.isRunning():
+                w.wait(5000)
 
     def _bj_attest_changed(self, on: bool) -> None:
         for b in self._bj_arm_btns:
