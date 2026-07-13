@@ -1,0 +1,90 @@
+"""LxveOSProtocol — parse LxveOS's headless esp_console identity output.
+
+LxveOS's ``status`` command emits ONE machine-readable line the Cyber Controller host parses to
+identify a unit (the M1 CC-bridge seed); ``info`` prints a four-line summary. Both blocks below
+are VERBATIM captures from the live LxveOS board on COM23 (LxveOS 0.1.0-m0, bare_esp32_headless),
+cross-checked against the firmware source (``components/lxveos_cli/src/lxveos_cli.c``).
+"""
+
+from __future__ import annotations
+
+from src.protocols import get_protocol, resolve_protocol_name
+from src.protocols.lxveos import LxveOSProtocol
+
+# verbatim COM23 captures
+_STATUS = (
+    "LXVEOS/1 status board=bare_esp32_headless chip=esp32 ui=headless fw=0.1.0-m0 "
+    "panel=none caps=0x007 ops=12/3/6 heap=184988"
+)
+_INFO = [
+    "fw    : LxveOS 0.1.0-m0", "board : bare_esp32_headless", "chip  : esp32", "ui    : headless",
+]
+
+
+def test_registry_resolves_lxveos():
+    assert get_protocol("lxveos").protocol_name == "lxveos"
+    assert resolve_protocol_name("LxveOS") == "lxveos"
+    assert resolve_protocol_name("lxveos") == "lxveos"
+
+
+def test_status_bridge_line_parses_with_typed_fields():
+    ev = LxveOSProtocol().parse_line(_STATUS)
+    assert ev is not None and ev.event_type == "device_info"
+    d = ev.data
+    assert d["source"] == "status_line" and d["proto_version"] == 1
+    assert d["board"] == "bare_esp32_headless" and d["chip"] == "esp32" and d["ui"] == "headless"
+    assert d["fw"] == "0.1.0-m0" and d["panel"] == "none"
+    assert d["caps"] == 0x007 and isinstance(d["caps"], int)  # hex bitmask -> int
+    assert d["ops"] == {"ready": 12, "planned": 3, "unavailable": 6}
+    assert d["heap"] == 184988 and isinstance(d["heap"], int)
+
+
+def test_status_tolerates_unknown_future_keys():
+    # LxveOS may append fields (comment in cmd_status says older hosts ignore them); an unknown key
+    # must land in the event as a raw string, never crash or get dropped.
+    ev = LxveOSProtocol().parse_line(_STATUS + " region=us newfield=abc123")
+    assert ev.data["region"] == "us" and ev.data["newfield"] == "abc123"
+
+
+def test_info_block_accumulates_to_one_device_info():
+    p = LxveOSProtocol()
+    assert p.parse_line(_INFO[0]) is None  # fw  -> start record
+    assert p.parse_line(_INFO[1]) is None  # board
+    assert p.parse_line(_INFO[2]) is None  # chip
+    ev = p.parse_line(_INFO[3])            # ui -> emit
+    assert ev is not None and ev.event_type == "device_info"
+    assert ev.data == {
+        "fw": "0.1.0-m0", "source": "info_cmd",
+        "board": "bare_esp32_headless", "chip": "esp32", "ui": "headless",
+    }
+
+
+def test_stray_info_line_without_record_is_benign_info():
+    # A board/chip/ui line with no in-progress `fw :` must NOT emit a half-built identity — it's
+    # surfaced as plain info instead.
+    p = LxveOSProtocol()
+    ev = p.parse_line("ui    : headless")
+    assert ev is not None and ev.event_type == "info"
+    assert ev.data["message"] == "ui    : headless"
+
+
+def test_prompt_is_a_readiness_status_not_noise():
+    ev = LxveOSProtocol().parse_line("lxveos>")
+    assert ev is not None and ev.event_type == "status" and ev.data == {"prompt": True}
+
+
+def test_identify_matches_lxveos_output_only():
+    p = LxveOSProtocol()
+    assert p.identify(_STATUS) is True
+    assert p.identify("lxveos>") is True
+    assert p.identify("fw    : LxveOS 0.1.0-m0") is True
+    assert p.identify("I (27) boot: ESP-IDF v6.0.2 2nd stage bootloader") is False
+    assert p.identify("-22 Ch: 1 b4:bf:e9:11:19:ad ESSID: ESP_1119AD") is False  # Marauder AP line
+
+
+def test_commands_are_all_passive_no_tx():
+    # LxveOS M0 is a local control/identity surface — no command carries an RF/TX danger flag.
+    cmds = LxveOSProtocol().get_commands()
+    names = {c.name for c in cmds}
+    assert {"info", "status", "help", "reboot"} <= names
+    assert all(c.danger == "" for c in cmds), "no LxveOS M0 command should be flagged dangerous"

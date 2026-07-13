@@ -33,6 +33,7 @@ from src.protocols.flipper import FlipperProtocol
 from src.protocols.flock_you import FlockYouProtocol
 from src.protocols.ghost_esp import GhostESPProtocol
 from src.protocols.halehound import HaleHoundProtocol
+from src.protocols.lxveos import LxveOSProtocol
 from src.protocols.marauder import MarauderProtocol
 from src.protocols.meshtastic import MeshtasticProtocol
 from src.protocols.nrf_bluenullifier import NrfBlueNullifier2Protocol
@@ -79,6 +80,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "bruce": BruceProtocol,
     "flipper": FlipperProtocol,
     "halehound": HaleHoundProtocol,
+    "lxveos": LxveOSProtocol,
     "meshtastic": MeshtasticProtocol,
     "esp32-div": Esp32DivProtocol,
     "bw16": BW16Protocol,
@@ -100,6 +102,7 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "bruce": "Bruce",
     "flipper": "Flipper Zero",
     "halehound": "HaleHound",
+    "lxveos": "LxveOS",
     "meshtastic": "Meshtastic",
     "esp32-div": "ESP32-DIV",
     "bw16": "BW16 (RTL8720DN)",
@@ -229,6 +232,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "bruce": "src.protocols.bruce",
     "flipper": "src.protocols.flipper",
     "halehound": "src.protocols.halehound",
+    "lxveos": "src.protocols.lxveos",
     "meshtastic": "src.protocols.meshtastic",
     "esp32-div": "src.protocols.esp32_div",
     "bw16": "src.protocols.bw16",
