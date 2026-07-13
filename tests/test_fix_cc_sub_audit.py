@@ -162,6 +162,33 @@ def test_pool_update_of_existing_never_evicts(monkeypatch) -> None:
     assert pool.get("ble:AA:BB:CC:00:00:02") is not None
 
 
+def test_pool_reobservation_refreshes_recency_and_shields_from_eviction(monkeypatch) -> None:
+    # Re-observing a target refreshes its recency so it is NOT the next eviction victim. The O(1)
+    # OrderedDict path (move_to_end on touch) enforces this even when targets share an identical
+    # last_seen (coarse clocks) — where the old min()-scan would tie and wrongly evict by insertion
+    # order instead of by genuine recency.
+    import src.core.cross_comm as cross_comm
+    from src.models.target import Target, TargetType
+
+    monkeypatch.setattr(cross_comm, "_MAX_TARGETS", 3)
+    pool = cross_comm.TargetPool(cross_comm.EventBus())
+    stamp = datetime(2020, 1, 1, tzinfo=timezone.utc)
+    for suffix in ("01", "02", "03"):
+        t = Target(mac=f"AA:BB:CC:00:00:{suffix}", target_type=TargetType.BLE)
+        t.last_seen = stamp  # identical timestamps: a min()-scan would tie on insertion order
+        pool.add(t)
+
+    # Re-observe the OLDEST (first-inserted) key: this moves it off the eviction front.
+    assert pool.add(Target(mac="AA:BB:CC:00:00:01", target_type=TargetType.BLE, rssi=-40)) is False
+
+    # A new key now evicts :02 (the new LRU), NOT the just-re-observed :01.
+    assert pool.add(Target(mac="AA:BB:CC:00:00:99", target_type=TargetType.BLE)) is True
+    assert pool.count == 3
+    assert pool.get("ble:AA:BB:CC:00:00:01") is not None  # shielded by re-observation
+    assert pool.get("ble:AA:BB:CC:00:00:02") is None      # the genuine least-recently-seen went
+    assert pool.get("ble:AA:BB:CC:00:00:99") is not None
+
+
 # ── #4 target_ingest: SubGHz keyed by freq+protocol+signal, not freq alone ────────────────────────
 
 def _ingestor():

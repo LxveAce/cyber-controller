@@ -6,6 +6,7 @@ import logging
 import re
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Any, Callable
@@ -86,7 +87,7 @@ class TargetPool:
     """
 
     def __init__(self, bus: EventBus | None = None) -> None:
-        self._targets: dict[str, Target] = {}
+        self._targets: OrderedDict[str, Target] = OrderedDict()
         self._lock = threading.Lock()
         self.bus = bus or EventBus()
 
@@ -144,13 +145,15 @@ class TargetPool:
                     existing.extra["index"] = incoming_extra["index"]
                     existing.device_source = target.device_source
                 updated_payload = existing.to_dict()
+                self._targets.move_to_end(target.key)  # refresh recency for O(1) LRU eviction
             else:
                 # Bound the pool before inserting: when full, evict the least-recently-seen target
                 # so a stream of never-before-seen keys (rotating MACs, SubGHz flood) can't grow it
-                # without limit. min() over last_seen is O(n) but only runs at the cap.
+                # without limit. The OrderedDict stays in recency order (move_to_end on every
+                # re-observation + append-on-insert), so the LRU victim is always at the front —
+                # evicting it is O(1), not the old O(n) min()-over-last_seen scan under the lock.
                 if len(self._targets) >= _MAX_TARGETS:
-                    oldest_key = min(self._targets, key=lambda k: self._targets[k].last_seen)
-                    evicted = self._targets.pop(oldest_key)
+                    _oldest_key, evicted = self._targets.popitem(last=False)
                 self._targets[target.key] = target
         # Publish OUTSIDE the lock: the non-reentrant pool lock must not be held across subscriber
         # callbacks, or a blocking subscriber that reads the pool would deadlock the reader thread.
