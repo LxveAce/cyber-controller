@@ -82,6 +82,20 @@ def test_record_without_bssid_does_not_emit() -> None:
     assert proto.parse_line("Channel: 3,") is None
 
 
+def test_device_indexed_multiline_does_not_touch_the_ordinal_state() -> None:
+    # GHOSTESP-MLINE-INDEX-0713: the device supplies its own [idx], so parsing a multi-line AP must
+    # NOT call the mutating _assign_ap_index fallback. Emitting index=5 while _ap_index quietly
+    # advanced to 1 and _ap_indices got a hub ordinal is a select -a mis-bind hazard.
+    proto = GhostESPProtocol()
+    proto.parse_line("[5] SSID: DeviceIndexed,")
+    proto.parse_line("BSSID: B4:BF:E9:11:19:AD,")
+    proto.parse_line("RSSI: -30,")
+    ev = proto.parse_line("Channel: 6,")
+    assert ev is not None and ev.data["index"] == 5  # the device's own [idx], carried through
+    assert proto._ap_index == 0, "fallback ordinal counter must not advance for device-indexed APs"
+    assert proto._ap_indices == {}, "no bssid->ordinal pollution when the device gave an index"
+
+
 def test_multiline_target_resolves_end_to_end() -> None:
     # real parser -> TargetIngestor._event_to_target: the multi-line AP must become a usable Target.
     ev = next(e for e in _parse_all(_REAL_SCAN) if e.event_type == "ap_found")

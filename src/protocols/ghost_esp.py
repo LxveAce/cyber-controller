@@ -145,7 +145,17 @@ class GhostESPProtocol(BaseProtocol):
                         "bssid": rec["bssid"],
                         "channel": int(m.group(1)),
                         "rssi": rec.get("rssi", 0),
-                        "index": rec.get("index", self._assign_ap_index(rec["bssid"])),
+                        # Conditional, NOT dict.get(k, default): a get() default is evaluated
+                        # EAGERLY, so _assign_ap_index (which mutates _ap_indices/_ap_index) would
+                        # fire on every multi-line AP even though rec["index"] — the device's own
+                        # [idx] — is always present here (the record only exists because a
+                        # "[i] SSID:" line created it). Eager firing corrupted the ordinal state
+                        # (GHOSTESP-MLINE-INDEX-0713). Only fall back to _assign_ap_index if the
+                        # device somehow gave no index.
+                        "index": (
+                            rec["index"] if "index" in rec
+                            else self._assign_ap_index(rec["bssid"])
+                        ),
                     },
                     raw=line,
                 )
