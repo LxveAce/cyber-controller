@@ -29,57 +29,68 @@ from src.models.action import TargetAction
 from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
-# --- Regex patterns for HaleHound serial output (ported verbatim) ---
+# --- Regex patterns for HaleHound serial output ---
+#
+# Every genuine HaleHound line is ONE record led by its bracket marker (see the docstring examples),
+# so all patterns are ANCHORED with ^ (vs the stripped line). Without it the unanchored .search
+# let an attacker-controlled free-text FIELD impersonate another record type: a rogue AP named
+# "[WIFI] SSID: CorpWiFi" made a `[GUARDIAN] ROGUE AP: <name> | BSSID:.. | CH:.. | RSSI:..` line's
+# embedded `[WIFI] SSID: .. | BSSID:.. | CH:.. | RSSI:..` satisfy _RE_WIFI_AP FIRST, downgrading the
+# rogue_ap/evil-twin event to a benign ap_found and silently suppressing the alert. ^ makes a marker
+# match only at the record start, so a field can never forge one. Pipe-delimited captures also use a
+# NEGATED class ([^|]+?, not the old `\s*(.+?)\s*\|`): the lazy-dot-between-whitespace shape drove
+# catastrophic backtracking on the reader thread for a `<field>: <60k spaces>x` line (ReDoS, same
+# class as the ghost_esp fix). Captured values are .strip()'d at each call site.
 
 # WiFi AP
 _RE_WIFI_AP = re.compile(
-    r"\[WIFI\]\s*SSID:\s*(.+?)\s*\|\s*BSSID:\s*([0-9A-Fa-f:]{17})"
+    r"^\[WIFI\]\s*SSID:([^|]+?)\|\s*BSSID:\s*([0-9A-Fa-f:]{17})"
     r"\s*\|\s*CH:\s*(\d+)\s*\|\s*RSSI:\s*(-?\d+)"
 )
 
 # WiFi Station
 _RE_WIFI_STA = re.compile(
-    r"\[WIFI_STA\]\s*MAC:\s*([0-9A-Fa-f:]{17})\s*\|\s*RSSI:\s*(-?\d+)"
+    r"^\[WIFI_STA\]\s*MAC:\s*([0-9A-Fa-f:]{17})\s*\|\s*RSSI:\s*(-?\d+)"
 )
 
 # BLE device
 _RE_BLE = re.compile(
-    r"\[BLE\]\s*Name:\s*(.+?)\s*\|\s*ADDR:\s*([0-9A-Fa-f:]{17})\s*\|\s*RSSI:\s*(-?\d+)"
+    r"^\[BLE\]\s*Name:([^|]+?)\|\s*ADDR:\s*([0-9A-Fa-f:]{17})\s*\|\s*RSSI:\s*(-?\d+)"
 )
 
 # SubGHz signal (with RSSI)
 _RE_SUBGHZ = re.compile(
-    r"\[SUBGHZ\]\s*Freq:\s*([\d.]+\s*MHz)\s*\|\s*Mod:\s*(\w+)\s*\|\s*Data:\s*(.+?)\s*\|\s*RSSI:\s*(-?\d+)"
+    r"^\[SUBGHZ\]\s*Freq:\s*([\d.]+\s*MHz)\s*\|\s*Mod:\s*(\w+)\s*\|\s*Data:([^|]+?)\|\s*RSSI:\s*(-?\d+)"
 )
 
 # SubGHz without RSSI
 _RE_SUBGHZ_NORSSI = re.compile(
-    r"\[SUBGHZ\]\s*Freq:\s*([\d.]+\s*MHz)\s*\|\s*Mod:\s*(\w+)\s*\|\s*Data:\s*(.+)"
+    r"^\[SUBGHZ\]\s*Freq:\s*([\d.]+\s*MHz)\s*\|\s*Mod:\s*(\w+)\s*\|\s*Data:\s*(.+)"
 )
 
 # NFC tag
 _RE_NFC = re.compile(
-    r"\[NFC\]\s*UID:\s*([0-9A-Fa-f:]+)\s*\|\s*ATQA:\s*(\w+)\s*\|\s*SAK:\s*(\w+)"
+    r"^\[NFC\]\s*UID:\s*([0-9A-Fa-f:]+)\s*\|\s*ATQA:\s*(\w+)\s*\|\s*SAK:\s*(\w+)"
 )
 
 # NRF24 packet
 _RE_NRF24 = re.compile(
-    r"\[NRF24\]\s*Channel:\s*(\d+)\s*\|\s*Addr:\s*([0-9A-Fa-f:]+)\s*\|\s*Payload:\s*(\S+)"
+    r"^\[NRF24\]\s*Channel:\s*(\d+)\s*\|\s*Addr:\s*([0-9A-Fa-f:]+)\s*\|\s*Payload:\s*(\S+)"
 )
 
 # MouseJack device
 _RE_MOUSEJACK = re.compile(
-    r"\[MOUSEJACK\]\s*Device:\s*(.+?)\s*\|\s*Addr:\s*([0-9A-Fa-f:]+)\s*\|\s*Type:\s*(\w+)"
+    r"^\[MOUSEJACK\]\s*Device:([^|]+?)\|\s*Addr:\s*([0-9A-Fa-f:]+)\s*\|\s*Type:\s*(\w+)"
 )
 
 # IoT Recon result
 _RE_IOT = re.compile(
-    r"\[IOT\]\s*IP:\s*([\d.]+)\s*\|\s*MAC:\s*([0-9A-Fa-f:]{17})\s*\|\s*Service:\s*(\w+)"
+    r"^\[IOT\]\s*IP:\s*([\d.]+)\s*\|\s*MAC:\s*([0-9A-Fa-f:]{17})\s*\|\s*Service:\s*(\w+)"
 )
 
 # Guardian rogue AP
 _RE_GUARDIAN = re.compile(
-    r"\[GUARDIAN\]\s*ROGUE\s*AP:\s*(.+?)\s*\|\s*BSSID:\s*([0-9A-Fa-f:]{17})"
+    r"^\[GUARDIAN\]\s*ROGUE\s*AP:([^|]+?)\|\s*BSSID:\s*([0-9A-Fa-f:]{17})"
     r"\s*\|\s*CH:\s*(\d+)\s*\|\s*RSSI:\s*(-?\d+)"
 )
 

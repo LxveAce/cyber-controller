@@ -143,7 +143,15 @@ class Esp32DivProtocol(BaseProtocol):
         if not line:
             return None
 
-        m = _RE_AP.search(line) or _RE_AP_ALT.search(line)
+        # A BLE line carries a MAC + RSSI and an attacker-chosen Name. If that Name embeds an
+        # "AP: SSID=.. BSSID=.." / "STA:.." / "Client:.." substring, the unanchored _RE_AP/_RE_STA
+        # .search below would claim it first and mint a phantom AP/STA with the attacker's BSSID,
+        # consuming a real select-ordinal and desyncing later `select ap/sta {index}` (the marauder
+        # BLE-name -> ap_found twin, marauder.py:179). Skip the AP/STA branches for a BLE line — a
+        # genuine AP/STA line has no "Device:"/"DEV:" MAC token, so this never steals a real one.
+        ble = _RE_BLE.search(line)
+
+        m = None if ble else (_RE_AP.search(line) or _RE_AP_ALT.search(line))
         if m:
             bssid = m.group(2)
             return ParsedEvent(
@@ -159,7 +167,7 @@ class Esp32DivProtocol(BaseProtocol):
                 raw=line,
             )
 
-        m = _RE_STA.search(line) or _RE_STA_ALT.search(line)
+        m = None if ble else (_RE_STA.search(line) or _RE_STA_ALT.search(line))
         if m:
             mac = m.group(1)
             return ParsedEvent(
@@ -173,7 +181,7 @@ class Esp32DivProtocol(BaseProtocol):
                 raw=line,
             )
 
-        m = _RE_BLE.search(line)
+        m = ble
         if m:
             return ParsedEvent(
                 event_type="ble_found",

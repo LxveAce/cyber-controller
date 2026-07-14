@@ -238,7 +238,11 @@ def _lockout_remaining(cfg: dict) -> int:
         return 0
     last = float(cfg.get("last_failure_ts", 0) or 0)
     cooldown = min(_LOCKOUT_BASE_SECS * (2 ** (fails - _LOCKOUT_AFTER)), _LOCKOUT_MAX_SECS)
-    return max(0, int(last + cooldown - _now()))
+    # Clamp to the cooldown (<= _LOCKOUT_MAX_SECS). last_failure_ts is a stored WALL-CLOCK time,
+    # so if the clock steps BACKWARD after a lockout (dead CMOS / RTC reset / negative NTP step)
+    # `last` is far ahead and `last + cooldown - now` returns up to YEARS, bricking the owner's
+    # OWN correct unlock. Remaining time can never legitimately exceed the cooldown.
+    return max(0, min(int(last + cooldown - _now()), int(cooldown)))
 
 
 def lockout_status() -> dict:

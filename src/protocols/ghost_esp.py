@@ -10,8 +10,13 @@ from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for GhostESP serial output ---
 
+# SSID capture is a NEGATED class ([^|], not .+?) up to the first '|'. The old `\s*(.+?)\s*\|`
+# put a lazy dot between two whitespace matchers before a required literal, so `SSID: <60k spaces>x`
+# (no '|') drove catastrophic backtracking (~40 s at 4 KB) on the serial READER thread — a spoofed
+# device could wedge the read path (ReDoS). [^|]+? can't overlap '|', so matching is linear; the
+# SSID (with surrounding spaces) is .strip()'d at the call site.
 _RE_AP = re.compile(
-    r"SSID:\s*(.+?)\s*\|\s*BSSID:\s*([\da-fA-F:]{17})\s*\|\s*"
+    r"SSID:([^|]+?)\|\s*BSSID:\s*([\da-fA-F:]{17})\s*\|\s*"
     r"CH:\s*(\d+)\s*\|\s*RSSI:\s*(-?\d+)"
 )
 
@@ -45,8 +50,13 @@ _RE_CAPTURE = re.compile(
     r"Captured\s+(\w+)\s*:\s*(.*)",
     re.IGNORECASE,
 )
+# Name capture is LENGTH-CAPPED ({1,255}?, not .+?), leading \s* folded in. The old
+# `Name:\s*(.+?)\s+RSSI:` put a lazy dot between \s*/\s+ before the required `RSSI:`, so
+# `Name: <60k spaces>x` (no RSSI:) drove catastrophic backtracking on the reader thread (ReDoS,
+# twin of _RE_AP). A BLE GAP name is <= 248 bytes, so a 255-char cap bounds the lazy quantifier
+# without dropping a real name; the leading space is .strip()'d at the call site.
 _RE_BLE = re.compile(
-    r"BLE\s+Device:\s*([\da-fA-F:]{17})\s+Name:\s*(.+?)\s+RSSI:\s*(-?\d+)"
+    r"BLE\s+Device:\s*([\da-fA-F:]{17})\s+Name:(.{1,255}?)\s+RSSI:\s*(-?\d+)"
 )
 _RE_STATUS = re.compile(r"\[Ghost(?:ESP)?\]\s*(.*)", re.IGNORECASE)
 _RE_ERROR = re.compile(r"(?:ERR|Error):\s*(.*)", re.IGNORECASE)
