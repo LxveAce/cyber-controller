@@ -16,6 +16,7 @@ import csv
 import gzip
 import logging
 import re
+import zlib
 from pathlib import Path
 
 log = logging.getLogger(__name__)
@@ -75,9 +76,12 @@ def _load_table() -> dict[str, str]:
     except FileNotFoundError:
         log.warning("OUI table missing at %s; vendor lookups will return ''", _TABLE_PATH)
         tbl = {}
-    except (OSError, EOFError, UnicodeDecodeError) as exc:
+    except (OSError, EOFError, UnicodeDecodeError, zlib.error) as exc:
         # Corrupt / truncated / mis-encoded table -> degrade to empty (same as missing), never raise
-        # into a caller and never cache the partial rows read before the failure.
+        # into a caller and never cache the partial rows read before the failure. zlib.error covers
+        # in-body DEFLATE corruption (e.g. an invalid block): unlike gzip.BadGzipFile (bad header or
+        # trailer CRC, which IS an OSError) it subclasses Exception directly, so without it a
+        # mid-stream decode failure would escape, leave _table=None, and re-raise on every lookup.
         log.warning("OUI table %s unreadable (%s); vendor lookups return ''", _TABLE_PATH, exc)
         tbl = {}
     _table = tbl
