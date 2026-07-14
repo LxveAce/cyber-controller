@@ -131,9 +131,16 @@ class MarauderProtocol(BaseProtocol):
         if not line:
             return None
 
-        # AP discovered — legacy single-line form (kept for back-compat / other tools)
+        # AP discovered — legacy single-line form (kept for back-compat / other tools).
+        # _RE_AP.search() scans mid-line, and a BLE device's advertised Name (printed verbatim
+        # after "Name:") is attacker-controlled, so a crafted name embedding
+        # "SSID: x BSSID: <mac> Ch: <n> RSSI: <n>" would satisfy _RE_AP on a real BLE line and be
+        # misrouted to ap_found with an attacker-chosen BSSID (phantom-target injection into the
+        # shared TargetPool). Exclude genuine BLE/client lines here, exactly as the scanall branch
+        # below does, so those lines fall through to their own branches. A real legacy AP line
+        # carries neither "BLE:" nor "Client:", so this never suppresses a true AP.
         m = _RE_AP.search(line)
-        if m:
+        if m and not _RE_BLE.search(line) and not _RE_CLIENT.search(line):
             bssid = m.group(2)
             return ParsedEvent(
                 event_type="ap_found",
