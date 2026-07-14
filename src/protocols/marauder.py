@@ -19,7 +19,10 @@ from src.core.wardrive import _RSSI_LEAD_RE, _extract_ap_fields
 # --- Regex patterns for Marauder serial output ---
 
 _RE_AP = re.compile(
-    r"(?:AP|SSID):\s*(.+?)\s+"
+    # SSID capture bounded ({1,64}?) so a long line missing "BSSID:" can't drive O(n^2) regex
+    # backtracking (the lazy dot and the trailing \s+ overlap on whitespace) and pin the serial
+    # reader thread on a ~64 KiB un-terminated flush. A real SSID is <=32 octets.
+    r"(?:AP|SSID):\s*(.{1,64}?)\s+"
     r"BSSID:\s*([\da-fA-F:]{17})\s+"
     r"Ch:\s*(\d+)\s+"
     r"RSSI:\s*(-?\d+)"

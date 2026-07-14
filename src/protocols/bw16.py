@@ -52,7 +52,10 @@ from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 #   "14:  (CH 136, RSSI -77)"   <- empty SSID (hidden net); CH 36-165 == 5 GHz
 # The SSID may contain spaces or be empty; channel + RSSI are always present.
 _RE_AP_VAMPIRE = re.compile(
-    r"^(?P<index>\d+):\s(?P<ssid>.*?)\s*"
+    # SSID capture bounded ({0,64}?) so a long line missing "(CH ..." can't drive O(n^2) regex
+    # backtracking (the lazy dot and the trailing \s* overlap on whitespace) and pin the serial
+    # reader thread on a ~64 KiB un-terminated flush. A real SSID is <=32 octets (may be empty).
+    r"^(?P<index>\d+):\s(?P<ssid>.{0,64}?)\s*"
     r"\(CH\s+(?P<channel>\d+),\s*RSSI\s+(?P<rssi>-?\d+)\)\s*$",
     re.IGNORECASE,
 )
@@ -62,7 +65,7 @@ _RE_AP_VAMPIRE = re.compile(
 # Channel, RSSI and BSSID are all optional so a sparse fork still parses.
 _RE_AP_BRACKET = re.compile(
     r"^\[(?P<index>\d+)\]\s+"
-    r"(?P<ssid>.+?)"
+    r"(?P<ssid>.{1,64}?)"   # bounded: see _RE_AP_VAMPIRE (same O(n^2)-backtracking guard)
     r"(?:\s+ch:\s*(?P<channel>\d+))?"
     r"(?:\s+(?P<rssi>-?\d+)\s*dBm)?"
     r"(?:\s+(?P<bssid>[0-9A-Fa-f:]{17}))?"

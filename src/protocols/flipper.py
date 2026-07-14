@@ -38,13 +38,17 @@ _RE_SUBGHZ_RSSI = re.compile(
 )
 
 # NFC: Type: ... | UID: ...
+# The type capture is length-bounded ({1,64}?) so a long line MISSING the "|" delimiter can't drive
+# O(n^2) regex backtracking (the lazy dot and following \s* overlap on whitespace): a device that
+# streams a ~64 KiB un-terminated flush would otherwise pin the serial-reader thread for ~15-20s. A
+# real NFC type ("Mifare Classic 1K") is far under 64 chars. Same guard on _RE_NFC_FULL and _RE_BT.
 _RE_NFC = re.compile(
-    r"NFC:\s*Type:\s*(.+?)\s*\|\s*UID:\s*([0-9A-Fa-f:]+)"
+    r"NFC:\s*Type:\s*(.{1,64}?)\s*\|\s*UID:\s*([0-9A-Fa-f:]+)"
 )
 
 # NFC with ATQA+SAK
 _RE_NFC_FULL = re.compile(
-    r"NFC:\s*Type:\s*(.+?)\s*\|\s*UID:\s*([0-9A-Fa-f:]+)\s*\|\s*ATQA:\s*(\w+)\s*\|\s*SAK:\s*(\w+)"
+    r"NFC:\s*Type:\s*(.{1,64}?)\s*\|\s*UID:\s*([0-9A-Fa-f:]+)\s*\|\s*ATQA:\s*(\w+)\s*\|\s*SAK:\s*(\w+)"
 )
 
 # RFID: Type: ... | Data: ...
@@ -59,7 +63,7 @@ _RE_IR = re.compile(
 
 # BT: Name: ... | MAC: ... | RSSI: ...
 _RE_BT = re.compile(
-    r"BT:\s*Name:\s*(.+?)\s*\|\s*MAC:\s*([0-9A-Fa-f:]{17})\s*\|\s*RSSI:\s*(-?\d+)"
+    r"BT:\s*Name:\s*(.{1,64}?)\s*\|\s*MAC:\s*([0-9A-Fa-f:]{17})\s*\|\s*RSSI:\s*(-?\d+)"
 )
 
 # Power: Battery: ... | Charging: ... | Voltage: ...
