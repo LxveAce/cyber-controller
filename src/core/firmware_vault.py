@@ -93,6 +93,12 @@ def _safe_streamed_download(url: str, dest_path: Path, progress_callback, filena
                         raise ValueError("firmware exceeded size cap mid-stream")
                     if progress_callback:
                         progress_callback(downloaded, total, f"Downloading {filename}...")
+            # Completeness: a truncated stream (server/proxy closed the connection early) can end
+            # iter_content WITHOUT raising, so a short read would otherwise be promoted to a
+            # "complete" firmware and later flashed. If the server declared a Content-Length,
+            # require we actually received all of it — a truncated firmware is a bricked board.
+            if total and downloaded != total:
+                raise ValueError(f"incomplete download: got {downloaded} of {total} bytes")
             return downloaded
         finally:
             resp.close()
@@ -339,20 +345,28 @@ class FirmwareVault:
             log.error("Refusing firmware dest that escapes the vault: %s", dest_path)
             return None
 
-        # Download (SSRF-safe redirect following + size cap), then verify integrity.
+        # Download to a temp sibling, verify, THEN atomically promote — never stream directly over
+        # dest_path. Two failure modes this closes: (1) a re-download that's interrupted would have
+        # truncated an existing GOOD cached .bin the moment `open("wb")` ran, while the index still
+        # marked it valid → a later flash bricks the board with a half-file; (2) a partial/short
+        # download landing at the real path could be indexed and later flashed. The `.part` temp
+        # stays inside dest_dir (same filesystem, so os.replace is atomic; still vault-contained).
+        # On ANY failure we discard the temp and leave any existing dest_path untouched.
+        tmp_path = dest_path.with_name(dest_path.name + ".part")
         try:
             log.info("Downloading %s v%s from %s", profile_id, resolved_version, download_url)
-            downloaded = _safe_streamed_download(download_url, dest_path, progress_callback, filename)
-            sha = _sha256_file(dest_path)
-            log.info("Downloaded %s (%d bytes, sha256=%s)", dest_path.name, downloaded, sha[:16])
+            downloaded = _safe_streamed_download(
+                download_url, tmp_path, progress_callback, filename)
+            sha = _sha256_file(tmp_path)
+            log.info("Downloaded %s (%d bytes, sha256=%s)", filename, downloaded, sha[:16])
         except (requests.RequestException, OSError, ValueError) as exc:
             log.error("Download failed for %s: %s", profile_id, exc)
-            if dest_path.exists():
-                dest_path.unlink()
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
             return None
 
         # Integrity pinning: if the profile pins a sha256 for this version, ENFORCE it
-        # (hard-fail + delete on mismatch). Otherwise warn — we cannot pin a moving
+        # (hard-fail + discard the temp on mismatch). Otherwise warn — we cannot pin a moving
         # "latest" tag, so this is trust-on-first-use for unpinned firmware.
         pins = profile.get("firmware_sha256")
         expected = None
@@ -360,15 +374,26 @@ class FirmwareVault:
             expected = pins.get(resolved_version) or pins.get(version) or pins.get("latest")
         if expected:
             if sha.lower() != str(expected).strip().lower():
-                log.error("SHA-256 MISMATCH for %s %s: expected %s got %s — DELETING",
+                log.error("SHA-256 MISMATCH for %s %s: expected %s got %s — DISCARDING",
                           profile_id, resolved_version, expected, sha)
-                dest_path.unlink(missing_ok=True)
+                tmp_path.unlink(missing_ok=True)
                 return None
             log.info("SHA-256 pin verified for %s %s", profile_id, resolved_version)
         else:
             log.warning("No SHA-256 pin for %s %s — firmware stored unverified (TOFU). "
                         "Add a 'firmware_sha256' pin to the profile to enforce integrity.",
                         profile_id, resolved_version)
+
+        # All checks passed — atomically promote the verified temp into place. os.replace is atomic
+        # on the same filesystem and overwrites any prior copy in a single step (no truncation
+        # window), so a concurrent reader sees either the old complete file or the new complete one.
+        try:
+            os.replace(tmp_path, dest_path)
+        except OSError as exc:
+            log.error("Failed to promote downloaded firmware for %s: %s", profile_id, exc)
+            with contextlib.suppress(OSError):
+                tmp_path.unlink(missing_ok=True)
+            return None
         resolved_version = safe_version
 
         # Update index
