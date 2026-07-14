@@ -21,7 +21,7 @@ import json
 from collections.abc import Iterable
 from typing import Any
 
-from src.core.wardrive import _csv_field
+from src.core.wardrive import _atomic_write_text, _csv_field
 from src.models.capture import CaptureRecord
 
 # Column order for the exported CSV. Stable so downstream tooling / a re-import can rely on it.
@@ -84,14 +84,12 @@ def captures_to_csv(caps: Iterable[CaptureRecord]) -> str:
 def export_captures_csv(caps: Iterable[CaptureRecord], path: Any) -> int:
     """Write *caps* to *path* as CSV. Returns the number of rows written (header excluded)."""
     rows = list(caps)
-    with open(path, "w", encoding="utf-8", newline="") as fh:
-        fh.write(captures_to_csv(rows))
+    _atomic_write_text(path, captures_to_csv(rows))  # atomic temp->replace
     return len(rows)
 
 
 def export_captures_json(caps: Iterable[CaptureRecord], path: Any) -> int:
     """Write *caps* to *path* as a JSON array of ``to_dict()`` rows. Returns the row count."""
     rows = [c.to_dict() for c in caps]
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(rows, fh, indent=2)
+    _atomic_write_text(path, json.dumps(rows, indent=2))  # atomic temp->replace
     return len(rows)

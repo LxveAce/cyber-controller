@@ -14,7 +14,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from typing import Any
 
-from src.core.wardrive import _csv_field
+from src.core.wardrive import _atomic_write_text, _csv_field
 from src.models.target import Target
 
 # Column order for the exported CSV. Stable so downstream tooling / a re-import can rely on it.
@@ -58,6 +58,5 @@ def targets_to_csv(targets: Iterable[Target]) -> str:
 def export_targets_csv(targets: Iterable[Target], path: Any) -> int:
     """Write *targets* to *path* as CSV. Returns the number of target rows written (header excluded)."""
     rows = list(targets)
-    with open(path, "w", encoding="utf-8", newline="") as fh:
-        fh.write(targets_to_csv(rows))
+    _atomic_write_text(path, targets_to_csv(rows))  # atomic temp->replace
     return len(rows)

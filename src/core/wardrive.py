@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import os
 import re
+import tempfile
 import time
 from dataclasses import dataclass, field
 from typing import Dict, Optional, TextIO
@@ -291,6 +292,29 @@ def _csv_field(s: str) -> str:
     if any(c in s for c in ',"\n\r'):
         return '"' + s.replace('"', '""') + '"'
     return s
+
+
+def _atomic_write_text(path, text: str, *, newline: str = "") -> None:
+    """Write *text* to *path* atomically: write a temp sibling (fsync'd), then os.replace it onto
+    *path*. ``open(path, "w")`` truncates the destination to 0 bytes BEFORE the content exists, so a
+    failed/interrupted write (ENOSPC, a removable/network drive dropping, a kill) would destroy a
+    good prior file. temp->replace leaves any existing file at *path* untouched on failure — the
+    firmware_vault/wordlist_manager pattern, shared by the CSV/JSON exporters."""
+    target = os.fspath(path)
+    fd, tmp = tempfile.mkstemp(prefix=".cc-export-", suffix=".part",
+                               dir=os.path.dirname(os.path.abspath(target)))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as fh:
+            fh.write(text)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, target)
+    except BaseException:  # noqa: BLE001 - remove the temp on ANY failure, then re-raise (never swallow)
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def to_wigle_row(obs: ApObservation, fix: GpsFix, first_seen: str) -> str:
