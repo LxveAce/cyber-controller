@@ -180,6 +180,31 @@ class TargetPool:
         self.bus.publish("target.cleared", {"count": n})
         return n
 
+    def invalidate_index(self, device_source: str, target_type: TargetType | None = None) -> int:
+        """Drop the per-device scan ``extra['index']`` from every target found by *device_source*
+        (optionally only of *target_type*); return the count cleared.
+
+        Called when that device's on-device scan list is cleared (`clearlist`/`reboot`): the parser
+        ordinal restarts at 0, but a pool target seen BEFORE the clear and not re-seen after keeps a
+        stale ordinal that maps to a DIFFERENT on-device row — so an {index}-based action (Deauth
+        AP `select ap {index}`) fires at the WRONG AP. Clearing the index makes the resolver drop
+        the {index} action until the target is re-seen (re-assigning a correct ordinal via add)."""
+        changed: list[dict] = []
+        with self._lock:
+            for t in self._targets.values():
+                if getattr(t, "device_source", None) != device_source:
+                    continue
+                if target_type is not None and t.target_type != target_type:
+                    continue
+                if (getattr(t, "extra", None) or {}).get("index") is not None:
+                    t.extra.pop("index", None)
+                    changed.append(t.to_dict())
+        # Publish OUTSIDE the lock (same discipline as add()): a subscriber that reads the pool must
+        # not deadlock the caller thread.
+        for payload in changed:
+            self.bus.publish("target.updated", payload)
+        return len(changed)
+
     def prune(self, max_age_seconds: float = 300.0) -> int:
         """Remove targets older than *max_age_seconds*."""
         now = datetime.now(timezone.utc)

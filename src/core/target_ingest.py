@@ -122,10 +122,28 @@ class TargetIngestor:
             fn = getattr(parser, "reset_scan_index", None)
             if callable(fn):
                 fn()
+            # Resetting the parser ordinal isn't enough: this port's pool AP targets seen before the
+            # clear keep a stale extra['index'] mapping to a DIFFERENT row. Invalidate it so a
+            # Deauth-AP {index} action is dropped until the AP is re-seen (which re-assigns a fresh
+            # ordinal). Not-re-seen rows would otherwise mis-bind `select ap {index}` to a wrong AP.
+            self._invalidate_pool_index(port, TargetType.AP)
         if is_reboot or norm.startswith("clearlist -s"):
             fn = getattr(parser, "reset_station_index", None)
             if callable(fn):
                 fn()
+            self._invalidate_pool_index(port, TargetType.CLIENT)  # station-list stale-index fix
+
+    def _invalidate_pool_index(self, port: str, target_type: Any) -> None:
+        """Clear the stale per-device scan index on this port's pool targets after its list was
+        cleared (see note_command_sent). Guarded so a pool without invalidate_index (a stub) is a
+        no-op, and any pool error is logged, never propagated into the send path."""
+        fn = getattr(self._pool, "invalidate_index", None)
+        if not callable(fn):
+            return
+        try:
+            fn(port, target_type)
+        except Exception:
+            log.exception("TargetIngestor: pool index invalidation failed on %s", port)
 
     def _route(self, ev: Any, port: str) -> None:
         """Route one parsed event to the pool / capture log / device identity. Extracted from the
@@ -134,8 +152,12 @@ class TargetIngestor:
         branches, same order as the inline routing it replaced."""
         target = self._event_to_target(ev, port)
         if target is not None:
-            if not target.vendor and target.target_type in _MAC_TARGET_TYPES:
-                # OUI→vendor enrichment; "" for unknown / randomized MACs (never fabricated).
+            if (not target.vendor and target.target_type in _MAC_TARGET_TYPES
+                    and not target.mac.startswith("idx:")):
+                # OUI→vendor enrichment; "" for unknown / randomized MACs (never fabricated). Skip
+                # the MAC-less synthetic idx:{port}:{index} key: normalize_oui's 12-hex floor still
+                # passes for a large index (idx:COM4:1000000000 -> "DC4100"), so a lookup could
+                # fabricate a vendor for a MAC-less target — the no-phantom-vendor invariant.
                 target.vendor = oui.lookup_vendor(target.mac)
             self._pool.add(target)  # publishes 'target.added' -> AutoRouter
         # Capture log — runs in addition to the target branch (a pcap_saved line has no Target
