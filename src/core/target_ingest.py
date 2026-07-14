@@ -65,25 +65,16 @@ class TargetIngestor:
                 return
             if ev is None:
                 return
-            target = self._event_to_target(ev, port)
-            if target is not None:
-                if not target.vendor and target.target_type in _MAC_TARGET_TYPES:
-                    # OUI→vendor enrichment; "" for unknown / randomized MACs (never fabricated).
-                    target.vendor = oui.lookup_vendor(target.mac)
-                self._pool.add(target)  # publishes 'target.added' -> AutoRouter
-            # Capture log — runs in addition to the target branch (a pcap_saved line has no Target
-            # but still registers a capture). Only when a CaptureStore is given (the hub ingestor).
-            if self._captures is not None:
-                cap = self._event_to_capture(ev, port)
-                if cap is not None:
-                    self._captures.add(cap)  # publishes 'capture.added' -> Crack Lab Captures list
-            # Device identity — a firmware that reports itself over serial (LxveOS status/info ->
-            # device_info) refreshes its Device's live identity + runtime capabilities. Additive to
-            # the branches above (device_info is neither a target nor a capture). Only when a device
-            # registry was given; otherwise dropped, as before.
-            ev_type = getattr(ev, "event_type", "")
-            if self._devices is not None and ev_type == "device_info":
-                self._apply_device_info(ev, port)
+            # Invariant: ONE bad line/event must never break serial ingestion for the port — an
+            # exception here would propagate into the serial reader and drop every LATER line.
+            # parse_line is already guarded above; guard the downstream routing the same way, so a
+            # raising _event_to_target (bad numeric coercion), a pool/capture add, or a device-info
+            # update is logged and swallowed instead of killing the callback (_apply_device_info
+            # keeps its own inner guards too).
+            try:
+                self._route(ev, port)
+            except Exception:
+                log.exception("TargetIngestor: routing error on %s", port)
 
         conn.on_line(on_line)
         self._attached[port] = on_line
@@ -135,6 +126,31 @@ class TargetIngestor:
             fn = getattr(parser, "reset_station_index", None)
             if callable(fn):
                 fn()
+
+    def _route(self, ev: Any, port: str) -> None:
+        """Route one parsed event to the pool / capture log / device identity. Extracted from the
+        ``on_line`` callback so a single try/except there enforces the "a bad event never breaks
+        ingestion" invariant across the whole downstream path, not just ``parse_line``. Same
+        branches, same order as the inline routing it replaced."""
+        target = self._event_to_target(ev, port)
+        if target is not None:
+            if not target.vendor and target.target_type in _MAC_TARGET_TYPES:
+                # OUI→vendor enrichment; "" for unknown / randomized MACs (never fabricated).
+                target.vendor = oui.lookup_vendor(target.mac)
+            self._pool.add(target)  # publishes 'target.added' -> AutoRouter
+        # Capture log — runs in addition to the target branch (a pcap_saved line has no Target
+        # but still registers a capture). Only when a CaptureStore is given (the hub ingestor).
+        if self._captures is not None:
+            cap = self._event_to_capture(ev, port)
+            if cap is not None:
+                self._captures.add(cap)  # publishes 'capture.added' -> Crack Lab Captures list
+        # Device identity — a firmware that reports itself over serial (LxveOS status/info ->
+        # device_info) refreshes its Device's live identity + runtime capabilities. Additive to
+        # the branches above (device_info is neither a target nor a capture). Only when a device
+        # registry was given; otherwise dropped, as before.
+        ev_type = getattr(ev, "event_type", "")
+        if self._devices is not None and ev_type == "device_info":
+            self._apply_device_info(ev, port)
 
     def _apply_device_info(self, ev: Any, port: str) -> None:
         """Route a device_info event to the connected Device's live identity + runtime capabilities
