@@ -475,17 +475,30 @@ class FlashEngine:
                     variant["zip_member"], on_line)
             else:
                 app_path = flash_core.download_to(variant["url"], cache, variant["name"], on_line)
-            # Pinned-firmware integrity gate (closed-source profiles like BlueJammer-V2 carry a
-            # "sha256"): reject a tampered/changed app image BEFORE esptool writes it.
-            if variant.get("sha256"):
-                flash_core.verify_sha256(app_path, variant["sha256"], on_line)
         except Exception as exc:
+            # A DOWNLOAD/network failure legitimately falls back to the offline vault copy.
             fb = self._flash_offline_fallback(port, chip, profile, on_line, progress,
-                                              f"download/verify failed ({exc})")
+                                              f"download failed ({exc})")
             if fb is not None:
                 return fb
-            on_line(f"[error] download/verify failed: {exc}")
+            on_line(f"[error] download failed: {exc}")
             return False
+
+        # Pinned-firmware integrity gate (closed-source profiles carry a "sha256"): reject a
+        # tampered/changed app image BEFORE esptool writes it. A mismatch here is a TAMPER signal,
+        # NOT a network failure, so it must HARD-FAIL (like _resolve_binary/_flash_qflipper/
+        # _flash_rtl8720) and NEVER fall through to the offline vault: get_cached stores the cached
+        # copy TOFU/unverified (no re-check against this pin), so a fallback would flash exactly the
+        # unverified image the gate just fired on.
+        if variant.get("sha256"):
+            try:
+                flash_core.verify_sha256(app_path, variant["sha256"], on_line)
+            except Exception as exc:
+                on_line(f"[error] firmware integrity check FAILED (pinned SHA-256 mismatch); "
+                        f"refusing to flash a tampered or altered image: {exc}")
+                if progress:
+                    progress(0, "Flash failed")
+                return False
 
         support = None
         mode = profile.flash_mode if profile.flash_mode in ("app", "full") else "full"
