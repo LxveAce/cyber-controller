@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 
 import pytest
 
@@ -15,6 +16,17 @@ from src.core import os_catalog as oc
 
 def _silent(_):  # on_line sink
     pass
+
+
+def _sha256sums_beside(image_path, sha):
+    """Write a realistic SHA256SUMS next to *image_path* (basename -> *sha*) and return its path.
+
+    The real flow downloads SHA256SUMS / signed-hashes.txt and, once its signature verifies, the
+    enforced hash MUST come from that signed file — so tests hand flash_os_image a genuine one."""
+    sums = os.path.join(os.path.dirname(image_path), "SHA256SUMS")
+    with open(sums, "w", encoding="utf-8") as fh:
+        fh.write(f"{sha}  {os.path.basename(image_path)}\n")
+    return sums
 
 
 @pytest.fixture()
@@ -217,7 +229,8 @@ def test_flash_checksums_sig_kali_success(img, monkeypatch):
     r = oc.Resolved(image_id="kali", version="2026.2", image_url="https://x", image_type="iso",
                     verify_model="checksums_sig", sha256=sha)
     rc = oc.flash_os_image(oc.get_image("kali"), r, path, r"\\.\PhysicalDrive9", _silent,
-                           checksums_path=path, checksums_sig_path=path + ".gpg", confirmed=True)
+                           checksums_path=_sha256sums_beside(path, sha),
+                           checksums_sig_path=path + ".gpg", confirmed=True)
     assert rc == 0
 
 
@@ -321,7 +334,8 @@ def test_flash_parrot_good_clearsign_writes(img, monkeypatch):
     monkeypatch.setattr(oc.sd, "write_image", lambda *a, **k: 0)
     monkeypatch.setattr(oc.sd, "verify_write", lambda *a, **k: True)
     rc = oc.flash_os_image(oc.get_image("parrot"), _resolved_parrot(sha), path,
-                           r"\\.\PhysicalDrive9", _silent, checksums_path=path, confirmed=True)
+                           r"\\.\PhysicalDrive9", _silent,
+                           checksums_path=_sha256sums_beside(path, sha), confirmed=True)
     assert rc == 0
 
 

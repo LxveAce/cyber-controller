@@ -461,10 +461,23 @@ def flash_os_image(entry: OSImage, resolved: Resolved, image_path: str, device: 
             sums_ok = verify_gpg_detached(checksums_path, checksums_sig_path, fpr, on_line)
             if sums_ok is False:
                 raise ValueError("SHA256SUMS signature is NOT valid for the expected key — refusing.")
-        expected = resolved.sha256
-        if not expected and checksums_path and os.path.isfile(checksums_path):
+        # The enforced hash MUST come from the bytes the signature authenticated. resolved.sha256
+        # was parsed during a SEPARATE, unsigned resolve-time GET of SHA256SUMS, so a mirror could
+        # sign one list yet feed the resolver a swapped image's hash — the sig would validate a
+        # file we never enforce. So when the sig verified, re-parse the hash from the signed
+        # checksums_path and enforce THAT; fall back to resolved.sha256 only as an UNAUTHENTICATED
+        # integrity anchor when no signature could be established (disclosed below).
+        signed_expected = None
+        if checksums_path and os.path.isfile(checksums_path):
             with open(checksums_path, "r", encoding="utf-8", errors="replace") as fh:
-                expected = parse_sha256sums(fh.read(), os.path.basename(image_path))
+                signed_expected = parse_sha256sums(fh.read(), os.path.basename(image_path))
+        if sums_ok is True:
+            if not signed_expected:
+                raise ValueError("SHA256SUMS signature verified but lists no hash for this image "
+                                 "— refusing to write.")
+            expected = signed_expected
+        else:
+            expected = resolved.sha256 or signed_expected
         if expected:
             if not verify_sha256(image_path, expected, on_line, on_progress):
                 raise ValueError("SHA-256 does not match SHA256SUMS — refusing to write.")
@@ -488,8 +501,16 @@ def flash_os_image(entry: OSImage, resolved: Resolved, image_path: str, device: 
             clearsig_ok = verify_gpg_clearsigned(checksums_path, fpr, on_line)
             if clearsig_ok is False:
                 raise ValueError("Clearsigned hashes are NOT valid for the expected key — refusing to write.")
-            if clearsig_ok is True and resolved.sha256:
-                if not verify_sha256(image_path, resolved.sha256, on_line, on_progress):
+            if clearsig_ok is True:
+                # Enforce the hash from the CLEARSIGN-VERIFIED file, not resolved.sha256 (which was
+                # parsed from a separate unsigned resolve-time GET of the same file — a mirror could
+                # sign one copy and feed the resolver another).
+                with open(checksums_path, "r", encoding="utf-8", errors="replace") as fh:
+                    signed_sha = parse_sha256sums(fh.read(), os.path.basename(image_path))
+                if not signed_sha:
+                    raise ValueError("Clearsigned hashes verified but list no hash for this image "
+                                     "— refusing to write.")
+                if not verify_sha256(image_path, signed_sha, on_line, on_progress):
                     raise ValueError("SHA-256 does not match the PGP-signed hashes — refusing to write.")
                 verified = True
         if not verified and resolved.sha256:
