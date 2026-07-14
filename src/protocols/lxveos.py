@@ -70,9 +70,15 @@ def _coerce_status_field(key: str, val: str):
     """Type the known ``status`` fields; leave any unknown (future) key as a raw string."""
     if key == "caps":  # hex capability bitmask, e.g. 0x007
         try:
-            return int(val, 16)
+            mask = int(val, 16)
         except ValueError:
             return val
+        # A real caps bitmask is a few bits. A hostile/spoofed device can send a 64 KiB caps= hex
+        # string, and _decode_caps is O(bits^2) big-int work on the serial reader thread (DoS). Cap
+        # at 64 bits (ample for forward-compat capN); an over-large value stays a raw string.
+        if mask < 0 or mask.bit_length() > 64:
+            return val
+        return mask
     if key == "heap":  # free-heap bytes (decimal)
         try:
             return int(val)

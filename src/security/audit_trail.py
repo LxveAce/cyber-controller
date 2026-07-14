@@ -26,6 +26,27 @@ log = logging.getLogger(__name__)
 _GENESIS_HASH = "0" * 64  # Seed hash for the first entry
 
 
+def _atomic_write_text(path: Path, data: str) -> None:
+    """Write *data* to *path* atomically (temp sibling -> fsync -> os.replace), so a crash mid-write
+    can never truncate/lose the durable chain (the discipline the sibling secret files use). O_CREAT
+    0o600 keeps the temp owner-only; it is removed on any failure, and the existing file is left
+    untouched until the atomic replace."""
+    tmp = path.with_name(path.name + f".tmp.{os.getpid()}")
+    try:
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 @dataclass
 class AuditEntry:
     """A single audit-trail record.
@@ -171,7 +192,7 @@ class AuditTrail:
             # Rewrite the file from the clean in-memory chain so the next append lands on a well-formed
             # boundary (drops the torn tail) instead of gluing onto a newline-less partial line.
             data = "".join(json.dumps(asdict(e), separators=(",", ":")) + "\n" for e in entries)
-            path.write_text(data, encoding="utf-8")
+            _atomic_write_text(path, data)  # atomic: a crash mid-repair can't truncate the chain
             self._harden_perms(path)  # re-assert 0600 after rewriting the sensitive chain
 
     def _append_jsonl(self, entry: AuditEntry) -> None:
@@ -253,7 +274,7 @@ class AuditTrail:
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         data = [asdict(e) for e in self._entries]
-        path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _atomic_write_text(path, json.dumps(data, indent=2))
         log.info("Audit trail saved: %s (%d entries)", path, len(data))
 
     def load_from_file(self, path: str | Path) -> None:

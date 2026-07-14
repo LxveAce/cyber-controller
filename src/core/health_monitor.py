@@ -176,7 +176,10 @@ class HealthMonitor:
             Dict with firmware_version, uptime, signal_strength, last_seen, status.
         """
         with self._lock:
-            cached = self._device_health.get(port, {})
+            # COPY, not a shared reference: the status/last_seen/firmware updates below run OUTSIDE
+            # this lock, so mutating the stored dict in place would let get_all_device_health read a
+            # torn snapshot. Mutate a local copy, then persist it back atomically at the end.
+            cached = dict(self._device_health.get(port, {}))
             conn = self._device_connections.get(port)
             dm = self._dm
 
@@ -230,6 +233,11 @@ class HealthMonitor:
             # "registered" device keeps its registered status (it was never live).
             cached["status"] = "disconnected"
 
+        # Persist the freshly-computed status/last_seen back atomically (a full-object swap under
+        # the lock) so get_all_device_health sees a whole dict, old or new, never a torn mix.
+        with self._lock:
+            if port in self._device_health:
+                self._device_health[port] = cached
         return dict(cached)
 
     def get_all_device_health(self) -> dict[str, dict[str, Any]]:

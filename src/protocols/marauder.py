@@ -176,7 +176,8 @@ class MarauderProtocol(BaseProtocol):
         # reach the TargetPool. Guarded to require a BSSID plus either an SSID or the unambiguous bare-leading-RSSI
         # signature, so Client/BLE/status lines (which also carry a MAC) never misfire as APs. Isolated multi-line
         # ESSID:/BSSID: lines are handled by the branches above and never reach here.
-        if _RSSI_LEAD_RE.search(line) or "ESSID" in line.upper():
+        if (not _RE_BLE.search(line) and not _RE_CLIENT.search(line)
+                and (_RSSI_LEAD_RE.search(line) or "ESSID" in line.upper())):
             fields = _extract_ap_fields(line)
             bssid = fields.get("bssid")
             if bssid and ("ssid" in fields or "rssi" in fields):
