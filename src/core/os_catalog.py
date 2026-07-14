@@ -444,6 +444,12 @@ def download(url: str, dest_dir: str, on_line: Line, on_progress: Progress = Non
                     written += len(chunk)
                     if on_progress and total:
                         on_progress(min(written / total, 1.0))
+            # Completeness: a truncated stream (server/proxy dropped mid-body) ends iter_content
+            # WITHOUT raising, so a short read would be promoted to a "complete" OS file and later
+            # flashed/trusted. When Content-Length was declared, require we got all of it (mirrors
+            # firmware_vault._safe_streamed_download).
+            if total and written != total:
+                raise ValueError(f"incomplete download: got {written} of {total} bytes")
             on_line(f"[os] downloaded {written} bytes -> {dest}")
             return dest
         finally:

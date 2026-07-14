@@ -217,6 +217,12 @@ def download_image(url: str, dest_dir: str, on_line: Line,
                     on_progress(min(written / total, 1.0))
             f.flush()
             os.fsync(f.fileno())
+        # Completeness: a truncated stream ends iter_content WITHOUT raising, so a short read would
+        # be atomically committed as a "complete" image. When Content-Length was declared, require
+        # we got all of it -- raise BEFORE os.replace so the truncated temp file is cleaned up (the
+        # except unlinks it) and never promoted into the cache.
+        if total and written != total:
+            raise ValueError(f"incomplete download: got {written} of {total} bytes")
         os.replace(tmp, dest)
     except BaseException:
         try:
