@@ -145,11 +145,27 @@ def detect_chip_from_text(text: str) -> Optional[str]:
 
 # ── serial probe ────────────────────────────────────────────────────────── #
 
-def _read_until_idle(ser: serial.Serial, timeout: float) -> str:
-    """Read from serial until no new data arrives for `timeout` seconds."""
+def _read_until_idle(ser: serial.Serial, timeout: float,
+                     max_total: float = 10.0, max_bytes: int = 1 << 20) -> str:
+    """Read from serial until no new data arrives for `timeout` seconds.
+
+    Bounded so a device that streams forever (wedged boot-spew, a chatty console/GPS, or a hostile
+    banner that never goes idle) can't hang the caller or exhaust memory. The idle timeout ALONE is
+    not enough: it resets on every read that returns bytes (below), so a never-idle stream loops
+    forever and grows `buf` without limit. Two hard caps end the read regardless -- an OVERALL
+    wall-clock bound (`max_total`, independent of the per-read reset) and a `max_bytes` buffer cap.
+    Port enumeration probes ports serially, so an unbounded read here would wedge the whole scan
+    (mirrors serial_handler._MAX_LINE_CHARS). A legit device idles within `timeout` and never hits
+    either cap.
+    """
     buf = b""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
+    start = time.monotonic()
+    deadline = start + timeout
+    hard_deadline = start + max_total
+    while True:
+        now = time.monotonic()
+        if now >= deadline or now >= hard_deadline or len(buf) >= max_bytes:
+            break
         waiting = ser.in_waiting
         if waiting:
             buf += ser.read(waiting)
