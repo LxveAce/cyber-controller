@@ -866,6 +866,13 @@ def create_app(
             data = {}
         port = str(data.get("port", ""))
         command = str(data.get("command", ""))
+        # Reject an empty command, mirroring the /api/command HTTP twin (which 400s on
+        # `not command`). Without this the WS path fell through to conn.write(""), which appends
+        # the line terminator and transmits a bare newline to the attached device — an unvalidated
+        # no-op byte onto attack hardware that the HTTP sink refuses. Keep the two sinks symmetric.
+        if not command:
+            emit("serial_output", {"port": port, "line": "[Empty command ignored]"})
+            return
         if len(command) > _MAX_COMMAND_LEN:
             emit("serial_output", {"port": port, "line": "[Command too long]"})
             return

@@ -408,16 +408,30 @@ def convert_capture(capture: str, out_hc22000: str, on_line: Line,
     argv = build_convert_argv(capture, out_hc22000, conv.path or CONVERTER)
     on_line(f"[crack] converting capture: {' '.join(os.path.basename(a) for a in argv)}")
     try:
-        _rc, out, _err = _run_tool(argv, 120, on_proc=on_proc)
+        rc, out, err = _run_tool(argv, 120, on_proc=on_proc)
     except subprocess.TimeoutExpired:
         raise RuntimeError("hcxpcapngtool timed out converting the capture")
     for ln in (out or "").splitlines():
         if ln.strip():
             on_line(f"[hcx] {ln.strip()}")
-    # No output file, or a present-but-empty one (the UI pre-creates the temp path, so the absent-file
-    # guard can't fire), or an output with zero extractable hashes all mean the SAME thing: this capture
-    # holds no PMKID/handshake. Report that honest negative and return 0 so the caller does NOT feed an
-    # empty .hc22000 to hashcat (which would exit nonzero and mis-report a "tool failure").
+    # A NONZERO exit means the converter itself FAILED (corrupt/truncated/unreadable capture,
+    # a crash), NOT that the capture holds no handshake. hcxpcapngtool exits 0 even when it
+    # extracts zero hashes from a VALID pcap, so rc != 0 is a genuine tool failure. Reporting it
+    # as the honest negative "nothing to crack" (as the size==0 branch below does) would launder a
+    # real failure into a clean result (verify-never-fake) and bury the cause — its stderr was
+    # being dropped too. Surface it with the tool's own stderr, exactly as run_hashcat/run_aircrack
+    # now do for their rc != 0 (beat 242).
+    if rc != 0:
+        for ln in (err or "").splitlines():
+            if ln.strip():
+                on_line(f"[hcx:err] {ln.strip()}")
+        tail = [ln for ln in (err or out or "").splitlines() if ln.strip()]
+        hint = tail[-1].strip() if tail else f"exit {rc}"
+        raise RuntimeError(f"hcxpcapngtool failed to convert the capture (exit {rc}): {hint}")
+    # rc == 0: no output file, a present-but-empty one (the UI pre-creates the temp path, so the
+    # absent-file guard can't fire), or zero extractable hashes all mean the SAME honest thing —
+    # this capture holds no PMKID/handshake. Return 0 so the caller does NOT feed an empty
+    # .hc22000 to hashcat.
     if not os.path.isfile(out_hc22000) or os.path.getsize(out_hc22000) == 0:
         on_line("[crack] no PMKID or handshake found in this capture (nothing to crack)")
         return 0

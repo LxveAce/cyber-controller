@@ -274,7 +274,7 @@ class AutoRouter:
         self._bus = bus
         self._send = send_command
         self._rules: list[RoutingRule] = []
-        self._cooldowns: dict[str, float] = {}  # "rule:target_key" -> last_fire
+        self._cooldowns: dict[tuple[str, str], float] = {}  # (rule.name, target_key) -> last_fire
         self._lock = threading.Lock()
 
         self._bus.subscribe("target.added", self._on_target)
@@ -292,11 +292,15 @@ class AutoRouter:
             self._rules = [r for r in self._rules if r.name != name]
             removed = len(self._rules) < before
             if removed:
-                # Drop the removed rule's cooldown stamps (keys "name:target_key") so they neither
-                # linger as a slow leak nor skew the size-cap eviction cutoff once the rule is gone.
-                prefix = f"{name}:"
+                # Drop the removed rule's cooldown stamps so they neither linger as a slow leak
+                # nor skew the size-cap eviction cutoff once the rule is gone. Keys are
+                # (rule.name, target_key) TUPLES, so matching on k[0] is EXACT. A string "name:"
+                # prefix (the old form) also matched a SIBLING rule whose name starts with
+                # name + ":" — rule names are free-form and may contain colons — wiping that
+                # sibling's cooldown and letting it re-fire its routed command (e.g. a deauth)
+                # inside its own cooldown window.
                 self._cooldowns = {
-                    k: t for k, t in self._cooldowns.items() if not k.startswith(prefix)
+                    k: t for k, t in self._cooldowns.items() if k[0] != name
                 }
             return removed
 
@@ -321,7 +325,7 @@ class AutoRouter:
         for rule in rules:
             if not self._matches(rule, target_type, ssid, rssi):
                 continue
-            cooldown_key = f"{rule.name}:{target_key}"
+            cooldown_key = (rule.name, target_key)
             # Atomic check-and-stamp: _on_target runs in EACH device's serial reader thread
             # (target.added is published synchronously from TargetPool.add), so with several radios
             # connected two threads can see the same target at once. Doing the get/compare/set outside

@@ -224,8 +224,10 @@ def test_remove_rule_drops_its_cooldown_stamps():
 
     r = _router()
     r.add_rule(RoutingRule(name="alpha", cooldown=60))
-    r._cooldowns["alpha:wifi_ap:aa:bb"] = 123.0
-    r._cooldowns["beta:wifi_ap:cc:dd"] = 456.0
+    # Cooldown keys are (rule.name, target_key) tuples (cc-deep-audit-4 C3 — was an ambiguous
+    # colon-joined string that let a sibling name-prefix collide).
+    r._cooldowns[("alpha", "wifi_ap:aa:bb")] = 123.0
+    r._cooldowns[("beta", "wifi_ap:cc:dd")] = 456.0
     assert r.remove_rule("alpha") is True
-    assert "alpha:wifi_ap:aa:bb" not in r._cooldowns, "removed rule's stamps must be dropped"
-    assert "beta:wifi_ap:cc:dd" in r._cooldowns, "another rule's stamps must be left intact"
+    assert ("alpha", "wifi_ap:aa:bb") not in r._cooldowns, "removed rule's stamps must be dropped"
+    assert ("beta", "wifi_ap:cc:dd") in r._cooldowns, "another rule's stamps must be left intact"

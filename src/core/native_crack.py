@@ -165,6 +165,7 @@ def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[L
     handshakes = usable
     ref = handshakes[0]
     tried = 0
+    scanned = 0
     # Read the wordlist as RAW BYTES, not decoded text. A WPA passphrase is 8..63 OCTETS fed verbatim
     # to PBKDF2 (IEEE 802.11i), so hashcat/aircrack read the file as bytes too. Decoding it as UTF-8
     # first (errors="ignore") silently DROPPED invalid bytes from non-UTF-8 rockyou lines, corrupting
@@ -172,6 +173,17 @@ def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[L
     # twin of the essid_bytes salt fix. A valid-UTF-8 line yields byte-identical results to before.
     with open(wordlist_path, "rb") as f:
         for raw in f:
+            scanned += 1
+            # Honor Stop + emit progress on lines SCANNED, not just valid candidates TRIED. A
+            # wordlist of mostly out-of-range lines (<8 or >63 octets, e.g. a non-passphrase
+            # file picked by mistake) advances `tried` rarely, so gating cancel/progress on
+            # `tried` (old behavior) made the Stop button a no-op and the run look hung while
+            # skipping them. Keying off `scanned` keeps cancellation responsive regardless of
+            # candidate validity; `tried` stays the honest count.
+            if scanned % progress_every == 0:
+                if stop():
+                    return NativeResult(tried=tried, detail="stopped")
+                log(f"[native] scanned {scanned:,} lines, tried {tried:,} candidate(s)…")
             psk = raw.rstrip(b"\r\n")
             if not 8 <= len(psk) <= 63:  # WPA-PSK octet-length gate, exact on the raw bytes
                 continue
@@ -183,9 +195,5 @@ def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[L
                     return NativeResult(cracked=True, essid=hs.essid, bssid=_mac_str(hs.ap_mac),
                                         password=shown, tried=tried,
                                         detail="key recovered (native)" + note)
-            if tried % progress_every == 0:
-                if stop():
-                    return NativeResult(tried=tried, detail="stopped")
-                log(f"[native] tried {tried:,} passphrases…")
     return NativeResult(tried=tried, detail=f"key not in wordlist ({tried:,} candidates tried)",
                         essid=ref.essid, bssid=_mac_str(ref.ap_mac))
