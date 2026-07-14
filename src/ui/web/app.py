@@ -255,8 +255,9 @@ def create_app(
         def decorated(*args, **kwargs):
             token = request.headers.get("X-CSRF-Token")
             if not token:
-                body = request.get_json(silent=True) or {}
-                token = body.get("_csrf")
+                # _json_body() coerces a non-dict body (e.g. `[1]`) to {} so `.get("_csrf")` returns
+                # None -> a clean 403, instead of AttributeError -> an ungraceful 500.
+                token = _json_body().get("_csrf")
             if not csrf_valid(session.get("csrf"), token):
                 _audit("web_csrf_fail", path=request.path)
                 abort(403)
@@ -463,7 +464,7 @@ def create_app(
     @requires_auth
     @requires_csrf
     def api_flash():
-        data = request.get_json(force=True, silent=True) or {}
+        data = _json_body()
         port = str(data.get("port", ""))
         profile_name = str(data.get("profile_id", ""))
 
@@ -562,7 +563,7 @@ def create_app(
         # send_command) can actually reach the device. Without this route get_connection(port) is always
         # None — the web remote could never talk to a real board. Registers the scanned Device first (a
         # port present at startup is not yet in the registry), then opens the link.
-        data = request.get_json(force=True, silent=True) or {}
+        data = _json_body()
         port = str(data.get("port", ""))
         if not port:
             return jsonify({"error": "port is required"}), 400
@@ -587,7 +588,7 @@ def create_app(
     @requires_auth
     @requires_csrf
     def api_disconnect():
-        data = request.get_json(force=True, silent=True) or {}
+        data = _json_body()
         port = str(data.get("port", ""))
         if not port:
             return jsonify({"error": "port is required"}), 400
@@ -603,7 +604,7 @@ def create_app(
     def api_command():
         if not cmd_limiter.allow(_client_ip()):
             return jsonify({"error": "rate limited"}), 429
-        data = request.get_json(force=True, silent=True) or {}
+        data = _json_body()
         port = str(data.get("port", ""))
         command = str(data.get("command", ""))
 
