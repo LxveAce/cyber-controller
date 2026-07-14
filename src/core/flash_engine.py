@@ -935,10 +935,13 @@ class FlashEngine:
         # Nordic DFU can only flash a .zip package, so build one first via the tool's pkg-generate
         # step. Chameleon/RNode already ship a .zip -> the pre-step is skipped for them.
         gen_cfg = profile.raw.get("nrf_dfu_pkg_generate")
+        pkg_tmp_dir = None
         if gen_cfg and pkg_path.lower().endswith(".hex"):
-            pkg_path = self._nrf_dfu_pkg_from_hex(tool, pkg_path, gen_cfg, on_line)
-            if not pkg_path:
+            built = self._nrf_dfu_pkg_from_hex(tool, pkg_path, gen_cfg, on_line)
+            if not built:
                 return False
+            pkg_path = built
+            pkg_tmp_dir = os.path.dirname(built)  # unique mkdtemp dir, cleaned up below
         baud = profile.raw.get("nrf_dfu_baud", 115200)
         if "adafruit" in os.path.basename(tool).lower():
             argv = [tool, "dfu", "serial", "-pkg", pkg_path, "-p", port, "-b", str(baud)]
@@ -948,7 +951,11 @@ class FlashEngine:
         else:
             # legacy Nordic nrfutil 6.x uses the "usb-serial" subcommand shape.
             argv = [tool, "dfu", "usb-serial", "-pkg", pkg_path, "-p", port]
-        rc = flash_core._run_stream(argv, on_line)
+        try:
+            rc = flash_core._run_stream(argv, on_line)
+        finally:
+            if pkg_tmp_dir:
+                shutil.rmtree(pkg_tmp_dir, ignore_errors=True)
         if progress:
             progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
         return rc == 0
@@ -966,7 +973,11 @@ class FlashEngine:
         ``adafruit-nrfutil`` fork spell this command differently, so we branch on the tool. Returns
         the package path, or ``None`` (never a false success) if the generate step fails.
         """
-        out_zip = os.path.join(tempfile.gettempdir(), "cc_nrf_dfu_pkg.zip")
+        # Unique per-invocation dir, NOT a shared fixed name: the engine flashes DIFFERENT ports in
+        # parallel, so a fixed cc_nrf_dfu_pkg.zip lets one flash clobber/read another's package — a
+        # spurious failure or, worse, the WRONG firmware written. _flash_nrf_dfu removes this dir.
+        out_dir = tempfile.mkdtemp(prefix="cc_nrf_dfu_")
+        out_zip = os.path.join(out_dir, "pkg.zip")
         hw = str(cfg.get("hw_version", 52))
         sd = str(cfg.get("sd_req", "0x00"))
         if "adafruit" in os.path.basename(tool).lower():

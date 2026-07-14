@@ -362,7 +362,9 @@ def test_nrf_dfu_raw_hex_generates_pkg_first_classic(monkeypatch):
                        "--sd-req", "0x00", "--application"]
     assert gen[8] == "/tmp/sniffer.hex"
     out_zip = gen[9]
-    assert out_zip.endswith("cc_nrf_dfu_pkg.zip")
+    # a UNIQUE per-invocation dir (not a shared cc_nrf_dfu_pkg.zip) — avoids the parallel-flash race
+    assert out_zip.endswith(("/pkg.zip", "\\pkg.zip"))
+    assert "cc_nrf_dfu_" in out_zip
     # 2) the flash consumes the GENERATED zip (never the raw hex).
     assert flash == ["/usr/bin/nrfutil", "dfu", "usb-serial", "-pkg", out_zip, "-p", "COM7"]
 
@@ -394,7 +396,9 @@ def test_nrf_dfu_raw_hex_adafruit_uses_genpkg(monkeypatch):
     gen = calls[0]
     assert gen[:5] == ["/usr/bin/adafruit-nrfutil", "dfu", "genpkg", "--dev-type", "0x0052"]
     assert gen[5:7] == ["--application", "/tmp/sniffer.hex"]
-    assert gen[7].endswith("cc_nrf_dfu_pkg.zip")
+    # unique per-invocation dir (not a shared cc_nrf_dfu_pkg.zip) — avoids the parallel-flash race
+    assert gen[7].endswith(("/pkg.zip", "\\pkg.zip"))
+    assert "cc_nrf_dfu_" in gen[7]
 
 
 def test_nrf_dfu_raw_hex_pkg_generate_failure_aborts(monkeypatch):

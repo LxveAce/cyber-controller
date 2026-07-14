@@ -785,9 +785,15 @@ def _verify_read_via_sudo_dd(dev: str, img_size: int, h, on_progress, on_line: L
     except (OSError, ValueError) as exc:
         on_line(f"[verify] privileged read-back failed to start ({exc}); run the imaging as root to verify")
         return False
-    if proc.stdout is not None:
-        _hash_reader(proc.stdout, img_size, h, on_progress)
-        proc.stdout.close()
+    stdout = proc.stdout
+    if stdout is not None:
+        _hash_reader(stdout, img_size, h, on_progress)
+        # dd emits ceil(img_size/_CHUNK) full 1-MiB blocks — up to ~1 MiB MORE than img_size. Drain
+        # that tail before closing: an early close breaks dd's pipe and the child (SIGPIPE reset to
+        # SIG_DFL) is killed -> nonzero rc -> a GOOD write fails verify for any non-whole-MiB image.
+        for _ in iter(lambda: stdout.read(_CHUNK), b""):
+            pass
+        stdout.close()
     proc.wait()
     if proc.returncode:
         on_line(f"[verify] privileged read-back (sudo dd) exited {proc.returncode}")

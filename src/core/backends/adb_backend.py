@@ -585,7 +585,12 @@ def install_rayhunter(on_line: Line, serial: Optional[str] = None,
                 return 1
             on_line("[rayhunter] sha256 OK")
         except Exception as e:
-            on_line(f"[warning] could not verify sha256: {e}")
+            # A checksum WAS published (integrity was intended) but the check couldn't complete —
+            # e.g. an empty/malformed .sha256 or a transient fetch error. Don't launder that into a
+            # proceed: refuse to install unverified firmware (the installer binary runs below).
+            on_line(f"[error] sha256 verification could not complete: {e}")
+            on_line("[error] refusing to install unverified firmware")
+            return 1
 
     extract_dir = os.path.join(cache, f"rayhunter-{tag}")
     if os.path.isdir(extract_dir):
