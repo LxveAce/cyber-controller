@@ -57,18 +57,28 @@ def is_offensive_macro(macro: Macro) -> bool:
     """Return True if a macro transmits / can disrupt and therefore needs the play-time arm gate.
 
     Heuristic (spec §4.3): the ``device_protocol`` ends with ``-attack``, OR the name starts with
-    ``[TEMPLATE``, OR any step command starts with a known attack-command prefix (``_ATTACK_PREFIXES``,
-    which now includes the underscore-joined HaleHound verbs — ``wifi_deauth``, ``ble_cinder``,
-    ``subghz_replay``, ``mousejack`` — whose embedded attack keyword the old bare-keyword list missed).
+    ``[TEMPLATE``, OR any step command is flagged by :func:`src.core.safety.classify` (the SAME
+    substring danger classifier the terminal/UI uses, so the arm gate can't disagree-low with it —
+    it catches non-leading verbs like ``wifi deauth 5`` / ``run attack`` / ``flood 2400`` the old
+    startswith list missed) OR matches ``_ATTACK_PREFIXES`` (kept as an additive floor for verbs
+    whose danger lives only in CommandInfo metadata — ``probe`` / ``startportal`` / ``subghz tx`` —
+    that a bare macro step string can't convey to ``classify``).
     Pure logic (no Qt) so it is unit testable and reusable by the UI play path.
     """
     if macro.device_protocol.endswith("-attack"):
         return True
     if macro.name.startswith("[TEMPLATE"):
         return True
+    from src.core import safety
     for step in macro.steps:
-        cmd = step.command.strip().lower()
-        if any(cmd.startswith(prefix) for prefix in _ATTACK_PREFIXES):
+        cmd = step.command.strip()
+        # safety.classify() (a substring scan) is the authoritative danger classifier, so it catches
+        # offensive verbs the startswith prefix list misses when the keyword is NOT leading -- e.g.
+        # 'wifi deauth 5', 'run attack', 'flood 2400', 'rf_jam'. Keep the prefix list as an additive
+        # floor for verbs whose danger lives only in CommandInfo metadata ('probe', 'startportal',
+        # 'evilportal', 'subghz tx', 'nfc/rfid emulate') -- a bare step string can't give classify()
+        # that metadata. Union => never miss (safety) and never regress the curated prefix list.
+        if safety.classify(cmd) or any(cmd.lower().startswith(p) for p in _ATTACK_PREFIXES):
             return True
     return False
 

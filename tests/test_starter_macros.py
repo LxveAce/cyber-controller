@@ -76,13 +76,29 @@ def test_builtins_use_real_protocol_commands():
 
 
 def test_exactly_one_offensive_template():
-    offensive = []
+    """Exactly one starter ships as an explicit, clearly-marked ATTACK TEMPLATE (the ``-attack``
+    device_protocol + ``[TEMPLATE`` name).
+
+    Beat 274 (hub twin S3) made ``is_offensive_macro`` delegate to ``safety.classify`` so the macro
+    arm gate can't disagree-low with the terminal's danger classifier. That also arm-gates
+    keyword-matched starters like the PASSIVE ``sniffbeacon`` sniff (``safety.classify`` flags the
+    "beacon" substring) — an over-flag the retention policy accepts (the gate never blocks, only
+    prompts). So the invariant is now "one marked attack TEMPLATE", and every OTHER gated starter
+    must be one ``safety.classify`` also flags (the gate never over-gates a step the terminal calls
+    safe)."""
+    from src.core import safety
+    templates = []
     for f in sorted(_BUILTIN_DIR.glob("cc_*.json")):
         macro = Macro.from_dict(json.loads(f.read_text(encoding="utf-8")))
-        if is_offensive_macro(macro):
-            offensive.append(macro.name)
-    assert len(offensive) == 1
-    assert all(n.startswith("[TEMPLATE") for n in offensive)
+        if macro.device_protocol.endswith("-attack"):
+            templates.append(macro.name)
+            assert is_offensive_macro(macro), f"{macro.name}: attack template must be arm-gated"
+        elif is_offensive_macro(macro):
+            assert any(safety.classify(s.command.strip()) for s in macro.steps), (
+                f"{macro.name}: arm-gated but no step safety.classify flags — gate over-gates"
+            )
+    assert len(templates) == 1
+    assert templates[0].startswith("[TEMPLATE")
 
 
 def test_excluded_firmwares_not_shipped():
