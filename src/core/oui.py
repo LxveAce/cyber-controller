@@ -55,19 +55,32 @@ def normalize_oui(mac: str) -> str | None:
 
 
 def _load_table() -> dict[str, str]:
-    """Lazy-load the bundled gzipped ``prefix<TAB>org`` table into the module cache."""
+    """Lazy-load the bundled gzipped ``prefix<TAB>org`` table into the module cache.
+
+    Builds into a LOCAL dict and publishes it to the cache only after the read finishes, so a
+    truncated/corrupt table never leaves a HALF-loaded table cached. Any unreadable table (missing,
+    corrupt gzip, truncated, mis-encoded) degrades to empty — vendor enrichment is optional, never
+    critical, so it must return "" rather than raise into serial ingestion or the targets page."""
     global _table
-    if _table is None:
-        _table = {}
-        try:
-            with gzip.open(_TABLE_PATH, "rt", encoding="utf-8") as f:
-                for line in f:
-                    pref, _sep, name = line.partition("\t")
-                    name = name.rstrip("\n")
-                    if len(pref) == 6 and name:
-                        _table[pref.upper()] = name
-        except FileNotFoundError:
-            log.warning("OUI table missing at %s; vendor lookups will return ''", _TABLE_PATH)
+    if _table is not None:
+        return _table
+    tbl: dict[str, str] = {}
+    try:
+        with gzip.open(_TABLE_PATH, "rt", encoding="utf-8") as f:
+            for line in f:
+                pref, _sep, name = line.partition("\t")
+                name = name.rstrip("\n")
+                if len(pref) == 6 and name:
+                    tbl[pref.upper()] = name
+    except FileNotFoundError:
+        log.warning("OUI table missing at %s; vendor lookups will return ''", _TABLE_PATH)
+        tbl = {}
+    except (OSError, EOFError, UnicodeDecodeError) as exc:
+        # Corrupt / truncated / mis-encoded table -> degrade to empty (same as missing), never raise
+        # into a caller and never cache the partial rows read before the failure.
+        log.warning("OUI table %s unreadable (%s); vendor lookups return ''", _TABLE_PATH, exc)
+        tbl = {}
+    _table = tbl
     return _table
 
 
