@@ -995,6 +995,24 @@ class CyberControllerWindow(QMainWindow):
             return [], "No devices -- plug one in or use Scan Ports first"
         return [], "Multiple devices -- tick the one(s) to connect, then Connect"
 
+    @staticmethod
+    def _resolve_pterm_send_targets(
+        checked: "list[str]", connected: "list[str]"
+    ) -> "list[str]":
+        """Ports a persistent-terminal Send should write to.
+
+        Ticked-AND-connected ports win. If NONE are ticked, fall back to ALL connected ports — the
+        SAME empty-selection fallback Connect/Disconnect already have. Without this, the owner's
+        single-device flow broke: Connect (via :meth:`_resolve_pterm_connect_ports`) opens the sole
+        board without ticking its checkbox, so Send saw an empty check-selection and refused every
+        command with "check and connect first" even though the board was connected and streaming RX.
+        Returns [] only when nothing is connected, or when the ticked ports are all disconnected — a
+        genuine "connect first" case that still deserves the error."""
+        connected_set = set(connected)
+        if checked:
+            return [p for p in checked if p in connected_set]
+        return list(connected)
+
     def _pterm_on_connect(self) -> None:
         """Connect the persistent terminal to the checked ports (or the sole listed device when
         nothing is ticked — see :meth:`_resolve_pterm_connect_ports`)."""
@@ -1123,12 +1141,15 @@ class CyberControllerWindow(QMainWindow):
             self._pterm_run_tool(argv)
             self._pterm_input.clear()
             return
-        checked = self._pterm_checked_ports()
-        # Filter to only connected ports
-        targets = [p for p in checked if p in self._pterm_conns]
+        # Ticked-and-connected ports win; with nothing ticked, fall back to ALL connected ports so a
+        # device connected via the no-tick Connect fallback can actually be sent to (mirrors the
+        # Connect/Disconnect empty-selection fallback — see _resolve_pterm_send_targets).
+        targets = self._resolve_pterm_send_targets(
+            self._pterm_checked_ports(), list(self._pterm_conns.keys())
+        )
         if not targets:
             self._pterm_output.append(
-                '<span style="color:#f85149;">[No connected devices checked -- check and connect first]</span>'
+                '<span style="color:#f85149;">[No connected devices -- connect a device first]</span>'
             )
             return
         for port in targets:

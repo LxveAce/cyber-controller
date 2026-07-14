@@ -130,3 +130,66 @@ def test_pterm_disconnect_gives_feedback_when_nothing_connected(qapp):
         assert "No connected devices to disconnect" in win._pterm_output.toPlainText()
     finally:
         win.close()
+
+
+# ── Send fallback (deep-audit-2, 2026-07-13, HIGH): Send must reach a no-tick-connected device ─
+# Connect gained a no-tick fallback (above) but Send did NOT — so the owner's single-device flow
+# connected + streamed RX yet refused every command with "check and connect first". Send now falls
+# back to ALL connected ports when nothing is ticked, mirroring Connect/Disconnect.
+
+def test_resolve_send_checked_and_connected_wins():
+    # Ticked ports that are connected are the targets; an unconnected ticked port is dropped.
+    r = CyberControllerWindow._resolve_pterm_send_targets(["COM4", "COM7"], ["COM4"])
+    assert r == ["COM4"]
+
+
+def test_resolve_send_falls_back_to_all_connected_when_none_ticked():
+    # The owner's case: device connected via the no-tick fallback (so its box is unticked) -> Send
+    # targets it anyway instead of erroring.
+    assert CyberControllerWindow._resolve_pterm_send_targets([], ["COM4"]) == ["COM4"]
+    both = CyberControllerWindow._resolve_pterm_send_targets([], ["COM4", "COM7"])
+    assert both == ["COM4", "COM7"]
+
+
+def test_resolve_send_empty_when_nothing_connected():
+    # Genuinely nothing connected -> no targets (the handler then shows "connect a device first").
+    assert CyberControllerWindow._resolve_pterm_send_targets([], []) == []
+    # Ticked ports that are all disconnected -> still no targets (a real "connect first" case).
+    assert CyberControllerWindow._resolve_pterm_send_targets(["COM4"], []) == []
+
+
+def test_pterm_send_reaches_no_tick_connected_device(qapp, monkeypatch):
+    """Drive the REAL flow the owner uses: Connect a sole device with no tick, then Send a command.
+    The command must reach the connected device — not be refused with a 'connect first' error."""
+    from src.models.device import Device
+
+    win, dm = _build_window(qapp)
+    try:
+        dm.add_device(Device(port="COM_TESTD", name="Marauder", firmware="marauder"))
+
+        written: list[str] = []
+
+        class _FakeConn:
+            is_connected = True
+            line_ending = "\n"
+
+            def on_line(self, cb):
+                pass
+
+            def write(self, data):
+                written.append(data)
+
+        monkeypatch.setattr(dm, "open_connection", lambda port, **kw: _FakeConn())
+
+        win._pterm_refresh_ports()
+        win._pterm_on_connect()                 # no-tick fallback opens COM_TESTD
+        assert win._pterm_checked_ports() == []  # still unticked (the precondition that broke Send)
+        assert "COM_TESTD" in win._pterm_conns
+
+        win._pterm_input.setText("reboot")
+        win._pterm_on_send()
+
+        assert written == ["reboot"], "Send must reach the no-tick-connected device"
+        assert "connect a device first" not in win._pterm_output.toPlainText()
+    finally:
+        win.close()

@@ -490,8 +490,20 @@ class HotPlugMonitor(threading.Thread):
         self.join(timeout=self._interval + 1)
 
     def run(self) -> None:
-        # Seed with currently visible ports
-        self._known_ports = {d.port for d in self._manager.scan_ports()}
+        # Register (not merely remember) the devices already attached at start. The Qt UI relies
+        # SOLELY on this monitor for its registry — unlike web/tk it does no initial
+        # scan_ports()->add_device of its own (parity note: src/ui/web/app.py) — so a board plugged
+        # in BEFORE launch used to be seeded into _known_ports WITHOUT an add_device and never
+        # appeared in list_devices() until a manual Scan, leaving the bottom-left Connect reporting
+        # "No devices". Add + fire for each initially-visible port (skip any already registered by
+        # another path, so we never double-fire connected).
+        initial = self._manager.scan_ports()
+        for dev in initial:
+            if self._manager.get_device(dev.port) is None:
+                self._manager.add_device(dev)
+                self._manager._fire_connected(dev)
+                log.info("HotPlug: device present at start — %s", dev.display_name)
+        self._known_ports = {d.port for d in initial}
         while not self._stop_event.is_set():
             try:
                 current = self._manager.scan_ports()
