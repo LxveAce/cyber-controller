@@ -496,10 +496,18 @@ def flash_os_image(entry: OSImage, resolved: Resolved, image_path: str, device: 
             if not verify_sha256(image_path, resolved.sha256, on_line, on_progress):
                 raise ValueError("SHA-256 does not match — refusing to write an unverified image.")
             verified = True
-            if checksums_path:  # the SHA came from a hashes file we could NOT PGP-verify (gpg/key missing)
-                on_line("[os] NOTE: SHA-256 matched but the hashes file's PGP signature was not verified "
-                        "(gpg missing or no pinned key). Verify signed-hashes.txt against the pinned key "
-                        "for full assurance.")
+            # DISCLOSE unconditionally: a bare SHA-256 match is an INTEGRITY check, NOT
+            # cryptographic authentication — no GPG signature over this image was verified (gpg
+            # missing, or the detached .sig / clearsigned hashes were absent). The old
+            # `if checksums_path:` gate stayed SILENT for the detached-sig profiles (Tails/Arch)
+            # that carry NO hashes file, so a match against a NETWORK-fetched sha (Tails' hash rides
+            # the same fetch as the image) authenticated the write with no note and no warning — a
+            # MITM serving a matched image+hash pair passed unseen (verify-never-fake). Always tell
+            # the operator the real trust level they got.
+            on_line("[os] NOTE: SHA-256 matched but the image's GPG signature was not verified "
+                    "(gpg missing, or the signature/hashes file was absent) — this is an integrity "
+                    "check only, not cryptographic authentication. Verify the signature against "
+                    "the pinned key before trusting it.")
 
     if not verified:
         on_line(f"[os] WARNING: {entry.name} image is UNVERIFIED (no valid signature/checksum). "
