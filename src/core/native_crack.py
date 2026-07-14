@@ -93,20 +93,29 @@ def compute_mic(the_pmk: bytes, hs: "Handshake") -> bytes:
     return hmac.new(kck, hs.eapol, algo).digest()[:16]
 
 
-def verify(hs: "Handshake", psk: "str | bytes") -> bool:
-    """True iff *psk* reproduces this handshake's captured PMKID / MIC exactly (constant-time compare)."""
-    p = pmk(psk, hs.essid_bytes or hs.essid)   # raw SSID octets are the correct salt; str is a fallback
+def _verify_with_pmk(hs: "Handshake", the_pmk: bytes) -> bool:
+    """True iff *the_pmk* (already derived for this handshake's salt) matches the captured PMKID/MIC.
+
+    Split out from :func:`verify` so :func:`crack` can derive the PMK ONCE per distinct ESSID salt
+    per candidate and reuse it across every handshake sharing that salt — the PMK is PBKDF2(psk,
+    essid), so recomputing it per handshake wasted a 4096-round derivation on each duplicate-ESSID
+    handshake (a multi-handshake same-ESSID capture multiplied crack time N-fold)."""
     if hs.kind == "pmkid":
-        return hmac.compare_digest(compute_pmkid(p, hs.ap_mac, hs.sta_mac), hs.pmkid)
+        return hmac.compare_digest(compute_pmkid(the_pmk, hs.ap_mac, hs.sta_mac), hs.pmkid)
     if hs.kind == "eapol":
-        # We implement the WPA (HMAC-MD5) and WPA2 (HMAC-SHA1) key MICs. Key-descriptor versions
-        # 0/3 use AES-128-CMAC (802.11w/PMF, WPA3-SHA256 AKMs) with a different KDF — verifying
-        # those with SHA1 would be a silent false negative, so we decline honestly (never a fake
-        # match). crack() filters these out up front and tells the operator to use hashcat.
+        # WPA (HMAC-MD5) and WPA2 (HMAC-SHA1) key MICs only. Key-descriptor versions 0/3 use
+        # AES-128-CMAC (802.11w/PMF, WPA3-SHA256 AKMs) with a different KDF — verifying those with
+        # SHA1 would be a silent false negative, so we decline honestly (never a fake match).
         if hs.key_version not in (1, 2):
             return False
-        return hmac.compare_digest(compute_mic(p, hs), hs.mic)
+        return hmac.compare_digest(compute_mic(the_pmk, hs), hs.mic)
     return False
+
+
+def verify(hs: "Handshake", psk: "str | bytes") -> bool:
+    """True iff *psk* reproduces this handshake's captured PMKID / MIC exactly (constant-time compare)."""
+    # raw SSID octets are the correct PBKDF2 salt; the decoded str is a fallback
+    return _verify_with_pmk(hs, pmk(psk, hs.essid_bytes or hs.essid))
 
 
 @dataclass
@@ -133,6 +142,38 @@ def _display_psk(psk: bytes) -> "tuple[str, str]":
         return psk.decode("utf-8"), ""
     except UnicodeDecodeError:
         return psk.decode("utf-8", "replace"), f" (non-UTF-8 key; exact bytes = {psk.hex()})"
+
+
+#: A delimiter-free run longer than this can't be an 8..63-octet WPA passphrase; cap the read
+#: buffer here so a newline-free wordlist can't be slurped whole into RAM.
+_MAX_LINE_BYTES = 4096
+
+
+def _iter_wordlist_lines(f, chunk_size: int = 1 << 16):
+    r"""Yield candidate lines from a binary wordlist, split on CR, LF, or CRLF, with bounded memory.
+
+    Python binary-mode iteration (``for raw in f``) splits on b"\n" ONLY, so a classic-Mac (lone-CR)
+    or CR-separated wordlist would be yielded as ONE giant object — the real per-line passphrases
+    never tested (a silent false negative that still reports a normal "key not in wordlist"), and a
+    large newline-free file slurped whole into RAM. Reading in bounded chunks and normalizing b"\r"
+    to b"\n" before splitting makes every line ending work; a delimiter-free run is capped at
+    ``_MAX_LINE_BYTES`` (far above any WPA key) so memory stays bounded. hashcat/aircrack likewise
+    treat a bare CR as a line ending, and a CRLF collapses to one boundary with an empty tail the
+    caller's length gate drops."""
+    buf = b""
+    while True:
+        chunk = f.read(chunk_size)
+        if not chunk:
+            break
+        buf += chunk.replace(b"\r", b"\n")
+        if b"\n" in buf:
+            *lines, buf = buf.split(b"\n")
+            for ln in lines:
+                yield ln
+        if len(buf) > _MAX_LINE_BYTES:
+            buf = buf[-_MAX_LINE_BYTES:]
+    if buf:
+        yield buf
 
 
 def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[Line] = None,
@@ -172,7 +213,7 @@ def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[L
     # the candidate so the real key was never tried (a false "not in wordlist") — the passphrase-side
     # twin of the essid_bytes salt fix. A valid-UTF-8 line yields byte-identical results to before.
     with open(wordlist_path, "rb") as f:
-        for raw in f:
+        for raw in _iter_wordlist_lines(f):
             scanned += 1
             # Honor Stop + emit progress on lines SCANNED, not just valid candidates TRIED. A
             # wordlist of mostly out-of-range lines (<8 or >63 octets, e.g. a non-passphrase
@@ -188,8 +229,17 @@ def crack(handshakes: list["Handshake"], wordlist_path: str, on_line: Optional[L
             if not 8 <= len(psk) <= 63:  # WPA-PSK octet-length gate, exact on the raw bytes
                 continue
             tried += 1
+            # Derive the PMK once per distinct ESSID salt for this candidate and reuse it across
+            # every handshake sharing that salt (see _verify_with_pmk) — a same-ESSID multi-
+            # handshake capture no longer pays the 4096-round PBKDF2 once per handshake.
+            pmk_by_salt: dict[bytes, bytes] = {}
             for hs in handshakes:
-                if verify(hs, psk):
+                salt = _octets(hs.essid_bytes or hs.essid)
+                the_pmk = pmk_by_salt.get(salt)
+                if the_pmk is None:
+                    the_pmk = pmk(psk, salt)
+                    pmk_by_salt[salt] = the_pmk
+                if _verify_with_pmk(hs, the_pmk):
                     shown, note = _display_psk(psk)
                     log(f"[native] KEY FOUND for {hs.essid or _mac_str(hs.ap_mac)}: {shown}{note}")
                     return NativeResult(cracked=True, essid=hs.essid, bssid=_mac_str(hs.ap_mac),
