@@ -130,11 +130,19 @@ def create_app(
     # Stable, persisted secret key (0600) so signed sessions survive restarts.
     app.secret_key = load_or_create_secret_key()
     tls_enabled = bool(os.environ.get("CC_WEB_CERT") and os.environ.get("CC_WEB_KEY"))
+    # SESSION_COOKIE_SECURE marks the session cookie Secure so it never rides a plaintext hop. It
+    # is auto-set when THIS process terminates TLS (local cert+key). Behind a TLS-terminating
+    # reverse proxy the app speaks plain HTTP locally, so the auto-detect wrongly leaves it OFF.
+    # An operator can set CC_WEB_COOKIE_SECURE=1 to force it on for that deployment (an env var,
+    # never a client-forgeable header, so no spoofable downgrade). =0 forces it off (bare-HTTP
+    # LAN/testing); unset falls back to the local-TLS auto-detect.
+    _cookie_secure_env = os.environ.get("CC_WEB_COOKIE_SECURE")
+    cookie_secure = tls_enabled if _cookie_secure_env is None else _cookie_secure_env == "1"
     app.config.update(
         MAX_CONTENT_LENGTH=_MAX_CONTENT_LENGTH,
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Strict",
-        SESSION_COOKIE_SECURE=tls_enabled,
+        SESSION_COOKIE_SECURE=cookie_secure,
         JSON_SORT_KEYS=False,
     )
 
