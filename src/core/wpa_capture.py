@@ -254,7 +254,14 @@ def _consume_eapol(f: bytes, eapol: bytes, ssids, pmkids, m1, eapol_hs) -> None:
             pmkids.append((ap, sta, pmkid))
     elif is_mic and not is_ack:          # message 2 (SNonce + MIC over this frame)
         anonce = m1.get((ap, sta))
-        if anonce:
+        # Message 4 ALSO has {MIC=1, ACK=0}, so it lands here too — but its Key Nonce is
+        # standard-mandated all-zero (the SNonce is not repeated in M4). A handshake built from M4
+        # gets snonce=0, whose PRF-512 KCK can never match any passphrase — a permanently
+        # unverifiable "handshake" that pollutes the crack set (and, if M2 was lost, the ONLY one,
+        # so crack() falsely reports "not in wordlist"). A real M2 carries a random non-zero SNonce,
+        # so reject a zero Key Nonce here (group-key frames — the other {MIC=1,ACK=0} case — are
+        # already dropped upstream as CCMP-encrypted).
+        if anonce and nonce != b"\x00" * 32:
             # Trim to the 802.1X PDU length (4-byte header + declared body). A monitor-mode capture
             # often appends the 4-byte 802.11 FCS (or pad bytes), which are NOT part of the MIC input
             # (hashing them in makes the correct passphrase never verify). Fall back to the full frame
