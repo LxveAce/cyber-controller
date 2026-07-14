@@ -97,11 +97,15 @@ class MarauderProtocol(BaseProtocol):
     def _assign_index(self, bssid: str) -> int:
         """Index for *bssid*: its existing ordinal if seen this session, else the next one. Deduping by BSSID
         keeps a re-observed AP on its original index (its stable position in `list -a`)."""
-        existing = self._ap_indices.get(bssid)
+        # Key lower-cased: Marauder prints a BSSID in different case across paths (AP-scan lines vs
+        # the client line's AP MAC), so an un-normalized key would miss a known AP and drop the
+        # client's `select -a` deauth. Matches the codebase `.lower()` MAC convention.
+        key = bssid.lower()
+        existing = self._ap_indices.get(key)
         if existing is not None:
             return existing
         idx = self._ap_index
-        self._ap_indices[bssid] = idx
+        self._ap_indices[key] = idx
         self._ap_index += 1
         return idx
 
@@ -203,7 +207,7 @@ class MarauderProtocol(BaseProtocol):
             # acted on through its own AP's scan ordinal. Attach it only when that AP was seen this scan
             # (so the index is real); an unknown AP leaves it unset and the resolver drops the action
             # rather than firing `select -a` on a guessed/wrong AP.
-            ap_idx = self._ap_indices.get(ap_mac)
+            ap_idx = self._ap_indices.get(ap_mac.lower())  # match _assign_index's lower-cased key
             if ap_idx is not None:
                 data["index"] = ap_idx
             return ParsedEvent(
