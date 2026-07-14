@@ -343,7 +343,17 @@ def download_wordlist(spec: WordlistSpec, directory: Optional[str] = None,
         _rm(final_tmp)
         raise RuntimeError(f"integrity check failed, not installing: {msg}")
 
-    os.replace(final_tmp, dest)
+    # The atomic install is the LAST failure path — wrap it in the same _rm cleanup the network,
+    # inflate, and integrity paths above use. os.replace can genuinely fail here on Windows: if
+    # dest is held open by another process (e.g. a crack run reading rockyou.txt) it raises a
+    # sharing violation, which would otherwise propagate and leak the verified temp (many MiB).
+    try:
+        os.replace(final_tmp, dest)
+    except OSError as exc:
+        _rm(final_tmp)
+        raise RuntimeError(
+            f"could not install {os.path.basename(dest)} (is it open in another program?): {exc}"
+        ) from exc
     log(f"[wordlist] installed {os.path.basename(dest)} — {msg}")
     return dest
 

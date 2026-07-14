@@ -225,7 +225,12 @@ def clear_failed_update(cur_exe: str | None = None) -> None:
     a failed swap, so a reported failure can be acknowledged and the leftovers don't linger forever."""
     exe = cur_exe if cur_exe is not None else current_exe()
     _quiet_remove(failed_update_marker(exe))
-    for orphan in glob.glob(os.path.join(os.path.dirname(exe), "*.new")):
+    # glob.escape the install DIRECTORY before appending the "*.new" wildcard: a real install
+    # path may contain glob metacharacters ([ ] ? * are all legal folder-name chars, esp. on
+    # Windows) which, left unescaped, are read as pattern syntax — so the sweep would silently
+    # match nothing (orphaned verified .new binaries linger forever) or match the wrong files.
+    # Same path-literalizing care the module already takes with %-doubling in win_swap_script.
+    for orphan in glob.glob(os.path.join(glob.escape(os.path.dirname(exe)), "*.new")):
         _quiet_remove(orphan)
 
 

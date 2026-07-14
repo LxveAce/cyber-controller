@@ -215,39 +215,46 @@ class NodesController:
         """
         with self._lock:
             link = self._links.pop(node_id, None)
-        if link is None:
-            return False
-        link.on_rx_advance(None)  # stop the periodic persister firing during/after teardown
-        # Release this node's borrow-ownership of the gateway port ONLY if we registered it (refcounted
-        # gateway). May close the dongle if it was the last owner; keeps it open while its direct owner or
-        # another node still holds it. An untagged gateway was never tracked, so it's left untouched.
-        gw_port = self._gateway_owned.pop(node_id, None)
-        if gw_port:
+            if link is None:
+                return False
+            # Hold the RLock across the ENTIRE teardown (attach() likewise holds it across its
+            # whole body). The pop already removed node_id from _links, so releasing the lock here
+            # would let a concurrent attach(node_id) slip past the "already attached" guard and
+            # re-open the link + re-register the device/gateway WHILE this teardown closes the
+            # dongle and removes the just-attached device — clobbering the new attach into a
+            # phantom node on a closed port. The RLock is re-entrant and nothing in teardown
+            # re-acquires it, so this is deadlock-free (attach already sets the nodes->dm order).
+            link.on_rx_advance(None)  # stop the periodic persister firing during/after teardown
+            # Release this node's borrow-ownership of the gateway port ONLY if we registered it
+            # (refcounted gateway). May close the dongle if it was the last owner; else keep it
+            # open while its direct owner or another node still holds it. Untagged = never tracked.
+            gw_port = self._gateway_owned.pop(node_id, None)
+            if gw_port:
+                try:
+                    self._dm.close_connection(gw_port, owner=self._gateway_owner_tag(node_id))
+                except Exception:  # noqa: BLE001 — teardown must always continue
+                    log.debug("could not release gateway for node %s", node_id, exc_info=True)
+            # Detach the link from the gateway FIRST so the RX thread can no longer advance the
+            # (not thread-safe) ReplayWindow, THEN read it: persist_rx_state reads rx_epoch and
+            # rx_highest as two separate property reads, and an epoch rotation between them would
+            # persist a (rx_epoch, rx_highest) pair that never coexisted -> a torn anti-replay
+            # cursor that spuriously rejects or under-protects after restart. Quiescing first
+            # removes that race. close() is best-effort; even if it fails we still persist below.
             try:
-                self._dm.close_connection(gw_port, owner=self._gateway_owner_tag(node_id))
-            except Exception:  # noqa: BLE001 — teardown must always continue
-                log.debug("could not release gateway ownership for node %s", node_id, exc_info=True)
-        # Detach the link from the gateway FIRST so the RX thread can no longer advance the (not
-        # thread-safe) ReplayWindow, THEN read it: persist_rx_state reads rx_epoch and rx_highest as two
-        # separate property reads, and an epoch rotation between them would persist a (rx_epoch, rx_highest)
-        # pair that never coexisted -> a torn anti-replay cursor that spuriously rejects or under-protects
-        # after restart. Quiescing the window before reading it removes that race. close() is best-effort;
-        # even if it fails we still attempt the persist below.
-        try:
-            link.close()
-        except Exception:
-            log.warning("error closing link for node %s; persisting + unregistering anyway", node_id)
-        # Best-effort persist of the replay head — must never block teardown.
-        try:
-            node_provision.persist_rx_state(self._vault(), node_id, link)
-        except node_provision.VaultLockedError:
-            log.warning("gate locked at detach; replay-window head for node %s not persisted", node_id)
-        except Exception:  # e.g. the node was deprovisioned by another process mid-session
-            log.warning("could not persist replay head for node %s; tearing down anyway", node_id)
-        # Teardown always runs.
-        self._dm.remove_device(link.port)
-        log.info("detached node %s", node_id)
-        return True
+                link.close()
+            except Exception:
+                log.warning("error closing link for node %s; unregistering anyway", node_id)
+            # Best-effort persist of the replay head — must never block teardown.
+            try:
+                node_provision.persist_rx_state(self._vault(), node_id, link)
+            except node_provision.VaultLockedError:
+                log.warning("gate locked; replay head for node %s not persisted", node_id)
+            except Exception:  # e.g. the node was deprovisioned by another process mid-session
+                log.warning("could not persist replay head for node %s", node_id)
+            # Teardown always runs.
+            self._dm.remove_device(link.port)
+            log.info("detached node %s", node_id)
+            return True
 
     def attached_ids(self) -> list[int]:
         return sorted(self._links)

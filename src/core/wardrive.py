@@ -98,6 +98,12 @@ def parse_nmea(line: str) -> Optional[GpsFix]:
             utc = parts[1]
             lat = _dm_to_dd(parts[2], parts[3], 90.0)
             lon = _dm_to_dd(parts[4], parts[5], 180.0)
+            # A fix reported at exactly 0,0 ("Null Island") is the GPS null sentinel, not a real
+            # position: receivers emit it during acquisition before convergence, and wigle.net
+            # rejects 0,0 rows on upload. A real equator/prime-meridian fix has only ONE coordinate
+            # at 0.0, never both — so collapse both-zero to no-position (via the None no-fix path).
+            if lat == 0.0 and lon == 0.0:
+                lat = lon = None
             fix_q = parts[6]
             # Altitude (field 9), satellites (field 7) and HDOP (field 8) are ancillary — each is guarded on
             # its own so a garbled one never discards an otherwise-valid position fix, only leaves that figure
@@ -123,6 +129,8 @@ def parse_nmea(line: str) -> Optional[GpsFix]:
             status = parts[2]
             lat = _dm_to_dd(parts[3], parts[4], 90.0)
             lon = _dm_to_dd(parts[5], parts[6], 180.0)
+            if lat == 0.0 and lon == 0.0:   # Null Island -> no position (see GGA note above)
+                lat = lon = None
             has_fix = status.upper() == "A" and lat is not None and lon is not None
             if lat is None or lon is None:
                 return GpsFix(0.0, 0.0, 0.0, False, utc)
