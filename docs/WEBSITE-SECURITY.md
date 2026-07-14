@@ -1,6 +1,6 @@
-# Website Security Plan — lxveace.com & esp32marauder.com
+# Website Security Plan — lxveace.com, esp32marauder.com & microprojects.net
 
-Both sites are AI-assisted and statically hosted (GitHub Pages style). Static marketing sites have a
+All three sites are AI-assisted and statically hosted (GitHub Pages). Static marketing sites have a
 **much smaller attack surface** than the web app the rest of this repo hardens — there is no
 server-side auth, database, or session, so the heavy AI-codegen classes (missing auth, IDOR, SQLi,
 SSRF) largely don't apply. The relevant subset for static AI-made sites is below, with a prioritized
@@ -17,9 +17,9 @@ plan. Research + method: see `docs/RED-TEAM.md`.
 | **Supply chain / stale deps** | unpinned CDN versions, no Dependabot |
 | **GitHub Pages exposure** | `.git`, source maps, backup files, or an unenforced-HTTPS custom domain |
 
-## Current posture (VERIFIED 2026-07-13 — full source audit, beat 236)
+## Current posture (VERIFIED 2026-07-13 — full source audit, beat 236; microprojects.net added 2026-07-14, beat 251)
 
-Both source repos (`LxveAce.github.io`, `esp32marauder.com`) were audited file-by-file. **Every in-repo
+The source repos (`LxveAce.github.io`, `esp32marauder.com`, `microprojects.net`) were audited file-by-file. **Every in-repo
 item on the plan below is now implemented and verified** — the only remaining gaps require real HTTP
 response headers (a Cloudflare/DNS action) or a live-URL scan, both owner-gated.
 
@@ -36,6 +36,15 @@ response headers (a Cloudflare/DNS action) or a live-URL scan, both owner-gated.
   `esc()` + `safeUrl()`; `script.js` uses `createElement`/`textContent` + trusted `data-*` only, and
   `builds.html` is static (no live fetch). `.well-known/security.txt` + `robots.txt` present; secret
   scan clean (the showcase submission form posts to a Cloudflare Worker — secrets stay server-side).
+- **microprojects.net** — strong (source audited 2026-07-14, mirrors the other two). Strict
+  `default-src 'none'` CSP with a tight `form-action https://submit.lxvelabs.com` + `connect-src 'none'`
+  on all 6 pages (`index`, `showcase`, `privacy`, `terms`, `disclaimer`, `404`). No external/CDN
+  `<script>`/`<link>` — fonts and JS are self-hosted, so there is nothing to SRI-pin. No inline secrets
+  (the showcase form posts to the shared LxveLabs submission Worker; secrets stay server-side). The
+  lightbox renderer (`script.js`) builds each media element with `createElement` + trusted `data-*`
+  attributes + `textContent`, and its only `innerHTML` write is a `= ''` clear on close — so there is
+  no DOM-XSS sink and no remote-data path (`connect-src 'none'`, no `fetch`). `.well-known/security.txt`
+  + `robots.txt` + `sitemap.xml` present; no `.map`/`.env`/`.bak`/source-map artifacts published.
 
 ## Plan (priority order)
 
@@ -79,8 +88,11 @@ response headers (a Cloudflare/DNS action) or a live-URL scan, both owner-gated.
 | 8. Forms | ✅ **Done** — `mailto:` + vetted Cloudflare Worker; no in-page server endpoint. |
 
 **Net:** the website source repos are hardened — no in-repo fix is outstanding. What remains is exclusively
-owner-gated infra: put both domains behind **Cloudflare** for real response headers (HSTS + nosniff +
-frame-deny), flip **Settings → Pages → Enforce HTTPS**, and run the two **live-URL scanners**.
+owner-gated infra: put all three domains behind **Cloudflare** for real response headers (HSTS + nosniff +
+frame-deny), flip **Settings → Pages → Enforce HTTPS**, and run the **live-URL scanners**. A 2026-07-14
+live check of `esp32marauder.com` CONFIRMED the deployed response is bare GitHub Pages (`Server: GitHub.com`,
+no Cloudflare) with no `Strict-Transport-Security`, no `X-Content-Type-Options: nosniff`, and no
+`X-Frame-Options` — so item #1 is still open at the HTTP layer for all three GitHub-Pages domains.
 
 > These were *planning* recommendations; the in-repo ones are now applied + verified (above). Re-audit
 > after any redesign of the downloads/builds release-rendering JS (the only remote-data sink).
