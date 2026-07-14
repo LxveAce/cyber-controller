@@ -11,6 +11,7 @@ from __future__ import annotations
 import logging
 import os
 import threading
+from datetime import datetime
 
 from PyQt5.QtCore import QObject, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
@@ -40,6 +41,30 @@ def _list_serial_ports() -> list[tuple[str, str]]:
         return []
 
 
+def _default_out_path() -> str:
+    """Default WiGLE CSV path, timestamped so each app launch starts a distinct drive file
+    instead of a single reused ``wardrive-wigle.csv`` every operator would truncate."""
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return os.path.join(os.path.expanduser("~"), f"wardrive-wigle-{stamp}.csv")
+
+
+def _nonclobber_path(path: str) -> str:
+    """Return *path*, or the first ``name-N.ext`` sibling that does not yet exist.
+
+    A wardrive CSV is opened in truncating ``"w"`` mode, and Simple mode hides the path field so the
+    operator can't change the default — so starting a second drive would silently erase the first
+    drive's capture. Rolling over to a fresh sibling name means a new drive never destroys
+    a previous drive's WiGLE CSV; preserving already-captured data wins over reusing a filename.
+    """
+    if not os.path.exists(path):
+        return path
+    stem, ext = os.path.splitext(path)
+    n = 1
+    while os.path.exists(f"{stem}-{n}{ext}"):
+        n += 1
+    return f"{stem}-{n}{ext}"
+
+
 class _WardriveWorker(QThread):
     status = pyqtSignal(str, int)   # gps-fix text, ap count
     line = pyqtSignal(str)
@@ -62,6 +87,7 @@ class _WardriveWorker(QThread):
             self.line.emit(f"pyserial unavailable: {exc}")
             self.stopped.emit()
             return
+        self._out_path = _nonclobber_path(self._out_path)   # never truncate a prior drive's CSV
         try:
             fh = open(self._out_path, "w", newline="", encoding="utf-8")
         except OSError as exc:
@@ -156,6 +182,7 @@ class _WardriveCapture(QObject):
         self._last_status: tuple[str, int] = ("", -1)
 
     def start(self) -> None:
+        self._out_path = _nonclobber_path(self._out_path)   # never truncate a prior drive's CSV
         try:
             self._fh = open(self._out_path, "w", newline="", encoding="utf-8")
         except OSError as exc:
@@ -316,7 +343,7 @@ class WardriveTab(QWidget):
         self._out_card, out_layout = _make_card("Output (WiGLE CSV)")
         out_card = self._out_card
         orow = QHBoxLayout()
-        self._out_edit = QLineEdit(os.path.join(os.path.expanduser("~"), "wardrive-wigle.csv"))
+        self._out_edit = QLineEdit(_default_out_path())
         self._out_edit.setToolTip("WiGLE CSV file to write (WigleWifi-1.6). Upload it at wigle.net.")
         orow.addWidget(self._out_edit, 1)
         btn_out = QPushButton("Browse…")

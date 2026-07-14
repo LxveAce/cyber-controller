@@ -543,6 +543,16 @@ def run_hashcat(hash_file: str, wordlist: str, on_line: Line,
         # still hold the key), contradicting the "partial wordlist tried" line already logged. Mirror
         # run_aircrack's honest timeout negative.
         return CrackResult(cracked=False, detail="timed out before exhausting the wordlist")
+    if rc == 0:
+        # hashcat exited 0 = it CRACKED the hash, yet the --show read-back above returned no creds
+        # (a potfile path/permission race, or --show couldn't re-derive the line). Reporting
+        # "dictionary exhausted" here directly contradicts hashcat's own success exit — a false
+        # negative. Surface the discrepancy instead of a fabricated clean negative.
+        detail = ("hashcat reported a crack (exit 0) but the recovered key could not be read back "
+                  "via --show — rerun or check the hashcat potfile; "
+                  "the negative is not trustworthy")
+        on_line(f"[crack] {detail}")
+        return CrackResult(cracked=False, detail=detail)
     return CrackResult(cracked=False, detail="key not in wordlist (dictionary exhausted)")
 
 
@@ -562,13 +572,30 @@ def run_aircrack(capture: str, wordlist: str, on_line: Line,
     argv = build_aircrack_argv(capture, wordlist, ac.path or AIRCRACK, bssid=bssid)
     on_line("[crack] aircrack-ng dictionary attack started")
     try:
-        _, out, _err = _run_tool(argv, timeout, on_proc=on_proc)
+        rc, out, err = _run_tool(argv, timeout, on_proc=on_proc)
     except subprocess.TimeoutExpired:
         on_line("[crack] aircrack-ng timed out (partial wordlist tried)")
         return CrackResult(cracked=False, detail="timed out before exhausting the wordlist")
 
     key = parse_aircrack_output(out)
-    if key is None:
+    if key is not None:
+        on_line(f"[crack] KEY RECOVERED: {key}")
+        return CrackResult(cracked=True, password=key, bssid=bssid, detail="key recovered")
+
+    # No key parsed. Distinguish a GENUINE exhaustion (aircrack ran the wordlist against a valid
+    # handshake — it prints a live "N/M keys tested" progress line) from a BAIL-OUT where it tested
+    # nothing (no valid WPA handshake in the capture, wrong BSSID, or a tool error). Reporting the
+    # latter as "dictionary exhausted" would be a fabricated honest-negative — the wordlist was NOT
+    # tried, so the negative isn't trustworthy. Surface the real problem (mirrors run_hashcat).
+    if "keys tested" in out.lower():
         return CrackResult(cracked=False, detail="key not in wordlist (dictionary exhausted)")
-    on_line(f"[crack] KEY RECOVERED: {key}")
-    return CrackResult(cracked=True, password=key, bssid=bssid, detail="key recovered")
+    detail = ("aircrack-ng tested no keys — the capture likely holds no valid WPA handshake for "
+              "this target; the wordlist was NOT tried, so this is not a real exhaustion")
+    if rc:
+        detail += f" (aircrack-ng exit {rc})"
+    last = err.strip().splitlines()[-1].strip() if err.strip() else ""
+    if last:
+        on_line(f"[aircrack] {last}")
+        detail += f": {last}"
+    on_line(f"[crack] {detail}")
+    return CrackResult(cracked=False, detail=detail)
