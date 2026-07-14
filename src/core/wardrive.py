@@ -157,6 +157,14 @@ def channel_to_frequency(ch: int) -> int:
 # ── Marauder/ESP32 scan-line parsing ─────────────────────────────────
 
 _MAC_RE = re.compile(r"([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})")
+# BSSID anchored to its OWN label. A bare `_MAC_RE.search` returns the FIRST MAC on the line, so a
+# MAC-format SSID (e.g. "aa:aa:aa:aa:aa:aa") in the SSID-before-BSSID single-line forms (legacy
+# "SSID: X BSSID: Y" and GhostESP "SSID: X | BSSID: Y | ...") hijacked the BSSID -- steering the
+# WiGLE row / dedup key to an attacker-chosen MAC. Prefer the MAC after a literal `BSSID` label;
+# fall back to first-MAC only with no label -- the scanall form prints a BARE bssid before the
+# ESSID, so first-MAC is already the real bssid there. `\bBSSID` never matches the `SSID` label, so
+# an SSID value can no longer supply the BSSID.
+_BSSID_LABELLED_RE = re.compile(r"\bBSSID[:=]?\s*([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})", re.I)
 _RSSI_RE = re.compile(r"RSSI[:=]?\s*(-?\d+)", re.I)
 # Marauder v1.12.3 `scanall` prints each AP as "<rssi> Ch: <n> <bssid> ESSID: <name> ..." with the RSSI as a
 # BARE leading signed int and NO "RSSI" label (confirmed on real hardware, COM16). Without this fallback the
@@ -188,7 +196,10 @@ def _extract_ap_fields(line: str) -> Dict[str, object]:
     :class:`_ApAccumulator` so both read a given field identically.
     """
     fields: Dict[str, object] = {}
-    m = _MAC_RE.search(line)
+    # Prefer the labelled BSSID (so a MAC-format SSID can't hijack it); fall back to first-MAC only
+    # when no BSSID label is present (the label-less scanall form, where the bare bssid leads).
+    bm = _BSSID_LABELLED_RE.search(line)
+    m = bm or _MAC_RE.search(line)
     if m:
         fields["bssid"] = m.group(1).lower()
     scanall_form = False
