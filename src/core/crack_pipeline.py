@@ -329,7 +329,14 @@ def parse_hashcat_show(text: str) -> list[dict]:
 #: brackets). The inner padding is a LITERAL single space and the capture is GREEDY so a passphrase
 #: that itself contains ``]`` or a leading/trailing space survives verbatim — a non-greedy ``.*?`` with
 #: ``\s*`` padding truncated ``pa]s w0rd`` to ``pa`` and stripped genuine edge spaces (wrong-key bug).
-_AIRCRACK_KEY_RE = re.compile(r"KEY FOUND!\s*\[ (?P<key>.*) \]")
+#: ANCHORED to a standalone line (``^[ \t]*`` / ``[ \t]*$``, re.MULTILINE): aircrack echoes the
+#: target ESSID verbatim in its selection table, and an ESSID (<=32 bytes, attacker-chosen) can
+#: embed the literal ``KEY FOUND! [ x ]``. Un-anchored, ``.search`` matched that column and faked
+#: a "cracked" positive for a network we do NOT hold the key to (a verify-never-fake violation). The
+#: real banner is alone on its line; the ESSID sits between the BSSID/index columns and a trailing
+#: "WPA (n handshake)", so the anchors reject the table row but keep the banner. ``.`` never crosses
+#: newlines (no DOTALL), so the greedy capture stays on the banner line.
+_AIRCRACK_KEY_RE = re.compile(r"^[ \t]*KEY FOUND!\s*\[ (?P<key>.*) \][ \t]*$", re.MULTILINE)
 
 
 def parse_aircrack_output(text: str) -> Optional[str]:

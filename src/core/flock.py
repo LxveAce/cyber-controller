@@ -31,7 +31,9 @@ def _utcnow() -> str:
 def _as_int(value: object) -> int:
     try:
         return int(value)  # ev.data ints arrive pre-coerced; this is a defensive fallback
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
+        # OverflowError (NOT a ValueError subclass) fires on int(inf)/int(nan) — e.g. a JSON
+        # "rssi": 1e400 parsed to float('inf'); coerce to the 0 sentinel rather than propagate.
         return 0
 
 
@@ -309,7 +311,10 @@ class FlockSession:
                     last_seen=str(props.get("last_seen") or ""),
                     count=_as_int(props.get("count")),
                 )
-            except (KeyError, TypeError, ValueError, IndexError):
+            except (KeyError, TypeError, ValueError, IndexError, OverflowError):
+                # OverflowError isn't a ValueError subclass (sibling under ArithmeticError). It
+                # fires on a giant-int coordinate -> float(), or an infinite property -> int(inf).
+                # Skip the one bad feature rather than sink the whole never-raises resume.
                 continue
         return session
 
