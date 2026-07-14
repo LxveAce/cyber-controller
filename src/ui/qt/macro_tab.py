@@ -482,6 +482,9 @@ class MacroTab(QWidget):
             variables=variables,
             progress_callback=self._playback_signal.progress.emit,
             complete_callback=self._playback_signal.complete.emit,
+            # An offensive macro was already confirmed above; the engine now also enforces the arm
+            # gate, so tell it this play is armed. Recon macros are unaffected (not offensive).
+            armed=True,
             async_=True,
         )
 

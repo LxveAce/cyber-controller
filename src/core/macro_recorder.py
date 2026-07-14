@@ -77,6 +77,10 @@ def is_offensive_macro(macro: Macro) -> bool:
 #: otherwise wedge playback in an effectively unbounded interruptible-sleep.
 _MAX_DELAY_MS = 3_600_000
 
+#: Per-step timeout (seconds) handed to a wired ``read_response`` when verifying a step's
+#: ``expected_response`` regex.
+_RESPONSE_TIMEOUT_S = 2.0
+
 
 def _coerce_delay_ms(value: Any) -> int:
     """Normalize a step's delay to a sane non-negative int in [0, _MAX_DELAY_MS].
@@ -345,6 +349,8 @@ class MacroRecorder:
         progress_callback: PlaybackProgress | None = None,
         complete_callback: PlaybackComplete | None = None,
         *,
+        armed: bool = False,
+        read_response: Callable[[float], str] | None = None,
         async_: bool = True,
     ) -> None:
         """Replay a macro's commands.
@@ -356,8 +362,30 @@ class MacroRecorder:
             variables: Dict of variable substitutions (e.g. TARGET_MAC -> value).
             progress_callback: Optional (step_index, total, message) callback.
             complete_callback: Optional (success, message) callback.
+            armed: Must be True to replay a transmitting/offensive macro (see
+                   :func:`is_offensive_macro`). The caller sets this only after its own arm
+                   confirmation. Recon macros play regardless.
+            read_response: Optional ``(timeout) -> str`` reader. When wired, a step's
+                   ``expected_response`` regex is checked against the device reply and a mismatch
+                   FAILS the playback; without it, such checks are reported as not verified (never
+                   silently claimed as matched).
             async_: If True (default), run playback in a background thread.
         """
+        # Play-time arm gate, ENFORCED IN THE ENGINE (not just one UI): a transmitting/offensive
+        # macro must be explicitly armed by the caller — else refuse. Previously only the Qt tab
+        # gated this, so `--ui tk` (or any other caller) replayed attack templates with NO
+        # confirmation. This is a confirm gate, never a hard block: the caller's arm IS the
+        # always-available "Yes, proceed".
+        if is_offensive_macro(macro) and not armed:
+            log.warning("Refusing to play offensive macro %r: not armed", macro.name)
+            if complete_callback:
+                complete_callback(
+                    False,
+                    "Macro not armed — a transmitting/offensive macro needs arm "
+                    "confirmation before playback.",
+                )
+            return
+
         with self._lock:
             if self._playing:
                 if complete_callback:
@@ -370,7 +398,7 @@ class MacroRecorder:
             t = threading.Thread(
                 target=self._playback_loop,
                 args=(macro, send_command, speed_multiplier, variables or {},
-                      progress_callback, complete_callback),
+                      progress_callback, complete_callback, read_response),
                 name="macro-playback",
                 daemon=True,
             )
@@ -378,7 +406,7 @@ class MacroRecorder:
         else:
             self._playback_loop(
                 macro, send_command, speed_multiplier, variables or {},
-                progress_callback, complete_callback,
+                progress_callback, complete_callback, read_response,
             )
 
     def stop_playback(self) -> None:
@@ -393,10 +421,12 @@ class MacroRecorder:
         variables: dict[str, str],
         progress: PlaybackProgress | None,
         complete: PlaybackComplete | None,
+        read_response: Callable[[float], str] | None = None,
     ) -> None:
         """Internal playback loop."""
         total = len(macro.steps)
         log.info("Macro playback: %s (%d steps, speed=%.1fx)", macro.name, total, speed)
+        unverified = 0  # steps that declared expected_response but had no response channel to check
 
         try:
             for i, step in enumerate(macro.steps):
@@ -431,11 +461,41 @@ class MacroRecorder:
                         complete(False, f"Send error at step {i + 1}: {exc}")
                     return
 
+                # Response verification: a step may declare `expected_response` (a regex the
+                # device's reply must match). If a read_response channel is wired, actually check
+                # it and FAIL the playback on a mismatch — never map an unverified/failed step to
+                # success. Without a channel the check cannot be performed, so count it and report
+                # it honestly at the end rather than silently claiming a match (verify-never-fake).
+                pattern = (step.expected_response or "").strip()
+                if pattern:
+                    if read_response is not None:
+                        try:
+                            resp = read_response(_RESPONSE_TIMEOUT_S / (speed or 1.0)) or ""
+                        except Exception as exc:  # a reader failure is a real, honest failure
+                            log.error("Macro playback read error at step %d: %s", i + 1, exc)
+                            if complete:
+                                complete(False, f"Response read error at step {i + 1}: {exc}")
+                            return
+                        if not re.search(pattern, resp):
+                            log.info("Macro step %d response did not match %r", i + 1, pattern)
+                            if complete:
+                                complete(
+                                    False,
+                                    f"step {i + 1}/{total}: response did not match {pattern!r}",
+                                )
+                            return
+                    else:
+                        unverified += 1
+
             log.info("Macro playback complete: %s", macro.name)
             if progress:
                 progress(total, total, "Playback complete")
             if complete:
-                complete(True, "Playback complete")
+                if unverified:
+                    complete(True, f"Playback complete — {unverified} step(s) NOT "
+                                   "response-verified (no response channel wired)")
+                else:
+                    complete(True, "Playback complete")
 
         except Exception as exc:
             # Any unexpected playback error (e.g. a malformed step surviving from a hand-edited macro) MUST
@@ -458,6 +518,24 @@ class MacroRecorder:
 
     # ── Persistence ──────────────────────────────────────────────────
 
+    def _resolve_default_macro_path(self, safe_name: str, macro_name: str) -> Path:
+        """Default-save path for *safe_name*, rolling over so a DIFFERENT macro that sanitizes to
+        the same filename isn't silently clobbered. Re-saving the SAME macro (its stored name
+        matches) overwrites in place; a distinct macro gets the next free ``name-N`` sibling."""
+        n = 0
+        while True:
+            cand = (self.macros_dir / f"{safe_name}.json" if n == 0
+                    else self.macros_dir / f"{safe_name}-{n}.json")
+            if not cand.exists():
+                return cand
+            try:
+                existing = json.loads(cand.read_text(encoding="utf-8"))
+                if isinstance(existing, dict) and existing.get("name") == macro_name:
+                    return cand  # same macro -> overwrite/update in place
+            except (OSError, json.JSONDecodeError, UnicodeDecodeError):
+                pass  # unreadable/foreign file -> don't clobber it; try the next sibling
+            n += 1
+
     def save_macro(self, macro: Macro, path: str | Path | None = None) -> Path:
         """Save a macro to a JSON file.
 
@@ -471,6 +549,11 @@ class MacroRecorder:
         """
         if path is None:
             safe_name = re.sub(r"[^\w\-]", "_", macro.name.lower().strip())
+            if not safe_name.strip("_-"):
+                # An empty / all-separator name would become ".json" — a hidden dotfile that
+                # list_saved_macros skips, so the saved session could never be reselected. Fall back
+                # to a usable stem (the collision resolver below still keeps it from clobbering).
+                safe_name = "macro"
             # Internal save. When the secure container is ENABLED the recorded session MUST be
             # encrypted at rest — we never silently fall back to a plaintext file (that would leak a
             # session the user chose to protect, SEC-B1). If the gate is locked or the encrypted save
@@ -486,7 +569,7 @@ class MacroRecorder:
                 p = secure_store.save("macros", safe_name, macro.to_dict())
                 log.info("Macro saved to secure container: %s -> %s", macro.name, p)
                 return p
-            path = self.macros_dir / f"{safe_name}.json"
+            path = self._resolve_default_macro_path(safe_name, macro.name)
         else:
             path = Path(path)
 

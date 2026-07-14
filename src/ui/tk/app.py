@@ -856,6 +856,21 @@ class TkLightApp:
 
         conn = self._active_conn
         variables = dict(self._macro_variables) if self._macro_variables else None
+
+        # Arm gate for transmitting/offensive macros. The engine now ENFORCES this
+        # (play(armed=...)), but confirm here too so the Tk operator gets the same "this transmits
+        # — proceed?" prompt the Qt tab shows; a stray Play must never fire an attack template.
+        # Recon macros play ungated.
+        from src.core.macro_recorder import is_offensive_macro
+        if is_offensive_macro(macro):
+            if not messagebox.askyesno(
+                "Arm transmitting macro?",
+                f"'{macro.name}' transmits and can disrupt nearby devices/networks.\n\n"
+                "Only proceed on hardware you own or are authorized to test. Play it now?",
+                icon=messagebox.WARNING, default=messagebox.NO,
+            ):
+                return
+
         self._macro_status_label.configure(text="Playing...", foreground=_ACCENT)
         # Disable Play for the duration: play() returns immediately (async), so without this a second
         # click would re-enter play() and be silently dropped (self._playing is True).
@@ -879,6 +894,7 @@ class TkLightApp:
             send_command=lambda cmd: conn.write(cmd),
             variables=variables,
             complete_callback=_on_complete,
+            armed=True,  # offensive macros were arm-confirmed above; recon macros are unaffected
         )
 
     def _on_add_macro_variable(self) -> None:
