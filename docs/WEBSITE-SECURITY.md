@@ -17,14 +17,25 @@ plan. Research + method: see `docs/RED-TEAM.md`.
 | **Supply chain / stale deps** | unpinned CDN versions, no Dependabot |
 | **GitHub Pages exposure** | `.git`, source maps, backup files, or an unenforced-HTTPS custom domain |
 
-## Current posture (from recon)
+## Current posture (VERIFIED 2026-07-13 — full source audit, beat 236)
 
-- **lxveace.com** — already strong: strict `Content-Security-Policy: default-src 'none'`,
-  `Permissions-Policy` locking camera/mic/geolocation, `Referrer-Policy: strict-origin-when-cross-origin`,
-  OG/Twitter cards. Contact is `mailto:` (no server form). **Verify** the downloads page renders the
-  live GitHub release data with `textContent`/DOM, not `innerHTML`.
-- **esp32marauder.com** — static hub with `downloads.html` / `builds.html` that fetch live GitHub
-  releases ("Fetching latest release…"). **Headers/CSP not yet confirmed** — this is the priority to verify.
+Both source repos (`LxveAce.github.io`, `esp32marauder.com`) were audited file-by-file. **Every in-repo
+item on the plan below is now implemented and verified** — the only remaining gaps require real HTTP
+response headers (a Cloudflare/DNS action) or a live-URL scan, both owner-gated.
+
+- **lxveace.com (`LxveAce.github.io`)** — strong. Strict `default-src 'none'` CSP + `Permissions-Policy`
+  on every page (`index`, `downloads/`, `showcase`, `privacy`, `terms`, `disclaimer`, `404`). The
+  downloads page (`downloads/index.html`) carries the exact `connect-src https://api.github.com` its
+  release fetch needs, and its renderer (`downloads.js`) escapes **every** GitHub-release field:
+  `escHtml()` (textNode round-trip) on `tag_name`/`asset.name`, `escAttr(safeUrl(...))` on URLs,
+  numeric-only for sizes/dates/counts, and `repo` is a hardcoded constant — so a malicious release/asset
+  name is inert. `mailto:`-only contact (no server form). `.well-known/security.txt` present.
+- **esp32marauder.com** — strong (upgraded since the Jul-7 recon, which had CSP "not yet confirmed").
+  Strict `default-src 'none'` CSP + `Permissions-Policy` on **all 8 pages**; `downloads.html` carries
+  `connect-src https://api.github.com`. Its renderer (`downloads.js`) escapes every release field via
+  `esc()` + `safeUrl()`; `script.js` uses `createElement`/`textContent` + trusted `data-*` only, and
+  `builds.html` is static (no live fetch). `.well-known/security.txt` + `robots.txt` present; secret
+  scan clean (the showcase submission form posts to a Cloudflare Worker — secrets stay server-side).
 
 ## Plan (priority order)
 
@@ -54,12 +65,22 @@ plan. Research + method: see `docs/RED-TEAM.md`.
 8. **Forms.** Keep contact as `mailto:` (no server endpoint = no injection). If a real form is ever
    added, route it through a vetted provider with validation + rate-limit + bot protection.
 
-## Quick wins (do first)
-- Confirm/add the CSP + HSTS + nosniff + frame-deny headers on **esp32marauder.com** (lxveace.com
-  already has most).
-- Audit the **release-rendering JS** on both downloads/builds pages for `innerHTML` → switch to
-  `textContent`.
-- Add **SRI** to any CDN script and **enforce HTTPS** on both Pages sites.
+## Verified status (2026-07-13, beat 236 — source audit of both repos)
 
-> These are *planning* recommendations. Apply the relevant items directly in the website
-> repos (`LxveAce.github.io`, `esp32marauder.com`) when the work is scheduled.
+| Plan item | Status |
+|-----------|--------|
+| 1. Security headers | ✅ **In-repo done** — strict meta CSP + `Permissions-Policy` on every page of both sites. ⚠ **Owner-gated remainder:** `Strict-Transport-Security`, `X-Content-Type-Options: nosniff`, and `X-Frame-Options`/`frame-ancestors` **cannot** be set via `<meta http-equiv>` (browsers ignore them there) — they need real HTTP response headers, i.e. Cloudflare in front of GitHub Pages (a DNS/owner decision). |
+| 2. Kill client-side XSS in release renderers | ✅ **Done + verified** — both `downloads.js` files escape every GitHub-release field (`escHtml`/`esc` + `escAttr` + `safeUrl`); numeric/hardcoded fields are inert. No unescaped remote string reaches `innerHTML`. |
+| 3. SRI + pin third-party scripts | ✅ **N/A** — neither site loads any external/CDN `<script>`/`<link>` (CSP is `script-src 'self'`; audit found zero third-party origins). Nothing to pin. |
+| 4. No secrets in client JS | ✅ **Verified** — GitHub fetches use the unauthenticated public API (no PAT); secret scan clean; the one form posts to a Cloudflare Worker (secrets server-side). |
+| 5. Supply chain | ✅ **Low surface** — self-hosted JS/CSS/fonts, no build deps in either Pages repo to pin. |
+| 6. GitHub Pages hardening | ✅ **Done** — `.nojekyll` serves `.well-known/`; `.well-known/security.txt` + `robots.txt` present; no `.git`/`.env`/`.map`/`.bak` published. ⚠ "Enforce HTTPS" toggle lives in repo **Settings → Pages** (owner-gated, not a file change). |
+| 7. Scan the deployed sites | ⚠ **Owner-gated** — VibeScan/VAS run against live URLs (deployment), not source. |
+| 8. Forms | ✅ **Done** — `mailto:` + vetted Cloudflare Worker; no in-page server endpoint. |
+
+**Net:** the website source repos are hardened — no in-repo fix is outstanding. What remains is exclusively
+owner-gated infra: put both domains behind **Cloudflare** for real response headers (HSTS + nosniff +
+frame-deny), flip **Settings → Pages → Enforce HTTPS**, and run the two **live-URL scanners**.
+
+> These were *planning* recommendations; the in-repo ones are now applied + verified (above). Re-audit
+> after any redesign of the downloads/builds release-rendering JS (the only remote-data sink).
