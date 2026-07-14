@@ -332,7 +332,10 @@ def verify_gpg_detached(target_path: str, sig_path: str, fingerprint: Optional[s
         return None
     status = proc.stdout + proc.stderr
     flat = status.replace(" ", "")
-    have_good = ("VALIDSIG" in status or "GOODSIG" in status)
+    # GOODSIG only, not VALIDSIG: a revoked/expired key still emits VALIDSIG (with the fingerprint),
+    # so keying off VALIDSIG would accept a sig that revocation invalidated. (Twin of tails; the
+    # explicit revoked/expired refuse is below.)
+    have_good = "GOODSIG" in status
     if not fingerprint:
         # A good signature from an UNPINNED key proves nothing about authenticity — ANY key in the local
         # keyring (including one an attacker planted) satisfies VALIDSIG. Don't rubber-stamp it as trusted:
@@ -341,6 +344,12 @@ def verify_gpg_detached(target_path: str, sig_path: str, fingerprint: Optional[s
         on_line("[os] no pinned key fingerprint for this image — a GPG signature alone can't prove "
                 "authenticity; deferring to the SHA-256 check.")
         return None
+    # A pinned key whose signature is REVOKED/EXPIRED is worthless — revocation is how a compromised
+    # key is killed. gpg emits REVKEYSIG/EXPKEYSIG/EXPSIG (not GOODSIG) for these, so hard-REFUSE.
+    if any(m in flat for m in ("REVKEYSIG", "EXPKEYSIG", "EXPSIG")):
+        on_line("[os] GPG sig from a REVOKED or EXPIRED key/signature -- REFUSING to trust it "
+                "(re-download the image + a current signature).")
+        return False
     if not have_good:
         # No good signature came back. Tell apart "can't establish authenticity" from "the signature is
         # bad". The normal case for a fresh box is that the pinned signing key simply isn't in the keyring
@@ -383,7 +392,13 @@ def verify_gpg_clearsigned(clearsigned_path: str, fingerprint: Optional[str],
         return None
     status = proc.stdout + proc.stderr
     flat = status.replace(" ", "")
-    have_good = ("VALIDSIG" in status or "GOODSIG" in status)
+    # GOODSIG only, not VALIDSIG -- and hard-refuse a revoked/expired key or expired sig, which are
+    # still cryptographically valid (VALIDSIG) but must never be trusted. (Twin of tails.)
+    if any(m in flat for m in ("REVKEYSIG", "EXPKEYSIG", "EXPSIG")):
+        on_line("[os] clearsigned hashes from a REVOKED or EXPIRED key/signature -- REFUSING to "
+                "trust them (re-download a current clearsigned hashes file).")
+        return False
+    have_good = "GOODSIG" in status
     if not have_good:
         # Same trichotomy as verify_gpg_detached: a missing pinned key (NO_PUBKEY/ERRSIG) can't establish
         # authenticity and defers to SHA-256 (None); a genuinely bad clearsign hard-refuses (False).
