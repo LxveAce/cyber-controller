@@ -61,6 +61,29 @@ def _lock_dir() -> Path:
     return Path(os.environ.get("CC_VAULT_DIR") or (Path.home() / ".cyber-controller"))
 
 
+def _stat_if_stale(path: Path, stale: float) -> Optional[tuple]:
+    """If *path* is older than *stale* seconds, return its pinned ``(st_dev, st_ino)``; else None.
+
+    Pins the EXACT inode judged stale so the caller can confirm — after an atomic rename — that it
+    moved THAT inode, not a fresh lock a racer recreated in the check-rename gap."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    if time.time() - st.st_mtime <= stale:
+        return None
+    return (st.st_dev, st.st_ino)
+
+
+def _same_inode(path: str, ident: tuple) -> bool:
+    """True iff *path* currently resolves to the pinned ``(st_dev, st_ino)`` in *ident*."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return False
+    return (st.st_dev, st.st_ino) == ident
+
+
 def _acquire_file_lock(timeout: float = 10.0, stale: float = 30.0) -> Optional[tuple]:
     """Best-effort exclusive lock via O_CREAT|O_EXCL (works on Windows + POSIX). Returns a handle
     ``(fd, path, ident)`` where *ident* is the created file's ``(st_dev, st_ino)``, or None if the lock
@@ -76,22 +99,29 @@ def _acquire_file_lock(timeout: float = 10.0, stale: float = 30.0) -> Optional[t
         try:
             fd = os.open(str(path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         except FileExistsError:
-            # Steal a lock left behind by a crashed holder — but ATOMICALLY. Unlinking the stale file BY
-            # NAME is racy: two processes that both read it as stale would each unlink then O_EXCL-create,
-            # and the second unlink deletes the FIRST's fresh lockfile, so both end up "holding" the lock
-            # and can reserve overlapping tx_epochs → catastrophic AES-GCM nonce reuse. os.rename is
-            # atomic: only one racer can move that specific inode; the losers' rename raises (the name is
-            # already gone, or on Windows a still-open live holder can't be renamed) and they retry. The
-            # winner deletes the renamed-away file and loops to O_EXCL-create its own.
-            try:
-                if time.time() - os.path.getmtime(path) > stale:
-                    stolen = f"{path}.stale.{os.getpid()}.{time.monotonic_ns()}"
-                    os.rename(path, stolen)  # atomic claim; a losing racer gets FileNotFoundError here
+            # Steal a lock left by a crashed holder, ATOMICALLY, and only the STALE inode we judged.
+            # os.rename is atomic (one racer moves an inode; losers' rename raises), but judging
+            # staleness from a pre-rename stat of `path` is a TOCTOU: a racer can steal+recreate a
+            # FRESH lock between that stat and the rename, and we'd rename THAT live file away and
+            # double-hold -> two openers reserve one tx_epoch = catastrophic AES-GCM reuse. So
+            # PIN the inode we judged and, after the rename, confirm we grabbed that same (dev,ino);
+            # if we moved a different (fresh) inode instead, restore it and back off, don't reclaim.
+            pinned = _stat_if_stale(path, stale)
+            if pinned is not None:
+                stolen = f"{path}.stale.{os.getpid()}.{time.monotonic_ns()}"
+                try:
+                    os.rename(path, stolen)  # atomic claim of whatever inode is at `path` right now
+                except OSError:
+                    pass  # a losing racer (name already moved) — fall through and retry
+                else:
+                    if _same_inode(stolen, pinned):
+                        with contextlib.suppress(OSError):
+                            os.unlink(stolen)  # reclaimed exactly the stale inode we pinned
+                        continue
+                    # Moved a DIFFERENT (fresh) inode: put it back so its holder's identity-based
+                    # release still works, then treat the lock as held and back off.
                     with contextlib.suppress(OSError):
-                        os.unlink(stolen)
-                    continue
-            except OSError:
-                pass
+                        os.rename(stolen, path)
             if time.monotonic() > deadline:
                 raise NodeProvisionError("could not acquire node-provision lock (another op holds it)")
             time.sleep(0.02)
@@ -236,18 +266,25 @@ def provision_node(
     elif not isinstance(key, (bytes, bytearray)) or len(key) != KEY_LEN:
         raise ValueError(f"key must be exactly {KEY_LEN} bytes")
 
+    key_hex = bytes(key).hex()
     with _reservation_lock():
         table = _table(vault)
-        if nid in table and not overwrite:
+        existing = table.get(nid)
+        if existing is not None and not overwrite:
             raise NodeExistsError(f"node {nid} already provisioned; pass overwrite=True or rotate_key()")
+        # A brand-new key is a brand-new nonce space, so cursors start at 0. But overwrite with the
+        # SAME key is NOT new: zeroing tx_epoch/tx_counter rewinds the nonce into already-used
+        # (key, nonce) pairs -> catastrophic AES-GCM reuse. So when the key is unchanged, PRESERVE
+        # the existing cursors (a role/label update); reset only on a genuine key change.
+        keep = existing is not None and existing.get("key") == key_hex
         table[nid] = {
-            "key": bytes(key).hex(),
+            "key": key_hex,
             "role": role,
             "label": str(label),
-            "tx_epoch": 0,
-            "tx_counter": 0,
-            "rx_epoch": None,
-            "rx_highest": -1,
+            "tx_epoch": int(existing.get("tx_epoch", 0)) if keep else 0,
+            "tx_counter": int(existing.get("tx_counter", 0)) if keep else 0,
+            "rx_epoch": existing.get("rx_epoch") if keep else None,
+            "rx_highest": int(existing.get("rx_highest", -1)) if keep else -1,
         }
         _write_table(vault, table)
     log.info("provisioned node %s (role=%s)", nid, role)  # NB: no key material logged
