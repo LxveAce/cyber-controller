@@ -2230,7 +2230,19 @@ def _expand_per_board_zip(p: Dict, raw: List[Dict]) -> List[Dict]:
 
 def _pinned_url(cfg: Dict, source: str, name: str) -> str:
     base = cfg["resolver_params"]["url_sources"][source]
-    return f"{base.rstrip('/')}/{name}"
+    url = f"{base.rstrip('/')}/{name}"
+    # A pinned profile that still carries an unresolved ref placeholder (e.g. "<commit>" /
+    # "<pinned-sha>") is STAGED, not finalized — its pinned commit/SHA were never filled in, so the
+    # URL 404s and a flash would emit a bogus command (a "verify:" offset, a placeholder path). Fail
+    # EARLY with a clear reason instead of a confusing mid-download 404. Real refs carry no "<...>"
+    # markers, so this only trips on a genuinely-unfinalized pin. (Found by the pinned_release
+    # staleness sweep: bluestress is parked to its own lane; nrf802154_sniffer is deferred to HW.)
+    if "<" in url and ">" in url:
+        raise ValueError(
+            f"firmware profile {cfg.get('id', '?')!r} is STAGED — its pinned reference is not "
+            f"finalized (unresolved placeholder in {url!r}); it is not flashable yet. The pinned "
+            "commit/SHA are pending finalization.")
+    return url
 
 
 def _resolve_pinned(cfg: Dict) -> Tuple[str, List[Dict]]:

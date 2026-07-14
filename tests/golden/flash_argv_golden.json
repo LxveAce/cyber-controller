@@ -1072,7 +1072,7 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+          "support_error": "ValueError: firmware profile 'bluestress' is STAGED \u2014 its pinned reference is not finalized (unresolved placeholder in 'https://raw.githubusercontent.com/LxveAce/BlueStress/<commit>/build/bluestress.ino.bootloader.bin'); it is not flashable yet. The pinned commit/SHA are pending finalization."
         }
       },
       "esp32c3": {
@@ -1101,7 +1101,7 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+          "support_error": "ValueError: firmware profile 'bluestress' is STAGED \u2014 its pinned reference is not finalized (unresolved placeholder in 'https://raw.githubusercontent.com/LxveAce/BlueStress/<commit>/build/bluestress.ino.bootloader.bin'); it is not flashable yet. The pinned commit/SHA are pending finalization."
         }
       },
       "esp32c5": {
@@ -1130,7 +1130,7 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+          "support_error": "ValueError: firmware profile 'bluestress' is STAGED \u2014 its pinned reference is not finalized (unresolved placeholder in 'https://raw.githubusercontent.com/LxveAce/BlueStress/<commit>/build/bluestress.ino.bootloader.bin'); it is not flashable yet. The pinned commit/SHA are pending finalization."
         }
       },
       "esp32c6": {
@@ -1159,7 +1159,7 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+          "support_error": "ValueError: firmware profile 'bluestress' is STAGED \u2014 its pinned reference is not finalized (unresolved placeholder in 'https://raw.githubusercontent.com/LxveAce/BlueStress/<commit>/build/bluestress.ino.bootloader.bin'); it is not flashable yet. The pinned commit/SHA are pending finalization."
         }
       },
       "esp32s2": {
@@ -1188,7 +1188,7 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+          "support_error": "ValueError: firmware profile 'bluestress' is STAGED \u2014 its pinned reference is not finalized (unresolved placeholder in 'https://raw.githubusercontent.com/LxveAce/BlueStress/<commit>/build/bluestress.ino.bootloader.bin'); it is not flashable yet. The pinned commit/SHA are pending finalization."
         }
       },
       "esp32s3": {
@@ -1217,7 +1217,7 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+          "support_error": "ValueError: firmware profile 'bluestress' is STAGED \u2014 its pinned reference is not finalized (unresolved placeholder in 'https://raw.githubusercontent.com/LxveAce/BlueStress/<commit>/build/bluestress.ino.bootloader.bin'); it is not flashable yet. The pinned commit/SHA are pending finalization."
         }
       },
       "esp8266": {
@@ -1246,7 +1246,7 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "support_error": "OSError: [Errno 22] Invalid argument: '<file>'"
+          "support_error": "ValueError: firmware profile 'bluestress' is STAGED \u2014 its pinned reference is not finalized (unresolved placeholder in 'https://raw.githubusercontent.com/LxveAce/BlueStress/<commit>/build/bluestress.ino.bootloader.bin'); it is not flashable yet. The pinned commit/SHA are pending finalization."
         }
       }
     },
