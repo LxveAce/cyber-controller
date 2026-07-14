@@ -86,6 +86,29 @@ def _load_profiles() -> dict[str, Path]:
     return profiles
 
 
+def _resolve_client_ip(remote_addr: str | None, forwarded_for: str,
+                       trusted_proxy_ips: frozenset[str]) -> str:
+    """Resolve the real client IP for rate-limiting + audit — proxy-aware but spoof-resistant (W2).
+
+    With no trusted proxies (the default), returns ``remote_addr`` unchanged: behind a reverse proxy
+    that collapses every client to the proxy IP, but that is SAFE (one shared bucket / audit id)
+    versus trusting a client-forgeable header. When the direct peer IS a trusted proxy, walk
+    X-Forwarded-For from the RIGHT skipping trusted-proxy hops and return the first non-trusted
+    address — the real client. A client can only forge the LEFT (earlier) XFF entries, which we
+    never reach past a trusted-proxy chain, so it cannot spoof its IP as long as each trusted proxy
+    appends the peer it saw.
+
+    Pure function (no Flask request/globals) so the spoofing scenarios are directly unit-testable.
+    """
+    peer = remote_addr or "unknown"
+    if peer not in trusted_proxy_ips:
+        return peer  # direct/untrusted peer — NEVER trust an XFF header it could have forged
+    for hop in reversed([h.strip() for h in forwarded_for.split(",") if h.strip()]):
+        if hop not in trusted_proxy_ips:
+            return hop
+    return peer  # XFF absent or all-trusted-proxy hops -> fall back to the proxy itself
+
+
 def create_app(
     device_manager: DeviceManager,
     flash_engine: FlashEngine,
@@ -95,6 +118,7 @@ def create_app(
     audit: Any = None,
     allowed_origins: list[str] | None = None,
     nodes_controller: NodesController | None = None,
+    trusted_proxies: list[str] | None = None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance."""
 
@@ -139,8 +163,17 @@ def create_app(
 
     # ── Helpers ─────────────────────────────────────────────────────
 
+    # Reverse-proxy IPs whose X-Forwarded-For we trust. EMPTY by default (no proxy trusted) so
+    # remote_addr is used verbatim — the SAME behavior as before. Blindly trusting XFF would be a
+    # regression: any client could send X-Forwarded-For: <anything> to get a fresh rate-limit bucket
+    # (defeating the login/cmd limiter) and forge its audit identity. Only when the DIRECT peer is a
+    # configured trusted proxy do we consult XFF (SEC-W2). Sourced from CC_WEB_TRUSTED_PROXIES.
+    trusted_proxy_ips = frozenset(p.strip() for p in (trusted_proxies or ()) if p.strip())
+
     def _client_ip() -> str:
-        return request.remote_addr or "unknown"
+        return _resolve_client_ip(
+            request.remote_addr, request.headers.get("X-Forwarded-For", ""), trusted_proxy_ips
+        )
 
     def _audit(action: str, **details: Any) -> None:
         if audit is not None:
@@ -929,9 +962,16 @@ def launch_web(
         return 2
 
     origins = _compute_allowed_origins(host, port)
+    # SEC-W2: behind a reverse proxy, remote_addr is the proxy — collapsing every client to one
+    # rate-limit bucket + one audit identity. Let the operator name the trusted proxy IPs (comma-
+    # separated) so the real client is recovered from X-Forwarded-For; empty/unset = trust nothing
+    # (remote_addr verbatim). Never trusted implicitly — a spoofable header must be opted into.
+    trusted_proxies = [
+        p for p in os.environ.get("CC_WEB_TRUSTED_PROXIES", "").split(",") if p.strip()
+    ]
     app, socketio = create_app(
         device_manager, flash_engine, event_bus, target_pool,
-        audit=audit, allowed_origins=origins,
+        audit=audit, allowed_origins=origins, trusted_proxies=trusted_proxies,
     )
 
     ssl_args: dict[str, Any] = {}
