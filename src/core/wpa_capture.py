@@ -214,10 +214,17 @@ def parse_capture(path: str) -> list[Handshake]:
 
 def _consume_eapol(f: bytes, eapol: bytes, ssids, pmkids, m1, eapol_hs) -> None:
     """Decode one EAPOL-Key frame and accumulate PMKID / handshake state. Fail-soft."""
-    if len(eapol) < 95 or eapol[1] != 3:   # 802.1X type 3 = EAPOL-Key
+    # The fixed EAPOL-Key body is 95 bytes (desc 1 + keyinfo 2 + keylen 2 + replay 8 + nonce 32 +
+    # iv 16 + rsc 8 + keyid 8 + MIC 16 + keydatalen 2), so the full frame is >= 99 (4-byte 802.1X
+    # header + body). Requiring only 95/91 left the reads below 4 bytes short: mic = body[77:93]
+    # under-read to 14-15 bytes, and the M2 zeroed[81:97] = 16 zero bytes GREW a short bytearray,
+    # producing a corrupt-but-structurally-complete "handshake" that can never verify (even the
+    # correct passphrase reports not-found). Require the full fixed body so a truncated frame is
+    # skipped as unparseable instead of laundered into a fake handshake.
+    if len(eapol) < 99 or eapol[1] != 3:   # 802.1X type 3 = EAPOL-Key; 99 = 4 hdr + 95 fixed body
         return
     body = eapol[4:]                        # skip 802.1X header (version,type,length[2])
-    if len(body) < 91:
+    if len(body) < 95:
         return
     key_info = struct.unpack(">H", body[1:3])[0]
     nonce = body[13:45]

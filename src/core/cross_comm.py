@@ -290,7 +290,15 @@ class AutoRouter:
         with self._lock:
             before = len(self._rules)
             self._rules = [r for r in self._rules if r.name != name]
-            return len(self._rules) < before
+            removed = len(self._rules) < before
+            if removed:
+                # Drop the removed rule's cooldown stamps (keys "name:target_key") so they neither
+                # linger as a slow leak nor skew the size-cap eviction cutoff once the rule is gone.
+                prefix = f"{name}:"
+                self._cooldowns = {
+                    k: t for k, t in self._cooldowns.items() if not k.startswith(prefix)
+                }
+            return removed
 
     def list_rules(self) -> list[RoutingRule]:
         with self._lock:
@@ -327,7 +335,11 @@ class AutoRouter:
                 # long wardrive): drop entries older than the largest current cooldown. Such an entry is
                 # already expired for its own rule, so evicting it can never enable a blocked fire.
                 if len(self._cooldowns) > 4096:
-                    cutoff = now - max((r.cooldown for r in rules), default=60.0)
+                    # Cut off on the largest cooldown across ALL rules (self._rules), NOT the
+                    # enabled-only `rules` snapshot: a DISABLED rule still owns its stamps and may
+                    # have a larger window than any enabled rule, so keying off the enabled set may
+                    # evict a still-active cooldown and let a re-enabled same-name rule fire early.
+                    cutoff = now - max((r.cooldown for r in self._rules), default=60.0)
                     self._cooldowns = {k: t for k, t in self._cooldowns.items() if t >= cutoff}
 
             # Validate the MAC shape only when the rule actually interpolates it. Non-WiFi targets

@@ -178,6 +178,15 @@ class SerialConnection:
             self._set_state(ConnectionState.ERROR)
             self._emit_error(exc)
             raise
+        except Exception as exc:
+            # A NON-SerialException after open() succeeds — most plausibly _read_thread.start()
+            # raising RuntimeError under thread/handle exhaustion — used to propagate uncaught,
+            # leaving the freshly-opened exclusive COM handle open with no owner to close it. On
+            # Windows the port then stays locked ("Access is denied") until exit. Release it first.
+            self._release_serial()
+            self._set_state(ConnectionState.ERROR)
+            self._emit_error(exc)
+            raise
 
     def disconnect(self) -> None:
         """Stop the reader thread and close the port."""

@@ -1245,11 +1245,19 @@ class FlashEngine:
             with self._lock:
                 self._status = FlashStatus.FLASHING
             try:
-                return _detect_cyd(port, flash_probe=flash_probe,
-                                   read_secs=read_secs, progress=progress)
-            finally:
+                result = _detect_cyd(port, flash_probe=flash_probe,
+                                     read_secs=read_secs, progress=progress)
+            except Exception:
+                # A probe failure (serial open, esptool non-zero exit, read timeout) must record
+                # ERROR, not DONE. The old bare `finally` stamped DONE unconditionally, so a surface
+                # polling `.status` after a raised detect saw success — every other op here is
+                # DONE-if-ok / ERROR-otherwise; match that.
                 with self._lock:
-                    self._status = FlashStatus.DONE
+                    self._status = FlashStatus.ERROR
+                raise
+            with self._lock:
+                self._status = FlashStatus.DONE
+            return result
 
     # ── Backup ───────────────────────────────────────────────────────
 

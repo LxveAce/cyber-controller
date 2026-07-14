@@ -246,6 +246,14 @@ def win_swap_script(pid: int, new_exe: str, cur_exe: str) -> str:
     leave the verified ``*.new`` in place; we still relaunch the old exe so the app comes back. A
     successful move clears any stale breadcrumb."""
     marker = failed_update_marker(cur_exe)
+    # cmd.exe expands %VAR% even inside double quotes, and a literal percent must be doubled (%%).
+    # '%' is a legal NTFS path char, so escape it in the interpolated PATHS — otherwise an install
+    # dir like C:\Tools\100%CPU\ mangles every move/start/breadcrumb target, the swap silently dies,
+    # AND the breadcrumb lands at the wrong path so read_failed_update() never surfaces it. Escape
+    # ONLY the paths; the script's own %tries% / %~f0 are real cmd tokens that must stay literal.
+    cur_q = cur_exe.replace("%", "%%")
+    new_q = new_exe.replace("%", "%%")
+    marker_q = marker.replace("%", "%%")
     return (
         "@echo off\r\n"
         ":wait\r\n"
@@ -256,20 +264,20 @@ def win_swap_script(pid: int, new_exe: str, cur_exe: str) -> str:
         ")\r\n"
         "set /a tries=0\r\n"
         ":try\r\n"
-        f'move /Y "{new_exe}" "{cur_exe}" >nul\r\n'
+        f'move /Y "{new_q}" "{cur_q}" >nul\r\n'
         "if not errorlevel 1 goto swapped\r\n"
         "set /a tries+=1\r\n"
         "if %tries% lss 10 (\r\n"
         "  ping -n 2 127.0.0.1 >nul\r\n"
         "  goto try\r\n"
         ")\r\n"
-        f'>"{marker}" echo update did not apply - could not replace the running binary. '
-        f'staged update left at "{new_exe}"\r\n'
+        f'>"{marker_q}" echo update did not apply - could not replace the running binary. '
+        f'staged update left at "{new_q}"\r\n'
         "goto relaunch\r\n"
         ":swapped\r\n"
-        f'del "{marker}" >nul 2>nul\r\n'
+        f'del "{marker_q}" >nul 2>nul\r\n'
         ":relaunch\r\n"
-        f'start "" "{cur_exe}"\r\n'
+        f'start "" "{cur_q}"\r\n'
         'del "%~f0"\r\n'
     )
 

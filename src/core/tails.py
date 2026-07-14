@@ -104,7 +104,17 @@ def verify_gpg(img_path: str, sig_path: str, on_line: Line) -> Optional[bool]:
     status = proc.stdout + proc.stderr
     flat = status.replace(" ", "")
     fpr = TAILS_SIGNING_KEY_FINGERPRINT
-    have_good = ("VALIDSIG" in status or "GOODSIG" in status)
+    # A REVOKED (REVKEYSIG) or EXPIRED (EXPKEYSIG) signing key — or an expired signature (EXPSIG) —
+    # is still cryptographically valid, so gpg emits VALIDSIG (carrying the fingerprint) for it.
+    # Keying "good" off VALIDSIG would therefore ACCEPT a signature from a key that revocation
+    # specifically invalidated and SKIP the SHA-256 anchor (verified=True in flash_local_image).
+    # Revocation is how a compromised key is invalidated, so hard-REFUSE these rather than trust
+    # them — a genuine, current signature emits GOODSIG.
+    if any(m in flat for m in ("REVKEYSIG", "EXPKEYSIG", "EXPSIG")):
+        on_line("[tails] GPG signature is from a REVOKED or EXPIRED key/signature — REFUSING to "
+                "trust it (re-download the image + a current signature from tails.net).")
+        return False
+    have_good = "GOODSIG" in status
     if not have_good:
         # Tell apart "can't verify" from "bad signature". The normal fresh-box case is that the Tails
         # signing key simply isn't in the keyring (we never auto-import it), so gpg emits NO_PUBKEY/ERRSIG
