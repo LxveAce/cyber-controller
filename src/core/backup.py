@@ -25,11 +25,45 @@ def _data_dir() -> str:
     else:
         d = os.path.expanduser("~/.universal-flasher/backups")
     os.makedirs(d, exist_ok=True)
+    _secure_dir(d)
     return d
 
 
 def _safe_filename(text: str) -> str:
     return "".join(c if c.isalnum() or c in "-_." else "_" for c in text)
+
+
+def _secure_dir(path: str) -> None:
+    """Make the backups dir owner-only — 0o700 on POSIX, an owner-only NTFS ACL on Windows.
+
+    A full flash dump includes the NVS partition (Wi-Fi SSIDs/PSKs and other device secrets), so the
+    folder must not stay world-readable: under the usual umask 022 os.makedirs yields 0755, and any
+    second local account on a shared *nix host could read the dumps. Mirrors the sibling secret
+    stores (audit_trail/vault). Best-effort: a perms failure never blocks a backup."""
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        pass  # no POSIX perms (Windows) — the ACL below is the enforcement there
+    try:
+        from src.security.win_acl import secure_dir
+        secure_dir(path)
+    except Exception:
+        pass
+
+
+def _secure_file(path: str) -> None:
+    """Restrict a backup artifact (the .bin dump or .meta sidecar) to the current user — 0o600 on
+    POSIX, an owner-only NTFS ACL on Windows. The dump carries NVS secrets and the sidecar discloses
+    port/chip; without this both land 0644 (world-readable) under the usual umask. Best-effort."""
+    try:
+        os.chmod(path, 0o600)
+    except OSError:
+        pass
+    try:
+        from src.security.win_acl import restrict_to_current_user
+        restrict_to_current_user(path)
+    except Exception:
+        pass
 
 
 def backup_flash(port: str, on_line: Line, chip: Optional[str] = None,
@@ -45,6 +79,7 @@ def backup_flash(port: str, on_line: Line, chip: Optional[str] = None,
 
     dest_dir = output_dir or _data_dir()
     os.makedirs(dest_dir, exist_ok=True)
+    _secure_dir(dest_dir)
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     port_safe = _safe_filename(port.replace("/dev/", "").replace("\\", "_").replace(".", "_"))
@@ -99,6 +134,7 @@ def backup_flash(port: str, on_line: Line, chip: Optional[str] = None,
         return None
 
     if os.path.isfile(dest):
+        _secure_file(dest)  # lock down the dump (NVS secrets) as soon as it lands
         size = os.path.getsize(dest)
         sha = _sha256_file(dest)
         on_line(f"[backup] Success: {size} bytes, SHA256: {sha[:16]}...")
@@ -116,6 +152,7 @@ def backup_flash(port: str, on_line: Line, chip: Optional[str] = None,
             f.write(f"timestamp={timestamp}\n")
             if label:
                 f.write(f"label={label}\n")
+        _secure_file(meta_path)
         return dest
 
     on_line("[error] Backup file not created")
