@@ -32,7 +32,11 @@ from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # General CC bridge line: `LXVEOS/<v> <type> <space-separated key=value>`. `status` is one type; the
 # recon/defense/capture/arm ops emit other types (ap/sta/probe/ble/hs/pcap/arm/alert/bridge/done/snapshot).
-_RE_EVENT = re.compile(r"^LXVEOS/(\d+)\s+(\w+)\s*(.*)$")
+# Digit runs are bounded (\d{1,20}, not \d+): a hostile 4301-digit run would otherwise hit Python's
+# ~4300-digit str->int limit and raise ValueError out of the parse. 20 digits fits any 64-bit value;
+# an over-long run fails to match here (dropped clean) while a real version parses — and a legit
+# up-to-10-digit arm token is never truncated.
+_RE_EVENT = re.compile(r"^LXVEOS/(\d{1,20})\s+(\w+)\s*(.*)$")
 # key=value pairs; value may be EMPTY (e.g. a hidden SSID emits `ssid=`), so `\S*` not `\S+`.
 _RE_KV = re.compile(r"(\w+)=(\S*)")
 
@@ -48,7 +52,7 @@ _RE_PROMPT = re.compile(r"^lxveos>\s*$")
 # Arm gate (LXVEOS-CC-CONTROL-SPEC §4) — the human-prose replies of the `arm`/`disarm` commands, parsed to
 # arm_state events for the ARM/SAFE UI. (The firmware ALSO emits a structured `LXVEOS/1 arm state=..` event
 # when the bridge is on; that path is handled by the general dispatch — this is the fallback for the prose.)
-_RE_ARM_REQUEST = re.compile(r"arm\s+requested.*?\barm\s+(\d+)", re.IGNORECASE | re.DOTALL)
+_RE_ARM_REQUEST = re.compile(r"arm\s+requested.*?\barm\s+(\d{1,20})", re.IGNORECASE | re.DOTALL)
 _RE_ARM_TXOFF = re.compile(r"compiled\s+OUT", re.IGNORECASE)
 _RE_ARM_STATE = re.compile(r"^arm\s+state:\s*(\w+)", re.IGNORECASE)
 _RE_ARM_ARMED = re.compile(r"\bARMED\b")  # the confirm reply; \b keeps it from matching DISARMED
@@ -125,7 +129,9 @@ def _coerce_status_field(key: str, val: str):
             return val
     if key == "ops":  # ready/planned/unavailable operation tally
         parts = val.split("/")
-        if len(parts) == 3 and all(p.isdigit() for p in parts):
+        # len<=20 bounds int() against a hostile 4301-digit run (isdigit() alone imposes no length
+        # limit, so a huge run would pass the guard and raise ValueError on int()).
+        if len(parts) == 3 and all(p.isdigit() and len(p) <= 20 for p in parts):
             return {"ready": int(parts[0]), "planned": int(parts[1]), "unavailable": int(parts[2])}
         return val
     if key == "arm":  # runtime arm-gate state. A build-time TX-lockout shows up as tx=0, so arm= is

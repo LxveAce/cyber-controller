@@ -98,6 +98,25 @@ def test_status_tolerates_unknown_future_keys():
     assert ev.data["region"] == "us" and ev.data["newfield"] == "abc123"
 
 
+def test_hostile_long_digit_runs_never_crash_the_parser():
+    # Defense-in-depth (final 1.8.0 review): a hostile device could send a >4300-digit run in a
+    # numeric field; a bare int() would hit Python's str->int limit and raise ValueError out of
+    # parse_line. Bounded regex groups (\d{1,20}) + a len() guard on ops= must degrade cleanly.
+    p = LxveOSProtocol()
+    big = "1" * 4301
+    # (a) version field: LXVEOS/<huge> no longer matches the event regex -> benign fallthrough.
+    ev = p.parse_line(f"LXVEOS/{big} status")
+    assert ev is None or ev.event_type == "info"   # degraded clean, NOT a ValueError
+    # (b) ops= in a status line: the over-long tally stays a raw string; the rest still parses.
+    ev = p.parse_line(f"LXVEOS/1 status board=b chip=esp32 ui=headless ops={big}/2/3 heap=100")
+    assert ev is not None and ev.event_type == "device_info"
+    assert ev.data["ops"] == f"{big}/2/3"          # not coerced to a dict; no crash
+    # (c) arm-request prose: the token is a bounded capture (<=20 digits), never the full run.
+    ev = p.parse_line(f"arm requested; run arm {big}")
+    assert ev is not None and ev.event_type == "arm_state"
+    assert isinstance(ev.data["token"], int) and ev.data["token"] < 10**20   # bounded, no crash
+
+
 def test_info_block_accumulates_to_one_device_info():
     p = LxveOSProtocol()
     assert p.parse_line(_INFO[0]) is None  # fw  -> start record
