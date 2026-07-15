@@ -614,12 +614,9 @@ class FlashTab(QWidget):
         for v in variants:
             label = v.get("label") or v.get("name", "")
             self._variant_combo.addItem(f"{label}  ({v.get('name', '')})", v.get("name", ""))
-        # Apply a variant chosen by board-detection now that the real list is in. If detection found a
-        # key the fetched list somehow lacks, add it so it stays selectable.
+        # Apply a variant chosen by board-detection now that the real list is in.
         if self._pending_variant:
-            if not self._select_variant(self._pending_variant):
-                self._variant_combo.addItem(f"{self._pending_variant}  (detected)", self._pending_variant)
-                self._select_variant(self._pending_variant)
+            self._apply_detected_variant(self._pending_variant)
 
     def _browse_profile(self) -> None:
         path, _ = QFileDialog.getOpenFileName(
@@ -688,8 +685,13 @@ class FlashTab(QWidget):
         idx = self._profile_combo.findText("Marauder", Qt.MatchContains)
         if idx >= 0 and idx != self._profile_combo.currentIndex():
             self._profile_combo.setCurrentIndex(idx)  # triggers _reload_variants -> applied on load
-        elif not self._select_variant(result.variant):
-            pass  # not in the current list yet; _on_variants_loaded will add + select it
+        elif idx >= 0:
+            # Marauder is ALREADY current, so the switch is skipped and no variant reload fires --
+            # _on_variants_loaded (which applies a pending key) never runs. Apply the detected key
+            # here, or the picker silently stays on Auto and Flash writes the generic ILI9341
+            # default over the panel detection just identified.
+            self._apply_detected_variant(result.variant)
+        # else: no Marauder profile present -- keep _pending_variant for whenever its list loads.
         if getattr(result, "ambiguous", False) or result.confidence == "low":
             # The panel controller wasn't positively identified (ST7789 fallback bucket), so the exact
             # variant is a guess — don't present it as certain. Pre-select the best guess but warn, and
@@ -714,6 +716,16 @@ class FlashTab(QWidget):
                 self._pending_variant = None
                 return True
         return False
+
+    def _apply_detected_variant(self, key: str) -> None:
+        """Select a board-detection variant KEY, adding it as a selectable synthetic '(detected)'
+        item when the loaded list doesn't carry it. The combo stores each item's asset NAME as data,
+        which never equals a bare detection key ('cyd_2432S028_2usb' vs a '...cyd_2432S028_2usb...'
+        asset name), so _select_variant alone can't match a detect key against a freshly loaded list
+        -- the synthetic item is what makes the detected panel actually reach Flash, not Auto."""
+        if not self._select_variant(key):
+            self._variant_combo.addItem(f"{key}  (detected)", key)
+            self._select_variant(key)
 
     # ── Dead Man's Switch toggle ───────────────────────────────────
 
