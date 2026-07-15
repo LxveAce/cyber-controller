@@ -3,7 +3,7 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new
 **Operate console** for single-device control, a passive **network-intel** pass on the Targets surface,
 and a broad security + reliability hardening sweep. Backend/serial control only — CC issues firmware CLI
@@ -34,7 +34,10 @@ commands and never authors radio frames.
   is forced Secure behind an upstream TLS proxy (`CC_WEB_COOKIE_SECURE`); a non-dict JSON body can no
   longer 500 an endpoint; serial-parser regexes are bounded against ReDoS; the firmware-catalog signature
   check gates on a *good* (non-revoked / non-expired) GPG signature; two AES-GCM nonce-reuse paths in
-  per-node provisioning are closed; a truncated download is rejected instead of trusted.
+  per-node provisioning are closed; a truncated download is rejected instead of trusted; a non-ASCII
+  CSRF token fails closed to a clean 403 instead of 500-ing the endpoint; and the offline firmware
+  vault honors a tag pinned in a profile's URL, so a rolling-prerelease firmware (LxveOS `ci-latest`)
+  is cached from the release it points at rather than silently resolving to `/releases/latest`.
 - **Fixed — capture / crack accuracy:** an AVS (link-type 163) capture is parsed instead of read as empty;
   a 4-way handshake Message 4 is no longer misclassified as Message 2; wordlists split on any CR/LF and
   reuse the PMK per ESSID salt; a fabricated aircrack ESSID result and MAC-less "phantom" OUI resolutions
