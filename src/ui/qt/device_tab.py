@@ -47,6 +47,7 @@ from src.protocols import (
     get_protocol_by_display,
     resolve_protocol_name,
 )
+from src.ui.qt.arm_lamp import arm_lamp_render
 
 log = logging.getLogger(__name__)
 
@@ -1033,20 +1034,10 @@ class DeviceTab(QWidget):
 
     @staticmethod
     def _arm_lamp_render(state: str) -> "tuple[str, str]":
-        """(label text, color) for an arm state. Blank/unknown -> blank (no lamp until the fw speaks).
-        A recognized-but-unlisted token still renders verbatim (muted) so a future arm state isn't lost.
-        Colors read as a traffic light: green safe, amber mid-handshake, red hot, grey compiled-out."""
-        table = {
-            "safe":        ("● SAFE — offensive TX locked",          "#3fb950"),
-            "pending":     ("● ARM PENDING — awaiting token",        "#d29922"),
-            "armed":       ("● ARMED — offensive TX permitted",      "#f85149"),
-            "tx_disabled": ("● TX DISABLED — offensive TX not built", "#6e7681"),
-        }
-        if state in table:
-            return table[state]
-        if state:
-            return (f"● {state}", "#8b949e")
-        return ("", "#8b949e")
+        """(label text, color) for an arm state — delegates to the shared table in ``arm_lamp`` so the
+        Operate console renders an identical lamp without importing this heavy module. Kept as a
+        @staticmethod because existing tests call ``DeviceTab._arm_lamp_render`` directly."""
+        return arm_lamp_render(state)
 
     def _update_alert_line(self) -> None:
         """Connected device's most-recent detector/watchlist alert as a one-line warning under the arm

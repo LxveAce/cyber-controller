@@ -124,13 +124,14 @@ def test_operate_surface_subtabs(qapp, isolated_settings):
     surface = win._operate_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
     assert titles == ["Targets", "Broadcast", "Macros", "Wardrive", "Multi-Wardrive", "Flock Map",
-                      "Crack Lab"]
+                      "Crack Lab", "Console"]
     assert surface.widget(0) is win._targets_tab, "Targets sub-tab must be the TargetsTab object"
     assert surface.widget(1) is win._broadcast_bar, "Broadcast sub-tab must be the BroadcastBar object"
     assert surface.widget(2) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
     assert surface.widget(3) is win._wardrive_tab, "Wardrive sub-tab must be the WardriveTab object"
     assert surface.widget(4) is win._wardrive_multi_tab, "Multi-Wardrive sub-tab must be the WardriveMultiTab object"
     assert surface.widget(5) is win._flock_heatmap, "Flock Map sub-tab must be the FlockHeatmapTab object"
+    assert surface.widget(7) is win._operate_console, "Console sub-tab must be the OperateTab object"
     # None of the sub-views are direct top-level tabs anymore.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
     for gone in ("Targets", "Broadcast", "Macros", "Wardrive", "Multi-Wardrive", "Flock Map"):

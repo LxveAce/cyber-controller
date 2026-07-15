@@ -567,6 +567,15 @@ class CyberControllerWindow(QMainWindow):
         # Pass the cross-comm hub so the Captures table auto-populates from the shared capture log.
         self._crack_lab_tab = CrackLabTab(self._hub)
         self._operate_surface.addTab(self._crack_lab_tab, label_icon("Crack Lab"), "Crack Lab")
+        # Operate console (B16): a button-driven single-device console — status-poll header, SAFE/ARMED
+        # lamp, two-factor arm toggle, and a per-firmware TX-gated command grid. Shares the Devices tab's
+        # ingestor (Device state is mutated once, read here) + its _dms_seen set (so a Dead-Man's-Switch
+        # port is never auto-polled here either). Named "Console" — "Operate" is this surface's own name.
+        from src.ui.qt.operate_tab import OperateTab
+        self._operate_console = OperateTab(
+            self._dm, self._ingestor, recorder=self._macro, dms_seen=self._device_tab._dms_seen,
+        )
+        self._operate_surface.addTab(self._operate_console, label_icon("Console"), "Console")
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its
@@ -1228,6 +1237,15 @@ class CyberControllerWindow(QMainWindow):
             and getattr(self._device_tab, '_active_conn', None) is not conn
         ):
             self._device_tab._terminal.append(html.escape(line))
+        # Nudge the Operate console to repaint from the (ingestor-updated) Device if it's showing this
+        # port. It opens no serial subscription of its own — this is a read-only state repaint, and the
+        # 2s poll covers the case where this forward doesn't fire. Guarded: never break the serial path.
+        console = getattr(self, "_operate_console", None)
+        if console is not None:
+            try:
+                console.on_line_received(port, line)
+            except Exception:  # noqa: BLE001 — a view repaint must never break serial ingestion
+                pass
 
     # Activity-bus level → source-tag colour (error/warn stand out; info/success stay calm).
     _ACTIVITY_COLORS = {"info": "#58a6ff", "success": "#3fb950", "warn": "#f0883e", "error": "#f85149"}
