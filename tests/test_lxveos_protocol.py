@@ -230,6 +230,14 @@ def test_alert_events_from_all_six_detectors():
     assert d["kind"] == "blehid" and d["rssi"] == -50 and d["name"] == "Key"
 
 
+def test_snapshot_airspace_summary_event():
+    # the `airspace` custom command emits one occupancy summary: AP count (+ open/WPS-exposed splits) and
+    # BLE advertiser count (+ known-tracker count). All counts typed to int for the CC dashboard.
+    d = LxveOSProtocol().parse_line("LXVEOS/1 snapshot aps=14 open=3 wps=2 bles=8 trackers=1").data
+    assert d["aps"] == 14 and d["open"] == 3 and d["wps"] == 2
+    assert d["bles"] == 8 and d["trackers"] == 1
+
+
 def test_ble_event_full_fields():
     # firmware `blescan`: addr (reversed to MSB-first), type, rssi always; name/company/fp/appr/tracker
     # only when the advert carried them. company is the numeric Bluetooth-SIG ID; tracker the item class.

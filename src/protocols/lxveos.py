@@ -76,7 +76,8 @@ _EVENT_MAP: dict[str, tuple[str, "frozenset[str]", "frozenset[str]"]] = {
                                         frozenset({"ssid", "name"})),
     "bridge":   ("bridge_state",       frozenset(),                                  frozenset()),
     "done":     ("batch_done",         frozenset({"n"}),                             frozenset()),
-    "snapshot": ("snapshot",           frozenset({"aps", "stas", "bles", "alerts"}), frozenset()),
+    "snapshot": ("snapshot",           frozenset({"aps", "open", "wps", "bles", "trackers",
+                                                   "stas", "alerts"}),                frozenset()),
 }
 
 

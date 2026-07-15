@@ -39,7 +39,9 @@ _SESSION = [
     "*deadbeef0001*aabbcc001122*4d794e6574***",
     # 7. `defend` fires a deauth alert
     "LXVEOS/1 alert kind=deauth bssid=de:ad:be:ef:00:01 count=27 deauth=20 disassoc=7",
-    # 8. two-factor arm flow, then disarm
+    # 8. `airspace` occupancy summary (custom) -> one snapshot event
+    "LXVEOS/1 snapshot aps=2 open=1 wps=0 bles=1 trackers=1",
+    # 9. two-factor arm flow, then disarm
     "LXVEOS/1 arm state=pending token=123456789 window=30",
     "LXVEOS/1 arm state=armed",
     "LXVEOS/1 arm state=safe",
@@ -65,6 +67,7 @@ def test_full_bridge_session_event_stream():
         "ble_found", "batch_done",                    # blescan
         "handshake_captured",                         # capture
         "alert",                                      # defend
+        "snapshot",                                   # airspace
         "arm_state", "arm_state", "arm_state",        # arm -> armed -> safe
     ]
 
