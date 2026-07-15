@@ -20,6 +20,7 @@ from .native_crack import Handshake
 _LT_DOT11 = 105
 _LT_RADIOTAP = 127
 _LT_PPI = 192
+_LT_AVS = 163
 _EAPOL_ETHERTYPE = 0x888E
 
 
@@ -103,6 +104,15 @@ def _to_dot11(linktype: int, frame: bytes) -> bytes:
             return b""
         ppi_len = struct.unpack("<H", frame[2:4])[0]
         return frame[ppi_len:] if ppi_len <= len(frame) else b""
+    if linktype == _LT_AVS:
+        # AVS capture header (avs_80211_1_header): a big-endian uint32 version, then a uint32 length
+        # giving the whole header's size -- skip that to reach the 802.11 frame. Best-effort per the
+        # module doc: a length that can't be trusted (smaller than its own two fields, or past the
+        # frame) means the MAC header can't be located, so skip the frame rather than emit garbage.
+        if len(frame) < 8:
+            return b""
+        avs_len = struct.unpack(">I", frame[4:8])[0]
+        return frame[avs_len:] if 8 <= avs_len <= len(frame) else b""
     return b""
 
 

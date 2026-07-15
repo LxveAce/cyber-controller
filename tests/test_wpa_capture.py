@@ -79,6 +79,40 @@ def test_pmkid_needs_essid(tmp_path):
     assert wc.parse_capture(str(cap)) == []
 
 
+def _avs(frame, hdr_len=64):
+    """Wrap a bare 802.11 frame in an AVS capture header (link type 163): big-endian version +
+    length (the header size), rest zero-padded -- enough for the best-effort length skip to work."""
+    hdr = bytearray(hdr_len)
+    struct.pack_into(">I", hdr, 0, 1)         # version
+    struct.pack_into(">I", hdr, 4, hdr_len)   # length = total AVS header size
+    return bytes(hdr) + frame
+
+
+def test_to_dot11_skips_avs_header():
+    # Unit: _to_dot11 must strip an AVS header down to the bare 802.11 frame. Before the fix, link
+    # type 163 hit the fallthrough and returned b"" -- the frame was silently dropped.
+    beacon = _beacon(_AP, _ESSID)
+    assert wc._to_dot11(wc._LT_AVS, _avs(beacon)) == beacon
+    # A bogus (too-large) length can't locate the MAC header -> skip, don't emit garbage.
+    bad = bytearray(_avs(beacon))
+    struct.pack_into(">I", bad, 4, 99999)
+    assert wc._to_dot11(wc._LT_AVS, bytes(bad)) == b""
+
+
+def test_parse_avs_linktype_capture(tmp_path):
+    # End-to-end: an AVS (link type 163) capture was indistinguishable from an empty one -- every
+    # frame returned b"", so parse_capture found nothing, yet the doc PROMISED best-effort AVS skip.
+    # Wrap a real PMKID handshake in AVS headers and require the parser to recover it.
+    cap = tmp_path / "avs.pcap"
+    frames = [_avs(_beacon(_AP, _ESSID)), _avs(_eapol_m1(_AP, _STA, b"\x11" * 32, _PMKID))]
+    cap.write_bytes(_pcap(frames, linktype=163))
+    handshakes = wc.parse_capture(str(cap))
+    assert handshakes, "AVS-wrapped PMKID handshake must be recovered (was silently dropped)"
+    hs = handshakes[0]
+    assert hs.kind == "pmkid" and hs.essid == _ESSID
+    assert hs.ap_mac == _AP and hs.pmkid == _PMKID
+
+
 # ── 4-way-handshake (EAPOL-MIC) path ─────────────────────────────────────────────────────────────
 # Rather than transcribe a fragile hard-coded MIC vector, we build a SELF-CONSISTENT M2: compute the
 # real MIC with native_crack's own compute_mic over the mic-zeroed 802.1X frame, then splice it into
