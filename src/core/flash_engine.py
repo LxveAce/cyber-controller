@@ -389,6 +389,26 @@ class FlashEngine:
             return "uf2"
         return None
 
+    @staticmethod
+    def _release_fetch_error_lines(
+        core_id: str, exc: object, prefix: str = "error"
+    ) -> "list[str]":
+        """Log line(s) for a failed github_release fetch. Always reports the raw error; on a 404
+        adds an honest hint. A distributed CC build carries no GitHub token, and GitHub returns 404
+        (not 403) to an unauthenticated client for a PRIVATE repo — so a bare "404 Not Found" on a
+        firmware whose release channel is private (e.g. LxveOS's ci-latest until it's public) reads
+        like a CC bug, not "this build channel isn't publicly reachable". Name the real cause + the
+        way forward. Pure so the message is unit-testable."""
+        lines = [f"[{prefix}] could not fetch release: {exc}"]
+        if "404" in str(exc):
+            lines.append(
+                f"[hint] {core_id}'s release channel returned 404 — it is likely private (a "
+                "distributed build carries no GitHub token, so a private channel can't be "
+                "reached) or the tag no longer exists. To flash it the channel must be public, "
+                "or point CC at a locally downloaded merged .bin (a local-file flash)."
+            )
+        return lines
+
     # ── esptool (the bulk of firmwares) ──────────────────────────────
 
     def _flash_esptool(
@@ -445,7 +465,8 @@ class FlashEngine:
                                               f"could not fetch release ({exc})")
             if fb is not None:
                 return fb
-            on_line(f"[error] could not fetch release: {exc}")
+            for _line in self._release_fetch_error_lines(core_id, exc):
+                on_line(_line)
             return False
         variant = self._resolve_variant(core, assets, chip, profile.variant, on_line)
         if not variant:
@@ -696,7 +717,8 @@ class FlashEngine:
             on_line(f"[release] fetching latest {core_id} release...")
             _tag, assets = core.latest_release()
         except Exception as exc:  # offline / API error — never fake success
-            on_line(f"[{label}] could not fetch release: {exc}")
+            for _line in self._release_fetch_error_lines(core_id, exc, label):
+                on_line(_line)
             return None
         # Prefer an explicit chip; fall back to a chip declared in the raw profile, else 'auto'
         # (the variant resolver logs whichever asset it picks, so a wrong pick stays visible).
@@ -783,7 +805,8 @@ class FlashEngine:
                 on_line(f"[release] fetching latest {core_id} release...")
                 _tag, assets = core.latest_release()
             except Exception as exc:
-                on_line(f"[error] could not fetch release: {exc}")
+                for _line in self._release_fetch_error_lines(core_id, exc):
+                    on_line(_line)
                 return False
             variant = self._resolve_variant(core, assets, "flipper", profile.variant, on_line)
             if not variant:
