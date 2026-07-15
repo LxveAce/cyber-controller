@@ -282,6 +282,7 @@ __all__ = [
     "BlueStressProtocol",
     "NrfBlueNullifier2Protocol",
     "FlockYouProtocol",
+    "LxveOSProtocol",
     "EspAtProtocol",
     "GenericProtocol",
     "PROTOCOLS",
