@@ -1,0 +1,50 @@
+{
+  "name": "LxveOS",
+  "id": "lxveos",
+  "description": "LxveAce security-panel OS (ESP-IDF): headless/GUI esp_console control surface — passive WiFi/BLE recon + defensive detectors, EAPOL/PMKID capture, an arm-gated offensive set, and the LXVEOS/1 serial event bridge. Per-board merged single .bin (flashed at 0x0). Authorized/defensive use.",
+  "backend": "esptool",
+  "protocol": "lxveos",
+  "boards": [
+    {"name": "Bare ESP32 (headless)", "chip": "esp32", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "80m"},
+    {"name": "CYD 2.8\" (ESP32-2432S028)", "chip": "esp32", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "80m", "has_display": true, "display_type": "ili9341"},
+    {"name": "M5StickC Plus2", "chip": "esp32", "flash_size": "8MB", "flash_mode": "dio", "flash_freq": "80m", "has_display": true, "display_type": "st7789"},
+    {"name": "M5Cardputer v1 (ESP32-S3)", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "dio", "flash_freq": "80m", "has_keyboard": true, "has_display": true, "display_type": "st7789"},
+    {"name": "JC3248W535 (ESP32-S3 QSPI)", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "dio", "flash_freq": "80m", "has_display": true}
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/LxveAce/lxveos",
+    "latest": "https://github.com/LxveAce/lxveos/releases/tag/ci-latest"
+  },
+  "note": "Aligned to LxveAce/lxveos (PRIVATE). Tracks the rolling `ci-latest` GitHub PRERELEASE build channel: the github_release resolver hits the /releases/tags/ci-latest endpoint (not /releases/latest, which excludes prereleases). Each board ships one `<board_id>-merged.bin` (idf.py merge-bin embeds bootloader+partition-table+app), flashed at a single offset 0x0 — no separate bootloader/partition side-files. protocol=lxveos wires the LxveOSProtocol serial parser post-flash (LXVEOS/1 status/event framing). Boards: bare_esp32_headless / cyd_2432S028_classic / m5stickc_plus2 (esp32), m5cardputer_v1 / jc3248w535_s3_qspi (esp32s3). NOTE: LxveAce/lxveos is private, so the ci-latest asset download needs an authenticated GitHub token — until the channel is public, flash via an authenticated `gh release download ci-latest --repo LxveAce/lxveos` or a local source. Flash write is owner-gated until Stage-5 HARDWARE-CLAIMS validation.",
+  "label": "LxveOS (LxveAce)",
+  "core_id": "lxveos",
+  "repo": "LxveAce/lxveos",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["bare_esp32_headless", "cyd_2432s028"]},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/LxveAce/lxveos/releases/tags/ci-latest",
+    "asset_match": {
+      "include_regex": "^(.+)-merged\\.bin$",
+      "regex_flags": ["IGNORECASE"]
+    },
+    "chip_map": {
+      "strategy": "fragments", "source": "name", "default": "esp32",
+      "rules": [
+        ["m5cardputer", "esp32s3"],
+        ["jc3248w535", "esp32s3"]
+      ]
+    },
+    "emit": {
+      "offset": "0x0",
+      "merged": true,
+      "label_template": "LxveOS {env}",
+      "label_group": 1
+    }
+  }
+}

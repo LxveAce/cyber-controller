@@ -2600,6 +2600,12 @@ _PROFILE_FILES = (
     # legit RX side) -- CC only FLASHES, authors no TX. Whole-flash @0x0. SHA in the zip but
     # verify: until a real HackRF flash.
     "mayhem.json",
+    # LxveOS (LxveAce/lxveos, PRIVATE) — ESP-IDF security-panel OS with the LXVEOS/1 serial
+    # bridge (protocol=lxveos parser already registered). Per-board <board_id>-merged.bin @0x0
+    # from the rolling ci-latest PRERELEASE (github_release -> /releases/tags/ci-latest). esp32 +
+    # esp32s3. Private repo => asset download needs an auth token until public. danger "" (arm-gated
+    # offensive ops are per-command lab-only, no emitter). HW flash owner-gated until Stage-5.
+    "lxveos.json",
 )
 
 

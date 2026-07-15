@@ -63,5 +63,6 @@ def test_bundled_profiles_all_pass_url_validation():
     # esp8266_deauther + m5gotchi/porkchop + esp32_wifi_pentest + wifi_duck + nrf_bluenullifier2 +
     # bluestress + esp_at + meshcore + drone_mesh_mapper + nautilus + rnode + esp32_wardriver + ble_collector
     # + rnode_nrf + whad_butterfly (round-2 nrf_dfu/uf2 profiles bundled into 1.7.0).
+    # + lxveos (LxveAce/lxveos ci-latest prerelease, github_release/esptool, esp32+esp32s3).
     # (all drop-in JSON; github/raw hosts, or the local resolver with no URLs). ble_collector is pinned_release.
-    assert len(flash_core.PROFILES) == 45
+    assert len(flash_core.PROFILES) == 46
