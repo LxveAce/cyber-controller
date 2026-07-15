@@ -41,7 +41,11 @@ from PyQt5.QtWidgets import (
 from src.core import crack_pipeline as cp
 from src.core import tool_installer as ti
 from src.core import wordlist_manager as wm
-from src.core.capture_export import CAPTURE_CSV_COLUMNS, export_captures_csv
+from src.core.capture_export import (
+    CAPTURE_CSV_COLUMNS,
+    export_captures_csv,
+    export_captures_json,
+)
 
 log = logging.getLogger(__name__)
 
@@ -477,9 +481,10 @@ class CrackLabTab(QWidget):
         hdr = QHBoxLayout()
         hdr.addWidget(QLabel("Auto-logged as devices capture; double-click a row to load it."))
         hdr.addStretch(1)
-        self._export_captures_btn = QPushButton("Export CSV…")
+        self._export_captures_btn = QPushButton("Export…")
         self._export_captures_btn.setToolTip(
-            "Write the capture log to a spreadsheet-safe CSV (includes any recovered passwords).")
+            "Write the capture log to a spreadsheet-safe CSV or a JSON file — pick the format "
+            "in the save dialog (includes any recovered passwords).")
         self._export_captures_btn.clicked.connect(self._on_export_captures)
         hdr.addWidget(self._export_captures_btn)
         cb.addLayout(hdr)
@@ -596,17 +601,32 @@ class CrackLabTab(QWidget):
                 self, "No file", "This capture has no saved .pcap/.hc22000 file to crack yet.")
 
     def _on_export_captures(self) -> None:
-        """Write the capture log to a CSV the operator chooses (synchronous — the write is fast)."""
+        """Write the capture log to a CSV or JSON file the operator picks (synchronous, fast write).
+
+        One button, two formats (as the changelog promises): the save dialog offers a CSV and a
+        JSON filter. The path extension decides the format when present, else the chosen filter
+        does -- and the matching extension is appended so the file is never format-ambiguous."""
         if self._captures is None or not self._captures.all():
             QMessageBox.information(self, "Export", "No captures to export yet.")
             return
         default = str(Path.home() / "cyber-controller-captures.csv")
-        path, _ = QFileDialog.getSaveFileName(
-            self, "Export captures to CSV", default, "CSV (*.csv);;All files (*)")
+        path, selected = QFileDialog.getSaveFileName(
+            self, "Export captures", default, "CSV (*.csv);;JSON (*.json);;All files (*)")
         if not path:
             return
+        low = path.lower()
+        if low.endswith(".json"):
+            fmt = "json"
+        elif low.endswith(".csv"):
+            fmt = "csv"
+        else:
+            # No/unknown extension (e.g. the "All files" filter) -- let the chosen filter decide, then
+            # give the file its extension so CSV and JSON exports stay distinguishable on disk.
+            fmt = "json" if "json" in selected.lower() else "csv"
+            path += f".{fmt}"
+        exporter = export_captures_json if fmt == "json" else export_captures_csv
         try:
-            n = export_captures_csv(self._captures.all(), path)
+            n = exporter(self._captures.all(), path)
         except OSError as exc:
             QMessageBox.warning(self, "Export failed", str(exc))
             return

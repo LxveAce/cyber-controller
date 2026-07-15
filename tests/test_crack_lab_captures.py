@@ -7,6 +7,7 @@ record (capture.cracked), (e) exports the log to CSV, and (f) degrades safely wi
 """
 from __future__ import annotations
 
+import json
 import os
 from types import SimpleNamespace
 
@@ -93,6 +94,37 @@ def test_export_writes_csv(qapp, monkeypatch, tmp_path):
     assert out.exists()
     body = out.read_text(encoding="utf-8")
     assert "capture_type" in body.splitlines()[0] and "AA:BB:CC:DD:EE:FF" in body
+
+
+def test_export_writes_json(qapp, monkeypatch, tmp_path):
+    # changelog/README promise CSV *or* JSON; a .json path must route to the JSON writer, not CSV.
+    # Regression: the UI wired only "Export CSV…", so JSON export was entirely unreachable.
+    hub = _hub_with_store()
+    hub.captures.add(_rec())
+    tab = CrackLabTab(hub)
+    out = tmp_path / "caps.json"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(out), "JSON (*.json)"))
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: 0)
+    tab._on_export_captures()
+    assert out.exists()
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert isinstance(data, list) and len(data) == 1
+    assert "AA:BB:CC:DD:EE:FF" in out.read_text(encoding="utf-8")
+
+
+def test_export_appends_extension_from_chosen_filter(qapp, monkeypatch, tmp_path):
+    # "All files" / no typed extension: the chosen filter decides the format AND the extension is
+    # appended, so CSV and JSON exports never collide as one ambiguous extensionless file.
+    hub = _hub_with_store()
+    hub.captures.add(_rec())
+    tab = CrackLabTab(hub)
+    stem = tmp_path / "caps_noext"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *a, **k: (str(stem), "JSON"))
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: 0)
+    tab._on_export_captures()
+    written = tmp_path / "caps_noext.json"
+    assert written.exists(), "no-extension + JSON filter must append .json"
+    assert isinstance(json.loads(written.read_text(encoding="utf-8")), list)
 
 
 def test_hub_none_degrades_without_crash(qapp, monkeypatch):
