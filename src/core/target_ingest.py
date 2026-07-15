@@ -171,8 +171,11 @@ class TargetIngestor:
         # the branches above (device_info is neither a target nor a capture). Only when a device
         # registry was given; otherwise dropped, as before.
         ev_type = getattr(ev, "event_type", "")
-        if self._devices is not None and ev_type == "device_info":
-            self._apply_device_info(ev, port)
+        if self._devices is not None:
+            if ev_type == "device_info":
+                self._apply_device_info(ev, port)
+            elif ev_type == "arm_state":
+                self._apply_arm_state(ev, port)
 
     def _apply_device_info(self, ev: Any, port: str) -> None:
         """Route a device_info event to the connected Device's live identity + runtime capabilities
@@ -189,6 +192,22 @@ class TargetIngestor:
                 apply(getattr(ev, "data", {}) or {})
             except Exception:
                 log.exception("TargetIngestor: apply_device_info failed on %s", port)
+
+    def _apply_arm_state(self, ev: Any, port: str) -> None:
+        """Route an ``arm_state`` event (LxveOS ``arm``/``disarm``) to the connected Device's arm
+        state, so the device tab can show an ARM/SAFE lamp. Same guarded shape as
+        :meth:`_apply_device_info` — a bad line or exotic registry never breaks serial ingestion."""
+        try:
+            dev = self._devices.get_device(port)
+        except Exception:
+            log.exception("TargetIngestor: device lookup failed on %s", port)
+            return
+        apply = getattr(dev, "apply_arm_state", None)
+        if callable(apply):
+            try:
+                apply(getattr(ev, "data", {}) or {})
+            except Exception:
+                log.exception("TargetIngestor: apply_arm_state failed on %s", port)
 
     @staticmethod
     def _event_to_target(ev: Any, port: str) -> Target | None:

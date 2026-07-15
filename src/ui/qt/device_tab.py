@@ -284,6 +284,17 @@ class DeviceTab(QWidget):
         self._health_label.setStyleSheet("font-size:11px;")
         left_layout.addWidget(self._health_label)
 
+        # Offensive-TX ARM/SAFE lamp — a firmware that reports its arm state over serial (LxveOS
+        # `arm`/`disarm` -> arm_state events, or a `status` line's tx= field) drives a prominent,
+        # color-coded indicator: green SAFE / amber PENDING / red ARMED / grey TX-DISABLED. Blank
+        # until the firmware speaks. Refreshed on selection AND per incoming line (_on_line_received).
+        self._arm_label = QLabel("")
+        self._arm_label.setObjectName("arm_label")
+        self._arm_label.setTextFormat(Qt.PlainText)
+        self._arm_label.setStyleSheet("font-size:11px;font-weight:bold;")
+        left_layout.addWidget(self._arm_label)
+        self._update_arm_lamp()
+
         btn_row = QHBoxLayout()
         self._btn_connect = QPushButton("Connect")
         self._btn_connect.setToolTip("Open a serial link to the selected device.")
@@ -542,6 +553,7 @@ class DeviceTab(QWidget):
         self._update_health_label()
         self._update_bj_panel()  # also refreshes the caps chips off the newly-selected device
         self._update_telemetry()  # telemetry is device-specific -> refresh on selection too
+        self._update_arm_lamp()   # arm state is device-specific too
 
     def _sync_firmware_combo_to(self, dev) -> None:
         """Re-point the (global) firmware combo at the SELECTED device, so _selected_protocol /
@@ -971,6 +983,47 @@ class DeviceTab(QWidget):
             parts.append(f"heap {heap // 1024} KB")
         return "  ·  ".join(parts)
 
+    def _update_arm_lamp(self) -> None:
+        """Connected device's offensive-TX arm state as a prominent ARM/SAFE lamp. Prefers an explicit
+        ``arm_state`` (LxveOS ``arm``/``disarm``); falls back to a ``status`` line's ``tx=`` field so the
+        lamp lights up on a plain status even before any arm transition. Blank until a firmware reports
+        either. Cheap per line: re-renders only when the shown state changes."""
+        if not hasattr(self, "_arm_label"):
+            return
+        port = getattr(self, "_active_port", "")
+        dev = self._dm.get_device(port) if port else None
+        state = getattr(dev, "arm_state", "") if dev is not None else ""
+        if not state and dev is not None:
+            # No explicit arm event yet — derive a coarse lamp from the status line's tx= field.
+            tx = getattr(dev, "telemetry", {}).get("tx")
+            if tx is True:
+                state = "armed"
+            elif tx is False:
+                state = "safe"
+        if state == getattr(self, "_last_arm_state", None):
+            return
+        self._last_arm_state = state
+        text, color = self._arm_lamp_render(state)
+        self._arm_label.setText(text)
+        self._arm_label.setStyleSheet(f"color:{color};font-size:11px;font-weight:bold;")
+
+    @staticmethod
+    def _arm_lamp_render(state: str) -> "tuple[str, str]":
+        """(label text, color) for an arm state. Blank/unknown -> blank (no lamp until the fw speaks).
+        A recognized-but-unlisted token still renders verbatim (muted) so a future arm state isn't lost.
+        Colors read as a traffic light: green safe, amber mid-handshake, red hot, grey compiled-out."""
+        table = {
+            "safe":        ("● SAFE — offensive TX locked",          "#3fb950"),
+            "pending":     ("● ARM PENDING — awaiting token",        "#d29922"),
+            "armed":       ("● ARMED — offensive TX permitted",      "#f85149"),
+            "tx_disabled": ("● TX DISABLED — offensive TX not built", "#6e7681"),
+        }
+        if state in table:
+            return table[state]
+        if state:
+            return (f"● {state}", "#8b949e")
+        return ("", "#8b949e")
+
     def _apply_line_ending(self) -> None:
         """Apply the selected firmware's command terminator to the live connection (Flipper needs CR; most
         firmwares use LF). Called whenever the firmware selection or connection changes."""
@@ -1368,13 +1421,14 @@ class DeviceTab(QWidget):
         # (mightBeRichText), so escape it -- otherwise a board emitting <b>/<img>/<span> spoofs the
         # terminal (command-echo/output injection on a security tool).
         self._terminal.append(html.escape(line))
-        # A device_info line (LxveOS status/info) may have just updated this port's Device runtime
-        # caps + telemetry via the ingestor (which ran first on the serial thread, before this
-        # Qt slot). Refresh the caps chips + telemetry line to match. Both self-guard on unchanged
-        # content, so calling them per line is cheap.
+        # A device_info line (LxveOS status/info) OR an arm_state line (arm/disarm) may have just
+        # updated this port's Device runtime caps / telemetry / arm state via the ingestor (which ran
+        # first on the serial thread, before this Qt slot). Refresh the caps chips + telemetry line +
+        # arm lamp to match. All self-guard on unchanged content, so calling them per line is cheap.
         if port == getattr(self, "_active_port", ""):
             self._update_capabilities()
             self._update_telemetry()
+            self._update_arm_lamp()
 
     # ── Command palette ──────────────────────────────────────────────
 

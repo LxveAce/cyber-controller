@@ -120,6 +120,48 @@ def test_device_info_round_trips_through_dict():
     assert restored.capabilities == frozenset({"wifi", "ble", "bt_classic"})
 
 
+# ── arm state (offensive-TX ARM/SAFE lamp) ───────────────────────────
+
+def test_apply_arm_state_transitions_and_never_clears_on_a_blank():
+    # A firmware's arm/disarm lifecycle (real LXVEOS/1 arm lines, from the parser) drives the stored
+    # arm_state; a malformed line carrying no state must leave the live state intact.
+    p = LxveOSProtocol()
+    dev = Device(port="COM23", firmware="lxveos")
+    assert dev.arm_state == ""
+    pending = p.parse_line("LXVEOS/1 arm state=pending token=428913 window=30").data
+    assert dev.apply_arm_state(pending) is True
+    assert dev.arm_state == "pending"
+    assert dev.apply_arm_state(p.parse_line("LXVEOS/1 arm state=armed").data) is True
+    assert dev.arm_state == "armed"
+    assert dev.apply_arm_state(p.parse_line("LXVEOS/1 arm state=armed").data) is False  # idempotent
+    assert dev.apply_arm_state(p.parse_line("LXVEOS/1 arm state=safe").data) is True
+    assert dev.arm_state == "safe"
+    # a state-less dict (malformed line) or a non-dict must NOT wipe a known "safe"/"armed"
+    assert dev.apply_arm_state({"proto_version": 1}) is False and dev.arm_state == "safe"
+    assert dev.apply_arm_state(None) is False and dev.arm_state == "safe"
+
+
+def test_arm_state_round_trips_through_dict():
+    dev = Device(port="COM23", firmware="lxveos")
+    dev.apply_arm_state({"state": "armed"})
+    restored = Device.from_dict(dev.to_dict())
+    assert restored.arm_state == "armed"
+
+
+def test_ingestor_routes_arm_state_to_the_ports_device():
+    from src.core.target_ingest import TargetIngestor
+
+    dev = Device(port="COM23", firmware="lxveos")
+    ingest = TargetIngestor(pool=_NullPool(), devices=_FakeDM({"COM23": dev}))
+    conn = _FakeConn("COM23")
+    ingest.attach(conn, LxveOSProtocol())
+    conn.feed("LXVEOS/1 arm state=armed")  # a real arm line over the wire
+    assert dev.arm_state == "armed"
+    conn.feed("LXVEOS/1 arm state=safe")   # disarm
+    assert dev.arm_state == "safe"
+    assert ingest is not None  # (an arm line is not a Target/capture; only the arm state changed)
+
+
 # ── TargetIngestor wire ──────────────────────────────────────────────
 
 def test_ingestor_routes_device_info_to_the_ports_device():

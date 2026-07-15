@@ -82,6 +82,10 @@ class Device:
     #: Live device telemetry from the same device_info (fw version, board, chip, ui, panel, the
     #: ready/planned/unavailable ops tally, free heap). Display-only; refreshed on each device_info.
     telemetry: dict = field(default_factory=dict)
+    #: Offensive-TX arm state a firmware reports over serial (an ``arm_state`` event from LxveOS
+    #: ``arm``/``disarm``): "" (unknown / never reported), "safe", "pending", "armed", or
+    #: "tx_disabled" (offensive TX compiled out). Drives the device tab's ARM/SAFE lamp. Display-only.
+    arm_state: str = ""
 
     #: device_info keys kept as telemetry — identifying status-line fields EXCEPT the
     #: raw caps bitmask + its decoded tokens (those drive runtime_capabilities instead).
@@ -112,6 +116,23 @@ class Device:
                 self.telemetry[key] = data[key]
                 changed = True
         return changed
+
+    #: Arm-state tokens a firmware may report (LxveOS EVENT-PROTOCOL `arm` event `state=`). Any other
+    #: string is still stored (forward-compat) — the UI just renders it verbatim rather than color-coding.
+    _ARM_STATES = ("safe", "pending", "armed", "tx_disabled")
+
+    def apply_arm_state(self, data: dict) -> bool:
+        """Absorb a parsed ``arm_state`` event (LxveOS ``arm``/``disarm``): store the offensive-TX arm
+        state string so the device tab can show a prominent ARM/SAFE lamp. Returns True if it changed.
+        A missing/blank ``state`` is ignored (leaves the prior state intact), so a malformed line can
+        never silently clear a live "armed" indicator."""
+        if not isinstance(data, dict):
+            return False
+        state = data.get("state")
+        if isinstance(state, str) and state and state != self.arm_state:
+            self.arm_state = state
+            return True
+        return False
 
     @property
     def display_name(self) -> str:
@@ -169,6 +190,7 @@ class Device:
             # frozenset isn't JSON-serializable; persist as a sorted list, restored in from_dict.
             "runtime_capabilities": sorted(self.runtime_capabilities),
             "telemetry": dict(self.telemetry),
+            "arm_state": self.arm_state,
         }
 
     @classmethod
