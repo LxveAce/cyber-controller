@@ -99,6 +99,17 @@ def test_csrf_valid_rejects(expected, provided) -> None:
     assert web_auth.csrf_valid(expected, provided) is False
 
 
+@pytest.mark.parametrize("provided", ["café", "tokén", "❤", "abc\x80def"])
+def test_csrf_valid_rejects_non_ascii_without_raising(provided) -> None:
+    """A client-supplied token with a non-ASCII char must resolve to a clean False (→ 403), NOT an
+    uncaught TypeError from hmac.compare_digest (→ HTTP 500). The token is client-controlled (a
+    request header / WS handshake), so a garbled or hostile value fails closed, not crash-500s."""
+    expected = web_auth.new_csrf_token()  # ASCII url-safe base64
+    assert web_auth.csrf_valid(expected, provided) is False
+    # And symmetric: a non-ASCII *expected* (defensive) also fails closed rather than raising.
+    assert web_auth.csrf_valid(provided, expected) is False
+
+
 # ── load_or_create_secret_key ────────────────────────────────────────
 
 def test_secret_key_at_least_32_bytes(tmp_path, monkeypatch) -> None:

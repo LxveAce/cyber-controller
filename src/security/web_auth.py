@@ -165,4 +165,12 @@ def csrf_valid(expected: str | None, provided: str | None) -> bool:
     """Constant-time CSRF token comparison."""
     if not expected or not provided:
         return False
-    return hmac.compare_digest(str(expected), str(provided))
+    try:
+        return hmac.compare_digest(str(expected), str(provided))
+    except TypeError:
+        # compare_digest raises TypeError when a str holds non-ASCII characters. A client-supplied
+        # token (header / WS handshake) with a non-ASCII byte is simply invalid — fail closed to a
+        # clean 403 rather than letting the TypeError escape as an uncaught HTTP 500. No timing
+        # oracle: our tokens are ASCII url-safe base64, so a non-ASCII token is structurally wrong
+        # before any comparison of the real secret.
+        return False
