@@ -86,6 +86,12 @@ class Device:
     #: ``arm``/``disarm``): "" (unknown / never reported), "safe", "pending", "armed", or
     #: "tx_disabled" (offensive TX compiled out). Drives the device tab's ARM/SAFE lamp. Display-only.
     arm_state: str = ""
+    #: The most recent detector/watchlist alert this device reported (a parsed ``alert`` event's data:
+    #: kind + its fields) and a session counter. A LxveOS detector firing (deauth attack, evil twin,
+    #: tracker, watchlist hit, ...) would otherwise scroll past in the terminal; these let the device tab
+    #: surface "a detector fired". Display-only; refreshed on each alert.
+    last_alert: dict = field(default_factory=dict)
+    alert_count: int = 0
 
     #: device_info keys kept as telemetry — identifying status-line fields EXCEPT the
     #: raw caps bitmask + its decoded tokens (those drive runtime_capabilities instead).
@@ -133,6 +139,17 @@ class Device:
             self.arm_state = state
             return True
         return False
+
+    def apply_alert(self, data: dict) -> bool:
+        """Absorb a parsed ``alert`` event (a LxveOS detector firing: deauth / evil-twin / weak-AP /
+        BLE tracker / rogue-HID / watchlist hit / ...). Stores it as the most-recent alert and bumps the
+        session counter so the device tab can surface it rather than leaving it buried in the terminal
+        scroll. Returns True (every alert is a distinct detection = news); a non-dict is ignored."""
+        if not isinstance(data, dict):
+            return False
+        self.last_alert = dict(data)
+        self.alert_count += 1
+        return True
 
     @property
     def display_name(self) -> str:
@@ -191,6 +208,8 @@ class Device:
             "runtime_capabilities": sorted(self.runtime_capabilities),
             "telemetry": dict(self.telemetry),
             "arm_state": self.arm_state,
+            "last_alert": dict(self.last_alert),
+            "alert_count": self.alert_count,
         }
 
     @classmethod

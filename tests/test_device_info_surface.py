@@ -162,6 +162,45 @@ def test_ingestor_routes_arm_state_to_the_ports_device():
     assert ingest is not None  # (an arm line is not a Target/capture; only the arm state changed)
 
 
+# ── detector / watchlist alerts ──────────────────────────────────────
+
+def test_apply_alert_stores_latest_and_counts():
+    p = LxveOSProtocol()
+    dev = Device(port="COM23", firmware="lxveos")
+    assert dev.alert_count == 0 and dev.last_alert == {}
+    deauth = p.parse_line("LXVEOS/1 alert kind=deauth bssid=de:ad:be:ef:00:01 count=27").data
+    assert dev.apply_alert(deauth)
+    assert dev.alert_count == 1
+    assert dev.last_alert["kind"] == "deauth" and dev.last_alert["count"] == 27
+    # a second, different alert replaces "latest" and bumps the count
+    watch = p.parse_line("LXVEOS/1 alert kind=watch mac=11:22:33:44:55:66 band=ble rssi=-70").data
+    assert dev.apply_alert(watch)
+    assert dev.alert_count == 2
+    assert dev.last_alert["kind"] == "watch" and dev.last_alert["band"] == "ble"
+    # a non-dict is ignored (count unchanged)
+    assert dev.apply_alert(None) is False and dev.alert_count == 2
+
+
+def test_alert_round_trips_through_dict():
+    dev = Device(port="COM23", firmware="lxveos")
+    dev.apply_alert({"kind": "tracker", "vendor": "AirTag"})
+    restored = Device.from_dict(dev.to_dict())
+    assert restored.alert_count == 1 and restored.last_alert["vendor"] == "AirTag"
+
+
+def test_ingestor_routes_alert_to_the_ports_device():
+    from src.core.target_ingest import TargetIngestor
+
+    dev = Device(port="COM23", firmware="lxveos")
+    pool = _NullPool()
+    ingest = TargetIngestor(pool=pool, devices=_FakeDM({"COM23": dev}))
+    conn = _FakeConn("COM23")
+    ingest.attach(conn, LxveOSProtocol())
+    conn.feed("LXVEOS/1 alert kind=tracker addr=11:22:33:44:55:66 vendor=AirTag rssi=-40")
+    assert dev.alert_count == 1 and dev.last_alert["kind"] == "tracker"
+    assert pool.added == []  # an alert is not a pool Target
+
+
 # ── TargetIngestor wire ──────────────────────────────────────────────
 
 def test_ingestor_routes_device_info_to_the_ports_device():

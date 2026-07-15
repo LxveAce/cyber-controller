@@ -295,6 +295,17 @@ class DeviceTab(QWidget):
         left_layout.addWidget(self._arm_label)
         self._update_arm_lamp()
 
+        # Detector/watchlist alert line — a firmware detector firing (deauth attack, evil twin, BLE
+        # tracker, watchlist hit, ...) reports an `alert` event; surface the latest one + a session
+        # count here so it isn't lost in the terminal scroll. Blank until one fires. Amber = warning.
+        self._alert_label = QLabel("")
+        self._alert_label.setObjectName("alert_label")
+        self._alert_label.setTextFormat(Qt.PlainText)
+        self._alert_label.setWordWrap(True)
+        self._alert_label.setStyleSheet("color:#d29922;font-size:11px;")
+        left_layout.addWidget(self._alert_label)
+        self._update_alert_line()
+
         btn_row = QHBoxLayout()
         self._btn_connect = QPushButton("Connect")
         self._btn_connect.setToolTip("Open a serial link to the selected device.")
@@ -554,6 +565,7 @@ class DeviceTab(QWidget):
         self._update_bj_panel()  # also refreshes the caps chips off the newly-selected device
         self._update_telemetry()  # telemetry is device-specific -> refresh on selection too
         self._update_arm_lamp()   # arm state is device-specific too
+        self._update_alert_line()
 
     def _sync_firmware_combo_to(self, dev) -> None:
         """Re-point the (global) firmware combo at the SELECTED device, so _selected_protocol /
@@ -1024,6 +1036,36 @@ class DeviceTab(QWidget):
             return (f"● {state}", "#8b949e")
         return ("", "#8b949e")
 
+    def _update_alert_line(self) -> None:
+        """Connected device's most-recent detector/watchlist alert as a one-line warning under the arm
+        lamp, with a session count. Blank until a detector fires. Cheap per line: re-renders only when
+        the shown text changes (the count bumps on every alert, so a repeat still refreshes)."""
+        if not hasattr(self, "_alert_label"):
+            return
+        port = getattr(self, "_active_port", "")
+        dev = self._dm.get_device(port) if port else None
+        count = getattr(dev, "alert_count", 0) if dev is not None else 0
+        alert = getattr(dev, "last_alert", {}) if dev is not None else {}
+        line = self._alert_line(count, alert)
+        if line == getattr(self, "_last_alert_line", None):
+            return
+        self._last_alert_line = line
+        self._alert_label.setText(line)
+
+    # Salient alert fields to show (in this order), across the detector kinds — best-effort, present-only.
+    _ALERT_FIELDS = ("ssid", "name", "bssid", "mac", "addr", "vendor", "band", "grade", "count", "rssi")
+
+    @classmethod
+    def _alert_line(cls, count: int, alert: dict) -> str:
+        """One warning line from an alert's data: '⚠ alert #N: <kind> — k=v k=v'. Blank when nothing has
+        fired. Only fields the alert actually carried render, so every detector kind formats cleanly."""
+        if not count or not isinstance(alert, dict) or not alert:
+            return ""
+        kind = alert.get("kind", "?")
+        extras = [f"{k}={alert[k]}" for k in cls._ALERT_FIELDS if alert.get(k) not in (None, "")]
+        detail = "  ".join(extras[:4])
+        return f"⚠ alert #{count}: {kind}" + (f" — {detail}" if detail else "")
+
     def _apply_line_ending(self) -> None:
         """Apply the selected firmware's command terminator to the live connection (Flipper needs CR; most
         firmwares use LF). Called whenever the firmware selection or connection changes."""
@@ -1429,6 +1471,7 @@ class DeviceTab(QWidget):
             self._update_capabilities()
             self._update_telemetry()
             self._update_arm_lamp()
+            self._update_alert_line()
 
     # ── Command palette ──────────────────────────────────────────────
 
