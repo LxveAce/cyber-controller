@@ -87,6 +87,29 @@ def test_flash_releases_managed_connection_before_esptool(monkeypatch):
     assert closed == ["COM5"]
 
 
+def test_flash_shares_the_per_ip_command_rate_limiter(monkeypatch):
+    # The module docstring promises per-IP rate limiting on "command/flash actions", and flashing
+    # is the most dangerous verb -- it can brick a board. Before the fix /api/flash had NO limiter.
+    # cmd_limiter is 60 events / 10s per IP and shared across command + flash: exhaust it via
+    # /api/command, then a flash from the same IP must be refused 429 (old code: unbounded -> 200).
+    dm = DeviceManager()
+    monkeypatch.setattr(dm, "scan_ports", lambda: [Device(port="COM5", name="ESP32-Marauder")])
+    monkeypatch.setattr(dm, "close_connection", lambda port, owner=None: None)
+    fe = FlashEngine()
+    monkeypatch.setattr(fe, "is_port_busy", lambda port: False)
+    monkeypatch.setattr(fe, "load_profile", lambda path: object())
+    monkeypatch.setattr(fe, "flash", lambda *a, **k: True)
+    monkeypatch.setattr(webapp, "_load_profiles", lambda: {"test-fw": webapp.Path("x.json")})
+    client = _client(dm, fe)
+
+    for i in range(60):  # consume the whole per-IP budget via the sibling command endpoint
+        r = _csrf(client, "/api/command", {"port": "COM5", "command": "x"})
+        assert r.status_code != 429, f"cmd limiter tripped early at call {i}"
+    resp = _csrf(client, "/api/flash", {"port": "COM5", "profile_id": "test-fw"})
+    assert resp.status_code == 429  # was 200 (unbounded) before the fix
+    assert "rate" in resp.get_json()["error"].lower()
+
+
 def test_connect_rejected_while_port_is_flashing(monkeypatch):
     dm = DeviceManager()
     monkeypatch.setattr(dm, "scan_ports", lambda: [Device(port="COM5", name="ESP32-Marauder")])

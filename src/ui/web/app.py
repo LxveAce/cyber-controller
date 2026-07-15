@@ -472,6 +472,11 @@ def create_app(
     @requires_auth
     @requires_csrf
     def api_flash():
+        # Per-IP rate limit (shared with /api/command, per the module docstring). Flashing is the
+        # most dangerous verb -- it can brick a board -- so an unbounded /api/flash was the worst
+        # gap: a scripted caller could hammer it. Checked first, before any body parse or board op.
+        if not cmd_limiter.allow(_client_ip()):
+            return jsonify({"error": "rate limited"}), 429
         data = _json_body()
         port = str(data.get("port", ""))
         profile_name = str(data.get("profile_id", ""))
