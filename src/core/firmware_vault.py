@@ -294,14 +294,21 @@ class FirmwareVault:
         info = _parse_github_release_url(url)
         if info:
             owner, repo = info
-            # Honor a pinned version: a caller asking for "v1.2.0" must NOT silently receive latest.
-            # Only "latest" resolves the /releases/latest redirect; a specific tag queries that tag (and
-            # fails loudly if it doesn't exist) rather than resolving to a different version.
-            if version and version != "latest":
-                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", version):
-                    log.error("Refusing unsafe version tag %r for %s", version, profile_id)
+            # A firmware_urls entry can PIN a tag in the URL, e.g. LxveOS's rolling `ci-latest`
+            # PRERELEASE (.../releases/tag/ci-latest). /releases/latest EXCLUDES prereleases, so
+            # defaulting to it silently resolves a DIFFERENT (or missing) release than the one the
+            # profile points at — honor the tag baked into the URL instead.
+            url_tag_m = re.search(r"/releases/tag/([A-Za-z0-9][A-Za-z0-9._-]*)", url)
+            url_tag = url_tag_m.group(1) if url_tag_m else None
+            # Honor a pinned version/tag: an explicit "v1.2.0" (or a tag-pinned URL) must NOT get
+            # latest. A specific tag queries that tag (and fails loudly if it doesn't exist) rather
+            # than resolving to a different version.
+            pinned = version if (version and version != "latest") else url_tag
+            if pinned:
+                if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", pinned):
+                    log.error("Refusing unsafe version tag %r for %s", pinned, profile_id)
                     return None
-                api_url = f"{_GITHUB_API}/repos/{owner}/{repo}/releases/tags/{version}"
+                api_url = f"{_GITHUB_API}/repos/{owner}/{repo}/releases/tags/{pinned}"
             else:
                 api_url = f"{_GITHUB_API}/repos/{owner}/{repo}/releases/latest"
             try:
