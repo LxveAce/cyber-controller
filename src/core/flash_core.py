@@ -660,6 +660,14 @@ def erase(port: str, chip: str, on_line: Line) -> int:
 def _github_latest(api_url: str) -> Tuple[str, List[Dict]]:
     """GET a GitHub /releases/latest API URL and return (tag, raw_assets_list)."""
     data = json.loads(_http_get(api_url).decode("utf-8"))
+    if not isinstance(data, dict):
+        # /releases (plural) returns a JSON list; a single release must be an object. Fail
+        # honestly instead of crashing later with an opaque 'list' has no attribute 'get'.
+        raise ValueError(
+            f"expected a single release object but {api_url} returned a "
+            f"{type(data).__name__}; the api_url likely points at /releases (a list) "
+            "instead of /releases/latest or /releases/tags/<tag>"
+        )
     tag = data.get("tag_name", "latest")
     return tag, data.get("assets", [])
 
@@ -2067,6 +2075,13 @@ def _resolve_github(cfg: Dict) -> Tuple[str, List[Dict]]:
     """github_release resolver — fetch the latest release and emit per-chip assets."""
     p = cfg["resolver_params"]
     am = p.get("asset_match", {})
+    if not isinstance(am, dict):
+        # A malformed profile (e.g. asset_match as a bare template string) must fail loudly,
+        # not crash with an opaque 'str' has no attribute 'get' deeper in this function.
+        raise ValueError(
+            f"resolver_params.asset_match must be an object "
+            f"(include_regex/include_suffixes), got {type(am).__name__}: {am!r}"
+        )
     try:
         tag, raw = _github_latest(p["api_url"])
     except Exception:
