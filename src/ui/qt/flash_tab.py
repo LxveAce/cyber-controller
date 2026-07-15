@@ -798,26 +798,43 @@ class FlashTab(QWidget):
         S3/S2/C3 Auto resolves to the CORRECT build and there is nothing to warn about."""
         return variant == "" and self._is_marauder(profile) and self._port_chip(port) is None
 
+    @staticmethod
+    def _generic_ili9341_message(
+        profile_name: str, count: int, picker_visible: bool
+    ) -> "tuple[str, str]":
+        """Build the (title, body) for the generic-ILI9341 Auto-flash confirm. Pure + parameterised
+        so the copy is testable without a modal dialog. 'Detect board (CYD)' auto-identifies the
+        panel, so it is the RECOMMENDED first step for the "not sure which CYD this is" case,
+        not a shortcut only for users who already know their board (the old phrasing undersold it).
+        When the picker + Detect are hidden (Simple mode) point at Pro mode instead. Phrased
+        conditionally because we can't know the resolved build until flash time."""
+        if picker_visible:
+            how = ("click 'Detect board (CYD)' to identify the panel automatically, or pick it "
+                   "under 'Board / variant', first")
+        else:
+            how = ("switch to Pro mode (Ctrl+M) to run 'Detect board (CYD)' or pick your exact "
+                   "board first")
+        who = f"{count} queued Marauder job(s)" if count > 1 else f"'{profile_name}'"
+        body = (
+            f"{who} will flash with Auto. This board's chip isn't uniquely identified over USB, "
+            "so if it's a classic-ESP32 display board (a Cheap-Yellow-Display, M5, etc.) Auto "
+            "flashes the generic ILI9341 build — the wrong display driver for most such panels, "
+            "leaving the screen blank.\n\n"
+            f"Recommended: {how}. Or flash the per-chip default anyway."
+        )
+        return "Flash the per-chip default build?", body
+
     def _confirm_generic_ili9341(self, profile_name: str, *, count: int = 1) -> bool:
-        """Honest, mode-aware confirm for a Marauder Auto flash on an unidentified (classic-esp32-bucket)
-        board. Returns True to proceed. The remediation names controls that exist in the CURRENT interface
-        mode — Simple mode hides the variant picker + Detect, so it points at Ctrl+M / Pro instead. Phrased
-        conditionally ("if it's a CYD…") because we can't know the resolved build until flash time."""
+        """Honest, mode-aware confirm for a Marauder Auto flash on an unidentified (classic-esp32)
+        board. Returns True to proceed. The remediation names controls that exist in the current
+        mode — Simple mode hides the picker + Detect, so it points at Ctrl+M / Pro instead."""
         from PyQt5.QtWidgets import QMessageBox
 
-        picker_visible = self._variant_combo.isVisibleTo(self)
-        how = ("pick your exact board under 'Board / variant' (or click 'Detect board (CYD)') first"
-               if picker_visible else
-               "switch to Pro mode (Ctrl+M) to pick your exact board first")
-        who = f"{count} queued Marauder job(s)" if count > 1 else f"'{profile_name}'"
-        text = (
-            f"{who} will flash with Auto. This board's chip isn't uniquely identified over USB, so if it's "
-            "a classic-ESP32 display board (a Cheap-Yellow-Display, M5, etc.) Auto flashes the generic "
-            "ILI9341 build — the wrong display driver for most such panels, leaving the screen blank.\n\n"
-            f"If you know your panel, {how}; otherwise flash the per-chip default."
+        title, text = self._generic_ili9341_message(
+            profile_name, count, self._variant_combo.isVisibleTo(self)
         )
         resp = QMessageBox.warning(
-            self, "Flash the per-chip default build?", text,
+            self, title, text,
             QMessageBox.Yes | QMessageBox.Cancel, QMessageBox.Cancel,
         )
         return resp == QMessageBox.Yes
