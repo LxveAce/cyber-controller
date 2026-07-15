@@ -71,7 +71,9 @@ _EVENT_MAP: dict[str, tuple[str, "frozenset[str]", "frozenset[str]"]] = {
     "hs":       ("handshake_captured", frozenset(),                                  frozenset({"essid"})),
     "pcap":     ("pcap_saved",         frozenset({"bytes"}),                         frozenset()),
     "arm":      ("arm_state",          frozenset({"token", "window", "idle"}),       frozenset()),
-    "alert":    ("alert",              frozenset({"count", "bssids", "rate"}),       frozenset({"ssid"})),
+    "alert":    ("alert",              frozenset({"count", "bssids", "rate", "deauth", "disassoc",
+                                                   "open", "enc", "grade", "wps", "uniq", "rssi"}),
+                                        frozenset({"ssid", "name"})),
     "bridge":   ("bridge_state",       frozenset(),                                  frozenset()),
     "done":     ("batch_done",         frozenset({"n"}),                             frozenset()),
     "snapshot": ("snapshot",           frozenset({"aps", "stas", "bles", "alerts"}), frozenset()),
@@ -124,6 +126,10 @@ def _coerce_status_field(key: str, val: str):
         parts = val.split("/")
         if len(parts) == 3 and all(p.isdigit() for p in parts):
             return {"ready": int(parts[0]), "planned": int(parts[1]), "unavailable": int(parts[2])}
+        return val
+    if key == "tx":  # offensive-TX build flag: 1 = compiled in (can arm), 0 = stripped (LXVEOS_TX_DISABLE)
+        if val in ("0", "1"):
+            return val == "1"  # bool: the TX-lockout UI needs "can this unit ever transmit" distinct from arm=
         return val
     return val
 

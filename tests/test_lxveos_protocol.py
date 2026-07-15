@@ -54,6 +54,19 @@ def test_status_bridge_line_parses_with_typed_fields():
     assert d["heap"] == 184988 and isinstance(d["heap"], int)
 
 
+def test_status_tx_and_arm_fields_typed():
+    # current firmware appends `arm=<state>` (token) + `tx=<0|1>` (offensive-TX compiled in). tx is typed
+    # to a bool so the TX-lockout UI can tell a TX-capable-but-SAFE unit from one that can never arm.
+    p = LxveOSProtocol()
+    d = p.parse_line(_STATUS + " arm=safe tx=1").data
+    assert d["arm"] == "safe" and d["tx"] is True
+    d = p.parse_line(_STATUS + " arm=safe tx=0").data
+    assert d["tx"] is False
+    # a malformed tx value is left as a raw string, never silently coerced to a wrong bool
+    d = p.parse_line(_STATUS + " tx=x").data
+    assert d["tx"] == "x"
+
+
 def test_caps_bitmask_decodes_in_firmware_bit_order():
     # Bit order is the firmware's lxveos_cap_t enum (lxveos_caps): wifi=0 ble=1 bt_classic=2
     # display=3 storage=4 gps=5 ir=6 subghz=7 nrf24=8 nfc=9. Locked so a bit-order drift is caught.
@@ -190,6 +203,31 @@ def test_bridge_and_done_events():
     assert ev.event_type == "bridge_state" and ev.data["state"] == "on"
     ev = p.parse_line("LXVEOS/1 done of=scan n=5")
     assert ev.event_type == "batch_done" and ev.data["of"] == "scan" and ev.data["n"] == 5
+
+
+def test_alert_events_from_all_six_detectors():
+    p = LxveOSProtocol()
+    # defend -> deauth (counts typed int, busiest source mac kept as string)
+    d = p.parse_line("LXVEOS/1 alert kind=deauth bssid=de:ad:be:ef:00:01 count=27 deauth=20 disassoc=7").data
+    assert d["kind"] == "deauth" and d["bssid"] == "de:ad:be:ef:00:01"
+    assert d["count"] == 27 and d["deauth"] == 20 and d["disassoc"] == 7
+    # eviltwin -> ssid hex-decoded, bssid/open/enc counts int
+    d = p.parse_line("LXVEOS/1 alert kind=eviltwin ssid=4d794e6574 bssids=2 open=1 enc=1").data
+    assert d["kind"] == "eviltwin" and d["ssid"] == "MyNet" and d["bssids"] == 2 and d["open"] == 1 and d["enc"] == 1
+    # apaudit -> weak / wps, grade int
+    d = p.parse_line("LXVEOS/1 alert kind=weak bssid=aa:bb:cc:00:11:22 ssid=4d794e6574 grade=0").data
+    assert d["kind"] == "weak" and d["grade"] == 0 and d["ssid"] == "MyNet"
+    d = p.parse_line("LXVEOS/1 alert kind=wps bssid=aa:bb:cc:00:11:22 ssid=4d794e6574 grade=3 wps=1").data
+    assert d["kind"] == "wps" and d["grade"] == 3 and d["wps"] == 1
+    # bleflood -> rate/uniq int, vendor token
+    d = p.parse_line("LXVEOS/1 alert kind=bleflood rate=15 uniq=92 vendor=Apple").data
+    assert d["kind"] == "bleflood" and d["rate"] == 15 and d["uniq"] == 92 and d["vendor"] == "Apple"
+    # btracker -> tracker, addr string, vendor token, name hex, rssi int
+    d = p.parse_line("LXVEOS/1 alert kind=tracker addr=11:22:33:44:55:66 vendor=AirTag rssi=-40 name=4d79").data
+    assert d["kind"] == "tracker" and d["vendor"] == "AirTag" and d["rssi"] == -40 and d["name"] == "My"
+    # blehid -> addr string, rssi int, name hex
+    d = p.parse_line("LXVEOS/1 alert kind=blehid addr=11:22:33:44:55:66 rssi=-50 name=4b6579").data
+    assert d["kind"] == "blehid" and d["rssi"] == -50 and d["name"] == "Key"
 
 
 def test_ble_event_full_fields():
