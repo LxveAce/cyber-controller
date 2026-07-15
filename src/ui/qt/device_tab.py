@@ -306,6 +306,17 @@ class DeviceTab(QWidget):
         left_layout.addWidget(self._alert_label)
         self._update_alert_line()
 
+        # Airspace-occupancy tile — the LxveOS `airspace` command emits a `snapshot` event (AP + open/WPS
+        # splits, BLE + known-tracker counts, client + alert tallies). Surface the latest one here at a
+        # glance, below the alert line. Muted blue (distinct from the amber alert). Blank until one lands.
+        self._snapshot_label = QLabel("")
+        self._snapshot_label.setObjectName("snapshot_label")
+        self._snapshot_label.setTextFormat(Qt.PlainText)
+        self._snapshot_label.setWordWrap(True)
+        self._snapshot_label.setStyleSheet("color:#58a6ff;font-size:11px;")
+        left_layout.addWidget(self._snapshot_label)
+        self._update_snapshot_line()
+
         btn_row = QHBoxLayout()
         self._btn_connect = QPushButton("Connect")
         self._btn_connect.setToolTip("Open a serial link to the selected device.")
@@ -566,6 +577,7 @@ class DeviceTab(QWidget):
         self._update_telemetry()  # telemetry is device-specific -> refresh on selection too
         self._update_arm_lamp()   # arm state is device-specific too
         self._update_alert_line()
+        self._update_snapshot_line()  # airspace snapshot is device-specific too
 
     def _sync_firmware_combo_to(self, dev) -> None:
         """Re-point the (global) firmware combo at the SELECTED device, so _selected_protocol /
@@ -1066,6 +1078,34 @@ class DeviceTab(QWidget):
         detail = "  ".join(extras[:4])
         return f"⚠ alert #{count}: {kind}" + (f" — {detail}" if detail else "")
 
+    def _update_snapshot_line(self) -> None:
+        """Connected device's latest airspace snapshot as a tile below the alert line. Blank until
+        an `airspace` summary lands. Re-renders only when the shown text changes."""
+        if not hasattr(self, "_snapshot_label"):
+            return
+        port = getattr(self, "_active_port", "")
+        dev = self._dm.get_device(port) if port else None
+        snap = getattr(dev, "last_snapshot", {}) if dev is not None else {}
+        line = self._snapshot_line(snap)
+        if line == getattr(self, "_last_snapshot_line", None):
+            return
+        self._last_snapshot_line = line
+        self._snapshot_label.setText(line)
+
+    # Snapshot fields to show (in order) with labels — present-only, like _ALERT_FIELDS above.
+    _SNAPSHOT_FIELDS = (("aps", "APs"), ("open", "open"), ("wps", "WPS"), ("bles", "BLE"),
+                        ("trackers", "trackers"), ("stas", "clients"), ("alerts", "alerts"))
+
+    @classmethod
+    def _snapshot_line(cls, snap: dict) -> str:
+        """One line from a snapshot: 'airspace: APs 14 · open 3 · ...'. Blank when empty; only
+        fields the snapshot carried render, so a partial summary still formats."""
+        if not isinstance(snap, dict) or not snap:
+            return ""
+        parts = [f"{label} {snap[key]}" for key, label in cls._SNAPSHOT_FIELDS
+                 if snap.get(key) not in (None, "")]
+        return "airspace: " + "  ·  ".join(parts) if parts else ""
+
     def _apply_line_ending(self) -> None:
         """Apply the selected firmware's command terminator to the live connection (Flipper needs CR; most
         firmwares use LF). Called whenever the firmware selection or connection changes."""
@@ -1463,15 +1503,17 @@ class DeviceTab(QWidget):
         # (mightBeRichText), so escape it -- otherwise a board emitting <b>/<img>/<span> spoofs the
         # terminal (command-echo/output injection on a security tool).
         self._terminal.append(html.escape(line))
-        # A device_info line (LxveOS status/info) OR an arm_state line (arm/disarm) may have just
-        # updated this port's Device runtime caps / telemetry / arm state via the ingestor (which ran
-        # first on the serial thread, before this Qt slot). Refresh the caps chips + telemetry line +
-        # arm lamp to match. All self-guard on unchanged content, so calling them per line is cheap.
+        # A device_info line (LxveOS status/info), an arm_state line (arm/disarm), an alert, or a
+        # snapshot (airspace) may have just updated this port's Device runtime caps / telemetry / arm
+        # state / alert / snapshot via the ingestor (which ran first on the serial thread, before this Qt
+        # slot). Refresh the caps chips + telemetry + arm lamp + alert + snapshot lines to match. All
+        # self-guard on unchanged content, so calling them per line is cheap.
         if port == getattr(self, "_active_port", ""):
             self._update_capabilities()
             self._update_telemetry()
             self._update_arm_lamp()
             self._update_alert_line()
+            self._update_snapshot_line()
 
     # ── Command palette ──────────────────────────────────────────────
 

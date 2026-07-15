@@ -142,7 +142,7 @@ def test_command_catalog_full_surface_with_danger_flags():
         "help", "agree", "info", "status", "bridge", "caps", "features", "sysinfo",
         "scan", "sniff", "stations", "probes", "capture", "wardrive",
         "blescan", "subghz", "nrf24", "nfc", "ir",
-        "defend", "eviltwin", "apaudit", "bleflood", "btracker", "blehid",
+        "defend", "eviltwin", "apaudit", "bleflood", "btracker", "blehid", "airspace",
         "arm", "disarm", "evilportal", "badble",
     } <= set(cmds)
     assert cmds["evilportal"].danger == "lab-only"
@@ -151,6 +151,7 @@ def test_command_catalog_full_surface_with_danger_flags():
     assert not any(c.danger == "illegal-tx" for c in cmds.values())  # no emitter shipped
     assert cmds["scan"].danger == "" and cmds["defend"].danger == "" and cmds["blescan"].danger == ""
     assert cmds["arm"].danger == ""  # the gate itself transmits nothing
+    assert cmds["airspace"].danger == ""  # passive occupancy summary, transmits nothing
 
 
 # ── event-line parsing (bridge on -> LXVEOS/1 <type> k=v events) ──

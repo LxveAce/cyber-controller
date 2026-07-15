@@ -301,6 +301,7 @@ class LxveOSProtocol(BaseProtocol):
             C("bleflood", "Defense", "BLE advert-flood/spam detector", args="[seconds]"),
             C("btracker", "Defense", "BLE item-tracker/stalking detector", args="[seconds]"),
             C("blehid", "Defense", "Flag nearby BLE HID devices (rogue keyboards/injectors)", args="[seconds]"),
+            C("airspace", "Defense", "Airspace occupancy summary (APs, open/WPS, BLE, trackers)"),
             # Arm gate (the safety mechanism itself transmits nothing)
             C("arm", "Offensive", "Two-factor enable for offensive-TX ops", args="[token|status]"),
             C("disarm", "Offensive", "Hard-disarm: return to SAFE"),

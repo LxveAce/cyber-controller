@@ -201,6 +201,49 @@ def test_ingestor_routes_alert_to_the_ports_device():
     assert pool.added == []  # an alert is not a pool Target
 
 
+# ── airspace occupancy snapshot ──────────────────────────────────────
+
+def test_apply_snapshot_stores_latest_with_change_detect():
+    # Unlike an alert (a counted stream), the `airspace` snapshot is latest-wins situational state:
+    # store it, but return False when it's unchanged (no counter, no needless UI repaint).
+    p = LxveOSProtocol()
+    dev = Device(port="COM23", firmware="lxveos")
+    assert dev.last_snapshot == {}
+    first = p.parse_line("LXVEOS/1 snapshot aps=14 open=3 wps=2 bles=8 trackers=1").data
+    assert dev.apply_snapshot(first) is True
+    assert dev.last_snapshot["aps"] == 14 and dev.last_snapshot["open"] == 3
+    # the same summary again is a no-op (change-detect returns False; there is NO counter to bump)
+    same = p.parse_line("LXVEOS/1 snapshot aps=14 open=3 wps=2 bles=8 trackers=1").data
+    assert dev.apply_snapshot(same) is False
+    assert dev.last_snapshot["aps"] == 14
+    # a changed count replaces the latest and reports the change
+    moved = p.parse_line("LXVEOS/1 snapshot aps=15 open=3 wps=2 bles=8 trackers=1").data
+    assert dev.apply_snapshot(moved) is True
+    assert dev.last_snapshot["aps"] == 15
+    # a non-dict is ignored and leaves the last snapshot intact
+    assert dev.apply_snapshot(None) is False and dev.last_snapshot["aps"] == 15
+
+
+def test_snapshot_round_trips_through_dict():
+    dev = Device(port="COM23", firmware="lxveos")
+    dev.apply_snapshot({"aps": 9, "open": 1, "bles": 4})
+    restored = Device.from_dict(dev.to_dict())
+    assert restored.last_snapshot == {"aps": 9, "open": 1, "bles": 4}
+
+
+def test_ingestor_routes_snapshot_to_the_ports_device():
+    from src.core.target_ingest import TargetIngestor
+
+    dev = Device(port="COM23", firmware="lxveos")
+    pool = _NullPool()
+    ingest = TargetIngestor(pool=pool, devices=_FakeDM({"COM23": dev}))
+    conn = _FakeConn("COM23")
+    ingest.attach(conn, LxveOSProtocol())
+    conn.feed("LXVEOS/1 snapshot aps=2 open=1 wps=0 bles=1 trackers=1")
+    assert dev.last_snapshot["aps"] == 2 and dev.last_snapshot["trackers"] == 1
+    assert pool.added == []  # a snapshot is not a pool Target
+
+
 # ── TargetIngestor wire ──────────────────────────────────────────────
 
 def test_ingestor_routes_device_info_to_the_ports_device():

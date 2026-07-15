@@ -178,6 +178,8 @@ class TargetIngestor:
                 self._apply_arm_state(ev, port)
             elif ev_type == "alert":
                 self._apply_alert(ev, port)
+            elif ev_type == "snapshot":
+                self._apply_snapshot(ev, port)
 
     def _apply_device_info(self, ev: Any, port: str) -> None:
         """Route a device_info event to the connected Device's live identity + runtime capabilities
@@ -226,6 +228,22 @@ class TargetIngestor:
                 apply(getattr(ev, "data", {}) or {})
             except Exception:
                 log.exception("TargetIngestor: apply_alert failed on %s", port)
+
+    def _apply_snapshot(self, ev: Any, port: str) -> None:
+        """Route a ``snapshot`` event (the LxveOS ``airspace`` occupancy summary) to the connected
+        Device's snapshot state, so the device tab can surface it as an at-a-glance tile. Same guarded
+        shape as :meth:`_apply_alert` — a bad line or exotic registry never breaks serial ingestion."""
+        try:
+            dev = self._devices.get_device(port)
+        except Exception:
+            log.exception("TargetIngestor: device lookup failed on %s", port)
+            return
+        apply = getattr(dev, "apply_snapshot", None)
+        if callable(apply):
+            try:
+                apply(getattr(ev, "data", {}) or {})
+            except Exception:
+                log.exception("TargetIngestor: apply_snapshot failed on %s", port)
 
     @staticmethod
     def _event_to_target(ev: Any, port: str) -> Target | None:

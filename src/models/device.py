@@ -92,6 +92,11 @@ class Device:
     #: surface "a detector fired". Display-only; refreshed on each alert.
     last_alert: dict = field(default_factory=dict)
     alert_count: int = 0
+    #: The most recent airspace-occupancy snapshot the device reported (a parsed ``snapshot`` event's
+    #: data: aps / open / wps / bles / trackers / stas / alerts counts). Unlike an alert, this is a
+    #: latest-wins situational summary (the LxveOS ``airspace`` command), NOT a counted stream — there is
+    #: no counter. Display-only; the device tab surfaces it as an at-a-glance tile below the alert line.
+    last_snapshot: dict = field(default_factory=dict)
 
     #: device_info keys kept as telemetry — identifying status-line fields EXCEPT the
     #: raw caps bitmask + its decoded tokens (those drive runtime_capabilities instead).
@@ -149,6 +154,20 @@ class Device:
             return False
         self.last_alert = dict(data)
         self.alert_count += 1
+        return True
+
+    def apply_snapshot(self, data: dict) -> bool:
+        """Absorb a parsed ``snapshot`` event — the LxveOS ``airspace`` occupancy summary (AP + open/WPS
+        splits, BLE + known-tracker counts, client + alert tallies). Latest-wins with change-detect: store
+        a copy and return True only when it differs from the last snapshot, so a repeated identical
+        periodic summary is a no-op. Unlike :meth:`apply_alert` there is NO counter — a snapshot is
+        current state, not a distinct detection. A non-dict is ignored."""
+        if not isinstance(data, dict):
+            return False
+        new = dict(data)
+        if new == self.last_snapshot:
+            return False
+        self.last_snapshot = new
         return True
 
     @property
@@ -210,6 +229,7 @@ class Device:
             "arm_state": self.arm_state,
             "last_alert": dict(self.last_alert),
             "alert_count": self.alert_count,
+            "last_snapshot": dict(self.last_snapshot),
         }
 
     @classmethod
