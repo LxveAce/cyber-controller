@@ -39,6 +39,8 @@ _SESSION = [
     "*deadbeef0001*aabbcc001122*4d794e6574***",
     # 7. `defend` fires a deauth alert
     "LXVEOS/1 alert kind=deauth bssid=de:ad:be:ef:00:01 count=27 deauth=20 disassoc=7",
+    # 7b. `watch scan` (custom watchlist) flags a watched BSSID present on this sweep
+    "LXVEOS/1 alert kind=watch mac=de:ad:be:ef:00:01 rssi=-42 band=wifi",
     # 8. `airspace` occupancy summary (custom) -> one snapshot event
     "LXVEOS/1 snapshot aps=2 open=1 wps=0 bles=1 trackers=1",
     # 9. two-factor arm flow, then disarm
@@ -66,7 +68,7 @@ def test_full_bridge_session_event_stream():
         "client_found", "batch_done",                 # stations
         "ble_found", "batch_done",                    # blescan
         "handshake_captured",                         # capture
-        "alert",                                      # defend
+        "alert", "alert",                             # defend (deauth) + watch scan (watchlist hit)
         "snapshot",                                   # airspace
         "arm_state", "arm_state", "arm_state",        # arm -> armed -> safe
     ]
@@ -114,3 +116,63 @@ def test_events_before_bridge_on_are_still_parsed():
     # status + prompt arrive before `bridge on`; they must parse regardless (the dashboard poll is always on).
     events = _run(_SESSION[:2])
     assert [ev.event_type for ev in events] == ["device_info", "status"]
+
+
+# ── full pipeline: parser -> TargetIngestor -> Device state ──────────
+
+class _FakeConn:
+    """Minimal SerialConnection stand-in: records on_line callbacks and feeds lines."""
+
+    def __init__(self, port: str) -> None:
+        self.port = port
+        self._cbs: list = []
+
+    def on_line(self, cb) -> None:
+        self._cbs.append(cb)
+
+    def feed(self, line: str) -> None:
+        for cb in list(self._cbs):
+            cb(line)
+
+
+class _FakeDM:
+    def __init__(self, devices: dict) -> None:
+        self._devices = devices
+
+    def get_device(self, port: str):
+        return self._devices.get(port)
+
+
+class _CountingPool:
+    def __init__(self) -> None:
+        self.added: list = []
+
+    def add(self, target) -> None:
+        self.added.append(target)
+
+
+def test_full_session_through_ingestor_updates_device_state():
+    """End to end: the whole session -> a real TargetIngestor (Device + pool).
+    Assert the Device state matches what the board reported; unit tests cover each hop alone.
+    This proves they compose."""
+    from src.core.target_ingest import TargetIngestor
+    from src.models.device import Device
+
+    dev = Device(port="COM23", firmware="lxveos")
+    pool = _CountingPool()
+    ingest = TargetIngestor(pool=pool, devices=_FakeDM({"COM23": dev}))
+    conn = _FakeConn("COM23")
+    ingest.attach(conn, LxveOSProtocol())
+    for ln in _SESSION:
+        conn.feed(ln)
+
+    # device_info (status line): runtime capabilities + identity telemetry landed on the Device
+    assert dev.runtime_capabilities == frozenset({"wifi", "ble", "bt_classic"})
+    assert dev.telemetry["board"] == "bare_esp32_headless" and dev.telemetry["heap"] == 184988
+    # arm_state (ARM/SAFE lamp source): ends at SAFE (pending -> armed -> safe was the last change)
+    assert dev.arm_state == "safe"
+    # alerts (alert-line source): deauth + watchlist hit both landed; latest is the watch hit
+    assert dev.alert_count == 2
+    assert dev.last_alert["kind"] == "watch" and dev.last_alert["band"] == "wifi"
+    # recognize side still works alongside observe: the scan/stations targets reached the pool
+    assert len(pool.added) >= 3  # 2 APs + 1 client (BLE may also map, depending on target policy)
