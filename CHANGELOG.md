@@ -4,6 +4,46 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new
+**Operate console** for single-device control, a passive **network-intel** pass on the Targets surface,
+and a broad security + reliability hardening sweep. Backend/serial control only — CC issues firmware CLI
+commands and never authors radio frames.
+- **New: LxveOS is a first-class firmware.** Recognize, flash (from the rolling `ci-latest` channel, a
+  merged single image at `0x0`), and control LxveOS boards end-to-end. CC speaks the `LXVEOS/1` serial
+  protocol — status / info / caps parsing, the full command catalog behind an `agree` ACK-gate and a
+  two-factor `arm` state, live device identity + runtime-capability chips decoded from the caps bitmask,
+  and an `airspace` occupancy snapshot surfaced as a Devices-tab tile. Flash + boot + status framing
+  validated on real ESP32 silicon.
+- **New: an Operate console.** A single-device, button-driven control surface with a telemetry header, a
+  prominent SAFE/ARMED lamp, a two-factor arm toggle, and a per-firmware, category-grouped command grid.
+  Offensive transmit verbs stay disabled until the device is actually ARMED (the TX-lockout invariant);
+  it's a read-only, poll-driven view that opens no serial connection of its own.
+- **New: passive network intel on Targets.** Scanned devices are labelled by manufacturer (OUI → vendor),
+  a passive channel-occupancy survey shows how busy each channel is, and a target-freshness summary flags
+  how recently each was seen — all passive (no probes), exposed on the web remote too (`/api/channels`,
+  `/api/freshness`).
+- **New: firmware-variant (board) picker on the web flash page.** Pick the exact board build; the chosen
+  variant is forwarded to the flash, so a board whose default asset targets a larger flash is no longer
+  forced onto the non-booting default.
+- **Improved: CYD board-detection actually applies its result.** A "Detect board" result now pre-selects
+  the detected panel variant even when Marauder is already the chosen profile — previously the pick was
+  silently dropped and Flash wrote the generic ILI9341 default over the panel just identified.
+- **Improved: the Crack Lab's JSON export is reachable.** The capture-log export offers CSV *or* JSON
+  (the JSON writer existed and was tested, but only CSV was wired up).
+- **Security:** `/api/flash` is now per-IP rate-limited like the other command actions; the session cookie
+  is forced Secure behind an upstream TLS proxy (`CC_WEB_COOKIE_SECURE`); a non-dict JSON body can no
+  longer 500 an endpoint; serial-parser regexes are bounded against ReDoS; the firmware-catalog signature
+  check gates on a *good* (non-revoked / non-expired) GPG signature; two AES-GCM nonce-reuse paths in
+  per-node provisioning are closed; a truncated download is rejected instead of trusted.
+- **Fixed — capture / crack accuracy:** an AVS (link-type 163) capture is parsed instead of read as empty;
+  a 4-way handshake Message 4 is no longer misclassified as Message 2; wordlists split on any CR/LF and
+  reuse the PMK per ESSID salt; a fabricated aircrack ESSID result and MAC-less "phantom" OUI resolutions
+  are eliminated; offensive macros are arm-gated via the safety classifier, not a fixed prefix list.
+- **Fixed — parsers & UI:** Marauder / GhostESP parser corrections (a crafted BLE name can't be misrouted
+  to an AP, BSSIDs are case-canonicalised, multi-line scan output parses); BlueJammer control is serialised
+  through one FIFO worker and can't outlive shutdown; port scans and heavy table rebuilds are moved off /
+  coalesced on the GUI thread; Connect/Disconnect and Targets-Clear give honest feedback; an honest
+  "source-only" message when a firmware ships no flashable binary.
 
 ## [1.7.2] — 2026-07-12
 Feature release: the Crack Lab now keeps a live, exportable log of every WPA handshake / PMKID your
