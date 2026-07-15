@@ -1486,9 +1486,17 @@ class DeviceTab(QWidget):
         if self._dms_auth is not None:
             conn = self._dm.get_connection(port)
             if conn is not None:
-                if self._dms_auth.check_line(line, lambda pw, c=conn: c.write(pw)):
-                    # A DMS auth gate spoke on this port — mark it so the connect-time probe never writes an
-                    # unsolicited command here (see _should_probe).
+                # Guard the auth write: this runs inside a modal event loop, so a board unplugged
+                # mid-dialog would otherwise raise RuntimeError/ValueError uncaught out of this queued
+                # slot (PyQt aborts the app with no excepthook). A failed auth write is non-fatal.
+                def _guarded_write(pw: str, c=conn) -> None:
+                    try:
+                        c.write(pw)
+                    except Exception:  # noqa: BLE001 — an auth write must never abort the serial slot
+                        log.exception("DMS auth serial write failed")
+                if self._dms_auth.check_line(line, _guarded_write):
+                    # A DMS auth gate spoke on this port — mark it so the connect-time probe never writes
+                    # an unsolicited command here (see _should_probe).
                     self._dms_seen.add(port)
         # Untrusted device bytes: QTextEdit.append() renders rich text when the line begins with markup
         # (mightBeRichText), so escape it -- otherwise a board emitting <b>/<img>/<span> spoofs the

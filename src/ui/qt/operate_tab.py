@@ -278,6 +278,16 @@ class OperateTab(QWidget):
         # settings change takes effect immediately (same posture as DeviceTab._on_send).
         settings = load_settings()
         danger = safety.classify(cmd, ci)
+        # Defense-in-depth TX lockout (invariant #1): an offensive-TX verb (danger != "") is REFUSED
+        # unless the active device is explicitly armed at send time — not just because a button was
+        # left enabled during the <=2s between an armed -> safe change and the next poll repaint.
+        # The button gate is the first line; this authoritative check reads live state.
+        if danger:
+            state = getattr(self._active_device(), "arm_state", "")
+            if state != "armed":
+                self._append_log(f"[blocked: '{cmd}' needs the device ARMED "
+                                 f"(currently {state or 'unknown'}) — Arm first]")
+                return
         if safety.should_confirm(danger, settings):
             reply = QMessageBox.warning(
                 self, "Confirm dangerous command", safety.lab_only_warning_text(cmd, danger),
@@ -347,10 +357,11 @@ class OperateTab(QWidget):
         # Telemetry header.
         telemetry = getattr(dev, "telemetry", {}) if dev is not None else {}
         self._telemetry_label.setText(self._telemetry_line(telemetry))
-        # Lamp.
+        # Lamp (display only). A coarse tx= fallback can light the lamp before any arm event, but it
+        # NEVER gates the TX buttons below — see tx_armed. `(telemetry or {})` guards a None value.
         state = getattr(dev, "arm_state", "") if dev is not None else ""
         if not state and dev is not None:
-            tx = getattr(dev, "telemetry", {}).get("tx")
+            tx = (getattr(dev, "telemetry", {}) or {}).get("tx")
             if tx is True:
                 state = "armed"
             elif tx is False:
@@ -361,10 +372,12 @@ class OperateTab(QWidget):
             self._arm_label.setText(text or "○ (no arm state reported)")
             css = f"color:{color or '#8b949e'};font-size:13px;font-weight:bold;"
             self._arm_label.setStyleSheet(css)
-        # Button enable state — the TX-lockout invariant: offensive-TX verbs only when ARMED.
-        armed = connected and state == "armed"
+        # TX-lockout invariant: offensive-TX buttons enable only when the device is ARMED. Use
+        # arm_state directly, not the tx=-derived display `state` above, so a merely TX-capable
+        # SAFE board can never enable an offensive button. _send re-checks this at write time too.
+        tx_armed = connected and getattr(dev, "arm_state", "") == "armed"
         for b in self._tx_buttons:
-            b.setEnabled(armed)
+            b.setEnabled(tx_armed)
         for b in self._safe_buttons:
             b.setEnabled(connected)
         self._btn_arm.setEnabled(connected and state != "armed")

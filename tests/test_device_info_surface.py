@@ -231,6 +231,14 @@ def test_snapshot_round_trips_through_dict():
     assert restored.last_snapshot == {"aps": 9, "open": 1, "bles": 4}
 
 
+def test_forced_firmware_survives_a_dict_round_trip():
+    # A manual firmware choice (firmware_forced=True) must persist through to_dict/from_dict, else a
+    # later post-probe re-autodetect could silently overwrite the operator's choice.
+    dev = Device(port="COM23", firmware="marauder", firmware_forced=True)
+    restored = Device.from_dict(dev.to_dict())
+    assert restored.firmware == "marauder" and restored.firmware_forced is True
+
+
 def test_ingestor_routes_snapshot_to_the_ports_device():
     from src.core.target_ingest import TargetIngestor
 

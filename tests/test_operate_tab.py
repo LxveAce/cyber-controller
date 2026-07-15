@@ -182,3 +182,79 @@ def test_poll_skips_firmware_without_a_status_verb(qapp):
     tab = _tab(dev, conn)
     tab._poll_tick()
     assert "status" not in conn.writes
+
+
+# ── defense-in-depth: _send re-checks arm state at write time ────────
+
+def test_send_blocks_offensive_verb_when_not_armed(qapp, monkeypatch):
+    # The button-enable gate can lag an armed->safe transition by up to the 2s poll; _send is the
+    # authoritative backstop — an offensive-TX verb (danger != "") is refused unless armed now.
+    from src.models.device import Device
+    from src.protocols.base import CommandInfo
+    from src.ui.qt import operate_tab
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    dev.arm_state = "safe"
+    conn = _FakeConn()
+    tab = _tab(dev, conn)
+    ci = CommandInfo("evilportal", "Offensive", "rogue AP + captive portal", danger="lab-only")
+    tab._send("evilportal karma", ci)
+    assert conn.writes == []                                   # blocked — device is SAFE
+    assert "needs the device ARMED" in tab._log.toPlainText()
+    # once the device is actually armed, the same send goes through (no confirm dialog in the test)
+    monkeypatch.setattr(operate_tab.safety, "should_confirm", lambda *a, **k: False)
+    dev.arm_state = "armed"
+    tab._send("evilportal karma", ci)
+    assert conn.writes == ["evilportal karma"]
+
+
+# ── multi-device: TX re-locks on a device switch + other-port gating ─
+
+class _MultiDM:
+    """A device registry with several devices + optional per-port connections."""
+
+    def __init__(self, devices, conns=None) -> None:
+        self._devices = {d.port: d for d in devices}
+        self._conns = conns or {}
+
+    def list_devices(self):
+        return list(self._devices.values())
+
+    def get_device(self, port: str):
+        return self._devices.get(port)
+
+    def get_connection(self, port: str):
+        return self._conns.get(port)
+
+
+def test_tx_buttons_relock_on_switch_from_armed_to_safe(qapp):
+    from src.models.device import Device
+    from src.ui.qt.operate_tab import OperateTab
+
+    armed = Device(port="COM23", firmware="lxveos", connected=True)
+    armed.arm_state = "armed"
+    safe = Device(port="COM99", firmware="lxveos", connected=True)
+    safe.arm_state = "safe"
+    tab = OperateTab(_MultiDM([armed, safe]))
+    tab._active_port = "COM23"
+    tab._grid_fw = ""
+    tab._refresh()
+    assert tab._tx_buttons and all(b.isEnabled() for b in tab._tx_buttons)  # armed -> TX enabled
+    # switch to the SAFE device: the SAME buttons must re-lock (same firmware -> no grid rebuild)
+    tab._active_port = "COM99"
+    tab._refresh()
+    assert all(not b.isEnabled() for b in tab._tx_buttons)
+
+
+def test_on_line_received_from_other_port_does_not_repaint(qapp):
+    from src.models.device import Device
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    dev.arm_state = "safe"
+    tab = _tab(dev)
+    assert all(not b.isEnabled() for b in tab._tx_buttons)  # SAFE -> locked
+    # a line from a DIFFERENT port must NOT repaint this console (else it would read the now-armed
+    # active device and wrongly enable TX)
+    dev.arm_state = "armed"
+    tab.on_line_received("COM99", "LXVEOS/1 arm state=armed")
+    assert all(not b.isEnabled() for b in tab._tx_buttons)  # unchanged — repaint gated on the port

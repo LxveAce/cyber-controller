@@ -212,6 +212,9 @@ class Device:
             "port": self.port,
             "name": self.name,
             "firmware": self.firmware,
+            # Round-trip the forced-firmware flag too, else from_dict resets it to False and a later
+            # post-probe re-autodetect could silently overwrite a manual firmware choice.
+            "firmware_forced": self.firmware_forced,
             "protocol": self.protocol.value,
             "connected": self.connected,
             "serial_number": self.serial_number,

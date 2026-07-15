@@ -1205,6 +1205,17 @@ class CyberControllerWindow(QMainWindow):
             on_line=lambda t: act.emit_line("tool", t),
             on_exit=lambda rc: act.emit_line("tool", f"[exit {rc}]", "success" if rc == 0 else "warn"))
 
+    @staticmethod
+    def _safe_serial_write(conn, data: str) -> None:
+        """Write to a serial connection, swallowing a disconnect/control-char error. Used on the DMS
+        auth path, which runs inside a modal event loop where a board unplugged mid-dialog would
+        otherwise raise RuntimeError/ValueError uncaught out of a queued Qt slot (PyQt aborts with
+        no excepthook). A failed auth write is non-fatal — the operator can retry."""
+        try:
+            conn.write(data)
+        except Exception:  # noqa: BLE001 — a DMS auth write must never abort the serial slot
+            log.exception("DMS auth serial write failed")
+
     @pyqtSlot(str, str)
     def _pterm_on_line(self, port: str, line: str) -> None:
         """Handle a serial line from a device in the persistent terminal."""
@@ -1219,7 +1230,13 @@ class CyberControllerWindow(QMainWindow):
             # Devices tab be the sole DMS owner for any port it has connected (its handler also marks
             # _dms_seen to suppress the connect probe); the terminal only handles ports it owns alone.
             if port not in getattr(self._device_tab, "_devtab_line_cbs", {}):
-                self._dms_auth.check_line(line, lambda pw: conn.write(pw))
+                # On a DMS prompt seen ONLY here (terminal is sole owner), mark the port in the SAME
+                # shared _dms_seen the Devices tab uses, so any status-poll consumer (the Operate
+                # console) also refuses to write into the unlock prompt — a stray write can burn a
+                # DMS attempt and trip a wipe. Mirror DeviceTab's add-on-match. Guard the write too:
+                # a board unplugged mid-modal would otherwise raise uncaught from this slot.
+                if self._dms_auth.check_line(line, lambda pw: self._safe_serial_write(conn, pw)):
+                    getattr(self._device_tab, "_dms_seen", set()).add(port)
         color = self._pterm_port_colors.get(port, "#3fb950")
         # Device serial bytes are untrusted: QTextEdit.append() renders rich text (the leading <span>
         # guarantees mightBeRichText), so escape the device line or a rogue board could forge markup
