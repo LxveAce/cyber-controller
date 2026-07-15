@@ -154,6 +154,36 @@ def test_hidden_ssid_ap_event_has_empty_ssid():
     assert ev.event_type == "ap_found" and ev.data["ssid"] == "" and ev.data["ssid_hex"] == ""
 
 
+def test_sta_event_parses_client_with_typed_fields():
+    # firmware `stations` emits: mac/ap (MAC strings), rssi (int), frames (uint), essid (hex).
+    ev = LxveOSProtocol().parse_line(
+        "LXVEOS/1 sta mac=aa:bb:cc:00:11:22 ap=de:ad:be:ef:00:01 rssi=-58 frames=42 essid=4d794e6574"
+    )
+    assert ev is not None and ev.event_type == "client_found"
+    d = ev.data
+    assert d["mac"] == "aa:bb:cc:00:11:22" and d["ap"] == "de:ad:be:ef:00:01"
+    assert d["rssi"] == -58 and d["frames"] == 42
+    assert d["essid"] == "MyNet" and d["essid_hex"] == "4d794e6574"
+
+
+def test_probe_event_parses_directed_ssid_with_typed_fields():
+    # firmware `probes` emits: ssid (hex), seen (uint), rssi (int) — no client MAC (aggregated by SSID).
+    ev = LxveOSProtocol().parse_line("LXVEOS/1 probe ssid=4d794e6574 seen=7 rssi=-63")
+    assert ev is not None and ev.event_type == "probe_request"
+    d = ev.data
+    assert d["ssid"] == "MyNet" and d["ssid_hex"] == "4d794e6574"
+    assert d["seen"] == 7 and d["rssi"] == -63
+    assert "mac" not in d  # the passive probe scan carries no per-device MAC
+
+
+def test_done_markers_for_stations_and_probes():
+    p = LxveOSProtocol()
+    ev = p.parse_line("LXVEOS/1 done of=stations n=3")
+    assert ev.event_type == "batch_done" and ev.data["of"] == "stations" and ev.data["n"] == 3
+    ev = p.parse_line("LXVEOS/1 done of=probes n=0")
+    assert ev.event_type == "batch_done" and ev.data["of"] == "probes" and ev.data["n"] == 0
+
+
 def test_bridge_and_done_events():
     p = LxveOSProtocol()
     ev = p.parse_line("LXVEOS/1 bridge state=on")

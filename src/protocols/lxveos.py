@@ -65,8 +65,8 @@ _CAP_SLUGS = (
 # surfaced as a forward-compat `info` event rather than dropped.
 _EVENT_MAP: dict[str, tuple[str, "frozenset[str]", "frozenset[str]"]] = {
     "ap":       ("ap_found",           frozenset({"ch", "rssi"}),                    frozenset({"ssid"})),
-    "sta":      ("client_found",       frozenset({"rssi"}),                          frozenset()),
-    "probe":    ("probe_request",      frozenset({"rssi"}),                          frozenset({"ssid"})),
+    "sta":      ("client_found",       frozenset({"rssi", "frames"}),                frozenset({"essid"})),
+    "probe":    ("probe_request",      frozenset({"rssi", "seen"}),                  frozenset({"ssid"})),
     "ble":      ("ble_found",          frozenset({"rssi", "appearance"}),            frozenset({"name", "svc"})),
     "hs":       ("handshake_captured", frozenset(),                                  frozenset({"essid"})),
     "pcap":     ("pcap_saved",         frozenset({"bytes"}),                         frozenset()),
