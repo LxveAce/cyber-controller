@@ -126,6 +126,15 @@ class Device:
             if key in data and self.telemetry.get(key) != data[key]:
                 self.telemetry[key] = data[key]
                 changed = True
+        # Route the status line's authoritative arm= through apply_arm_state. A firmware that
+        # disarms WITHOUT a disarm event (watchdog reboot, brown-out, auto-timeout) must not
+        # leave CC stale-"armed" — that keeps the Operate console TX buttons and the _send
+        # gate OPEN on a device the firmware reports SAFE. apply_arm_state validates and is
+        # forward-compat, and ignores a blank value, so an `info` block with no arm= never
+        # clears a live armed state. Fail-safe: a pre-arm status racing an arm event at worst
+        # shows a spurious SAFE, self-cleared next poll (TX briefly OFF, never wrongly ON).
+        if data.get("arm"):
+            changed = self.apply_arm_state({"state": data["arm"]}) or changed
         return changed
 
     #: Arm-state tokens a firmware may report (LxveOS EVENT-PROTOCOL `arm` event `state=`). Any other

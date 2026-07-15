@@ -111,6 +111,37 @@ def test_apply_device_info_is_idempotent_and_rejects_non_dict():
     assert dev.apply_device_info("nope") is False
 
 
+def test_status_arm_field_corrects_stale_arm_state():
+    # HIGH (final 1.8.0 review): arm_state is set only by an explicit arm/disarm EVENT and has no
+    # reset path, so a firmware that disarms/reboots WITHOUT a disarm event (watchdog, brown-out,
+    # auto-timeout) would leave CC stale-"armed" — keeping the Operate console TX buttons + the
+    # _send gate OPEN on a device the firmware reports SAFE. The authoritative arm= in the periodic
+    # status line MUST correct it (dropped before the fix: apply_device_info kept only
+    # _TELEMETRY_KEYS, which excludes arm).
+    status = LxveOSProtocol()
+    armed = status.parse_line(_STATUS + " arm=armed tx=1").data
+    safe = status.parse_line(_STATUS + " arm=safe tx=1").data
+    dev = Device(port="COM23", firmware="lxveos")
+    dev.apply_arm_state({"state": "armed"})
+    assert dev.arm_state == "armed"
+    # A status reporting arm=safe (NO explicit disarm event) pulls CC back to safe.
+    changed = dev.apply_device_info(safe)
+    assert dev.arm_state == "safe", "status arm= must correct a stale armed state (TX-lockout)"
+    assert changed is True
+    # And a later status reporting arm=armed re-arms.
+    dev.apply_device_info(armed)
+    assert dev.arm_state == "armed"
+
+
+def test_device_info_without_arm_field_never_clears_live_armed():
+    # Fail-safe: the plain status/`info` block here carries NO arm= (see _STATUS), so it must NEVER
+    # clear a live armed state — apply_arm_state ignores an absent value. Guards a spurious flip.
+    dev = Device(port="COM23", firmware="lxveos")
+    dev.apply_arm_state({"state": "armed"})
+    assert dev.apply_device_info(_status_data()) is True   # caps/telemetry change, arm untouched
+    assert dev.arm_state == "armed"
+
+
 def test_device_info_round_trips_through_dict():
     dev = Device(port="COM23", firmware="lxveos")
     dev.apply_device_info(_status_data())
