@@ -67,7 +67,7 @@ _EVENT_MAP: dict[str, tuple[str, "frozenset[str]", "frozenset[str]"]] = {
     "ap":       ("ap_found",           frozenset({"ch", "rssi"}),                    frozenset({"ssid"})),
     "sta":      ("client_found",       frozenset({"rssi", "frames"}),                frozenset({"essid"})),
     "probe":    ("probe_request",      frozenset({"rssi", "seen"}),                  frozenset({"ssid"})),
-    "ble":      ("ble_found",          frozenset({"rssi", "appearance"}),            frozenset({"name", "svc"})),
+    "ble":      ("ble_found",          frozenset({"rssi", "appr", "company", "fp", "tracker"}), frozenset({"name"})),
     "hs":       ("handshake_captured", frozenset(),                                  frozenset({"essid"})),
     "pcap":     ("pcap_saved",         frozenset({"bytes"}),                         frozenset()),
     "arm":      ("arm_state",          frozenset({"token", "window", "idle"}),       frozenset()),
@@ -233,6 +233,13 @@ class LxveOSProtocol(BaseProtocol):
                 data[key + "_hex"] = raw_hex
             else:
                 data[key] = val
+        # `hs` carries the raw hashcat-22000 `line` (kept verbatim for Crack Lab); surface its ESSID for a
+        # human display name. Format: WPA*<01|02>*<pmkid|mic>*<ap>*<sta>*<essid_hex>*... — field 5 is the
+        # SSID, hex-encoded. Best-effort: a malformed line just leaves essid unset.
+        if etype == "hs" and isinstance(data.get("line"), str):
+            parts = data["line"].split("*")
+            if len(parts) > 5 and parts[5]:
+                data["essid"], data["essid_hex"] = _hex_field(parts[5])
         return ParsedEvent(event_type=cc_type, data=data, raw=raw)
 
     # ── Commands ─────────────────────────────────────────────────────

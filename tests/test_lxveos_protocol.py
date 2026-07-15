@@ -192,12 +192,40 @@ def test_bridge_and_done_events():
     assert ev.event_type == "batch_done" and ev.data["of"] == "scan" and ev.data["n"] == 5
 
 
-def test_ble_and_handshake_events():
-    ev = LxveOSProtocol().parse_line("LXVEOS/1 ble addr=11:22:33:44:55:66 name=4d79 rssi=-55")
-    assert ev.event_type == "ble_found" and ev.data["name"] == "My" and ev.data["rssi"] == -55
-    ev = LxveOSProtocol().parse_line("LXVEOS/1 hs kind=pmkid bssid=de:ad:be:ef:00:01 essid=4e6574")
+def test_ble_event_full_fields():
+    # firmware `blescan`: addr (reversed to MSB-first), type, rssi always; name/company/fp/appr/tracker
+    # only when the advert carried them. company is the numeric Bluetooth-SIG ID; tracker the item class.
+    ev = LxveOSProtocol().parse_line(
+        "LXVEOS/1 ble addr=aa:bb:cc:dd:ee:ff type=random rssi=-55 name=4d79 company=76 fp=1 appr=64 tracker=1"
+    )
+    assert ev.event_type == "ble_found"
+    d = ev.data
+    assert d["addr"] == "aa:bb:cc:dd:ee:ff" and d["type"] == "random" and d["rssi"] == -55
+    assert d["name"] == "My" and d["name_hex"] == "4d79"
+    assert d["company"] == 76 and d["fp"] == 1 and d["appr"] == 64 and d["tracker"] == 1
+
+
+def test_ble_event_minimal_has_no_optional_fields():
+    ev = LxveOSProtocol().parse_line("LXVEOS/1 ble addr=11:22:33:44:55:66 type=public rssi=-40")
+    assert ev.event_type == "ble_found" and ev.data["rssi"] == -40
+    for absent in ("name", "company", "fp", "appr", "tracker"):
+        assert absent not in ev.data
+
+
+def test_handshake_event_keeps_hashcat_line_and_extracts_essid():
+    # firmware `capture` forwards the raw hashcat-22000 artifact as `line=`; the parser keeps it verbatim
+    # for Crack Lab and lifts the ESSID (field 5, hex) out for a display name.
+    line = "WPA*01*0102030405060708090a0b0c0d0e0f10*deadbeef0001*aabbcc001122*4d794e6574***"
+    ev = LxveOSProtocol().parse_line(f"LXVEOS/1 hs kind=pmkid line={line}")
     assert ev.event_type == "handshake_captured"
-    assert ev.data["kind"] == "pmkid" and ev.data["essid"] == "Net"
+    assert ev.data["kind"] == "pmkid"
+    assert ev.data["line"] == line  # kept byte-for-byte for the crack pipeline
+    assert ev.data["essid"] == "MyNet" and ev.data["essid_hex"] == "4d794e6574"
+    # WPA*02 EAPOL handshake -> kind eapol
+    ev = LxveOSProtocol().parse_line(
+        "LXVEOS/1 hs kind=eapol line=WPA*02*aabb*deadbeef0001*aabbcc001122*4e6574*cc*dd*00"
+    )
+    assert ev.data["kind"] == "eapol" and ev.data["essid"] == "Net"
 
 
 def test_unknown_event_type_is_forward_compat_info():
@@ -208,9 +236,12 @@ def test_unknown_event_type_is_forward_compat_info():
 
 def test_arm_state_from_structured_event_and_from_prose():
     p = LxveOSProtocol()
-    # structured event (bridge on)
+    # structured events (bridge on) — the firmware emits one at every transition
     ev = p.parse_line("LXVEOS/1 arm state=pending token=123 window=30")
     assert ev.event_type == "arm_state" and ev.data["state"] == "pending" and ev.data["token"] == 123
+    for state in ("armed", "safe", "tx_disabled"):
+        ev = p.parse_line(f"LXVEOS/1 arm state={state}")
+        assert ev.event_type == "arm_state" and ev.data["state"] == state
     # prose fallback (spec §4 replies)
     ev = p.parse_line("arm requested. Confirm within 30s:  arm 3735928559")
     assert ev.event_type == "arm_state" and ev.data["state"] == "pending" and ev.data["token"] == 3735928559
