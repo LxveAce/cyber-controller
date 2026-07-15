@@ -59,7 +59,7 @@ FLASH_METHOD = {
 }
 
 # verdicts that are real, actionable defects (a Flash button that cannot work)
-ACTIONABLE = {"SOURCE-ONLY", "BROKEN"}
+ACTIONABLE = {"SOURCE-ONLY", "BROKEN", "SCHEMA-MISMATCH"}
 
 
 def load_profiles(only: set[str] | None = None) -> list[dict]:
@@ -83,6 +83,25 @@ def classify(profile: dict) -> dict:
         "method": FLASH_METHOD.get(backend, backend),
         "esptool": backend == "esptool",
     }
+
+
+def schema_mismatch(profile: dict) -> str | None:
+    """Static: does a github_release profile use resolver_params the github_release resolver can't
+    handle? Such a profile resolves to zero assets (or crashes) NOT because the upstream is
+    source-only, but because its schema was authored for a different resolver. Telling this apart
+    from a genuinely assetless upstream is the lesson sniffle/zstack/whad_butterfly taught."""
+    if profile.get("resolver") != "github_release":
+        return None
+    p = profile.get("resolver_params", {})
+    if isinstance(p.get("assets"), list):
+        return "resolver_params has a per-board 'assets' array the github_release resolver ignores"
+    am = p.get("asset_match")
+    if am is not None and not isinstance(am, dict):
+        return f"asset_match is a {type(am).__name__}, not an object"
+    api = str(p.get("api_url", "")).rstrip("/")
+    if api.endswith("/releases"):
+        return "api_url points at /releases (a list) not /releases/latest or /releases/tags/<tag>"
+    return None
 
 
 def _head(url: str, timeout: float = 15.0) -> int:
@@ -112,6 +131,9 @@ def check_reachability(profile: dict) -> tuple[str, str]:
     if resolver == "local":
         return ("LOCAL", "bundled/local asset")
     if resolver == "github_release":
+        mismatch = schema_mismatch(profile)
+        if mismatch:
+            return ("SCHEMA-MISMATCH", mismatch)
         try:
             tag, assets = fc._resolve_github(profile)
         except urllib.error.HTTPError as exc:

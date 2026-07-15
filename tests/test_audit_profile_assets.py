@@ -95,3 +95,43 @@ def test_all_real_profiles_classify_offline():
     rows = audit_mod.audit(only=None, offline=True)
     assert len(rows) >= 40
     assert all(r["verdict"] == "SKIPPED" for r in rows)
+
+
+# --------------------------------------------------------------------------- schema mismatch
+
+def test_schema_mismatch_flags_per_board_assets_array():
+    # whad_butterfly class: a top-level per-board `assets` array under github_release.
+    reason = audit_mod.schema_mismatch(
+        {"resolver": "github_release", "resolver_params": {"api_url": "u", "assets": [{}]}})
+    assert reason and "assets" in reason
+
+
+def test_schema_mismatch_flags_string_asset_match():
+    # sniffle class: asset_match as a bare template string.
+    reason = audit_mod.schema_mismatch(
+        {"resolver": "github_release",
+         "resolver_params": {"api_url": "u/releases/latest", "asset_match": "sniffle_<chip>.hex"}})
+    assert reason and "asset_match" in reason
+
+
+def test_schema_mismatch_flags_releases_list_url():
+    # zstack class: api_url points at /releases (a list).
+    reason = audit_mod.schema_mismatch(
+        {"resolver": "github_release", "resolver_params": {"api_url": "https://x/repos/y/releases"}})
+    assert reason and "/releases" in reason
+
+
+def test_schema_mismatch_none_for_well_formed():
+    # A normal github_release profile (dict asset_match, /releases/latest) is NOT a mismatch.
+    ok = {"resolver": "github_release",
+          "resolver_params": {"api_url": "u/releases/latest",
+                              "asset_match": {"include_suffixes": [".bin"]}}}
+    assert audit_mod.schema_mismatch(ok) is None
+    assert audit_mod.schema_mismatch({"resolver": "pinned_release"}) is None
+
+
+def test_check_reachability_returns_schema_mismatch_without_network():
+    # A mismatched profile is caught statically -> no resolver call, no network.
+    verdict, _ = audit_mod.check_reachability(
+        {"resolver": "github_release", "resolver_params": {"api_url": "u", "assets": [{}]}})
+    assert verdict == "SCHEMA-MISMATCH"
