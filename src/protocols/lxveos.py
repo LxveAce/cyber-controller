@@ -128,6 +128,12 @@ def _coerce_status_field(key: str, val: str):
         if len(parts) == 3 and all(p.isdigit() for p in parts):
             return {"ready": int(parts[0]), "planned": int(parts[1]), "unavailable": int(parts[2])}
         return val
+    if key == "arm":  # runtime arm-gate state. A build-time TX-lockout shows up as tx=0, so arm= is
+        # one of the three runtime states. The allow-list documents the known set; an unknown/future
+        # token still passes through raw so a newer firmware never breaks an older CC.
+        if val not in ("safe", "pending", "armed"):
+            return val  # forward-compat: surface an unrecognised state verbatim, don't drop it
+        return val
     if key == "tx":  # offensive-TX build flag: 1 = compiled in (can arm), 0 = stripped (LXVEOS_TX_DISABLE)
         if val in ("0", "1"):
             return val == "1"  # bool: the TX-lockout UI needs "can this unit ever transmit" distinct from arm=

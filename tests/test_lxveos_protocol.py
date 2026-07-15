@@ -65,6 +65,12 @@ def test_status_tx_and_arm_fields_typed():
     # a malformed tx value is left as a raw string, never silently coerced to a wrong bool
     d = p.parse_line(_STATUS + " tx=x").data
     assert d["tx"] == "x"
+    # arm=armed passes the runtime-state allow-list; tx (bool True) also satisfies == 1
+    d = p.parse_line(_STATUS + " arm=armed tx=1").data
+    assert d["arm"] == "armed" and d["tx"] == 1  # bool True == 1
+    # an unknown/future arm token is surfaced raw (forward-compat), never dropped or coerced
+    d = p.parse_line(_STATUS + " arm=bogus").data
+    assert d["arm"] == "bogus"
 
 
 def test_caps_bitmask_decodes_in_firmware_bit_order():
@@ -284,6 +290,25 @@ def test_unknown_event_type_is_forward_compat_info():
     ev = LxveOSProtocol().parse_line("LXVEOS/1 futurething x=1 y=2")
     assert ev.event_type == "info" and ev.data["lxveos_event"] == "futurething"
     assert ev.data["fields"] == {"x": "1", "y": "2"}
+
+
+def test_known_event_keeps_unknown_extra_key_as_string():
+    # Forward-compat inside a KNOWN type: a field a newer firmware adds (not in the type's schema)
+    # must survive as a raw string: never dropped, never a crash. Here `ap` gains extra keys.
+    ev = LxveOSProtocol().parse_line(
+        "LXVEOS/1 ap bssid=de:ad:be:ef:00:01 ssid=4d794e6574 ch=6 rssi=-42 auth=wpa2 vendor=Cisco region=us"
+    )
+    assert ev is not None and ev.event_type == "ap_found"
+    assert ev.data["vendor"] == "Cisco" and ev.data["region"] == "us"  # unknown keys kept raw
+    assert ev.data["ssid"] == "MyNet" and ev.data["ch"] == 6 and ev.data["rssi"] == -42
+
+
+def test_pcap_event_parses_segment_with_typed_bytes():
+    # firmware `pcap_log` emits one per written pcap segment: id (token string) + bytes (int).
+    ev = LxveOSProtocol().parse_line("LXVEOS/1 pcap id=seg0007 bytes=4096")
+    assert ev is not None and ev.event_type == "pcap_saved"
+    assert ev.data["id"] == "seg0007"  # id is a token, left as a string
+    assert ev.data["bytes"] == 4096 and isinstance(ev.data["bytes"], int)
 
 
 def test_arm_state_from_structured_event_and_from_prose():
