@@ -115,12 +115,81 @@ def test_identify_matches_lxveos_output_only():
     assert p.identify("-22 Ch: 1 b4:bf:e9:11:19:ad ESSID: ESP_1119AD") is False  # Marauder AP line
 
 
-def test_commands_are_all_passive_no_tx():
-    # LxveOS M0 is a local control/identity surface — no command carries an RF/TX danger flag.
-    cmds = LxveOSProtocol().get_commands()
-    names = {c.name for c in cmds}
-    assert {"info", "status", "help", "reboot"} <= names
-    assert all(c.danger == "" for c in cmds), "no LxveOS M0 command should be flagged dangerous"
+def test_command_catalog_full_surface_with_danger_flags():
+    # The full LxveOS surface (LXVEOS-CC-CONTROL-SPEC §5) is now exposed. Offensive ops are lab-only;
+    # LxveOS ships no interference emitter, so nothing is illegal-tx; recon/defense stay passive.
+    cmds = {c.name: c for c in LxveOSProtocol().get_commands()}
+    assert {
+        "help", "agree", "info", "status", "bridge", "caps", "features", "sysinfo",
+        "scan", "sniff", "stations", "probes", "capture", "wardrive",
+        "blescan", "subghz", "nrf24", "nfc", "ir",
+        "defend", "eviltwin", "apaudit", "bleflood", "btracker", "blehid",
+        "arm", "disarm", "evilportal", "badble",
+    } <= set(cmds)
+    assert cmds["evilportal"].danger == "lab-only"
+    assert cmds["badble"].danger == "lab-only"
+    assert all(c.danger in ("", "lab-only") for c in cmds.values())
+    assert not any(c.danger == "illegal-tx" for c in cmds.values())  # no emitter shipped
+    assert cmds["scan"].danger == "" and cmds["defend"].danger == "" and cmds["blescan"].danger == ""
+    assert cmds["arm"].danger == ""  # the gate itself transmits nothing
+
+
+# ── event-line parsing (bridge on -> LXVEOS/1 <type> k=v events) ──
+
+def test_ap_event_parses_to_ap_found_with_decoded_ssid():
+    ev = LxveOSProtocol().parse_line(
+        "LXVEOS/1 ap bssid=de:ad:be:ef:00:01 ssid=4d794e6574 ch=6 rssi=-42 auth=wpa2"
+    )
+    assert ev is not None and ev.event_type == "ap_found"
+    d = ev.data
+    assert d["bssid"] == "de:ad:be:ef:00:01"
+    assert d["ssid"] == "MyNet" and d["ssid_hex"] == "4d794e6574"  # hex decoded back to text + raw kept
+    assert d["ch"] == 6 and d["rssi"] == -42 and d["auth"] == "wpa2"
+
+
+def test_hidden_ssid_ap_event_has_empty_ssid():
+    ev = LxveOSProtocol().parse_line(
+        "LXVEOS/1 ap bssid=aa:bb:cc:dd:ee:ff ssid= ch=1 rssi=-70 auth=open"
+    )
+    assert ev.event_type == "ap_found" and ev.data["ssid"] == "" and ev.data["ssid_hex"] == ""
+
+
+def test_bridge_and_done_events():
+    p = LxveOSProtocol()
+    ev = p.parse_line("LXVEOS/1 bridge state=on")
+    assert ev.event_type == "bridge_state" and ev.data["state"] == "on"
+    ev = p.parse_line("LXVEOS/1 done of=scan n=5")
+    assert ev.event_type == "batch_done" and ev.data["of"] == "scan" and ev.data["n"] == 5
+
+
+def test_ble_and_handshake_events():
+    ev = LxveOSProtocol().parse_line("LXVEOS/1 ble addr=11:22:33:44:55:66 name=4d79 rssi=-55")
+    assert ev.event_type == "ble_found" and ev.data["name"] == "My" and ev.data["rssi"] == -55
+    ev = LxveOSProtocol().parse_line("LXVEOS/1 hs kind=pmkid bssid=de:ad:be:ef:00:01 essid=4e6574")
+    assert ev.event_type == "handshake_captured"
+    assert ev.data["kind"] == "pmkid" and ev.data["essid"] == "Net"
+
+
+def test_unknown_event_type_is_forward_compat_info():
+    ev = LxveOSProtocol().parse_line("LXVEOS/1 futurething x=1 y=2")
+    assert ev.event_type == "info" and ev.data["lxveos_event"] == "futurething"
+    assert ev.data["fields"] == {"x": "1", "y": "2"}
+
+
+def test_arm_state_from_structured_event_and_from_prose():
+    p = LxveOSProtocol()
+    # structured event (bridge on)
+    ev = p.parse_line("LXVEOS/1 arm state=pending token=123 window=30")
+    assert ev.event_type == "arm_state" and ev.data["state"] == "pending" and ev.data["token"] == 123
+    # prose fallback (spec §4 replies)
+    ev = p.parse_line("arm requested. Confirm within 30s:  arm 3735928559")
+    assert ev.event_type == "arm_state" and ev.data["state"] == "pending" and ev.data["token"] == 3735928559
+    ev = p.parse_line("ARMED - offensive-TX ops permitted until 'disarm' or inactivity timeout.")
+    assert ev.event_type == "arm_state" and ev.data["state"] == "armed"
+    ev = p.parse_line("arm state: safe")
+    assert ev.event_type == "arm_state" and ev.data["state"] == "safe"
+    ev = p.parse_line("offensive TX is compiled OUT of this build ... nothing to arm.")
+    assert ev.event_type == "arm_state" and ev.data["state"] == "tx_disabled"
 
 
 # ── auto-detect integration (handshake.detect_firmware / learn_vocabulary) ──
