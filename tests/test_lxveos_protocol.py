@@ -228,6 +228,12 @@ def test_alert_events_from_all_six_detectors():
     # blehid -> addr string, rssi int, name hex
     d = p.parse_line("LXVEOS/1 alert kind=blehid addr=11:22:33:44:55:66 rssi=-50 name=4b6579").data
     assert d["kind"] == "blehid" and d["rssi"] == -50 and d["name"] == "Key"
+    # watch (target watchlist hit) -> mac/band pass through as strings, rssi typed int. The generic alert
+    # row needs no new field types: `kind`/`mac`/`band` land in the else-branch, `rssi` in the int set.
+    d = p.parse_line("LXVEOS/1 alert kind=watch mac=de:ad:be:ef:00:01 rssi=-42 band=wifi").data
+    assert d["kind"] == "watch" and d["mac"] == "de:ad:be:ef:00:01" and d["rssi"] == -42 and d["band"] == "wifi"
+    d = p.parse_line("LXVEOS/1 alert kind=watch mac=11:22:33:44:55:66 rssi=-70 band=ble").data
+    assert d["kind"] == "watch" and d["band"] == "ble" and d["rssi"] == -70
 
 
 def test_snapshot_airspace_summary_event():
