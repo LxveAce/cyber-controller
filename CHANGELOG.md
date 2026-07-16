@@ -3,6 +3,24 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [1.8.1] — 2026-07-15
+Point release: the **CYD 3.5" (ESP32-3248S035R)** joins the first-class LxveOS board family, plus the
+board-metadata and firmware-resolver honesty fixes surfaced while wiring it up.
+- **New: CYD 3.5" (ESP32-3248S035R) is a flashable LxveOS board.** It ships its own
+  `cyd_3248S035_r-merged.bin` on the rolling `ci-latest` channel (a merged single image at `0x0`, no
+  token required) and carries the correct `st7796` panel metadata, so a 3.5" CYD is recognized and
+  flashed as itself instead of falling back to a generic default.
+- **Fixed — panel metadata for the CYD 3.5" (st7796) and Guition (st7789).** The display type each board
+  reports now matches the real panel, so Detect and Flash no longer mislabel them.
+- **Fixed — a generic-ILI9341 confirm now recommends running Detect first**, so a panel isn't flashed
+  with the wrong default when a quick identify would have caught it.
+- **Fixed — an honest firmware-channel error.** A release fetch that 404s now explains a private or
+  missing release channel instead of a bare 404, and a malformed firmware profile fails with a clear
+  error instead of an `AttributeError`.
+- **New — a token-less firmware-profile asset-reachability audit.** CC can check that every profile's
+  release assets actually download anonymously (the FLASH-DETECT reachability pass), and the audit
+  distinguishes a real schema mismatch from a source-only profile.
+
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new
 **Operate console** for single-device control, a passive **network-intel** pass on the Targets surface,
