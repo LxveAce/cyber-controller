@@ -160,8 +160,9 @@ def test_command_catalog_full_surface_with_danger_flags():
     assert {
         "help", "agree", "info", "status", "bridge", "caps", "features", "sysinfo",
         "scan", "sniff", "stations", "probes", "capture", "wardrive",
-        "blescan", "subghz", "nrf24", "nfc", "ir",
-        "defend", "eviltwin", "apaudit", "bleflood", "btracker", "blehid", "airspace",
+        "blescan", "blewardrive", "subghz", "nrf24", "nfc", "ir",
+        "defend", "pwnwatch", "eviltwin", "apaudit", "bleflood", "btracker",
+        "flipper", "meta", "skimmer", "flock", "surveil", "blehid", "airspace", "watch",
         "arm", "disarm", "evilportal", "badble",
     } <= set(cmds)
     assert cmds["evilportal"].danger == "lab-only"
@@ -171,6 +172,11 @@ def test_command_catalog_full_surface_with_danger_flags():
     assert cmds["scan"].danger == "" and cmds["defend"].danger == "" and cmds["blescan"].danger == ""
     assert cmds["arm"].danger == ""  # the gate itself transmits nothing
     assert cmds["airspace"].danger == ""  # passive occupancy summary, transmits nothing
+    # the ported Marauder-family passive detectors (extra#2's firmware Phase-2) all stay danger-free
+    for name in (
+        "pwnwatch", "blewardrive", "flipper", "meta", "skimmer", "flock", "surveil", "watch",
+    ):
+        assert cmds[name].danger == "", f"{name} is a passive detector — must be danger-free"
 
 
 # ── event-line parsing (bridge on -> LXVEOS/1 <type> k=v events) ──

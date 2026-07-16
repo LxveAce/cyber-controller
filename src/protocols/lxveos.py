@@ -292,6 +292,7 @@ class LxveOSProtocol(BaseProtocol):
             C("wardrive", "Recon-WiFi", "Wardrive CSV export (bssid,ssid,ch,rssi,auth)"),
             # Recon — BLE / add-on radios
             C("blescan", "Recon-BLE", "BLE device scan (+vendor/appearance/service-UUIDs)", args="[seconds]"),
+            C("blewardrive", "Recon-BLE", "BLE wardrive CSV (addr,name,rssi,vendor,tracker)"),
             C("subghz", "Recon-Radio", "CC1101 sub-GHz (add-on module)",
               args="begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] | replay <gdo0> | end"),
             C("nrf24", "Recon-Radio", "nRF24 2.4GHz (add-on module)",
@@ -302,12 +303,20 @@ class LxveOSProtocol(BaseProtocol):
               args="recv <rx_gpio> [s] | send <tx_gpio> | show"),
             # Defense (passive detectors)
             C("defend", "Defense", "Deauth/disassoc attack detector", args="[seconds] [channel]"),
+            C("pwnwatch", "Defense", "Pwnagotchi-presence detector", args="[seconds] [channel]"),
             C("eviltwin", "Defense", "Evil-twin / rogue-AP detector"),
             C("apaudit", "Defense", "AP security audit (open/WEP/legacy-WPA/WPS)"),
             C("bleflood", "Defense", "BLE advert-flood/spam detector", args="[seconds]"),
             C("btracker", "Defense", "BLE item-tracker/stalking detector", args="[seconds]"),
+            C("flipper", "Defense", "Flipper Zero detector (BLE service-UUID)", args="[seconds]"),
+            C("meta", "Defense", "Meta / Ray-Ban + Oculus detector (BLE)", args="[seconds]"),
+            C("skimmer", "Defense", "Card-skimmer heuristic (HC-0x BT-serial)", args="[seconds]"),
+            C("flock", "Defense", "Flock camera heuristic (BLE, experimental)", args="[seconds]"),
+            C("surveil", "Defense", "Counter-surveillance BLE sweep", args="[seconds]"),
             C("blehid", "Defense", "Flag nearby BLE HID devices (rogue keyboards/injectors)", args="[seconds]"),
             C("airspace", "Defense", "Airspace occupancy summary (APs, open/WPS, BLE, trackers)"),
+            C("watch", "Defense", "Watchlist — flag when a watched BSSID/BLE-addr is present",
+              args="add <mac> [label] | del <mac> | list | clear | scan [seconds]"),
             # Arm gate (the safety mechanism itself transmits nothing)
             C("arm", "Offensive", "Two-factor enable for offensive-TX ops", args="[token|status]"),
             C("disarm", "Offensive", "Hard-disarm: return to SAFE"),
