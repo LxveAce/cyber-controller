@@ -40,6 +40,10 @@ class TargetIngestor:
         self._attached: dict[str, Callable[[str], None]] = {}  # port -> on_line cb (for detach)
         self._parsers: dict[str, Any] = {}  # port -> protocol instance (command sink resets it)
         self._recent_capture: dict[str, str] = {}  # port -> last capture key (for pcap_saved)
+        # Observers of the full parsed-event stream (ev, port), notified after routing — so a view
+        # can tap fields the pool Target drops. (The Target keeps mac/name/rssi and reads the mac
+        # key, so LxveOS BLE adverts, keyed addr, with tracker/company, never reach it.)
+        self._event_observers: list[Callable[[Any, str], None]] = []
 
     def attach(self, conn: Any, protocol: Any) -> Callable[[str], None]:
         """Register an on_line handler on *conn* that parses each line with *protocol* and adds any
@@ -75,12 +79,39 @@ class TargetIngestor:
                 self._route(ev, port)
             except Exception:
                 log.exception("TargetIngestor: routing error on %s", port)
+            # Notify observers regardless of the routing outcome: a routing error above is logged
+            # and swallowed, observers still fire; an observer error is isolated too. Both run.
+            self._notify_observers(ev, port)
 
         conn.on_line(on_line)
         self._attached[port] = on_line
         self._parsers[port] = protocol  # so send_to_port can reset scan ordinals on a list-clear
         log.info("TargetIngestor attached to %s via %s", port, type(protocol).__name__)
         return on_line
+
+    def add_event_observer(self, cb: "Callable[[Any, str], None]") -> None:
+        """Register *cb*, called cb(parsed_event, port) for every parsed serial event after it is
+        routed. Unlike the reduced pool Target, this hands the observer the full ParsedEvent, so a
+        view can read fields the Target drops (LxveOS BLE addr/tracker/company). It fires on the
+        SERIAL READER thread, so a Qt consumer MUST marshal to the GUI thread (e.g. a pyqtSignal).
+        Duplicate registrations are kept (idempotency is the caller's concern)."""
+        self._event_observers.append(cb)
+
+    def remove_event_observer(self, cb: "Callable[[Any, str], None]") -> None:
+        """Best-effort removal of a previously-registered event observer (no-op if not present)."""
+        try:
+            self._event_observers.remove(cb)
+        except ValueError:
+            pass
+
+    def _notify_observers(self, ev: Any, port: str) -> None:
+        """Fan a parsed event out to every observer, each guarded so one failure can't break
+        ingestion for the port (the same invariant that wraps routing)."""
+        for cb in self._event_observers:
+            try:
+                cb(ev, port)
+            except Exception:
+                log.exception("TargetIngestor: event observer error on %s", port)
 
     def detach(self, conn: Any) -> None:
         """Best-effort removal of the on_line handler for *conn*."""

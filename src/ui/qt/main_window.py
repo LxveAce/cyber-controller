@@ -576,6 +576,15 @@ class CyberControllerWindow(QMainWindow):
             self._dm, self._ingestor, recorder=self._macro, dms_seen=self._device_tab._dms_seen,
         )
         self._operate_surface.addTab(self._operate_console, label_icon("Console"), "Console")
+        # BLE Analyzer (1.9.0 output view): the on-device Bluetooth-analyzer visual — a live RSSI
+        # graph + device table, fed by ble_found events from EVERY BLE firmware via the ingestor's
+        # event tap (see _wire_ble_analyzer). An awareness view; it transmits nothing.
+        from src.ui.qt.ble_analyzer_tab import BleAnalyzerTab
+        self._ble_analyzer = BleAnalyzerTab() if BleAnalyzerTab is not None else None
+        if self._ble_analyzer is not None:
+            self._operate_surface.addTab(
+                self._ble_analyzer, label_icon("BLE Analyzer"), "BLE Analyzer")
+            self._wire_ble_analyzer()   # tap ble_found events now the tab exists (see the method)
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its
@@ -1215,6 +1224,34 @@ class CyberControllerWindow(QMainWindow):
             conn.write(data)
         except Exception:  # noqa: BLE001 — a DMS auth write must never abort the serial slot
             log.exception("DMS auth serial write failed")
+
+    def _wire_ble_analyzer(self) -> None:
+        """Feed the BLE Analyzer tab from the ingestor's parsed-event stream. The observer fires on
+        the serial reader thread, so it emits a Qt signal to marshal each ble_found event onto the
+        GUI thread before the tab folds it in. No-op if the tab or ingestor is unavailable."""
+        analyzer = getattr(self, "_ble_analyzer", None)
+        ingestor = getattr(self, "_ingestor", None)
+        if analyzer is None or ingestor is None:
+            return
+        from PyQt5.QtCore import QObject
+        from PyQt5.QtCore import pyqtSignal as _sig
+
+        class _BleEventSignal(QObject):
+            ble_event = _sig(str, object)  # (port, event-data dict)
+
+        self._ble_event_signal = _BleEventSignal()
+        self._ble_event_signal.ble_event.connect(analyzer.on_ble_event)
+
+        def _observer(ev, port):
+            # Serial-thread callback: keep only BLE adverts; emit queues onto the GUI thread.
+            if getattr(ev, "event_type", "") == "ble_found":
+                self._ble_event_signal.ble_event.emit(port, getattr(ev, "data", {}) or {})
+
+        self._ble_event_observer = _observer  # keep a strong ref so it isn't garbage-collected
+        try:
+            ingestor.add_event_observer(_observer)
+        except Exception:  # noqa: BLE001 — analyzer wiring must never break app startup
+            log.exception("BLE analyzer: failed to register ingestor observer")
 
     @pyqtSlot(str, str)
     def _pterm_on_line(self, port: str, line: str) -> None:

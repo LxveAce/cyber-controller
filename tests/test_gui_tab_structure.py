@@ -124,7 +124,7 @@ def test_operate_surface_subtabs(qapp, isolated_settings):
     surface = win._operate_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
     assert titles == ["Targets", "Broadcast", "Macros", "Wardrive", "Multi-Wardrive", "Flock Map",
-                      "Crack Lab", "Console"]
+                      "Crack Lab", "Console", "BLE Analyzer"]
     assert surface.widget(0) is win._targets_tab, "Targets sub-tab must be the TargetsTab object"
     assert surface.widget(1) is win._broadcast_bar, "Broadcast sub-tab must be the BroadcastBar object"
     assert surface.widget(2) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
@@ -132,11 +132,42 @@ def test_operate_surface_subtabs(qapp, isolated_settings):
     assert surface.widget(4) is win._wardrive_multi_tab, "Multi-Wardrive sub-tab must be the WardriveMultiTab object"
     assert surface.widget(5) is win._flock_heatmap, "Flock Map sub-tab must be the FlockHeatmapTab object"
     assert surface.widget(7) is win._operate_console, "Console sub-tab must be the OperateTab object"
+    assert surface.widget(8) is win._ble_analyzer, "BLE Analyzer must be the BleAnalyzerTab"
     # None of the sub-views are direct top-level tabs anymore.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
     for gone in ("Targets", "Broadcast", "Macros", "Wardrive", "Multi-Wardrive", "Flock Map"):
         assert gone not in toplevel, f"{gone!r} should be an Operate sub-tab, not top-level"
     assert "Operate" in toplevel
+
+
+def test_ble_analyzer_fed_by_ingestor_events(qapp, isolated_settings):
+    # End-to-end wiring: a BLE advert line on the window's ingestor -> parse -> route -> the event
+    # observer -> the marshalling signal -> the analyzer tab's model. The signal is emitted on the
+    # test (GUI) thread, so it's a direct connection and the model updates synchronously.
+    from src.protocols import get_protocol
+
+    win = _make_window()
+
+    class _Conn:
+        port = "COM4"
+
+        def __init__(self) -> None:
+            self._cbs = []
+
+        def on_line(self, cb) -> None:
+            self._cbs.append(cb)
+
+        def feed(self, line: str) -> None:
+            for cb in list(self._cbs):
+                cb(line)
+
+    conn = _Conn()
+    win._ingestor.attach(conn, get_protocol("marauder"))
+    conn.feed("BLE: 12:34:56:78:9a:bc Name: Fitbit RSSI: -44")
+
+    dev = win._ble_analyzer.model.get("12:34:56:78:9a:bc")
+    assert dev is not None, "the ingestor's ble_found event never reached the analyzer model"
+    assert dev.rssi == -44 and dev.name == "Fitbit"
 
 
 def test_network_surface_subtabs(qapp, isolated_settings):
