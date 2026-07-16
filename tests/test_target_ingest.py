@@ -115,6 +115,17 @@ def test_halehound_ble_into_pool():
     assert bles[0].mac == "AA:BB:CC:DD:EE:FF" and bles[0].ssid == "Watch"
 
 
+def test_lxveos_ble_addr_reaches_pool():
+    # LxveOS keys BLE by `addr`, not `mac` — its adverts must still become pool targets, not be
+    # silently dropped (the fix in _event_to_target's ble_found branch).
+    pool = _ingest("lxveos",
+                   ["LXVEOS/1 ble addr=66:55:44:33:22:11 type=random rssi=-55 name=4d79"])
+    bles = [t for t in pool.all() if t.target_type == TargetType.BLE]
+    assert len(bles) == 1
+    assert bles[0].mac == "66:55:44:33:22:11"      # addr is used as the target key
+    assert bles[0].ssid == "My" and bles[0].rssi == -55  # name 4d79 -> "My"
+
+
 def test_halehound_subghz_into_pool():
     pool = _ingest("halehound",
                    ["[SUBGHZ] Freq: 433.92MHz | Mod: ASK | Data: AA BB CC | RSSI: -30"])

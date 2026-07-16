@@ -334,7 +334,9 @@ class TargetIngestor:
             return t
 
         if et == "ble_found":
-            mac = str(d.get("mac", "")).strip()
+            # Accept mac (Marauder/Ghost/Flipper/DIV) OR addr (LxveOS keys BLE by addr), so a LxveOS
+            # BLE advert also becomes a pool/AutoRouter target instead of being silently dropped.
+            mac = str(d.get("mac") or d.get("addr") or "").strip()
             if not mac:
                 return None
             return Target(
