@@ -3,6 +3,23 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+In-progress work toward the next release. Backend/serial control only — CC issues firmware CLI commands
+and never authors radio frames.
+- **New: a BLE Analyzer view.** A firmware-agnostic Bluetooth analyzer that reproduces the on-device
+  view — a live RSSI-over-time graph plus a de-duplicated device table — so one view serves every BLE
+  firmware (Marauder / GhostESP / Flipper / HaleHound / ESP32-DIV / LxveOS). Built on a Qt-free,
+  unit-tested `BleAnalyzerModel` and fed by a guarded event tap on the ingestor's parsed-event stream,
+  so it also sees LxveOS `addr`-keyed adverts (with tracker/company) that the mac-keyed target pool drops.
+  Awareness-only; it transmits nothing.
+- **New: +8 LxveOS passive detectors in the CC command catalog.** Synced the CC bridge with LxveOS
+  Phase-2's new CLI verbs — `blewardrive`, `pwnwatch`, `flipper`, `meta`, `skimmer`, `flock`, `surveil`,
+  and `watch` — so the palette, `features` surface, and Operate command grid mirror the real device. All
+  eight are passive detectors (no emitter), marked danger-free.
+- **Fixed: LxveOS BLE adverts now reach the target pool / AutoRouter.** The `ble_found` routing branch
+  read only `mac`; LxveOS keys its BLE address as `addr`, so those detections never became pool targets.
+  It now accepts `mac` or `addr`, matching the analyzer's firmware-agnostic key handling.
+
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new
 **Operate console** for single-device control, a passive **network-intel** pass on the Targets surface,
