@@ -23,6 +23,14 @@ and never authors radio frames.
   CYD detection while a display-capable profile is selected (e.g. LxveOS, which supports the 3.5" and 2.8"
   CYDs) now keeps that profile and points you at the matching board, instead of silently jumping to Marauder
   and dropping your panel choice. Detection still steers to Marauder from a profile that can't flash a display.
+- **Fixed: the firmware download cache is now keyed on the URL, not just the asset name.** Two releases that
+  ship an identically-named asset (a new version of the same firmware, or a different firmware's `firmware.bin`)
+  no longer collide in the cache — a mismatch re-downloads instead of flashing the first one's stale bytes.
+- **Fixed: the offline vault caches the right image.** It now honors a profile's asset-match excludes when
+  choosing which build to store, so it can't cache an app-only/OTA image that the offline flash would then
+  write at 0x0 without a boot chain.
+- **Fixed: refreshing the port list keeps your selected port.** Clicking Refresh (e.g. after plugging in another
+  board) no longer silently reselects the first device, which could point the next Flash at the wrong board.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

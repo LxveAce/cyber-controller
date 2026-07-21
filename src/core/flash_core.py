@@ -504,7 +504,7 @@ def _safe_cache_name(name: str) -> str:
 # re-truncating a path another in-flight flash may currently be reading.
 _cache_locks_guard = threading.Lock()
 _cache_path_locks: Dict[str, threading.Lock] = {}
-_downloaded_paths: set = set()
+_downloaded_paths: Dict[str, str] = {}  # dest path -> the url it was downloaded from this session
 
 
 def _path_lock(path: str) -> threading.Lock:
@@ -557,13 +557,19 @@ def download_to(url: str, cache_dir: str, name: str, on_line: Line) -> str:
     # cache file, and reuse an already-downloaded copy instead of re-truncating a path another
     # in-flight flash may be reading. See the concurrent-cache note above.
     with _path_lock(dest):
-        if dest in _downloaded_paths and os.path.isfile(dest):
+        # Reuse the cached file only when THIS url produced it. The cache dir is flat and dest is the
+        # sanitized asset BASENAME, so two releases that ship an identically-named asset (a new version
+        # of the same firmware, or a different firmware's `firmware.bin`) map to the SAME dest. A
+        # basename-only reuse would then serve the first download's bytes for the second — the wrong
+        # firmware, with no sha256 gate on github_release profiles to catch it. Keying reuse on the url
+        # re-downloads (overwrites) on a mismatch instead of flashing stale/wrong bytes.
+        if _downloaded_paths.get(dest) == url and os.path.isfile(dest):
             on_line(f"[cache] reusing {safe} ({os.path.getsize(dest)} bytes)")
             return dest
         on_line(f"[download] {safe}")
         data = _http_get(url)
         _atomic_write(cache_dir, dest, data)
-        _downloaded_paths.add(dest)
+        _downloaded_paths[dest] = url
         on_line(f"[download] {len(data)} bytes -> {dest}")
         return dest
 
@@ -592,7 +598,7 @@ def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str,
     # thread is reading, and reuse an already-extracted member instead of re-truncating out_path
     # (which a concurrent flash's esptool may be mid-read of). See the concurrent-cache note above.
     with _path_lock(zip_path):
-        if out_path in _downloaded_paths and os.path.isfile(out_path):
+        if _downloaded_paths.get(out_path) == url and os.path.isfile(out_path):
             on_line(f"[cache] reusing {os.path.basename(out_path)} "
                     f"({os.path.getsize(out_path)} bytes)")
             return out_path
@@ -601,8 +607,13 @@ def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str,
         # is a REAL zip before trusting it: a download truncated mid-transfer leaves a nonzero file
         # that isn't a valid archive, and size>0 alone would reuse it and fail every extract until
         # the user clears the cache. zipfile.is_zipfile() rejects a missing/truncated EOCD.
+        # Reuse a cached zip only if it's a valid archive AND — when it was downloaded THIS session —
+        # it came from this url (so a same-name zip from a different release re-downloads instead of
+        # being extracted as if it were the one requested). A zip cached in a prior session isn't
+        # tracked here, so `.get(zip_path, url)` defaults to url and the persisted-cache reuse stands.
         if (os.path.isfile(zip_path) and os.path.getsize(zip_path) > 0
-                and zipfile.is_zipfile(zip_path)):
+                and zipfile.is_zipfile(zip_path)
+                and _downloaded_paths.get(zip_path, url) == url):
             on_line(f"[cache] reusing {safe_zip} ({os.path.getsize(zip_path)} bytes)")
         else:
             if os.path.isfile(zip_path):
@@ -611,6 +622,7 @@ def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str,
                 on_line(f"[download] {safe_zip}")
             data = _http_get(url)
             _atomic_write(cache_dir, zip_path, data)
+            _downloaded_paths[zip_path] = url
             on_line(f"[download] {len(data)} bytes -> {zip_path}")
 
         with zipfile.ZipFile(zip_path) as z:
@@ -623,7 +635,7 @@ def download_and_extract(url: str, cache_dir: str, asset_name: str, member: str,
             with z.open(target) as src:
                 blob = src.read()
         _atomic_write(cache_dir, out_path, blob)
-        _downloaded_paths.add(out_path)
+        _downloaded_paths[out_path] = url
         on_line(f"[extract] {want} ({os.path.getsize(out_path)} bytes) -> {out_path}")
         return out_path
 

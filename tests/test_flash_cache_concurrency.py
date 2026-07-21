@@ -121,3 +121,56 @@ def test_download_and_extract_reuse_does_not_retruncate_member(monkeypatch, tmp_
     assert out2 == out
     with open(out, "rb") as f:
         assert f.read() == b"READER-HOLDS-THIS"  # reused, not re-extracted/re-truncated
+
+
+def test_download_to_redownloads_when_url_changes_same_name(monkeypatch, tmp_path):
+    """A cached asset must NOT be reused for a DIFFERENT url that maps to the same basename. The flat
+    cache keys on the sanitized asset basename, so a new firmware version (or a different firmware)
+    sharing an asset name would otherwise serve the first download's stale bytes — the wrong image,
+    with no sha256 gate on github_release profiles to catch it. Reuse is keyed on the url."""
+    served = {
+        "https://github.com/x/a/firmware.bin": b"AAAA" * 8,
+        "https://github.com/x/b/firmware.bin": b"BBBB" * 8,
+    }
+    monkeypatch.setattr(flash_core, "_http_get", lambda url: served[url])
+
+    flash_core.download_to("https://github.com/x/a/firmware.bin", str(tmp_path), "firmware.bin", lambda _s: None)
+    assert (tmp_path / "firmware.bin").read_bytes() == served["https://github.com/x/a/firmware.bin"]
+
+    # Same basename, DIFFERENT url -> must re-download the new bytes, not reuse the cached ones.
+    flash_core.download_to("https://github.com/x/b/firmware.bin", str(tmp_path), "firmware.bin", lambda _s: None)
+    assert (tmp_path / "firmware.bin").read_bytes() == served["https://github.com/x/b/firmware.bin"], \
+        "a same-name asset from a different url must re-download, not serve stale/wrong firmware"
+
+    # Re-requesting the first url re-downloads too (dest now records b's url).
+    flash_core.download_to("https://github.com/x/a/firmware.bin", str(tmp_path), "firmware.bin", lambda _s: None)
+    assert (tmp_path / "firmware.bin").read_bytes() == served["https://github.com/x/a/firmware.bin"]
+
+
+def test_download_and_extract_redownloads_when_zip_url_changes(monkeypatch, tmp_path):
+    """A cached zip must not be re-extracted for a DIFFERENT release url that shares its asset name —
+    that would flash the old release's member. Reuse is keyed on the url."""
+    import io
+    import zipfile
+
+    def zip_bytes(member_data):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("merged.bin", member_data)
+        return buf.getvalue()
+
+    served = {
+        "https://github.com/x/a/bundle.zip": zip_bytes(b"OLD-MERGED"),
+        "https://github.com/x/b/bundle.zip": zip_bytes(b"NEW-MERGED"),
+    }
+    monkeypatch.setattr(flash_core, "_http_get", lambda url: served[url])
+
+    out_a = flash_core.download_and_extract(
+        "https://github.com/x/a/bundle.zip", str(tmp_path), "bundle.zip", "merged.bin", lambda _s: None)
+    assert open(out_a, "rb").read() == b"OLD-MERGED"
+
+    out_b = flash_core.download_and_extract(
+        "https://github.com/x/b/bundle.zip", str(tmp_path), "bundle.zip", "merged.bin", lambda _s: None)
+    assert out_b == out_a  # same flat-cache out path
+    assert open(out_b, "rb").read() == b"NEW-MERGED", \
+        "a same-name zip from a different url must re-extract the new release's member"

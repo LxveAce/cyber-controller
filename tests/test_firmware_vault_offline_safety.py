@@ -68,6 +68,40 @@ def test_download_firmware_allows_merged_profile_past_guard(vault, monkeypatch):
     assert called["api"] == 1  # merged profile proceeded past the guard to the release query
 
 
+def test_download_firmware_honors_asset_match_excludes(vault, monkeypatch):
+    """The vault must select the SAME asset the online resolver would, honoring the profile's
+    asset_match excludes. Grabbing the first '.bin' could cache an app-only OTA image (halehound
+    excludes 'OTA'/'ota' for exactly this reason); the offline path then writes it at 0x0 with no
+    boot chain and bricks the board."""
+    release = {"tag_name": "v1", "assets": [
+        {"name": "HaleHound-CYD-OTA.bin",   # listed FIRST, but excluded
+         "browser_download_url": "https://github.com/o/r/releases/download/v1/ota.bin"},
+        {"name": "HaleHound-CYD-full.bin",  # the merged image the online path would flash
+         "browser_download_url": "https://github.com/o/r/releases/download/v1/full.bin"},
+    ]}
+    monkeypatch.setattr(fwv, "_safe_api_get_json", lambda url: release)
+    monkeypatch.setattr(vault, "_load_profile", lambda pid: {
+        "id": "halehound",
+        "firmware_urls": {"latest": _GH},
+        "image_model": "merged-single-bin",
+        "resolver_params": {"asset_match": {"include_suffixes": [".bin"],
+                                            "exclude_substrings": ["OTA", "ota"]}},
+    })
+    picked = {}
+
+    def fake_dl(url, tmp_path, cb, filename):
+        picked["url"] = url
+        picked["filename"] = filename
+        raise ValueError("stop after asset selection")  # we only assert WHICH asset was chosen
+
+    monkeypatch.setattr(fwv, "_safe_streamed_download", fake_dl)
+
+    vault.download_firmware("halehound")
+    assert picked.get("url", "").endswith("/full.bin"), \
+        "the vault must skip the OTA-excluded asset and cache the full merged image the online path flashes"
+    assert "OTA" not in picked.get("filename", "")
+
+
 # ── corrupt-but-valid-JSON index resilience ───────────────────────────────
 import json as _json
 

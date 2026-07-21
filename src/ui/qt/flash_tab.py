@@ -510,12 +510,20 @@ class FlashTab(QWidget):
     # ── Refreshers ───────────────────────────────────────────────────
 
     def _refresh_ports(self) -> None:
+        prev = self._port_combo.currentData()  # remember the user's selection across the rebuild
         self._port_combo.clear()
         for dev in self._dm.scan_ports():
             self._port_combo.addItem(f"{dev.port} — {dev.name}", dev.port)
         # Empty-state entry (same shape as software_tab's empty drive combo).
         if self._port_combo.count() == 0:
             self._port_combo.addItem("No ports found — plug in a board and press Refresh", None)
+        elif prev is not None:
+            # Restore the previously-selected port. Without this, Refresh (a natural action after
+            # plugging in another board) silently reselects index 0 — a DIFFERENT device — and the
+            # next Flash writes to the wrong port. Only fall back to index 0 if that port is gone.
+            idx = self._port_combo.findData(prev)
+            if idx >= 0:
+                self._port_combo.setCurrentIndex(idx)
         self._recolor_profiles()
 
     def _refresh_profiles(self) -> None:

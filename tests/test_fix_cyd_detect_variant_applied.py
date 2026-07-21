@@ -170,3 +170,29 @@ def test_detect_steers_to_marauder_from_a_non_display_profile(flash_tab_widget):
         "a non-display profile should fall back to Marauder so the CYD panel can actually be flashed"
     )
     assert ft._pending_variant == "cyd_2432S028_2usb"  # remembered, applied when Marauder's list loads
+
+
+def test_refresh_ports_preserves_the_selected_port(flash_tab_widget, monkeypatch):
+    # Wrong-target guard: Refresh (a natural action after plugging in another board) must NOT silently
+    # reselect index 0 and re-point Flash at a different device.
+    from types import SimpleNamespace
+
+    def dev(port, name):
+        return SimpleNamespace(port=port, name=name, board_type=None)
+
+    ft = flash_tab_widget
+    monkeypatch.setattr(ft._dm, "scan_ports", lambda: [dev("COM3", "Marauder"), dev("COM23", "CYD")])
+    ft._refresh_ports()
+    ft._port_combo.setCurrentIndex(ft._port_combo.findData("COM23"))
+    assert ft._port_combo.currentData() == "COM23"
+
+    # A third board appears and the user clicks Refresh — COM23 must stay selected.
+    monkeypatch.setattr(ft._dm, "scan_ports",
+                        lambda: [dev("COM3", "Marauder"), dev("COM23", "CYD"), dev("COM9", "New")])
+    ft._refresh_ports()
+    assert ft._port_combo.currentData() == "COM23", "Refresh must keep the user's selected port"
+
+    # If the selected port is gone, fall back (don't crash / don't keep a stale port).
+    monkeypatch.setattr(ft._dm, "scan_ports", lambda: [dev("COM3", "Marauder"), dev("COM9", "New")])
+    ft._refresh_ports()
+    assert ft._port_combo.currentData() in ("COM3", "COM9")

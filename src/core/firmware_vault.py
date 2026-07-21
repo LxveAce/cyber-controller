@@ -18,7 +18,7 @@ from typing import Any
 import requests
 
 # Reuse the flash core's vetted SSRF/path-traversal primitives (single source of truth).
-from src.core.flash_core import IMAGE_MULTI, _require_allowed_url, _safe_cache_name
+from src.core.flash_core import IMAGE_MULTI, _regex_flags, _require_allowed_url, _safe_cache_name
 from src.core.resources import resource_path
 
 log = logging.getLogger(__name__)
@@ -319,16 +319,36 @@ class FirmwareVault:
                 log.error("GitHub API error for %s (version=%s): %s", profile_id, version, exc)
                 return None
 
-        # Find a .bin asset to download. Do NOT fall back to assets[0] — flashing an
-        # arbitrary first release asset of any type is a supply-chain hazard.
+        # Pick the SAME asset the online resolver (flash_core._resolve_github) would flash, honoring the
+        # profile's asset_match rules — include_regex / include_suffixes AND exclude_substrings. Grabbing
+        # the first ".bin" ignored excludes like halehound's ["OTA","ota"], so the vault could cache an
+        # app-only OTA image; the offline path then writes it as a merged blob at 0x0 (no boot chain) and
+        # bricks the board. Matching the online selection keeps the cached image the one an online flash
+        # would use. Do NOT fall back to assets[0] — flashing an arbitrary first asset is a supply-chain hazard.
+        am = (profile.get("resolver_params") or {}).get("asset_match") or {}
+        inc_re = None
+        if am.get("include_regex"):
+            try:
+                inc_re = re.compile(am["include_regex"], _regex_flags(am.get("regex_flags")))
+            except re.error:
+                inc_re = None
+        suffixes = am.get("include_suffixes", [".bin"])
+        excludes = am.get("exclude_substrings", [])
         bin_asset = None
         for asset in assets:
-            name = asset.get("name", "").lower()
-            if name.endswith(".bin"):
-                bin_asset = asset
-                break
+            name = asset.get("name", "")
+            if inc_re is not None:
+                if not inc_re.match(name):
+                    continue
+            elif not any(name.endswith(s) for s in suffixes):
+                continue
+            if any(x in name for x in excludes):
+                continue
+            bin_asset = asset
+            break
         if not bin_asset:
-            log.error("No .bin asset in the %s release for %s — refusing to guess", resolved_version, profile_id)
+            log.error("No matching firmware asset in the %s release for %s — refusing to guess",
+                      resolved_version, profile_id)
             return None
         download_url = bin_asset.get("browser_download_url", "")
         if not download_url:
