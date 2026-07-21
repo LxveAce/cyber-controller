@@ -93,11 +93,13 @@ DEFAULTS: dict[str, Any] = {
         "last_seen_latest": "",
         "last_check_iso": "",
     },
-    # Wardrive uploads (WS-8). Opt-in, credential-gated: the WiGLE "Encoded for use" token (base64
-    # apiName:apiToken from the WiGLE account page). Empty = no upload offered. The Wardrive tab uploads its
-    # WigleWifi CSV straight to wigle.net when this is set and the box has internet (src/core/wigle_upload.py).
+    # Wardrive uploads (WS-8). Opt-in, credential-gated per service; empty = that service isn't offered. The
+    # Wardrive tab uploads its WigleWifi CSV to the chosen service when the token is set and the box has
+    # internet (src/core/wardrive_upload.py). wigle_token = WiGLE "Encoded for use" (base64 apiName:apiToken
+    # from the WiGLE account page); wdgwars_token = the 64-hex API key from wdgwars.pl ▸ Profile.
     "uploads": {
         "wigle_token": "",
+        "wdgwars_token": "",
     },
     # One-time interface-mode choice prompt shown (so we ask Simple-vs-Pro exactly once).
     "_interface_mode_ack": False,

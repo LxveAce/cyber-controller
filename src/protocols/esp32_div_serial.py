@@ -1,14 +1,16 @@
-"""ESP32-DIV (LxveLabs serial fork) protocol.
+"""ESP32-DIV serial-fork protocol.
 
 Stock cifertech/ESP32-DIV is touch/button-only and speaks nothing over serial, so CC models it as a
-``controlmap`` device (see ``esp32_div.py`` / the two-profile plan). This protocol is for the LxveLabs
-**serial fork**, which adds a line-based serial CLI: it answers with an ``LXVEDIV/1`` identity banner and
-emits structured ``TAG key=val`` result lines. Wire contract:
-``command-center/projects/cc-app/LXVEDIV-SERIAL-PROTOCOL-2026-07-21.md``.
+``controlmap`` device (see ``esp32_div.py`` / the two-profile plan). This protocol is for the **ESP32-DIV
+serial fork** — a fork that KEEPS the ESP32-DIV name (original firmware by cifertech; the serial CLI is the
+only addition, authored by LxveAce, with cifertech's credits and MIT license carried forward). The fork adds
+a line-based serial CLI: it answers with an ``ESP32-DIV serial/1`` identity banner and emits structured
+``TAG key=val`` result lines. Wire contract:
+``command-center/projects/cc-app/ESP32-DIV-SERIAL-PROTOCOL-2026-07-21.md``.
 
-The parser is pure and unit-tested against canned LXVEDIV lines (no hardware). Data keys match the stock DIV
-parser (``ap_found``/``client_found``/``ble_found`` etc.) so the target pool / analyzers populate identically;
-the fork supplies its own stable ``idx`` per target (used by ``select ap/sta/ble <n>``).
+The parser is pure and unit-tested against canned lines (no hardware). Data keys match the stock DIV parser
+(``ap_found``/``client_found``/``ble_found`` etc.) so the target pool / analyzers populate identically; the
+fork supplies its own stable ``idx`` per target (used by ``select ap/sta/ble <n>``).
 """
 from __future__ import annotations
 
@@ -16,9 +18,10 @@ import re
 
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
-# The identity prefix the fork prints on boot and on `id`/`status`/`version`. This is what distinguishes the
-# serial fork from a stock DIV (which prints nothing on serial), so `identify()` keys on it.
-_RE_IDENT = re.compile(r"^LXVEDIV/\d", re.IGNORECASE)
+# The identity banner the fork prints on boot and on `id`/`status`/`version`. It keeps the ESP32-DIV name and
+# adds a unique `serial/<n>` capability marker — stock ESP32-DIV prints nothing on serial, so this both keeps
+# the original branding and distinguishes the serial fork, which is what `identify()` keys on.
+_RE_IDENT = re.compile(r"ESP32-DIV\s+serial/\d", re.IGNORECASE)
 
 
 def _kv(rest: str) -> dict[str, str]:
@@ -40,7 +43,8 @@ def _int(d: dict[str, str], key: str) -> int:
 
 
 class Esp32DivSerialProtocol(BaseProtocol):
-    """Parser + command catalog for the LxveLabs ESP32-DIV serial fork (LXVEDIV/1)."""
+    """Parser + command catalog for the ESP32-DIV serial fork (keeps the ESP32-DIV name; original by
+    cifertech, serial CLI added by LxveAce). Identity banner: ``ESP32-DIV serial/1``."""
 
     capabilities: "frozenset[str]" = frozenset({"wifi", "ble", "nrf24"})
     driver_type = "text-cli"
@@ -187,7 +191,7 @@ class Esp32DivSerialProtocol(BaseProtocol):
             CommandInfo("sd info", "Storage", "SD card status"),
             CommandInfo("sd ls", "Storage", "List SD card files"),
             # ── System (safe) ─────────────────────────────────────────
-            CommandInfo("id", "System", "Print the LXVEDIV identity banner"),
+            CommandInfo("id", "System", "Print the ESP32-DIV serial identity banner"),
             CommandInfo("version", "System", "Firmware version"),
             CommandInfo("status", "System", "Current status (poll-safe)"),
             CommandInfo("stop", "System", "Stop all operations"),

@@ -166,9 +166,11 @@ class SettingsTab(QWidget):
         self._uploads_card, uploads_outer = _make_card("Wardrive uploads (WiGLE)")
         uploads_card = self._uploads_card
         uploads_desc = QLabel(
-            "Paste your WiGLE “Encoded for use” token (from wigle.net ▸ Account) to upload a "
-            "wardrive CSV straight to WiGLE from the Wardrive tab, when the machine has internet. Leave blank "
-            "to keep uploads off. The token is a credential — it's stored locally in your settings."
+            "Add a wardriving-service token to upload a wardrive CSV straight from the Wardrive tab when the "
+            "machine has internet. Leave a field blank to keep that service off. Tokens are credentials — "
+            "they're stored locally in your settings.\n"
+            "• WiGLE: the “Encoded for use” token from wigle.net ▸ Account.\n"
+            "• WDG Wars: the 64-hex API key from wdgwars.pl ▸ Profile."
         )
         uploads_desc.setObjectName("muted")
         uploads_desc.setWordWrap(True)
@@ -179,6 +181,10 @@ class SettingsTab(QWidget):
         self._wigle_token_edit.setEchoMode(QLineEdit.Password)   # a credential — mask it
         self._wigle_token_edit.setPlaceholderText("WiGLE Encoded-for-use token")
         token_form.addRow("WiGLE token:", self._wigle_token_edit)
+        self._wdgwars_token_edit = QLineEdit()
+        self._wdgwars_token_edit.setEchoMode(QLineEdit.Password)
+        self._wdgwars_token_edit.setPlaceholderText("WDG Wars API key (64 hex)")
+        token_form.addRow("WDG Wars token:", self._wdgwars_token_edit)
         uploads_outer.addLayout(token_form)
         root.addWidget(uploads_card)
 
@@ -306,6 +312,7 @@ class SettingsTab(QWidget):
         self._suppress_warnings_check.toggled.connect(self._mark_dirty)
         self._secure_container_check.toggled.connect(self._mark_dirty)
         self._wigle_token_edit.textChanged.connect(self._mark_dirty)
+        self._wdgwars_token_edit.textChanged.connect(self._mark_dirty)
 
     def _mark_dirty(self, *_args) -> None:
         if not self._loading:
@@ -350,6 +357,7 @@ class SettingsTab(QWidget):
 
         uploads = settings.get("uploads", {})
         self._wigle_token_edit.setText(str(uploads.get("wigle_token", "")))
+        self._wdgwars_token_edit.setText(str(uploads.get("wdgwars_token", "")))
 
     def _gather(self) -> dict:
         """Read the current UI state into a settings dict.
@@ -409,6 +417,7 @@ class SettingsTab(QWidget):
             "uploads": {
                 **disk.get("uploads", {}),
                 "wigle_token": self._wigle_token_edit.text().strip(),
+                "wdgwars_token": self._wdgwars_token_edit.text().strip(),
             },
         }
 

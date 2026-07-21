@@ -24,16 +24,18 @@ def test_registered_and_functional_but_not_yet_advertised():
     assert PROTOCOL_DISPLAY_NAMES["esp32-div"] == "ESP32-DIV"
 
 
-def test_identify_only_the_lxvediv_banner():
+def test_identify_only_the_serial_fork_banner():
     p = _p()
-    assert p.identify("LXVEDIV/1 fork=1.0.0 base=v3.2 board=cyd caps=0x7 heap=180000")
-    assert p.identify("lxvediv/2 fork=1.1.0")           # case-insensitive, version-tolerant
-    assert not p.identify("ESP32-DIV v3.2")             # a stock banner is NOT our fork
+    assert p.identify("ESP32-DIV serial/1 fork=1.0.0 base=v3.2 board=cyd caps=0x7 heap=180000")
+    assert p.identify("esp32-div  serial/2 fork=1.1.0")   # case-insensitive, whitespace/version-tolerant
+    # A STOCK ESP32-DIV boot banner (no serial-capability marker) is NOT our serial fork.
+    assert not p.identify("ESP32-DIV v3.2")
+    assert not p.identify("ESP32-DIV by cifertech")
     assert not p.identify("AP idx=0 ssid=Home bssid=aa:bb:cc:dd:ee:ff ch=6 rssi=-40 enc=WPA2")
 
 
 def test_identity_line_is_a_status_event():
-    ev = _p().parse_line("LXVEDIV/1 fork=1.0.0 base=v3.2 caps=0x7")
+    ev = _p().parse_line("ESP32-DIV serial/1 fork=1.0.0 base=v3.2 caps=0x7")
     assert ev is not None and ev.event_type == "status"
 
 

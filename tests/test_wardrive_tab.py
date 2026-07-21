@@ -34,23 +34,45 @@ def _tab(monkeypatch):
     return wardrive_tab.WardriveTab()
 
 
-def test_wigle_upload_gate_needs_a_token(qapp, monkeypatch):
-    # WS-8: with no WiGLE token set, the upload is refused with a helpful message and NO worker spawns.
+def _select_provider(tab, key):
+    idx = tab._upload_provider.findData(key)
+    if idx >= 0:
+        tab._upload_provider.setCurrentIndex(idx)
+
+
+def test_upload_gate_needs_a_token(qapp, monkeypatch):
+    # WS-8: with no token for the selected service, the upload is refused with a helpful message + NO worker.
     import src.config.settings as S
-    monkeypatch.setattr(S, "load_settings", lambda: {"uploads": {"wigle_token": ""}})
+    monkeypatch.setattr(S, "load_settings", lambda: {"uploads": {"wigle_token": "", "wdgwars_token": ""}})
     tab = _tab(monkeypatch)
-    tab._on_upload_wigle()
+    _select_provider(tab, "wdgwars")
+    tab._on_upload()
     assert tab._upload_worker is None
-    assert "token" in tab._log.toPlainText().lower()
+    assert "wdg wars" in tab._log.toPlainText().lower() and "token" in tab._log.toPlainText().lower()
 
 
-def test_wigle_upload_gate_needs_a_saved_csv(qapp, monkeypatch, tmp_path):
-    # Token set, but the CSV path doesn't exist yet -> refused, no worker.
+def test_upload_gate_needs_a_saved_csv(qapp, monkeypatch, tmp_path):
+    # Token set for the selected service, but the CSV path doesn't exist yet -> refused, no worker.
     import src.config.settings as S
-    monkeypatch.setattr(S, "load_settings", lambda: {"uploads": {"wigle_token": "TOK"}})
+    monkeypatch.setattr(S, "load_settings", lambda: {"uploads": {"wigle_token": "TOK", "wdgwars_token": ""}})
     tab = _tab(monkeypatch)
+    _select_provider(tab, "wigle")
     tab._out_edit.setText(str(tmp_path / "does-not-exist.csv"))
-    tab._on_upload_wigle()
+    tab._on_upload()
+    assert tab._upload_worker is None
+    assert "no saved csv" in tab._log.toPlainText().lower()
+
+
+def test_upload_uses_the_selected_providers_token(qapp, monkeypatch, tmp_path):
+    # The gate reads the token for the SELECTED provider (wdgwars_token, not wigle_token).
+    import src.config.settings as S
+    monkeypatch.setattr(S, "load_settings",
+                        lambda: {"uploads": {"wigle_token": "", "wdgwars_token": "KEY64"}})
+    tab = _tab(monkeypatch)
+    _select_provider(tab, "wdgwars")
+    tab._out_edit.setText(str(tmp_path / "still-missing.csv"))   # stop before the network worker starts
+    tab._on_upload()
+    # WDG Wars token IS set, so it passed the token gate and fell through to the "no saved CSV" gate.
     assert tab._upload_worker is None
     assert "no saved csv" in tab._log.toPlainText().lower()
 
