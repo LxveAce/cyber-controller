@@ -258,3 +258,53 @@ def test_on_line_received_from_other_port_does_not_repaint(qapp):
     dev.arm_state = "armed"
     tab.on_line_received("COM99", "LXVEOS/1 arm state=armed")
     assert all(not b.isEnabled() for b in tab._tx_buttons)  # unchanged — repaint gated on the port
+
+
+# ── firmware without an arm concept: total functionality behind a confirm ─────
+# Owner directive 2026-07-21 (authorized lab use): offensive commands must fire on EVERY firmware.
+# Firmwares that don't implement arming (Marauder/DIV/GhostESP/Bruce) are confirm-gated, not dead-ended.
+
+def test_non_arming_firmware_tx_buttons_enabled_when_connected(qapp):
+    from src.models.device import Device
+
+    dev = Device(port="COM23", firmware="marauder", connected=True)
+    tab = _tab(dev)
+    assert tab._tx_buttons, "marauder has offensive verbs -> classify() must flag them as TX buttons"
+    # No arm concept -> the offensive buttons are usable the moment the device is connected.
+    assert all(b.isEnabled() for b in tab._tx_buttons)
+    assert all(b.isEnabled() for b in tab._safe_buttons)
+    # The two-factor arm box is hidden (it would be three dead buttons on a non-arming firmware).
+    # isHidden() reflects the explicit hide regardless of the offscreen parent's visibility.
+    assert tab._arm_box.isHidden()
+
+
+def test_non_arming_firmware_dangerous_send_confirms_then_sends(qapp, monkeypatch):
+    from PyQt5.QtWidgets import QMessageBox
+
+    from src.models.device import Device
+
+    dev = Device(port="COM23", firmware="marauder", connected=True)
+    conn = _FakeConn()
+    tab = _tab(dev, conn)
+    # The confirm dialog must appear (not a hard block); accept it.
+    seen = {"asked": False}
+
+    def _fake_warning(*_a, **_k):
+        seen["asked"] = True
+        return QMessageBox.Yes
+
+    monkeypatch.setattr(QMessageBox, "warning", staticmethod(_fake_warning))
+    tab._send("attack -t deauth")
+    assert seen["asked"], "a dangerous command on non-arming firmware must confirm, not hard-block"
+    assert conn.writes == ["attack -t deauth"]
+
+
+def test_arming_firmware_still_shows_arm_box_and_gates_tx(qapp):
+    from src.models.device import Device
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    dev.arm_state = "safe"
+    tab = _tab(dev)
+    # LxveOS arms -> the arm box is shown (not hidden) and offensive TX stays locked until ARMED.
+    assert not tab._arm_box.isHidden()
+    assert all(not b.isEnabled() for b in tab._tx_buttons)

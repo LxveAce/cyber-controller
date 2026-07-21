@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 In-progress work toward the next release. Backend/serial control only — CC issues firmware CLI commands
 and never authors radio frames.
+- **Changed: the Operate console now works on every firmware, not just LxveOS.** Offensive commands
+  (deauth, beacon, spam, jam, and the like) used to be permanently blocked on Marauder, ESP32-DIV, GhostESP,
+  and Bruce, because the "armed" state they required is only implemented by LxveOS. Those firmwares have no
+  arm handshake, so the console now confirm-gates each offensive command (type-to-confirm) instead of
+  dead-ending it. It also hides the unusable two-factor arm box on those firmwares, names the command grid
+  after the connected firmware, and colors dangerous buttons (amber for lab-only, red for jamming) so they
+  read differently from a scan at a glance. LxveOS keeps its two-factor arm lockout. For authorized lab use.
 - **New: read-only "Detect chip" — no more "unknown chip" for a classic ESP32.** A "Detect chip" button reads
   the real chip over serial (esptool `chip_id`, no firmware overwrite) and shows it ("Detected: esp32"). CC caches
   the confirmed chip and prefers it over the USB-VID guess for the firmware-compatibility hints, so a classic

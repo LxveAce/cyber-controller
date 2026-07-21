@@ -155,6 +155,7 @@ class LxveOSProtocol(BaseProtocol):
     # the parsed device_info.
     capabilities: "frozenset[str]" = frozenset()
     driver_type = "text-cli"
+    supports_arm = True  # LxveOS implements the two-factor arm/token/disarm handshake (arm_state events).
 
     def __init__(self) -> None:
         # `info` prints four separate lines with no terminator line, so accumulate them across parse_line

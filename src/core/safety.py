@@ -293,6 +293,25 @@ def should_confirm(danger: str, settings: dict[str, Any] | None) -> bool:
     return confirm and not suppressed
 
 
+def tx_hard_block(danger: str, supports_arm: bool, arm_state: str) -> bool:
+    """Whether an offensive-TX command must be HARD-BLOCKED (refused outright, not just confirmed).
+
+    The Operate console's armed-lockout only applies to firmwares that actually implement an ARM
+    handshake (``supports_arm``): there, a dangerous verb is refused unless the device is ``"armed"``.
+    A firmware with no arm concept (Marauder / ESP32-DIV / GhostESP / Bruce / …) has nothing to arm, so
+    hard-blocking would leave every offensive button permanently dead. For those, this returns False —
+    the command is instead gated by the standard confirm dialog (:func:`should_confirm`) at send time,
+    the same posture the Devices tab uses. This is for authorized lab use.
+
+    Returns True only when the command is dangerous AND the firmware arms AND it is not currently armed.
+    """
+    if not danger:
+        return False
+    if not supports_arm:
+        return False
+    return arm_state != "armed"
+
+
 def needs_first_run_disclaimer(settings: dict[str, Any] | None) -> bool:
     """Return True iff the one-time legal disclaimer has not been acknowledged.
 

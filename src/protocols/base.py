@@ -75,6 +75,13 @@ class BaseProtocol(ABC):
     # Subclasses override; the default "text-cli" fits every line-shell firmware.
     driver_type: str = "text-cli"
 
+    # Whether this firmware implements a two-factor ARM handshake (an `arm`/token/`disarm` exchange that
+    # emits an ``arm_state``). Only firmwares that actually arm should have their offensive-TX verbs
+    # gated behind the armed lockout in the Operate console; firmwares with no arm concept
+    # (Marauder/ESP32-DIV/GhostESP/Bruce/…) are confirm-gated at send time instead of dead-ended, so
+    # every button is usable for authorized lab work. Subclasses that arm override to True (LxveOS).
+    supports_arm: bool = False
+
     @property
     @abstractmethod
     def protocol_name(self) -> str:

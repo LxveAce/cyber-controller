@@ -37,7 +37,7 @@ from PyQt5.QtWidgets import (
 
 from src.config.settings import load_settings
 from src.core import safety
-from src.protocols import get_protocol
+from src.protocols import PROTOCOL_DISPLAY_NAMES, get_protocol
 from src.ui.qt.arm_lamp import arm_lamp_render
 
 log = logging.getLogger(__name__)
@@ -116,8 +116,10 @@ class OperateTab(QWidget):
         self._arm_label.setStyleSheet("color:#8b949e;font-size:13px;font-weight:bold;")
         root.addWidget(self._arm_label)
 
-        # Two-factor arm toggle
+        # Two-factor arm toggle. Only shown for firmwares that actually arm (LxveOS); hidden for firmwares
+        # with no arm concept, where it would just be three dead buttons (see _refresh).
         arm_box = QGroupBox("Offensive-TX arm gate (two-factor)")
+        self._arm_box = arm_box
         arm_row = QHBoxLayout(arm_box)
         self._btn_arm = QPushButton("Arm…")
         self._btn_arm.setToolTip("Request arming — the device replies with a one-time token.")
@@ -192,13 +194,30 @@ class OperateTab(QWidget):
         except Exception:
             return None
 
+    def _active_supports_arm(self) -> bool:
+        """Whether the active device's firmware implements the two-factor ARM handshake. Only those
+        firmwares gate offensive-TX behind the armed lockout; the rest are confirm-gated instead."""
+        dev = self._active_device()
+        fw = (getattr(dev, "firmware", "") if dev is not None else "") or ""
+        if not fw:
+            return False
+        try:
+            return bool(getattr(get_protocol(fw), "supports_arm", False))
+        except Exception:
+            return False
+
     # ── command grid ──────────────────────────────────────────────────────
     def _rebuild_grid(self, firmware: str) -> None:
-        """Rebuild the command grid for *firmware*'s catalog, grouped by category. Offensive-TX
-        verbs (danger != "") go into ``_tx_buttons`` (armed-gated); the rest ``_safe_buttons``."""
+        """Rebuild the command grid for *firmware*'s catalog, grouped by category. Offensive-TX verbs go
+        into ``_tx_buttons``, the rest ``_safe_buttons`` — split by :func:`safety.classify` (the SAME
+        check the send path enforces) so a dangerous verb with no explicit ``danger=`` field (Marauder /
+        ESP32-DIV catalogs set none) is still correctly flagged, and the button state matches enforcement."""
         self._grid_fw = firmware
         self._tx_buttons = []
         self._safe_buttons = []
+        # Personalize the group title with the firmware so the operator sees whose buttons these are.
+        disp = PROTOCOL_DISPLAY_NAMES.get(firmware, firmware) if firmware else ""
+        self._grid_box.setTitle(f"Commands — {disp}" if disp else "Commands")
         # Clear the existing grid contents.
         while self._grid_layout.count():
             item = self._grid_layout.takeAt(0)
@@ -219,15 +238,20 @@ class OperateTab(QWidget):
             grid = QGridLayout(box)
             for i, ci in enumerate(cmds):
                 btn = QPushButton(ci.name)
+                # The authoritative danger level (same call the send path uses), not the raw catalog field.
+                danger = safety.classify(ci.name, ci)
                 tip = ci.description or ci.name
                 if getattr(ci, "args", ""):
                     tip += f"\nargs: {ci.args}"
-                if getattr(ci, "danger", ""):
-                    tip += f"\n[{ci.danger}]"
+                if danger:
+                    tip += f"\n[{danger}]"
+                    # Visual danger cue so a deauth/jam verb reads differently from a scan at a glance.
+                    color = "#f85149" if danger == "illegal-tx" else "#d29922"
+                    btn.setStyleSheet(f"QPushButton {{ border: 1px solid {color}; color: {color}; }}")
                 btn.setToolTip(tip)
                 btn.clicked.connect(lambda _checked=False, c=ci: self._on_command_button(c))
                 grid.addWidget(btn, i // 3, i % 3)
-                if getattr(ci, "danger", ""):
+                if danger:
                     self._tx_buttons.append(btn)
                 else:
                     self._safe_buttons.append(btn)
@@ -278,16 +302,18 @@ class OperateTab(QWidget):
         # settings change takes effect immediately (same posture as DeviceTab._on_send).
         settings = load_settings()
         danger = safety.classify(cmd, ci)
-        # Defense-in-depth TX lockout (invariant #1): an offensive-TX verb (danger != "") is REFUSED
-        # unless the active device is explicitly armed at send time — not just because a button was
-        # left enabled during the <=2s between an armed -> safe change and the next poll repaint.
-        # The button gate is the first line; this authoritative check reads live state.
-        if danger:
+        # Defense-in-depth TX lockout: on a firmware that implements arming (LxveOS), an offensive-TX verb
+        # is REFUSED unless the device is explicitly armed at send time — not just because a button was left
+        # enabled during the <=2s between an armed -> safe change and the next poll repaint. On firmware with
+        # NO arm concept (Marauder/DIV/GhostESP/Bruce), there is nothing to arm, so it is confirm-gated below
+        # instead of dead-ended — every button is usable for authorized lab work (owner directive 2026-07-21).
+        if danger and safety.tx_hard_block(
+            danger, self._active_supports_arm(), getattr(self._active_device(), "arm_state", "")
+        ):
             state = getattr(self._active_device(), "arm_state", "")
-            if state != "armed":
-                self._append_log(f"[blocked: '{cmd}' needs the device ARMED "
-                                 f"(currently {state or 'unknown'}) — Arm first]")
-                return
+            self._append_log(f"[blocked: '{cmd}' needs the device ARMED "
+                             f"(currently {state or 'unknown'}) — Arm first]")
+            return
         if safety.should_confirm(danger, settings):
             reply = QMessageBox.warning(
                 self, "Confirm dangerous command", safety.lab_only_warning_text(cmd, danger),
@@ -372,12 +398,17 @@ class OperateTab(QWidget):
             self._arm_label.setText(text or "○ (no arm state reported)")
             css = f"color:{color or '#8b949e'};font-size:13px;font-weight:bold;"
             self._arm_label.setStyleSheet(css)
-        # TX-lockout invariant: offensive-TX buttons enable only when the device is ARMED. Use
-        # arm_state directly, not the tx=-derived display `state` above, so a merely TX-capable
-        # SAFE board can never enable an offensive button. _send re-checks this at write time too.
+        # Arm box only applies to firmware that arms; hide the three dead buttons otherwise.
+        arm_fw = self._active_supports_arm()
+        self._arm_box.setVisible(arm_fw)
+        # TX-button enable. On arming firmware: offensive-TX enables only when ARMED (arm_state directly,
+        # not the tx=-derived display `state`, so a merely TX-capable SAFE board can't enable one). On
+        # firmware with no arm concept: enabled whenever connected, and each send is confirm-gated in
+        # _send (owner directive 2026-07-21: authorized lab use, total functionality). _send re-checks both.
         tx_armed = connected and getattr(dev, "arm_state", "") == "armed"
+        tx_enabled = tx_armed if arm_fw else connected
         for b in self._tx_buttons:
-            b.setEnabled(tx_armed)
+            b.setEnabled(tx_enabled)
         for b in self._safe_buttons:
             b.setEnabled(connected)
         self._btn_arm.setEnabled(connected and state != "armed")

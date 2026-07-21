@@ -399,3 +399,25 @@ def test_real_cease_command_in_offensive_category_stays_safe():
     # ...but a dropped-"off" prefix must NOT silently exempt: an 'off'-named offensive-metadata command
     # is now escalated (off is no longer a cease prefix).
     assert classify("offense_probe", _ci("offense_probe", "Attack", "probe request flood")) == LAB_ONLY
+
+
+# ── tx_hard_block: armed-lockout only for firmwares that actually arm ──────────
+
+def test_tx_hard_block_only_when_arming_firmware_not_armed():
+    # A dangerous verb on an arming firmware (LxveOS) that is not armed -> hard-blocked.
+    assert safety.tx_hard_block("lab-only", supports_arm=True, arm_state="safe") is True
+    assert safety.tx_hard_block("illegal-tx", supports_arm=True, arm_state="") is True
+    # Armed -> allowed through (confirm still applies separately).
+    assert safety.tx_hard_block("lab-only", supports_arm=True, arm_state="armed") is False
+
+
+def test_tx_hard_block_never_blocks_firmware_without_arm():
+    # Marauder/DIV/GhostESP/Bruce have no arm concept: never hard-blocked, confirm-gated instead.
+    assert safety.tx_hard_block("lab-only", supports_arm=False, arm_state="") is False
+    assert safety.tx_hard_block("illegal-tx", supports_arm=False, arm_state="safe") is False
+
+
+def test_tx_hard_block_ignores_safe_commands():
+    # A non-dangerous command is never hard-blocked regardless of arm capability/state.
+    assert safety.tx_hard_block("", supports_arm=True, arm_state="safe") is False
+    assert safety.tx_hard_block("", supports_arm=False, arm_state="") is False
