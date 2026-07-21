@@ -4,8 +4,44 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
-In-progress work toward the next release. Backend/serial control only — CC issues firmware CLI commands
+Staging for the **1.9.0-beta**. Backend/serial control only — CC issues firmware CLI commands
 and never authors radio frames.
+- **New: the bottom terminal echoes everything, and you choose where a line goes.** Every command and every
+  device return now surfaces in the always-visible terminal — the typed commands, the Operate console, the
+  routed/AutoRouter sends, and a Devices-tab board's replies — not just serial RX. A send-target selector
+  (Auto / Device(s) / Computer) lets you pick whether a typed line runs on the computer's tool shell or goes
+  to the connected board.
+- **New: the Flock map is a real street map.** A real OpenStreetMap street basemap now sits under the camera
+  markers instead of a country outline that showed nothing at city zoom. It's built natively (no heavy web
+  engine) and works offline — cached tiles render with no network; turn on "Online tiles" once with internet
+  to cache your area. The old "work in progress" banner is gone. Online tiles are OFF by default (airgapped).
+- **New: wardrive upload to WiGLE and WDG Wars.** From the Wardrive tab, upload your WigleWifi CSV straight to
+  your WiGLE or WDG Wars (wdgwars.pl) account — pick the service, set its token in Settings, hit Upload. It
+  runs off-thread and leaves the file on disk to retry; the token is validated so it can't leak into a log.
+- **New: Terms of Service & Use in Help.** A proper terms dialog (Help ▸ Terms) framing the tool for
+  authorized research/lab use, authorized targets only, with the interference/§333 posture and no-warranty /
+  liability clauses. It does not assert a specific certification the app can't back up.
+- **Changed: the Operate surface is regrouped.** The crowded 8-tab Operate is now the live action loop
+  (Targets · Broadcast · Console · Macros); a new **Survey** surface groups the GPS field tools (Wardrive ·
+  Multi-Wardrive · Flock Map); and the old Network surface is now **Analyze** (Graph · Cross-Comm · Crack Lab ·
+  BLE Analyzer).
+- **Changed: much fuller, honest per-firmware command control.** Added the real, documented CLI verbs each
+  firmware actually supports and removed the ones that were fake. GhostESP grew from 32 to ~92 verbs
+  (connect/recon suite, capture variants, evil-portal management, AirTag/Flipper tooling); Bruce gained its
+  real serial-shell verbs; ESP-AT grew to the real Espressif AT set; Marauder gained the Evil Portal group;
+  Flipper gained loader control; BlueStress's four dead placeholder commands were replaced with its 15 real
+  ones. Firmwares with no scriptable CLI (HaleHound, Meshtastic) no longer present fake command buttons —
+  they're flash-and-monitor only. Every offensive verb is danger-flagged so the safety gate is authoritative.
+- **New: one canonical captures folder.** Retrieved `.pcap` files, auto-EAPOL `.hc22000`, and Crack Lab's
+  Browse now all point at `~/.cyber-controller/captures`, so a just-captured file is one click from the cracker.
+- **New: the Settings ▸ Updates card shows the update status.** It reads the running version, when it last
+  checked, and whether a newer release is out — so you can see the auto-update check ran instead of guessing.
+  The stale "no self-update" copy is corrected to describe the real in-place update.
+- **Fixed: the network graph's zoom and panning.** The Graph view no longer zooms into the void (its wheel
+  zoom is clamped), and you can drag empty background to pan the canvas while still dragging individual nodes.
+- **Fixed: several background-thread and reliability issues from an internal review** — the map-tile fetcher
+  and the WiGLE/WDG upload are joined cleanly on close (no crash-on-exit), the street basemap no longer blanks
+  on a large 4K/ultrawide monitor, and an upload token with a stray line break is rejected instead of leaking.
 - **New: the Auto-detect firmware selector now shows what it detected.** After a board is identified on
   connect, the Devices-tab firmware picker reads "Auto-detect (detected: ESP32 Marauder)" instead of a bare
   "Auto-detect" that scrolled the result off in the terminal. It only claims a detection when there's a real
