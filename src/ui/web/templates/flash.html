@@ -30,7 +30,7 @@
     <div class="form-group">
         <label for="variant-select">Board / Variant</label>
         <select id="variant-select" class="form-control">
-            <option value="">Default (auto-detect by chip)</option>
+            <option value="">Default (per-chip default, set when you flash)</option>
         </select>
         <div id="variant-hint" class="form-hint">Pick a profile to list its board builds. Leave on
             "Default" unless your board's screen stays blank after flashing — some boards share one
@@ -63,7 +63,7 @@
         const profile = document.getElementById('profile-select').value;
         const sel = document.getElementById('variant-select');
         const hint = document.getElementById('variant-hint');
-        const DEFAULT_OPT = '<option value="">Default (auto-detect by chip)</option>';
+        const DEFAULT_OPT = '<option value="">Default (per-chip default, set when you flash)</option>';
         sel.innerHTML = DEFAULT_OPT;
         if (!profile) return;
         const seq = ++variantReqSeq;
