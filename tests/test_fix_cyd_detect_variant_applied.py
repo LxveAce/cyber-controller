@@ -74,11 +74,32 @@ def _marauder_name(ft) -> str:
     raise AssertionError("no Marauder profile found on disk")
 
 
-def _detect(variant: str, *, ambiguous: bool = False, confidence: str = "high") -> CydResult:
+def _detect(variant: str, *, ambiguous: bool = False, confidence: str = "high",
+            controller: str = "ST7789") -> CydResult:
     return CydResult(
-        is_cyd=True, confidence=confidence, ambiguous=ambiguous, controller="ST7789",
+        is_cyd=True, confidence=confidence, ambiguous=ambiguous, controller=controller,
         touch="resistive", variant=variant, label=variant, responded=True, raw="probe",
     )
+
+
+def _name_with_id(ft, wanted: str) -> str:
+    for name, path in ft._profiles.items():
+        prof = ft._fe.load_profile(path)
+        if str(getattr(prof, "id", "") or "").lower() == wanted:
+            return name
+    raise AssertionError(f"no profile with id={wanted!r} found on disk")
+
+
+def _non_display_name(ft) -> str:
+    """A profile that is neither Marauder nor display-capable — where Detect SHOULD steer to Marauder."""
+    for name, path in ft._profiles.items():
+        prof = ft._fe.load_profile(path)
+        if ft._is_marauder(prof):
+            continue
+        boards = getattr(prof, "boards", None) or []
+        if not any(isinstance(b, dict) and b.get("has_display") for b in boards):
+            return name
+    raise AssertionError("no non-display, non-Marauder profile found on disk")
 
 
 def test_detect_applies_variant_when_marauder_already_selected(flash_tab_widget):
@@ -114,3 +135,38 @@ def test_non_cyd_result_leaves_picker_on_auto(flash_tab_widget):
     ft._on_detect_done(CydResult(is_cyd=False, responded=True, variant=""))
     assert ft._variant_combo.currentData() == ""
     assert ft._pending_variant is None
+
+
+def test_detect_keeps_display_profile_instead_of_hijacking_to_marauder(flash_tab_widget):
+    # P-13: a LxveOS user who runs Detect on their 3.5" CYD must STAY on LxveOS, not get silently
+    # switched to Marauder (which dropped the panel choice). LxveOS declares an st7796 display board.
+    ft = flash_tab_widget
+    lxveos = _name_with_id(ft, "lxveos")
+    ft._profile_combo.setCurrentText(lxveos)
+    ft._variant_combo.setCurrentIndex(0)
+
+    ft._on_detect_done(_detect("cyd_3_5_inch", controller="ST7796"))
+
+    assert ft._profile_combo.currentText() == lxveos, (
+        "Detect must keep a display-capable profile the user already selected, not jump to Marauder"
+    )
+    assert ft._pending_variant is None, (
+        "no Marauder variant key should be left pending on a non-Marauder profile — it wouldn't map to "
+        "that profile's own assets"
+    )
+
+
+def test_detect_steers_to_marauder_from_a_non_display_profile(flash_tab_widget):
+    # The original helpful behavior is preserved: a user on a profile that can't flash a display gets
+    # steered to Marauder with the detected variant pre-selected.
+    ft = flash_tab_widget
+    nondisp = _non_display_name(ft)
+    ft._profile_combo.setCurrentText(nondisp)
+
+    ft._on_detect_done(_detect("cyd_2432S028_2usb"))
+
+    switched_to = ft._fe.load_profile(ft._profiles[ft._profile_combo.currentText()])
+    assert ft._is_marauder(switched_to), (
+        "a non-display profile should fall back to Marauder so the CYD panel can actually be flashed"
+    )
+    assert ft._pending_variant == "cyd_2432S028_2usb"  # remembered, applied when Marauder's list loads

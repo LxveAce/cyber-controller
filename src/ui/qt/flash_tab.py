@@ -679,19 +679,38 @@ class FlashTab(QWidget):
         self._log(result.summary)
         if not getattr(result, "is_cyd", False) or not result.variant:
             return
-        # Steer the user to the Marauder profile and pre-select the detected variant. The variant list
-        # loads async, so remember the key and apply it when the list lands (or immediately if present).
-        self._pending_variant = result.variant
-        idx = self._profile_combo.findText("Marauder", Qt.MatchContains)
-        if idx >= 0 and idx != self._profile_combo.currentIndex():
-            self._profile_combo.setCurrentIndex(idx)  # triggers _reload_variants -> applied on load
-        elif idx >= 0:
-            # Marauder is ALREADY current, so the switch is skipped and no variant reload fires --
-            # _on_variants_loaded (which applies a pending key) never runs. Apply the detected key
-            # here, or the picker silently stays on Auto and Flash writes the generic ILI9341
-            # default over the panel detection just identified.
-            self._apply_detected_variant(result.variant)
-        # else: no Marauder profile present -- keep _pending_variant for whenever its list loads.
+        current_name = self._profile_combo.currentText()
+        current = self._loaded_or_none(current_name)
+        controller = getattr(result, "controller", "") or ""
+        # Firmware-aware steering (ledger P-13). Detection identifies the CYD panel; if the user is ALREADY
+        # on a profile that supports it (LxveOS carries the 3.5"/2.8" CYDs), keep that profile instead of
+        # yanking them to Marauder — the old code always switched, silently dropping their board choice.
+        keep_current = (self._profile_supports_controller(current, controller)
+                        and not self._is_marauder(current))
+        if keep_current:
+            # A non-Marauder profile names its builds its own way, so the Marauder variant key wouldn't map
+            # to one of its assets (it would fall back to Auto). Keep the profile and point the user at the
+            # matching board in THIS profile's picker rather than forcing a key that doesn't fit.
+            self._pending_variant = None
+            self._log(
+                f"Detected {result.label or result.variant}. Your current firmware '{current_name}' "
+                "supports this panel — pick the matching board under 'Board / variant', then Flash."
+            )
+        else:
+            # Marauder already current -> apply its detected key now; or the current profile can't flash a
+            # display -> steer to Marauder (the display default) and pre-select the variant. The list loads
+            # async, so remember the key and apply it when the list lands (or immediately if present).
+            self._pending_variant = result.variant
+            idx = self._profile_combo.findText("Marauder", Qt.MatchContains)
+            if idx >= 0 and idx != self._profile_combo.currentIndex():
+                self._profile_combo.setCurrentIndex(idx)  # triggers _reload_variants -> applied on load
+            elif idx >= 0:
+                # Marauder is ALREADY current, so the switch is skipped and no variant reload fires --
+                # _on_variants_loaded (which applies a pending key) never runs. Apply the detected key
+                # here, or the picker silently stays on Auto and Flash writes the generic ILI9341
+                # default over the panel detection just identified.
+                self._apply_detected_variant(result.variant)
+            # else: no Marauder profile present -- keep _pending_variant for whenever its list loads.
         if getattr(result, "ambiguous", False) or result.confidence == "low":
             # The panel controller wasn't positively identified (ST7789 fallback bucket), so the exact
             # variant is a guess — don't present it as certain. Pre-select the best guess but warn, and
@@ -702,7 +721,7 @@ class FlashTab(QWidget):
                 "(cyd_2432S028_2usb <-> cyd_2432S024_guition) or the 2.8\" ILI9341 (cyd_2432S028), back up "
                 "first, then re-flash."
             )
-        else:
+        elif not keep_current:
             self._log(
                 f"Pre-selected variant '{result.variant}'. Pick Marauder firmware and click Flash to "
                 "install the correct build."
@@ -767,6 +786,25 @@ class FlashTab(QWidget):
         slot and, with no ``sys.excepthook`` installed, abort the whole app."""
         return str(getattr(profile, "id", "") or "").lower() == "marauder" or \
                str(getattr(profile, "protocol", "") or "").lower() == "marauder"
+
+    @staticmethod
+    def _profile_supports_controller(profile, controller: str) -> bool:
+        """True when *profile* lists a display board whose panel controller matches the detected one.
+
+        LxveOS carries an ``st7796`` board (3.5" CYD) and an ``ili9341`` one (2.8").
+        This lets 'Detect' keep a display profile the user already picked instead of
+        yanking them to Marauder, which silently dropped a LxveOS panel choice (P-13).
+        Reads the same ``boards`` metadata as ``chip_match``. Pure, so it's unit-testable.
+        """
+        want = str(controller or "").strip().lower()
+        if profile is None or not want:
+            return False
+        for b in getattr(profile, "boards", None) or []:
+            if not isinstance(b, dict) or not b.get("has_display"):
+                continue
+            if str(b.get("display_type") or "").strip().lower() == want:
+                return True
+        return False
 
     def _port_chip(self, port) -> str | None:
         """The chip of the board on ``port`` IF unambiguously known from USB enumeration (native-USB

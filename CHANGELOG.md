@@ -19,6 +19,10 @@ and never authors radio frames.
 - **Fixed: LxveOS BLE adverts now reach the target pool / AutoRouter.** The `ble_found` routing branch
   read only `mac`; LxveOS keys its BLE address as `addr`, so those detections never became pool targets.
   It now accepts `mac` or `addr`, matching the analyzer's firmware-agnostic key handling.
+- **Fixed: 'Detect board' no longer switches you off a firmware that already supports the panel.** Running
+  CYD detection while a display-capable profile is selected (e.g. LxveOS, which supports the 3.5" and 2.8"
+  CYDs) now keeps that profile and points you at the matching board, instead of silently jumping to Marauder
+  and dropping your panel choice. Detection still steers to Marauder from a profile that can't flash a display.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new
