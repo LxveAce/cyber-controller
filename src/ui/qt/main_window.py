@@ -333,6 +333,12 @@ class CyberControllerWindow(QMainWindow):
         act_howto.triggered.connect(self._on_howto)
         help_menu.addAction(act_howto)
 
+        act_terms = QAction("&Terms of Service && Use…", self)
+        act_terms.setStatusTip("The legal terms for using Cyber Controller — authorized, lawful, "
+                               "research/lab use only.")
+        act_terms.triggered.connect(self._on_terms)
+        help_menu.addAction(act_terms)
+
         act_shortcuts = QAction("&Keyboard Shortcuts", self)
         act_shortcuts.triggered.connect(self._on_keyboard_shortcuts)
         help_menu.addAction(act_shortcuts)
@@ -1619,6 +1625,7 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("Toggle Dead Man's Switch", self._on_toggle_suicide_mode)
         self._palette.add_command("User Guide", self._on_user_guide)
         self._palette.add_command("How-To", self._on_howto)
+        self._palette.add_command("Terms of Service & Use", self._on_terms)
         self._palette.add_command("Keyboard Shortcuts", self._on_keyboard_shortcuts)
         self._palette.add_command("Check for Updates…", lambda: self.check_for_updates(force=True))
         self._palette.add_command("Quit", self.close)
@@ -1713,6 +1720,30 @@ class CyberControllerWindow(QMainWindow):
         dlg.setStyleSheet("QDialog { background-color: #0d1117; color: #e6edf3; }")
         layout = QVBoxLayout(dlg)
         layout.addWidget(HowToTab())
+        close_btn = QPushButton("Close")
+        close_btn.clicked.connect(dlg.accept)
+        layout.addWidget(close_btn, alignment=Qt.AlignRight)
+        dlg.exec_()
+
+    def _on_terms(self) -> None:
+        """Open Help ▸ Terms — the canonical Terms of Service & Use (src/core/legal.py) in a scroll dialog.
+        Legal copy lives in one place so the dialog and the tests can't drift."""
+        from src.core import legal
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"{legal.APP_NAME} — Terms of Service & Use")
+        dlg.setMinimumSize(760, 620)
+        dlg.setStyleSheet("QDialog { background-color: #0d1117; color: #e6edf3; }")
+        layout = QVBoxLayout(dlg)
+        view = QTextEdit()
+        view.setReadOnly(True)
+        view.setStyleSheet("QTextEdit { background-color: #161b22; color: #e6edf3; "
+                           "border: 1px solid #30363d; border-radius: 4px; padding: 12px; font-size: 10pt; }")
+        md = legal.terms_markdown()
+        try:
+            view.setMarkdown(md)          # Qt 5.14+ renders the headings/lists
+        except (AttributeError, TypeError):
+            view.setPlainText(md)         # older Qt — still fully readable as text
+        layout.addWidget(view, 1)
         close_btn = QPushButton("Close")
         close_btn.clicked.connect(dlg.accept)
         layout.addWidget(close_btn, alignment=Qt.AlignRight)

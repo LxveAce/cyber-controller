@@ -293,6 +293,18 @@ def test_howto_available_via_help_not_tabstrip(qapp, isolated_settings):
     assert not hasattr(win, "_howto_tab")       # and it is no longer mounted as a tab widget
 
 
+def test_terms_available_in_help_menu(qapp, isolated_settings):
+    # WS-10: Terms of Service & Use is reachable from the Help menu, not a tab.
+    from PyQt5.QtWidgets import QMenu
+    win = _make_window()
+    assert hasattr(win, "_on_terms")
+    help_menu = next((m for m in win.menuBar().findChildren(QMenu)
+                      if m.title().replace("&", "") == "Help"), None)
+    assert help_menu is not None
+    actions = [a.text().replace("&", "") for a in help_menu.actions()]
+    assert any("Terms of Service" in a for a in actions), actions
+
+
 def test_devices_tab_widget_inventory(qapp, isolated_settings):
     # DeviceTab: device list + per-device firmware/protocol picker + connect/disconnect + serial terminal with a
     # command palette/input/send + the BlueJammer control panel whose critical control is its STOP button.
