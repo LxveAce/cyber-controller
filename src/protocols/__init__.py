@@ -28,6 +28,7 @@ from src.protocols.bluestress import BlueStressProtocol
 from src.protocols.bruce import BruceProtocol
 from src.protocols.bw16 import BW16Protocol
 from src.protocols.esp32_div import Esp32DivProtocol
+from src.protocols.esp32_div_serial import Esp32DivSerialProtocol
 from src.protocols.esp_at import EspAtProtocol
 from src.protocols.flipper import FlipperProtocol
 from src.protocols.flock_you import FlockYouProtocol
@@ -83,6 +84,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "lxveos": LxveOSProtocol,
     "meshtastic": MeshtasticProtocol,
     "esp32-div": Esp32DivProtocol,
+    "esp32-div-serial": Esp32DivSerialProtocol,
     "bw16": BW16Protocol,
     "bluejammer": BlueJammerProtocol,
     "nrf-bluenullifier2": NrfBlueNullifier2Protocol,
@@ -105,6 +107,10 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "lxveos": "LxveOS",
     "meshtastic": "Meshtastic",
     "esp32-div": "ESP32-DIV",
+    # NOTE: "esp32-div-serial" (the LxveLabs serial fork) is registered in PROTOCOLS above and works via
+    # identify()/get_protocol, but is intentionally NOT given a public display name yet — its firmware fork
+    # doesn't exist, so it must not inflate the advertised parser count. Add the display name (and the
+    # "ESP32-DIV (stock)" rename) when the fork firmware ships. See ESP32-DIV-SERIAL-FORK-2026-07-21.md.
     "bw16": "BW16 (RTL8720DN)",
     "bluejammer": "BlueJammer-V2 (lab-only)",
     "nrf-bluenullifier2": "nRF BlueNullifier 2 (lab-only)",
