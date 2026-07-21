@@ -98,6 +98,7 @@ try:
             super().__init__(parent)
             self._model = model
             self._now_fn = time.monotonic          # injectable clock (tests override it)
+            self._receiving = False                 # True only while a scan is actually feeding events (set by the tab)
             self.setMinimumHeight(180)
 
         def set_clock(self, fn) -> None:
@@ -127,9 +128,13 @@ try:
 
             devs = graph_devices(self._model, now)
             if not devs:
+                # Only say "listening" when a scan is actually feeding events; otherwise the view sat here
+                # painting "Listening…" from the moment it opened and looked like a live scan that finds
+                # nothing (owner: "starts weird as if its already searching"). The tab sets _receiving.
+                msg = ("Listening for BLE advertisements…" if getattr(self, "_receiving", False)
+                       else "Idle — no BLE scan running")
                 p.setPen(QPen(_AXIS_TEXT, 1))
-                p.drawText(QRectF(left, top, gw, gh), Qt.AlignCenter,
-                           "Listening for BLE advertisements…")
+                p.drawText(QRectF(left, top, gw, gh), Qt.AlignCenter, msg)
                 return
 
             for i, dev in enumerate(devs):
@@ -153,6 +158,7 @@ try:
         firmware. Holds its own BleAnalyzerModel; on_ble_event(port, data) folds one sighting in."""
 
         _COLS = ("Signal", "Name", "Address", "Vendor", "Trk", "Hits", "Age")
+        _ACTIVE_WINDOW_S = 10.0   # a ble_found event within this many seconds = a scan is actively feeding us
 
         def __init__(self, parent: "Optional[QWidget]" = None) -> None:
             super().__init__(parent)
@@ -160,10 +166,13 @@ try:
             self._now_fn = time.monotonic
             self._sort = "rssi"
             self._paused = False
+            self._last_event_ts: "Optional[float]" = None   # when we last folded in a ble_found event
 
             root = QVBoxLayout(self)
-            self._header = QLabel("No BLE devices yet.")
+            self._header = QLabel(
+                "Not scanning. Start a BLE scan on a connected device to see BLE advertisements here.")
             self._header.setStyleSheet("color:#8b949e;")
+            self._header.setWordWrap(True)
             root.addWidget(self._header)
 
             self._graph = _RssiGraph(self._model)
@@ -214,7 +223,9 @@ try:
             serial-thread events via a signal first). Recording continues while paused; Pause only
             freezes the repaint (same posture as the flock tab), so no data is lost while paused."""
             try:
-                self._model.observe(data, self._now_fn())
+                now = self._now_fn()
+                self._model.observe(data, now)
+                self._last_event_ts = now   # marks the view as actively receiving (drives the honest empty state)
             except Exception:  # noqa: BLE001 — a bad event must never break the view
                 pass
 
@@ -236,15 +247,27 @@ try:
             self._refresh()
 
         # ── render ──
+        def _is_receiving(self, now: float) -> bool:
+            """True when a ble_found event arrived recently — i.e. a scan is actually feeding this view.
+            Drives the honest empty state so an idle analyzer never poses as a live scan."""
+            return self._last_event_ts is not None and (now - self._last_event_ts) <= self._ACTIVE_WINDOW_S
+
         def _refresh(self) -> None:
             if self._paused:
                 return
             now = self._now_fn()
+            receiving = self._is_receiving(now)
+            self._graph._receiving = receiving
             s = self._model.summary(now)
-            strongest = "—" if s["strongest"] is None else f"{s['strongest']} dBm"
-            self._header.setText(
-                f"{s['fresh']} present · {s['total']} seen · {s['trackers']} tracker(s) · "
-                f"{s['named']} named · strongest {strongest}")
+            if s["total"] == 0 and not receiving:
+                # Nothing seen and no scan feeding us — say so plainly instead of a live-looking summary.
+                self._header.setText(
+                    "Not scanning. Start a BLE scan on a connected device to see BLE advertisements here.")
+            else:
+                strongest = "—" if s["strongest"] is None else f"{s['strongest']} dBm"
+                self._header.setText(
+                    f"{s['fresh']} present · {s['total']} seen · {s['trackers']} tracker(s) · "
+                    f"{s['named']} named · strongest {strongest}")
             self._fill_table(now)
             self._graph.update()
 

@@ -92,6 +92,30 @@ def test_widget_ingests_events_and_fills_table(qapp):
     assert "2 present" in tab._header.text() and "1 tracker" in tab._header.text()
 
 
+def test_idle_until_a_scan_feeds_it(qapp):
+    # Regression (owner: the BLE analyzer "starts weird as if its already searching"): with nothing feeding
+    # it, the view must read as idle rather than pose as a live scan. A ble_found event flips it to the live
+    # summary; the graph's in-canvas text tracks the same "receiving" state.
+    clock = [500.0]
+    tab = _make_tab(clock)
+    tab._refresh()
+    assert "not scanning" in tab._header.text().lower()   # honest idle header on open, not a live-looking count
+    assert tab._graph._receiving is False                 # graph draws "Idle — no BLE scan running"
+    tab.on_ble_event("COM4", {"mac": "aa:bb:cc:dd:ee:01", "rssi": -55})
+    tab._refresh()
+    assert tab._graph._receiving is True                  # an arriving event = actively receiving
+    assert "1 present" in tab._header.text()              # header flips to the live summary
+
+
+def test_receiving_lapses_when_events_stop(qapp):
+    # Past the active window with no new events, the view stops reporting itself as receiving (no false "live").
+    clock = [500.0]
+    tab = _make_tab(clock)
+    tab.on_ble_event("COM4", {"mac": "aa:bb:cc:dd:ee:01", "rssi": -55})
+    assert tab._is_receiving(clock[0]) is True
+    assert tab._is_receiving(clock[0] + tab._ACTIVE_WINDOW_S + 1) is False
+
+
 def test_render_native_ink_responds_to_data(qapp):
     from PyQt5.QtGui import QColor
     clock = [1000.0]
