@@ -285,6 +285,29 @@ class _WardriveCapture(QObject):
             self.status.emit(ftxt, sess.ap_count)
 
 
+class _WigleUploadWorker(QThread):
+    """Upload a wardrive CSV to WiGLE off the GUI thread (WS-8). Emits ``done(ok, message)`` — a large CSV
+    or a slow link must not freeze the UI. The upload itself is fully guarded in src/core/wigle_upload.py."""
+    done = pyqtSignal(bool, str)
+
+    def __init__(self, csv_path: str, token: str, donate: bool = False) -> None:
+        super().__init__()
+        self._csv_path = csv_path
+        self._token = token
+        self._donate = donate
+
+    def run(self) -> None:  # pragma: no cover — network I/O; the upload logic is unit-tested in wigle_upload
+        from src.core import wigle_upload
+        try:
+            res = wigle_upload.upload_csv(self._csv_path, self._token, donate=self._donate)
+            transid = res.get("transid") or ""
+            self.done.emit(True, f"Uploaded to WiGLE{f' (transid {transid})' if transid else ''}.")
+        except wigle_upload.WigleError as exc:
+            self.done.emit(False, str(exc))
+        except Exception as exc:  # noqa: BLE001 — an upload must never crash the app
+            self.done.emit(False, f"upload failed: {exc}")
+
+
 class WardriveTab(QWidget):
     """Live GPS-tagged Wi-Fi capture -> WiGLE CSV."""
 
@@ -349,8 +372,14 @@ class WardriveTab(QWidget):
         btn_out = QPushButton("Browse…")
         btn_out.clicked.connect(self._browse_out)
         orow.addWidget(btn_out)
+        self._btn_upload = QPushButton("Upload to WiGLE")
+        self._btn_upload.setToolTip("Upload this WiGLE CSV straight to wigle.net (needs your WiGLE token in "
+                                    "Settings + internet). The file stays on disk either way.")
+        self._btn_upload.clicked.connect(self._on_upload_wigle)
+        orow.addWidget(self._btn_upload)
         out_layout.addLayout(orow)
         root.addWidget(out_card)
+        self._upload_worker = None
 
         ctrl = QHBoxLayout()
         self._btn_start = QPushButton("Start wardrive")
@@ -400,6 +429,37 @@ class WardriveTab(QWidget):
                                               "CSV (*.csv);;All files (*)")
         if path:
             self._out_edit.setText(path)
+
+    # ── WiGLE upload (WS-8) ──────────────────────────────────────────
+    def _on_upload_wigle(self) -> None:
+        """Upload the current WiGLE CSV to wigle.net using the token from Settings. Off-thread + guarded;
+        the file is never touched, only sent, so a failure just reports and the CSV stays on disk to retry."""
+        import os
+
+        from src.config.settings import load_settings
+        from src.core import wigle_upload
+        if self._upload_worker is not None and self._upload_worker.isRunning():
+            return
+        token = str(load_settings().get("uploads", {}).get("wigle_token", "") or "").strip()
+        if not wigle_upload.is_configured(token):
+            self._logmsg("WiGLE upload: paste your 'Encoded for use' token in Settings ▸ Wardrive uploads first.")
+            return
+        path = self._out_edit.text().strip()
+        if not path or not os.path.isfile(path):
+            self._logmsg("WiGLE upload: no saved CSV to upload yet — run a wardrive first.")
+            return
+        self._btn_upload.setEnabled(False)
+        self._btn_upload.setText("Uploading…")
+        self._logmsg(f"Uploading {os.path.basename(path)} to WiGLE…")
+        self._upload_worker = _WigleUploadWorker(path, token)
+        self._upload_worker.done.connect(self._on_upload_done)
+        self._upload_worker.finished.connect(lambda: setattr(self, "_upload_worker", None))
+        self._upload_worker.start()
+
+    def _on_upload_done(self, ok: bool, message: str) -> None:
+        self._btn_upload.setEnabled(True)
+        self._btn_upload.setText("Upload to WiGLE")
+        self._logmsg(("✓ " if ok else "✗ WiGLE: ") + message)
 
     def _on_start(self) -> None:
         dev = self._dev_combo.currentData()

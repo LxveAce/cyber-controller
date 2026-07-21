@@ -162,6 +162,26 @@ class SettingsTab(QWidget):
         updates_outer.addLayout(updates_btn_row)
         root.addWidget(updates_card)
 
+        # ── Wardrive uploads (WiGLE) — WS-8 ──────────────────────────
+        self._uploads_card, uploads_outer = _make_card("Wardrive uploads (WiGLE)")
+        uploads_card = self._uploads_card
+        uploads_desc = QLabel(
+            "Paste your WiGLE “Encoded for use” token (from wigle.net ▸ Account) to upload a "
+            "wardrive CSV straight to WiGLE from the Wardrive tab, when the machine has internet. Leave blank "
+            "to keep uploads off. The token is a credential — it's stored locally in your settings."
+        )
+        uploads_desc.setObjectName("muted")
+        uploads_desc.setWordWrap(True)
+        uploads_outer.addWidget(uploads_desc)
+        token_form = QFormLayout()
+        token_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+        self._wigle_token_edit = QLineEdit()
+        self._wigle_token_edit.setEchoMode(QLineEdit.Password)   # a credential — mask it
+        self._wigle_token_edit.setPlaceholderText("WiGLE Encoded-for-use token")
+        token_form.addRow("WiGLE token:", self._wigle_token_edit)
+        uploads_outer.addLayout(token_form)
+        root.addWidget(uploads_card)
+
         # ── Safety & Disclaimers ─────────────────────────────────────
         # These LABEL and warn; they never remove or block a capability. The
         # confirm dialog always offers "Yes, proceed"; suppress turns it off.
@@ -263,7 +283,7 @@ class SettingsTab(QWidget):
         for card in (
             getattr(self, "_comm_card", None), getattr(self, "_safety_card", None),
             getattr(self, "_gate_card", None), getattr(self, "_secure_card", None),
-            getattr(self, "_vault_card", None),
+            getattr(self, "_vault_card", None), getattr(self, "_uploads_card", None),
         ):
             if card is not None:
                 card.setVisible(pro)
@@ -285,6 +305,7 @@ class SettingsTab(QWidget):
         self._updates_enabled_check.toggled.connect(self._mark_dirty)
         self._suppress_warnings_check.toggled.connect(self._mark_dirty)
         self._secure_container_check.toggled.connect(self._mark_dirty)
+        self._wigle_token_edit.textChanged.connect(self._mark_dirty)
 
     def _mark_dirty(self, *_args) -> None:
         if not self._loading:
@@ -326,6 +347,9 @@ class SettingsTab(QWidget):
         updates = settings.get("updates", {})
         self._updates_enabled_check.setChecked(bool(updates.get("enabled", True)))
         self._refresh_update_status(updates)
+
+        uploads = settings.get("uploads", {})
+        self._wigle_token_edit.setText(str(uploads.get("wigle_token", "")))
 
     def _gather(self) -> dict:
         """Read the current UI state into a settings dict.
@@ -379,6 +403,12 @@ class SettingsTab(QWidget):
             "updates": {
                 **disk.get("updates", {}),
                 "enabled": self._updates_enabled_check.isChecked(),
+            },
+            # WS-8: the WiGLE token is the only widget-backed key in "uploads"; overlay it on the on-disk
+            # block so any future upload bookkeeping isn't wiped by a plain Save (same carry-forward as updates).
+            "uploads": {
+                **disk.get("uploads", {}),
+                "wigle_token": self._wigle_token_edit.text().strip(),
             },
         }
 

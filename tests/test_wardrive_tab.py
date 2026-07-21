@@ -26,3 +26,30 @@ def test_wardrive_tab(qapp, monkeypatch):
     assert tab._gps_combo.count() == 3  # "(none)" + 2 ports
     assert tab._gps_combo.itemData(0) is None
     assert tab._out_edit.text().endswith(".csv")
+
+
+def _tab(monkeypatch):
+    from src.ui.qt import wardrive_tab
+    monkeypatch.setattr(wardrive_tab, "_list_serial_ports", lambda: [])
+    return wardrive_tab.WardriveTab()
+
+
+def test_wigle_upload_gate_needs_a_token(qapp, monkeypatch):
+    # WS-8: with no WiGLE token set, the upload is refused with a helpful message and NO worker spawns.
+    import src.config.settings as S
+    monkeypatch.setattr(S, "load_settings", lambda: {"uploads": {"wigle_token": ""}})
+    tab = _tab(monkeypatch)
+    tab._on_upload_wigle()
+    assert tab._upload_worker is None
+    assert "token" in tab._log.toPlainText().lower()
+
+
+def test_wigle_upload_gate_needs_a_saved_csv(qapp, monkeypatch, tmp_path):
+    # Token set, but the CSV path doesn't exist yet -> refused, no worker.
+    import src.config.settings as S
+    monkeypatch.setattr(S, "load_settings", lambda: {"uploads": {"wigle_token": "TOK"}})
+    tab = _tab(monkeypatch)
+    tab._out_edit.setText(str(tmp_path / "does-not-exist.csv"))
+    tab._on_upload_wigle()
+    assert tab._upload_worker is None
+    assert "no saved csv" in tab._log.toPlainText().lower()
