@@ -3,8 +3,8 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
-Staging for the **1.9.0-beta**. Backend/serial control only — CC issues firmware CLI commands
+## [1.9.0-beta] — 2026-07-21
+A broad feature beta. Backend/serial control only — CC issues firmware CLI commands
 and never authors radio frames.
 - **New: the bottom terminal echoes everything, and you choose where a line goes.** Every command and every
   device return now surfaces in the always-visible terminal — the typed commands, the Operate console, the
