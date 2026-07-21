@@ -199,6 +199,10 @@ class DeviceTab(QWidget):
         # Ports where a Dead-Man's-Switch auth gate has been seen — the connect-time probe skips these so it
         # never writes an unsolicited command at a DMS unlock prompt (a failed attempt can wipe/brick).
         self._dms_seen: set[str] = set()
+        # Predicate: does the always-visible bottom terminal already own this port's connection? The
+        # main window overrides this after both are built (it renders that RX itself, so we must not
+        # double-echo). Defaults to "no" so a standalone Devices tab still echoes its returns to the bus.
+        self._pterm_owns_port = lambda port: False
 
         self._build_ui()
         self._refresh_devices()
@@ -1531,6 +1535,16 @@ class DeviceTab(QWidget):
         # (mightBeRichText), so escape it -- otherwise a board emitting <b>/<img>/<span> spoofs the
         # terminal (command-echo/output injection on a security tool).
         self._terminal.append(html.escape(line))
+        # Echo this device return into the app-wide activity bus so the always-visible bottom terminal
+        # reflects "every return" — but only when the bottom terminal doesn't already own this port (it
+        # renders that RX itself via _pterm_on_line, so echoing a co-owned port would show it twice). The
+        # bus subscriber html.escapes the text, so raw device bytes stay safe. Guarded — never break RX.
+        try:
+            if not self._pterm_owns_port(port):
+                from src.core.activity_log import activity_log
+                activity_log().emit_line(port, line)
+        except Exception:  # noqa: BLE001 — echoing must never break serial ingestion
+            pass
         # A device_info line (LxveOS status/info), an arm_state line (arm/disarm), an alert, or a
         # snapshot (airspace) may have just updated this port's Device runtime caps / telemetry / arm
         # state / alert / snapshot via the ingestor (which ran first on the serial thread, before this Qt

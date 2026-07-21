@@ -109,6 +109,20 @@ class ActionResolver:
         return result
 
 
+def _echo_routed(device_port: str, cmd: str) -> None:
+    """Mirror a routed/AutoRouter serial write into the app-wide activity bus so the always-visible
+    bottom terminal echoes programmatic sends too — not just hand-typed ones. Best-effort and fully
+    guarded: this is a core module that also runs headless/in tests, so a missing PyQt or absent GUI
+    must never affect whether the command was sent. See src/core/activity_log.py."""
+    if not cmd:
+        return
+    try:
+        from src.core.activity_log import activity_log
+        activity_log().emit_line("route", f"[{device_port}] > {cmd}")
+    except Exception:  # noqa: BLE001 — echoing must never break the send path
+        pass
+
+
 def execute_action(
     action: TargetAction,
     device_port: str,
@@ -146,10 +160,12 @@ def execute_action(
     for pre_cmd in action.pre_commands:
         log.info("Pre-command -> %s: %s", device_port, pre_cmd)
         conn.write(pre_cmd)
+        _echo_routed(device_port, pre_cmd)
 
     # Send main command
     log.info("Action -> %s: %s", device_port, action.command_template)
     conn.write(action.command_template)
+    _echo_routed(device_port, action.command_template)
 
     # Publish event if event_bus provided
     if event_bus and hasattr(event_bus, "publish"):

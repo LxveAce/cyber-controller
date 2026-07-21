@@ -238,6 +238,94 @@ def test_pterm_activity_line_html_escaped(qapp, isolated_settings):
         win.close()
 
 
+def test_pterm_target_serial_forces_device_send(qapp, isolated_settings):
+    # With the send-target set to Device(s), a line whose first word is a known tool name (aircrack-ng)
+    # must still be WRITTEN to the connected board, not launched as a local tool.
+    from src.models.device import Device
+
+    win = _make_window()
+    try:
+        win._dm.add_device(Device(port="COM7", name="Marauder", firmware="marauder", connected=True))
+
+        class _Conn:
+            def __init__(self):
+                self.line_ending = "\n"
+                self.writes = []
+
+            def write(self, s):
+                self.writes.append(s)
+
+        conn = _Conn()
+        win._pterm_conns["COM7"] = conn
+        win._pterm_port_colors["COM7"] = "#39ff14"
+        win._pterm_checked_ports = lambda: ["COM7"]
+        win._pterm_target.setCurrentIndex(win._pterm_target.findData("serial"))
+        win._pterm_input.setText("aircrack-ng")  # a known tool name, but the target is a device
+        win._pterm_on_send()
+        assert conn.writes == ["aircrack-ng"], "Device(s) target must write to the board, not run the tool"
+    finally:
+        win.close()
+
+
+def test_pterm_target_computer_refuses_non_tool(qapp, isolated_settings):
+    # With the send-target set to Computer, a first word that isn't a bundled tool is refused and never
+    # leaked to a connected device (the tool shell is scoped, not a general OS shell).
+    from src.models.device import Device
+
+    win = _make_window()
+    try:
+        win._dm.add_device(Device(port="COM7", name="Marauder", firmware="marauder", connected=True))
+
+        class _Conn:
+            def __init__(self):
+                self.line_ending = "\n"
+                self.writes = []
+
+            def write(self, s):
+                self.writes.append(s)
+
+        conn = _Conn()
+        win._pterm_conns["COM7"] = conn
+        win._pterm_checked_ports = lambda: ["COM7"]
+        win._pterm_target.setCurrentIndex(win._pterm_target.findData("computer"))
+        win._pterm_input.setText("reboot")  # not a bundled tool
+        win._pterm_on_send()
+        assert conn.writes == [], "Computer target must not leak a non-tool word to a device"
+        assert "not a bundled tool" in win._pterm_output.toPlainText()
+    finally:
+        win.close()
+
+
+def test_device_tab_rx_echoes_to_bottom_terminal(qapp, isolated_settings):
+    # A device connected only on the Devices tab must still surface its RETURNS in the always-visible
+    # bottom terminal (via the activity bus), so the bottom terminal reflects "every return". The bottom
+    # terminal does NOT own COM9 here.
+    win = _make_window()
+    try:
+        win._device_tab._on_line_received("COM9", "AP: HomeNet ch 6")
+        text = win._pterm_output.toPlainText()
+        assert "AP: HomeNet ch 6" in text
+        assert "[COM9]" in text
+    finally:
+        win.close()
+
+
+def test_device_tab_rx_not_double_echoed_when_bottom_owns_port(qapp, isolated_settings):
+    # When the bottom terminal already owns the port it renders that RX itself (via _pterm_on_line), so
+    # the Devices-tab echo must be suppressed — otherwise the same line shows twice at the bottom.
+    import types
+
+    win = _make_window()
+    try:
+        win._pterm_conns["COM9"] = types.SimpleNamespace(is_connected=True, write=lambda *_a: None)
+        win._device_tab._on_line_received("COM9", "AP: OwnedNet")
+        # The device-tab echo path is guarded off for co-owned ports, and _pterm_on_line wasn't called
+        # in this direct-call test, so the line must NOT appear via the bus here.
+        assert "AP: OwnedNet" not in win._pterm_output.toPlainText()
+    finally:
+        win.close()
+
+
 def test_activity_log_emit_shape_and_blank_drop(qapp):
     # emit_line drops a blank line (callers can emit unconditionally), defaults/normalizes the
     # level, and delivers (source, level, text). Uses a fresh ActivityLog (not the singleton) so

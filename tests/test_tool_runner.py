@@ -49,3 +49,33 @@ def test_run_tool_missing_is_honest(monkeypatch):
     tool_runner.run_tool(["aircrack-ng"], on_line=lines.append, on_exit=done.append)
     assert done == [127]
     assert any("isn't available" in ln for ln in lines)
+
+
+def test_route_terminal_send_auto():
+    # Auto = the original inference: a known tool runs locally, anything else goes to the device.
+    assert tool_runner.route_terminal_send("auto", "aircrack-ng") == "tool"
+    assert tool_runner.route_terminal_send("auto", "hashcat.exe") == "tool"
+    assert tool_runner.route_terminal_send("auto", "scanap") == "serial"
+    assert tool_runner.route_terminal_send("auto", "") == "serial"
+
+
+def test_route_terminal_send_force_serial():
+    # Serial target ALWAYS goes to the device, even when the first word is a real tool name — so a
+    # firmware command that happens to collide with a tool name still reaches the board.
+    assert tool_runner.route_terminal_send("serial", "aircrack-ng") == "serial"
+    assert tool_runner.route_terminal_send("serial", "scanap") == "serial"
+    assert tool_runner.route_terminal_send("serial", "") == "serial"
+
+
+def test_route_terminal_send_force_computer():
+    # Computer target runs a known tool locally, but REFUSES a non-tool first word rather than leaking
+    # it to a device (the shell is scoped to the crack tools, not a general OS shell).
+    assert tool_runner.route_terminal_send("computer", "hashcat") == "tool"
+    assert tool_runner.route_terminal_send("computer", "reboot") == "no-tool"
+    assert tool_runner.route_terminal_send("computer", "rm") == "no-tool"
+
+
+def test_route_terminal_send_unknown_target_is_auto():
+    # An unexpected selector value degrades to auto, never to a surprising route.
+    assert tool_runner.route_terminal_send("", "aircrack-ng") == "tool"
+    assert tool_runner.route_terminal_send("nonsense", "scanap") == "serial"

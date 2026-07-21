@@ -88,3 +88,39 @@ def test_execute_action_stamps_firmware_terminator():
     dm = types.SimpleNamespace(get_connection=lambda _p: conn, get_device=lambda _p: dev)
     assert execute_action(TargetAction("RFID Emulate", "rfid emulate", "x"), "COM5", dm) is True
     assert conn.line_ending == "\r" and conn.writes == ["rfid emulate"]
+
+
+def test_execute_action_echoes_routed_command_to_activity_bus(monkeypatch):
+    # A routed/AutoRouter send must ALSO surface in the app-wide activity bus (source "route") so the
+    # always-visible bottom terminal echoes programmatic sends, not just hand-typed ones. Both the
+    # pre-command and the main command are echoed.
+    import pytest
+    pytest.importorskip("PyQt5.QtCore")
+    import types
+
+    from src.core import activity_log as AL
+    from src.core.action_resolver import execute_action
+    from src.models.action import TargetAction
+
+    seen: list[tuple[str, str]] = []
+    fake_bus = types.SimpleNamespace(
+        emit_line=lambda source, text, level="info": seen.append((source, text)))
+    monkeypatch.setattr(AL, "activity_log", lambda: fake_bus)
+
+    class _C:
+        def __init__(self):
+            self.line_ending = "\n"
+            self.writes: list[str] = []
+
+        def write(self, s):
+            self.writes.append(s)
+
+    conn = _C()
+    dev = types.SimpleNamespace(firmware="marauder", name="marauder")
+    dm = types.SimpleNamespace(get_connection=lambda _p: conn, get_device=lambda _p: dev)
+    action = TargetAction("Deauth", "attack -t deauth", "deauth", pre_commands=["select -a 0"])
+    assert execute_action(action, "COM5", dm) is True
+
+    routed = [txt for src, txt in seen if src == "route"]
+    assert any("select -a 0" in t for t in routed), "pre-command must be echoed to the activity bus"
+    assert any("attack -t deauth" in t for t in routed), "main command must be echoed to the activity bus"

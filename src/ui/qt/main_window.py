@@ -13,6 +13,7 @@ from PyQt5.QtWidgets import (
     QActionGroup,
     QApplication,
     QCheckBox,
+    QComboBox,
     QDialog,
     QFrame,
     QHBoxLayout,
@@ -524,6 +525,13 @@ class CyberControllerWindow(QMainWindow):
         # fan-out, the serial-mirror path, palette, tests) keeps working. Navigate via _show_subtab().
         self._device_tab = DeviceTab(self._dm, self._pool, self._ingestor, recorder=self._macro)
         self._device_tab._dms_auth = self._dms_auth
+        # Teach the Devices tab to echo a device's serial RETURNS into the app-wide bus too — but only for
+        # ports the bottom terminal does NOT itself own (it renders those via _pterm_on_line, so a co-owned
+        # port would double-echo). This is what makes "every return" reach the always-visible bottom
+        # terminal even when a board is connected only on the Devices tab. _pterm_conns is built earlier in
+        # _build_persistent_terminal; this wiring must come after _device_tab exists (it does). See
+        # device_tab._on_line_received.
+        self._device_tab._pterm_owns_port = lambda port: port in self._pterm_conns
         self._health_tab = HealthTab(self._health)
         self._connect_surface = QTabWidget()
         self._connect_surface.addTab(self._device_tab, label_icon("Devices"), "Devices")
@@ -864,6 +872,30 @@ class CyberControllerWindow(QMainWindow):
         )
         input_row.addWidget(prompt_label)
 
+        # Send-target selector: choose WHERE a typed line goes — auto-route, the connected device(s),
+        # or the local tool shell — instead of inferring it silently from the first word (owner
+        # 2026-07-21: "you should be able to choose what youre sending to"). The device checklist on
+        # the left still picks WHICH serial devices; this picks the channel.
+        self._pterm_target = QComboBox()
+        self._pterm_target.addItem("Auto", "auto")
+        self._pterm_target.addItem("Device(s)", "serial")
+        self._pterm_target.addItem("Computer", "computer")
+        self._pterm_target.setToolTip(
+            "Where Enter sends this line:\n"
+            "• Auto — a known tool (aircrack-ng/hashcat/…) runs on the computer, anything else goes "
+            "to the checked device(s)\n"
+            "• Device(s) — always send to the checked serial device(s)\n"
+            "• Computer — always run on the computer's bundled tool shell"
+        )
+        self._pterm_target.setStyleSheet(
+            "QComboBox { background: #161b22; color: #e6edf3; border: 1px solid #30363d; "
+            "border-radius: 4px; font-size: 8pt; padding: 3px 6px; }"
+            "QComboBox QAbstractItemView { background: #161b22; color: #e6edf3; "
+            "selection-background-color: #30363d; }"
+        )
+        self._pterm_target.currentIndexChanged.connect(self._pterm_on_target_changed)
+        input_row.addWidget(self._pterm_target)
+
         self._pterm_input = QLineEdit()
         self._pterm_input.setPlaceholderText("Type command and press Enter (sent to all checked devices)...")
         self._pterm_input.setStyleSheet(
@@ -923,6 +955,16 @@ class CyberControllerWindow(QMainWindow):
 
         # Refresh device checklist
         self._pterm_refresh_ports()
+
+    def _pterm_on_target_changed(self, _index: int) -> None:
+        """Reflect the chosen send-target in the input placeholder so it's obvious where Enter goes."""
+        target = self._pterm_target.currentData()
+        hints = {
+            "auto": "Type a command — known tools run on the computer, anything else goes to checked devices…",
+            "serial": "Type a command to send to the checked device(s)…",
+            "computer": "Type a bundled tool command (aircrack-ng / hashcat / …) to run on the computer…",
+        }
+        self._pterm_input.setPlaceholderText(hints.get(target, hints["auto"]))
 
     def _pterm_refresh_ports(self) -> None:
         """Refresh the persistent terminal device checklist from the device manager."""
@@ -1144,9 +1186,12 @@ class CyberControllerWindow(QMainWindow):
         cmd = self._pterm_input.text().strip()
         if not cmd:
             return
-        # 'stop' kills a running local tool (checked before serial so it can't be swallowed as a device cmd).
+        target = self._pterm_target.currentData() if hasattr(self, "_pterm_target") else "auto"
+        # 'stop' kills a running local tool (checked before serial so it can't be swallowed as a device
+        # cmd) — but NOT when the operator is explicitly targeting a device, where 'stop' is a firmware
+        # command (e.g. stopscan) that must reach the board.
         proc = getattr(self, "_pterm_tool_proc", None)
-        if cmd.lower() == "stop" and proc is not None and proc.poll() is None:
+        if target != "serial" and cmd.lower() == "stop" and proc is not None and proc.poll() is None:
             proc.terminate()
             self._pterm_output.append('<span style="color:#f0883e;">[tool] stopping…</span>')
             self._pterm_input.clear()
@@ -1155,8 +1200,20 @@ class CyberControllerWindow(QMainWindow):
             argv = shlex.split(cmd, posix=(os.name != "nt"))
         except ValueError:
             argv = cmd.split()
-        if argv and tool_runner.is_tool_command(argv[0]):
+        route = tool_runner.route_terminal_send(target, argv[0] if argv else "")
+        if route == "tool":
             self._pterm_run_tool(argv)
+            self._pterm_input.clear()
+            return
+        if route == "no-tool":
+            # Computer target chosen, but the first word isn't a bundled tool — refuse rather than leak
+            # it to a device (the tool shell is scoped to the known crack tools, not a general OS shell).
+            first = html.escape(argv[0] if argv else cmd)
+            self._pterm_output.append(
+                f'<span style="color:#f85149;">[{first} is not a bundled tool — the Computer target '
+                f'runs only the crack tools (aircrack-ng/hashcat/…); switch to Device(s) to send it to '
+                f'a board]</span>'
+            )
             self._pterm_input.clear()
             return
         # Ticked-and-connected ports win; with nothing ticked, fall back to ALL connected ports so a

@@ -339,6 +339,14 @@ class OperateTab(QWidget):
             except Exception:
                 pass
         self._append_log(f"> {cmd}")
+        # Mirror the sent command into the app-wide activity bus so the always-visible bottom terminal
+        # echoes Operate-console sends too (this console keeps its own focused log). Guarded — never
+        # break a send. Matches DeviceTab._on_send's "cmd" tap so every send door is reflected.
+        try:
+            from src.core.activity_log import activity_log
+            activity_log().emit_line("operate", f"[{self._active_port}] > {cmd}")
+        except Exception:  # noqa: BLE001
+            pass
 
     def _append_log(self, text: str) -> None:
         self._log.append(text)

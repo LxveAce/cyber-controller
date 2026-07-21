@@ -40,6 +40,36 @@ def is_tool_command(first_token: str) -> bool:
     return _base(first_token) in KNOWN_TOOLS
 
 
+#: Valid send-target selector values for the persistent terminal input.
+SEND_TARGETS: tuple[str, ...] = ("auto", "serial", "computer")
+
+
+def route_terminal_send(target: str, first_token: str) -> str:
+    """Decide where a typed terminal line goes, given the explicit send-target selector.
+
+    The owner wants to choose where a line is sent (computer shell vs the connected serial device),
+    not have it inferred silently. This is the pure decision function behind that selector:
+
+    - ``"auto"``     — route by content: a known local tool (aircrack-ng/hashcat/…) runs on the
+      computer, everything else is written to the serial device(s). (The original behaviour.)
+    - ``"serial"``   — force the connected device(s), even when the first word looks like a tool
+      name (so a firmware command that happens to share a tool's name still reaches the board).
+    - ``"computer"`` — force the local tool shell; a first word that isn't a known tool is refused
+      rather than leaking to a device, because this is a scoped tool runner, not a general OS shell.
+
+    Returns one of ``"tool"`` (run locally), ``"serial"`` (write to devices), or ``"no-tool"`` (the
+    computer target was chosen but *first_token* isn't a known tool). An unknown *target* is treated
+    as ``"auto"``.
+    """
+    t = (target or "auto").strip().lower()
+    if t == "serial":
+        return "serial"
+    if t == "computer":
+        return "tool" if is_tool_command(first_token) else "no-tool"
+    # "auto" (and any unknown target): known tool runs locally, everything else goes to the device.
+    return "tool" if is_tool_command(first_token) else "serial"
+
+
 def resolve_tool(name: str) -> Optional[str]:
     """Absolute path to *name*'s executable: the bundled/enabled tools folder first (one level deep —
     aircrack's suite installs into ``tools/aircrack-ng/``), then PATH. None if not available."""
