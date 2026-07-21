@@ -61,6 +61,11 @@ class Device:
     connected: bool = False
     serial_number: str = ""
     board_type: BoardType = BoardType.UNKNOWN
+    #: The real esptool chip id ('esp32', 'esp32s3', 'esp32c3', ...) read via a NON-destructive chip_id
+    #: probe (``flash_core.detect_chip`` / a "Detect chip" click). Empty until probed. Preferred over the
+    #: USB-VID ``board_type`` guess, which collapses every classic ESP32 over a CP210x/CH340 bridge to an
+    #: "unknown chip" — the root cause of clunky/unreliable auto-detect.
+    detected_chip: str = ""
     baud_rate: int = 115200
     vid: str = ""
     pid: str = ""

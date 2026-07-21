@@ -6,6 +6,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 In-progress work toward the next release. Backend/serial control only — CC issues firmware CLI commands
 and never authors radio frames.
+- **New: read-only "Detect chip" — no more "unknown chip" for a classic ESP32.** A "Detect chip" button reads
+  the real chip over serial (esptool `chip_id`, no firmware overwrite) and shows it ("Detected: esp32"). CC caches
+  the confirmed chip and prefers it over the USB-VID guess for the firmware-compatibility hints, so a classic
+  ESP32 on a shared CP210x/CH340 bridge is no longer treated as an unknown chip. First step of the auto-detect
+  hardening; validated on real ESP32 hardware.
 - **New: a BLE Analyzer view.** A firmware-agnostic Bluetooth analyzer that reproduces the on-device
   view — a live RSSI-over-time graph plus a de-duplicated device table — so one view serves every BLE
   firmware (Marauder / GhostESP / Flipper / HaleHound / ESP32-DIV / LxveOS). Built on a Qt-free,

@@ -196,3 +196,51 @@ def test_refresh_ports_preserves_the_selected_port(flash_tab_widget, monkeypatch
     monkeypatch.setattr(ft._dm, "scan_ports", lambda: [dev("COM3", "Marauder"), dev("COM9", "New")])
     ft._refresh_ports()
     assert ft._port_combo.currentData() in ("COM3", "COM9")
+
+
+# ── CC-A1: read-only chip identify — cache the real esptool chip + prefer it over the VID guess ──
+
+def test_set_detected_chip_creates_caches_and_fires():
+    # Pure registry test (no Qt): set_detected_chip registers a minimal Device, caches the chip, and fires
+    # on_device_changed only when the value changes.
+    from src.core.device_manager import DeviceManager
+    dm = DeviceManager()
+    assert dm.get_device("COMTEST") is None
+    fired = []
+    dm.on_device_changed(lambda d: fired.append(d.detected_chip))
+    dev = dm.set_detected_chip("COMTEST", "esp32")   # registers a minimal Device
+    assert dev.detected_chip == "esp32"
+    assert dm.get_device("COMTEST").detected_chip == "esp32"
+    assert fired == ["esp32"]
+    dm.set_detected_chip("COMTEST", "esp32")          # unchanged -> no extra fire
+    assert fired == ["esp32"]
+    dm.set_detected_chip("COMTEST", "esp32s3")         # changed -> fires
+    assert fired == ["esp32", "esp32s3"]
+
+
+def test_flash_tab_port_chip_prefers_cached_chip(flash_tab_widget):
+    # A classic ESP32 on a shared CP210x/CH340 bridge yields None from the VID guess; a cached chip_id read
+    # (set via a read-only Detect chip) is preferred, turning "unknown chip" into a confirmed esp32.
+    ft = flash_tab_widget
+    ft._dm.set_detected_chip("COMTEST", "esp32")
+    assert ft._port_chip("COMTEST") == "esp32"
+
+
+def test_flash_tab_detect_chip_caches_and_labels(flash_tab_widget):
+    ft = flash_tab_widget
+    port = ft._port_combo.currentData()
+    if not port:
+        pytest.skip("no serial port available in the combo")
+    ft._on_chip_detected(port, "esp32s3")   # simulate the worker completing with a real chip read
+    assert ft._dm.get_device(port).detected_chip == "esp32s3"
+    assert "esp32s3" in ft._chip_label.text()     # label reflects the detected chip for the current port
+    assert ft._port_chip(port) == "esp32s3"
+
+
+def test_flash_tab_detect_chip_no_response(flash_tab_widget):
+    ft = flash_tab_widget
+    port = ft._port_combo.currentData()
+    if not port:
+        pytest.skip("no serial port available in the combo")
+    ft._on_chip_detected(port, None)   # a failed read on the current port with nothing known
+    assert "no response" in ft._chip_label.text().lower()

@@ -151,6 +151,23 @@ class DeviceManager:
             self._fire_changed(dev)
         return True
 
+    def set_detected_chip(self, port: str, chip: str) -> Device:
+        """Cache the real esptool-read chip id ('esp32', 'esp32s3', ...) for *port*, registering a minimal
+        Device if the port isn't in the registry yet, and fire :meth:`on_device_changed`. The flash tab and
+        Devices tab prefer this confirmed chip over the USB-VID ``board_type`` guess (which collapses every
+        classic ESP32 over a shared bridge to "unknown chip"). Set ``chip=""`` to clear. Returns the Device."""
+        chip = chip or ""
+        with self._lock:
+            dev = self._devices.get(port)
+            if dev is None:
+                dev = Device(port=port)
+                self._devices[port] = dev
+            changed = dev.detected_chip != chip
+            dev.detected_chip = chip
+        if changed:
+            self._fire_changed(dev)
+        return dev
+
     # ── Serial connections ───────────────────────────────────────────
 
     @staticmethod

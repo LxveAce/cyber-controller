@@ -162,6 +162,25 @@ class _DetectWorker(QThread):
             self.failed.emit(str(exc))
 
 
+class _ChipDetectWorker(QThread):
+    """Read the esptool chip id off the UI thread — a NON-destructive ``chip_id`` probe (no firmware
+    overwrite). Emits ``(port, chip)`` with ``chip=None`` when the board can't be read."""
+
+    done = pyqtSignal(str, object)  # (port, chip: str | None)
+
+    def __init__(self, engine: FlashEngine, port: str) -> None:
+        super().__init__()
+        self._engine = engine
+        self._port = port
+
+    def run(self) -> None:
+        try:
+            chip = self._engine.detect_chip(self._port)
+        except Exception:  # noqa: BLE001 — a probe must never crash the UI thread
+            chip = None
+        self.done.emit(self._port, chip)
+
+
 def _format_update_report(updates: list) -> str:
     """Render FirmwareVault.check_updates() output as a log message. Pure/UI-free so it can be
     unit-tested. Each update dict carries name / profile_id / cached_version / latest_version.
@@ -316,6 +335,18 @@ class FlashTab(QWidget):
         btn_refresh = QPushButton("Refresh")
         btn_refresh.clicked.connect(self._refresh_ports)
         port_layout.addWidget(btn_refresh)
+        # Read-only chip identify: esptool chip_id (does NOT overwrite firmware). Caches the real chip so
+        # the firmware hints + the label stop guessing "unknown" for every classic ESP32 on a shared bridge.
+        self._btn_detect_chip = QPushButton("Detect chip")
+        self._btn_detect_chip.setToolTip(
+            "Read the chip type over serial (esptool chip_id) WITHOUT touching the firmware. Turns the "
+            "'unknown chip' guess into a confirmed esp32 / esp32s3 / … so the firmware hints are accurate."
+        )
+        self._btn_detect_chip.clicked.connect(self._on_detect_chip)
+        port_layout.addWidget(self._btn_detect_chip)
+        self._chip_label = QLabel("Detected: —")
+        self._chip_label.setObjectName("muted")
+        port_layout.addWidget(self._chip_label)
         top.addWidget(port_card, stretch=1)
 
         # Profile selector card
@@ -563,10 +594,17 @@ class FlashTab(QWidget):
         chip = None
         port = self._port_combo.currentData()
         if port:
-            for dev in self._dm.scan_ports():
-                if dev.port == port:
-                    chip = _BOARDTYPE_CHIP.get(dev.board_type)
-                    break
+            reg = self._dm.get_device(port)
+            if reg is not None and reg.detected_chip:
+                chip = reg.detected_chip     # a confirmed esptool chip_id read wins over the USB-VID guess
+            else:
+                for dev in self._dm.scan_ports():
+                    if dev.port == port:
+                        chip = _BOARDTYPE_CHIP.get(dev.board_type)
+                        break
+        # Keep the "Detected:" label in sync with the selected port (its cached/known chip, or — if unread).
+        if getattr(self, "_chip_label", None) is not None:
+            self._chip_label.setText(f"Detected: {chip}" if chip else "Detected: —")
         model = self._profile_combo.model()
         green = QBrush(QColor("#3fb950"))
         red = QBrush(QColor("#f85149"))
@@ -675,8 +713,39 @@ class FlashTab(QWidget):
 
     def _set_detect_busy(self, busy: bool) -> None:
         """Toggle the buttons that would start a competing serial op while detect runs."""
-        for btn in (self._btn_detect, self._btn_flash, self._btn_backup, self._btn_erase):
+        for btn in (self._btn_detect, self._btn_detect_chip, self._btn_flash, self._btn_backup, self._btn_erase):
             btn.setEnabled(not busy)
+
+    def _on_detect_chip(self) -> None:
+        """Read-only chip identify: run esptool chip_id off-thread (no firmware overwrite) and cache the
+        real chip so the firmware hints + the 'Detected:' label stop guessing 'unknown' for classic ESP32."""
+        port = self._port_combo.currentData()
+        if not port:
+            self._log("No port selected.")
+            return
+        self._log(f"Reading chip on {port}…")
+        self._set_detect_busy(True)
+        self._chip_label.setText("Detected: …")
+        self._chip_worker = _ChipDetectWorker(self._fe, port)
+        self._chip_worker.done.connect(self._on_chip_detected)
+        self._chip_worker.start()
+
+    def _on_chip_detected(self, port: str, chip) -> None:
+        self._set_detect_busy(False)
+        if chip:
+            self._dm.set_detected_chip(port, chip)  # cache on the registry so hints/labels prefer it
+            self._log(f"Detected chip on {port}: {chip}")
+        else:
+            self._log(
+                f"Could not read the chip on {port} — the board may be busy, on the wrong port, or not "
+                "auto-entering download mode (hold BOOT and retry)."
+            )
+        # _recolor_profiles is the single source of truth for the firmware hints + the 'Detected:' label
+        # (it reads the now-cached chip for the selected port). On a failed read of the CURRENT port with
+        # nothing known, surface the honest 'no response' instead of a bare —.
+        self._recolor_profiles()
+        if chip is None and self._port_combo.currentData() == port and not self._port_chip(port):
+            self._chip_label.setText("Detected: (no response)")
 
     def _on_detect_failed(self, msg: str) -> None:
         self._log(f"Detection failed: {msg}")
@@ -816,11 +885,15 @@ class FlashTab(QWidget):
 
     def _port_chip(self, port) -> str | None:
         """The chip of the board on ``port`` IF unambiguously known from USB enumeration (native-USB
-        S3/S2/C3). ``None`` for the classic-ESP32 / shared-UART-bridge bucket — which includes every CYD,
-        and is exactly where Marauder's Auto default (the generic ILI9341 ``old_hardware`` build) can blank
-        a display. Mirrors the chip lookup in :meth:`_recolor_profiles`."""
+        S3/S2/C3) OR confirmed by a read-only "Detect chip" (esptool chip_id, cached on the registry Device).
+        ``None`` for the classic-ESP32 / shared-UART-bridge bucket that hasn't been probed — which includes
+        every un-probed CYD, and is exactly where Marauder's Auto default (the generic ILI9341
+        ``old_hardware`` build) can blank a display. Mirrors the chip lookup in :meth:`_recolor_profiles`."""
         if not port:
             return None
+        reg = self._dm.get_device(port)
+        if reg is not None and reg.detected_chip:
+            return reg.detected_chip   # a confirmed chip_id read wins over the USB-VID guess
         for dev in self._dm.scan_ports():
             if dev.port == port:
                 return _BOARDTYPE_CHIP.get(dev.board_type)

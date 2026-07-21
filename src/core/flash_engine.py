@@ -776,6 +776,14 @@ class FlashEngine:
                 log.debug("list_variants(%s,%s) failed: %s", core_id, c, exc)
         return out
 
+    def detect_chip(self, port: str, on_line: Optional[Callable[[str], None]] = None) -> Optional[str]:
+        """Read the real esptool chip id ('esp32', 'esp32s3', 'esp32c3', ...) via a NON-destructive
+        ``chip_id`` probe — it does NOT overwrite firmware. Returns None if it can't connect (port busy,
+        wrong port, or a board that won't auto-enter download mode). Backs the flash tab's read-only
+        "Detect chip" so the firmware hints stop guessing "unknown chip" for every classic ESP32 on a
+        shared CP210x/CH340 UART bridge."""
+        return flash_core.detect_chip(port, on_line or (lambda _l: None))
+
     # ── qFlipper (Flipper Zero firmwares) ────────────────────────────
 
     def _flash_qflipper(
