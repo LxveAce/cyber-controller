@@ -526,8 +526,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             root = QVBoxLayout(self)
             _note = QLabel(
                 "Cameras appear from a live scan or a loaded cameras.geojson, on a real street basemap. "
-                "The first time you have internet, leave “Online tiles” on and pan your area to cache "
-                "the map for offline use. A bundled camera dataset is still coming.")
+                "The map stays offline by default; turn on “Online tiles” once, with internet, and pan your "
+                "area to cache the streets — after that it works offline. A bundled camera dataset is still coming.")
             _note.setWordWrap(True)
             _note.setStyleSheet("color:#8b949e;padding:4px 2px;")
             root.addWidget(_note)
@@ -593,10 +593,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._chk_streetmap.setChecked(True)
             self._chk_streetmap.stateChanged.connect(lambda _s: self._on_streetmap_toggled())
             self._chk_online = QCheckBox("Online tiles")
-            self._chk_online.setToolTip("When connected, download the street tiles for the area you're viewing "
-                                        "and cache them for offline use later. Only the current view is fetched — "
-                                        "never a bulk download. Turn off to stay fully offline (cached tiles only).")
-            self._chk_online.setChecked(True)
+            self._chk_online.setToolTip("OFF by default (airgapped). Turn on, with internet, to download the street "
+                                        "tiles for the area you're viewing and cache them for offline use later. "
+                                        "Only the current view is fetched — never a bulk download. Off = fully "
+                                        "offline (cached tiles only, no network).")
+            self._chk_online.setChecked(False)     # airgapped-by-default (owner 2026-07-21): no network unless asked
             self._chk_online.stateChanged.connect(lambda _s: self._schedule_tiles())
             self._chk_mylocation = QCheckBox("My location (GPS)")
             self._chk_mylocation.setToolTip("When a GPS is streaming (during a live scan), drop a 'you are here' "

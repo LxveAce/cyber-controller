@@ -604,6 +604,18 @@ def test_streetmap_toggle_off_clears_tiles(qapp):
         w.shutdown()
 
 
+def test_online_tiles_off_by_default(qapp):
+    # Airgapped-by-default (owner 2026-07-21): the street basemap is on, but no network is used until the
+    # operator explicitly opts into Online tiles. A cache miss with Online off must never spawn a fetcher.
+    w = FlockHeatmapTab()
+    try:
+        assert w._chk_streetmap.isChecked() is True
+        assert w._chk_online.isChecked() is False
+        assert w._tile_worker is None
+    finally:
+        w.shutdown()
+
+
 def test_update_tiles_is_a_noop_while_hidden(qapp):
     # Backgrounded tabs must not build tile items (the record/render split); showEvent re-schedules on return.
     w = FlockHeatmapTab()
