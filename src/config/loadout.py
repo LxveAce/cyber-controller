@@ -49,14 +49,20 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
     # shown. (Per-sub-tab loadout gating — e.g. hiding Targets/Broadcast/Wardrive inside Operate for a
     # non-wifi/non-gps loadout — is a tracked follow-up; today loadout hides/shows at surface granularity.)
     "Operate": ALWAYS,
-    # "Network" is the grouped surface (Graph + Cross-Comm sub-views); it gates as one wifi_scanning unit.
-    "Network": {"wifi_scanning"},
+    # WS-6 A: "Survey" is the GPS-tagged field-survey group (Wardrive + Multi-Wardrive + Flock Map). Kept
+    # ALWAYS (fail-open): Wardrive was always visible as part of the old Operate, and Flock Map loads a saved
+    # map with no hardware, so hiding the surface could remove reachable functionality.
+    "Survey": ALWAYS,
+    # WS-6 A: "Analyze" is the surface previously labelled "Network" (Graph + Cross-Comm + Crack Lab + BLE
+    # Analyzer). It gates as one wifi_scanning unit — its members are all Wi-Fi/BLE analysis or WPA cracking,
+    # so a non-scanning loadout de-bloats it, exactly as "Network" did.
+    "Analyze": {"wifi_scanning"},
     "Settings": ALWAYS,
 }
 
 # Canonical tab order (matches main_window._tab_registry); used to re-insert tabs in order.
 TAB_ORDER = (
-    "Flash", "Connect", "Operate", "Network", "Settings",
+    "Flash", "Connect", "Operate", "Survey", "Analyze", "Settings",
 )
 
 

@@ -35,20 +35,22 @@ def test_core_tabs_always_visible():
         assert sub not in vis  # Connect sub-views now, never top-level
 
 
-def test_wifi_scanning_gates_network_surface():
-    # S4 regroup: the wifi_scanning-gated *top-level* surface is now "Network" (holds Cross-Comm). Targets and
-    # Broadcast folded into the always-shown "Operate" surface (Macros anchors it), so wifi gating for those
-    # became a documented per-sub-tab follow-up — none of Targets/Broadcast/Cross-Comm are top-level tabs.
+def test_wifi_scanning_gates_analyze_surface():
+    # WS-6 A: the wifi_scanning-gated *top-level* surface is "Analyze" (was "Network"; now holds Graph +
+    # Cross-Comm + Crack Lab + BLE Analyzer). Targets/Broadcast/Console/Macros are the always-shown "Operate"
+    # surface, and the survey/map trio is the always-shown "Survey" surface — so wifi gating for any of those
+    # is a documented per-sub-tab follow-up; none are top-level tabs.
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    assert "Network" not in vis            # no wifi fw -> the wifi-gated Network surface is hidden
-    assert "Operate" in vis                # always shown (contains always-available Macros)
-    for sub in ("Targets", "Broadcast", "Cross-Comm"):
+    assert "Analyze" not in vis            # no wifi fw -> the wifi-gated Analyze surface is hidden
+    assert "Network" not in vis            # the old label is gone
+    assert "Operate" in vis and "Survey" in vis   # both always shown
+    for sub in ("Targets", "Broadcast", "Cross-Comm", "Crack Lab", "Graph"):
         assert sub not in vis              # sub-views now, never top-level
-    # add Marauder -> the wifi-gated Network surface appears (Operate was already shown)
+    # add Marauder -> the wifi-gated Analyze surface appears (Operate/Survey were already shown)
     lo2 = {**lo, "firmwares": ["meshtastic", "marauder"]}
     vis2 = L.visible_tabs(lo2)
-    assert "Network" in vis2 and "Operate" in vis2
+    assert "Analyze" in vis2 and "Operate" in vis2 and "Survey" in vis2
 
 
 def test_operate_surface_always_shown_holds_wardrive():

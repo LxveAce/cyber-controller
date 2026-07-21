@@ -37,18 +37,20 @@ from PyQt5.QtWidgets import (  # noqa: E402
 # Source of truth: src/ui/qt/main_window.py (addTab calls). Keep this list in lockstep with the code;
 # a diff here is the intended signal that the tab IA changed.
 EXPECTED_TABS = [
-    # S4 regroup (2026-07-01): Flash is a grouped *surface* holding Firmware (the FlashTab) + Software OS as
-    # sub-views — Software OS is not a top-level tab anymore. See test_flash_surface_subtabs.
+    # S4 regroup: Flash is a grouped *surface* holding Firmware (the FlashTab) + Software OS as sub-views.
     ("Flash", "_flash_surface"),
-    # Connect is a grouped *surface* holding Devices/Health as sub-views — neither is a top-level tab anymore.
-    # See test_connect_surface_subtabs.
+    # Connect surface: Devices/Health/Nodes sub-views. See test_connect_surface_subtabs.
     ("Connect", "_connect_surface"),
-    # Operate is a grouped *surface* holding Targets/Broadcast/Macros/Wardrive as sub-views — none of those four
-    # are top-level tabs anymore. See test_operate_surface_subtabs.
+    # WS-6 A (2026-07-21): Operate is the live action loop — Targets/Broadcast/Console/Macros. See
+    # test_operate_surface_subtabs.
     ("Operate", "_operate_surface"),
-    # Network is a grouped *surface* holding the Graph (NetworkTab) and Cross-Comm sub-views — Cross-Comm is
-    # not a top-level tab. See test_network_surface_subtabs.
-    ("Network", "_network_surface"),
+    # WS-6 A: Survey is the NEW GPS-tagged field-survey group — Wardrive/Multi-Wardrive/Flock Map. See
+    # test_survey_surface_subtabs.
+    ("Survey", "_survey_surface"),
+    # WS-6 A: Analyze is the surface previously labelled "Network" — Graph/Cross-Comm/Crack Lab/BLE Analyzer.
+    # The widget attribute is still _network_surface (many refs key off it); only its label changed. See
+    # test_analyze_surface_subtabs.
+    ("Analyze", "_network_surface"),
     ("Settings", "_settings_tab"),
     # How-To moved to the Help menu (CC-6) — no longer a top-level tab. See test_howto_available_via_help.
 ]
@@ -77,12 +79,12 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_tab_count_is_5(qapp, isolated_settings):
-    # 5 top-level surfaces after the S4 regroup + CC-6 (How-To moved to the Help menu): Flash, Connect,
-    # Operate, Network, Settings. (Was 12 flat tabs originally — Firmware+Software OS folded into Flash,
-    # Devices+Health into Connect, Targets/Broadcast/Macros/Wardrive into Operate, Cross-Comm into Network.)
+def test_tab_count_is_6(qapp, isolated_settings):
+    # 6 top-level surfaces after WS-6 A: Flash, Connect, Operate, Survey, Analyze, Settings. (The old 8-tab
+    # Operate was split — the survey/map trio moved to a new Survey surface, and Crack Lab + BLE Analyzer to
+    # Analyze [the renamed Network surface].)
     win = _make_window()
-    assert win._tabs.count() == len(EXPECTED_TABS) == 5
+    assert win._tabs.count() == len(EXPECTED_TABS) == 6
 
 
 def test_flash_surface_subtabs(qapp, isolated_settings):
@@ -117,27 +119,37 @@ def test_connect_surface_subtabs(qapp, isolated_settings):
 
 
 def test_operate_surface_subtabs(qapp, isolated_settings):
-    # The Operate action surface holds Targets (leads), Broadcast, Macros, Wardrive, Multi-Wardrive, Flock Map,
-    # and Crack Lab (1.7.0; renamed from "Wi-Fi Audit") — the re-parented widgets are the SAME objects the
-    # window exposes on named attrs.
+    # WS-6 A: Operate is the live action loop — Targets (leads), Broadcast, Console, Macros. The survey/map
+    # trio and Crack Lab + BLE Analyzer moved out (to Survey / Analyze); the re-parented widgets are the SAME
+    # objects the window exposes on named attrs.
     win = _make_window()
     surface = win._operate_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Targets", "Broadcast", "Macros", "Wardrive", "Multi-Wardrive", "Flock Map",
-                      "Crack Lab", "Console", "BLE Analyzer"]
+    assert titles == ["Targets", "Broadcast", "Console", "Macros"]
     assert surface.widget(0) is win._targets_tab, "Targets sub-tab must be the TargetsTab object"
     assert surface.widget(1) is win._broadcast_bar, "Broadcast sub-tab must be the BroadcastBar object"
-    assert surface.widget(2) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
-    assert surface.widget(3) is win._wardrive_tab, "Wardrive sub-tab must be the WardriveTab object"
-    assert surface.widget(4) is win._wardrive_multi_tab, "Multi-Wardrive sub-tab must be the WardriveMultiTab object"
-    assert surface.widget(5) is win._flock_heatmap, "Flock Map sub-tab must be the FlockHeatmapTab object"
-    assert surface.widget(7) is win._operate_console, "Console sub-tab must be the OperateTab object"
-    assert surface.widget(8) is win._ble_analyzer, "BLE Analyzer must be the BleAnalyzerTab"
+    assert surface.widget(2) is win._operate_console, "Console sub-tab must be the OperateTab object"
+    assert surface.widget(3) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
     # None of the sub-views are direct top-level tabs anymore.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Targets", "Broadcast", "Macros", "Wardrive", "Multi-Wardrive", "Flock Map"):
+    for gone in ("Targets", "Broadcast", "Console", "Macros"):
         assert gone not in toplevel, f"{gone!r} should be an Operate sub-tab, not top-level"
     assert "Operate" in toplevel
+
+
+def test_survey_surface_subtabs(qapp, isolated_settings):
+    # WS-6 A: Survey is the new GPS-tagged field-survey group — Wardrive (leads), Multi-Wardrive, Flock Map.
+    win = _make_window()
+    surface = win._survey_surface
+    titles = [surface.tabText(i) for i in range(surface.count())]
+    assert titles == ["Wardrive", "Multi-Wardrive", "Flock Map"]
+    assert surface.widget(0) is win._wardrive_tab, "Wardrive sub-tab must be the WardriveTab object"
+    assert surface.widget(1) is win._wardrive_multi_tab, "Multi-Wardrive must be the WardriveMultiTab object"
+    assert surface.widget(2) is win._flock_heatmap, "Flock Map must be the FlockHeatmapTab object"
+    toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
+    for gone in ("Wardrive", "Multi-Wardrive", "Flock Map"):
+        assert gone not in toplevel, f"{gone!r} should be a Survey sub-tab, not top-level"
+    assert "Survey" in toplevel
 
 
 def test_ble_analyzer_fed_by_ingestor_events(qapp, isolated_settings):
@@ -170,18 +182,26 @@ def test_ble_analyzer_fed_by_ingestor_events(qapp, isolated_settings):
     assert dev.rssi == -44 and dev.name == "Fitbit"
 
 
-def test_network_surface_subtabs(qapp, isolated_settings):
-    # The Network anchor surface holds two sub-views — Graph (the NetworkTab) then Cross-Comm — and the
-    # re-parented widgets are the SAME objects the window still exposes on _network_tab / _cross_comm_tab.
+def test_analyze_surface_subtabs(qapp, isolated_settings):
+    # WS-6 A: the Analyze surface (previously labelled "Network"; attribute still _network_surface) holds
+    # Graph (the NetworkTab, leads), Cross-Comm, Crack Lab, and BLE Analyzer — re-parented, never recreated.
     win = _make_window()
     surface = win._network_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Graph", "Cross-Comm"]
+    expected = ["Graph", "Cross-Comm", "Crack Lab"]
+    if win._ble_analyzer is not None:
+        expected.append("BLE Analyzer")
+    assert titles == expected
     assert surface.widget(0) is win._network_tab, "Graph sub-tab must be the NetworkTab object"
     assert surface.widget(1) is win._cross_comm_tab, "Cross-Comm sub-tab must be the CrossCommTab object"
-    # Cross-Comm is no longer a direct top-level tab.
+    assert surface.widget(2) is win._crack_lab_tab, "Crack Lab sub-tab must be the CrackLabTab object"
+    if win._ble_analyzer is not None:
+        assert surface.widget(3) is win._ble_analyzer, "BLE Analyzer must be the BleAnalyzerTab object"
+    # These are sub-views now, not top-level; the old "Network" label is gone, replaced by "Analyze".
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    assert "Cross-Comm" not in toplevel and "Network" in toplevel
+    for gone in ("Cross-Comm", "Crack Lab", "Graph", "Network"):
+        assert gone not in toplevel
+    assert "Analyze" in toplevel
 
 
 def test_tab_titles_and_order(qapp, isolated_settings):
@@ -200,11 +220,12 @@ def test_each_tab_widget_identity(qapp, isolated_settings):
         )
 
 
-def test_network_tab_precedes_settings(qapp, isolated_settings):
-    # The Network tab is the S4 anchor (becomes the central node view); characterize its position now.
+def test_analyze_precedes_settings(qapp, isolated_settings):
+    # WS-6 A: Analyze (was Network) still sits just before Settings; characterize its position.
     win = _make_window()
     titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    assert titles.index("Network") < titles.index("Settings")
+    assert titles.index("Analyze") < titles.index("Settings")
+    assert titles.index("Survey") < titles.index("Analyze")   # Survey slots between Operate and Analyze
 
 
 # ── Per-tab widget inventory (S4 characterization) ───────────────────

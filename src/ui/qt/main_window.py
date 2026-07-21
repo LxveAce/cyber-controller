@@ -556,56 +556,56 @@ class CyberControllerWindow(QMainWindow):
         self._wardrive_tab = WardriveTab(device_manager=self._dm)  # GPS-tagged Wi-Fi capture -> WiGLE CSV (lawful, owner-authorized); routes through the DM so it can't double-open a board
         from src.ui.qt.broadcast_tab import BroadcastBar
         self._broadcast_bar = BroadcastBar(self._broadcast, self._dm, self._bus)
-        self._operate_surface = QTabWidget()
-        self._operate_surface.addTab(self._targets_tab, label_icon("Targets"), "Targets")
-        self._operate_surface.addTab(self._broadcast_bar, label_icon("Broadcast"), "Broadcast")
-        self._operate_surface.addTab(self._macro_tab, label_icon("Macros"), "Macros")
-        self._operate_surface.addTab(self._wardrive_tab, label_icon("Wardrive"), "Wardrive")
+        # ── WS-6 Proposal A (owner-approved 2026-07-21): the old 8-tab Operate is regrouped by workflow.
+        # Operate = the live action loop only (Targets · Broadcast · Console · Macros). The GPS-tagged
+        # survey/map trio moves to a new Survey surface, and Crack Lab + BLE Analyzer to Analyze (the renamed
+        # Network surface). Every widget is created ONCE and re-parented, so every self._<tab> reference +
+        # the palette + tests keep working; only which inner QTabWidget each sits in changed.
         from src.ui.qt.wardrive_multi_tab import WardriveMultiTab
         self._wardrive_multi_tab = WardriveMultiTab(device_manager=self._dm)  # F1: concurrent multi-board capture
-        self._operate_surface.addTab(self._wardrive_multi_tab, label_icon("Multi-Wardrive"), "Multi-Wardrive")
-        # FL F5: the located-ALPR-camera map is a real sub-tab now (it was a standalone Tools window with no
-        # tab lifecycle). It sits next to Wardrive since both are GPS-tagged field-survey views.
+        # FL F5: the located-ALPR-camera street map (a real tab with wake/sleep hooks, not the old Tools window).
         self._flock_heatmap = FlockHeatmapTab()
-        self._operate_surface.addTab(self._flock_heatmap, label_icon("Flock Map"), "Flock Map")
-        # Crack Lab (1.7.0; renamed from "Wi-Fi Audit"): the reachable entry point for the offline WPA
-        # crack pipeline + wordlist manager (capture -> wordlist -> per-run consent -> hashcat/aircrack).
-        # Dictionary-only; the consent gate is never bypassed.
+        # Crack Lab (offline WPA crack pipeline + wordlist manager): capture -> wordlist -> per-run consent ->
+        # hashcat/aircrack. Dictionary-only; the consent gate is never bypassed. Passed the cross-comm hub so
+        # its Captures table auto-populates from the shared capture log.
         from src.ui.qt.crack_lab_tab import CrackLabTab
-        # Pass the cross-comm hub so the Captures table auto-populates from the shared capture log.
         self._crack_lab_tab = CrackLabTab(self._hub)
-        self._operate_surface.addTab(self._crack_lab_tab, label_icon("Crack Lab"), "Crack Lab")
-        # Operate console (B16): a button-driven single-device console — status-poll header, SAFE/ARMED
-        # lamp, two-factor arm toggle, and a per-firmware TX-gated command grid. Shares the Devices tab's
-        # ingestor (Device state is mutated once, read here) + its _dms_seen set (so a Dead-Man's-Switch
-        # port is never auto-polled here either). Named "Console" — "Operate" is this surface's own name.
+        # Operate console (B16): a button-driven single-device console — status-poll header, SAFE/ARMED lamp,
+        # two-factor arm toggle, per-firmware TX-gated command grid. Shares the Devices tab's ingestor + its
+        # _dms_seen set (so a Dead-Man's-Switch port is never auto-polled here either).
         from src.ui.qt.operate_tab import OperateTab
         self._operate_console = OperateTab(
             self._dm, self._ingestor, recorder=self._macro, dms_seen=self._device_tab._dms_seen,
         )
-        self._operate_surface.addTab(self._operate_console, label_icon("Console"), "Console")
-        # BLE Analyzer (1.9.0 output view): the on-device Bluetooth-analyzer visual — a live RSSI
-        # graph + device table, fed by ble_found events from EVERY BLE firmware via the ingestor's
-        # event tap (see _wire_ble_analyzer). An awareness view; it transmits nothing.
+        # BLE Analyzer (output view): the on-device Bluetooth-analyzer visual — a live RSSI graph + device
+        # table, fed by ble_found events from EVERY BLE firmware via the ingestor tap (see _wire_ble_analyzer).
+        # An awareness/analysis view (it transmits nothing), so it lives in Analyze.
         from src.ui.qt.ble_analyzer_tab import BleAnalyzerTab
         self._ble_analyzer = BleAnalyzerTab() if BleAnalyzerTab is not None else None
-        if self._ble_analyzer is not None:
-            self._operate_surface.addTab(
-                self._ble_analyzer, label_icon("BLE Analyzer"), "BLE Analyzer")
-            self._wire_ble_analyzer()   # tap ble_found events now the tab exists (see the method)
+
+        # Operate — the live action loop.
+        self._operate_surface = QTabWidget()
+        self._operate_surface.addTab(self._targets_tab, label_icon("Targets"), "Targets")
+        self._operate_surface.addTab(self._broadcast_bar, label_icon("Broadcast"), "Broadcast")
+        self._operate_surface.addTab(self._operate_console, label_icon("Console"), "Console")
+        self._operate_surface.addTab(self._macro_tab, label_icon("Macros"), "Macros")
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
-        # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its
-        # MAC/SSID/channel into the Macro tab's variable fields, so a discovery in one surface is
-        # reusable in another without retyping. Same tab-signal → window-connects pattern as
-        # SettingsTab.check_updates_requested — no global, no new transport.
+        # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its MAC/SSID/channel
+        # into the Macro tab's variable fields, so a discovery in one surface is reusable in another.
         self._targets_tab.fill_macro_requested.connect(self._on_use_target_as_macro)
 
-        # Network anchor surface (S4 GUI regroup) — the node graph is the centerpiece of the cross-comm
-        # model, so it leads; Cross-Comm routing (event stream + auto-routing rules) rides alongside it as a
-        # sub-view. Both widgets are the SAME objects the rest of main_window + the tests reference: they are
-        # RE-PARENTED into an inner QTabWidget here, never recreated, so every self._cross_comm_tab /
-        # self._network_tab use keeps working. Navigate into a sub-view via _show_subtab().
+        # Survey (NEW, WS-6 A) — the GPS-tagged field-survey group: drive around and map what's out there.
+        self._survey_surface = QTabWidget()
+        self._survey_surface.addTab(self._wardrive_tab, label_icon("Wardrive"), "Wardrive")
+        self._survey_surface.addTab(self._wardrive_multi_tab, label_icon("Multi-Wardrive"), "Multi-Wardrive")
+        self._survey_surface.addTab(self._flock_heatmap, label_icon("Flock Map"), "Flock Map")
+        self._tabs.addTab(self._survey_surface, label_icon("Survey"), "Survey")
+
+        # Analyze (WS-6 A; the surface previously labelled "Network") — situational awareness + offline
+        # post-processing: the node graph leads, with Cross-Comm routing, the offline Crack Lab, and the BLE
+        # Analyzer view alongside. The attribute stays self._network_surface (many refs/tests key off it);
+        # only its displayed label + loadout key are "Analyze". Widgets are re-parented, never recreated.
         self._cross_comm_tab = CrossCommTab(self._bus, self._pool, self._router, self._dm)
         from src.ui.qt.network_tab import NetworkTab
         self._network_tab = NetworkTab(self._dm, self._pool, self._action_resolver, self._send_to_port,
@@ -613,7 +613,11 @@ class CyberControllerWindow(QMainWindow):
         self._network_surface = QTabWidget()
         self._network_surface.addTab(self._network_tab, label_icon("Graph"), "Graph")
         self._network_surface.addTab(self._cross_comm_tab, label_icon("Cross-Comm"), "Cross-Comm")
-        self._tabs.addTab(self._network_surface, label_icon("Network"), "Network")
+        self._network_surface.addTab(self._crack_lab_tab, label_icon("Crack Lab"), "Crack Lab")
+        if self._ble_analyzer is not None:
+            self._network_surface.addTab(self._ble_analyzer, label_icon("BLE Analyzer"), "BLE Analyzer")
+            self._wire_ble_analyzer()   # tap ble_found events now the tab exists (see the method)
+        self._tabs.addTab(self._network_surface, label_icon("Analyze"), "Analyze")
 
         # (Mission Planner tab removed — was a non-functional "coming soon" placeholder; tracked as a
         # real future feature in the internal roadmap notes. Don't ship dead tabs.)
@@ -625,7 +629,7 @@ class CyberControllerWindow(QMainWindow):
         self._tabs.addTab(self._settings_tab, label_icon("Settings"), "Settings")
 
         # How-To lives under the Help menu (see _on_howto), not the tab strip — keeps the top level at the
-        # 5 working surfaces (Flash / Connect / Operate / Network / Settings) + Help.
+        # 6 working surfaces (Flash / Connect / Operate / Survey / Analyze / Settings) + Help.
 
     # ── Interface mode (dual-depth Simple / Pro) ────────────────────
 
@@ -660,10 +664,13 @@ class CyberControllerWindow(QMainWindow):
         """Canonical (label, widget) tabs in order — the source of truth for loadout show/hide."""
         return [
             ("Flash", self._flash_surface), ("Connect", self._connect_surface),
-            # S4 regroup: Flash (Firmware + Software OS), Connect (Devices + Health), Operate (Targets + Broadcast
-            # + Macros + Wardrive) and Network (Graph + Cross-Comm) are each ONE loadout-toggleable surface unit.
+            # WS-6 A: each surface is ONE loadout-toggleable unit. Flash (Firmware + Software OS), Connect
+            # (Devices + Health + Nodes), Operate (Targets + Broadcast + Console + Macros), Survey (Wardrive +
+            # Multi-Wardrive + Flock Map), Analyze (Graph + Cross-Comm + Crack Lab + BLE Analyzer). The Analyze
+            # widget is still self._network_surface internally; only its label + loadout key changed.
             ("Operate", self._operate_surface),
-            ("Network", self._network_surface),
+            ("Survey", self._survey_surface),
+            ("Analyze", self._network_surface),
             ("Settings", self._settings_tab),
         ]
 
@@ -1601,7 +1608,7 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("View Targets", lambda: self._show_subtab(self._operate_surface, self._targets_tab))
         self._palette.add_command("Broadcast Actions", lambda: self._show_subtab(self._operate_surface, self._broadcast_bar))
         self._palette.add_command("View Macros", lambda: self._show_subtab(self._operate_surface, self._macro_tab))
-        self._palette.add_command("Wardrive", lambda: self._show_subtab(self._operate_surface, self._wardrive_tab))
+        self._palette.add_command("Wardrive", lambda: self._show_subtab(self._survey_surface, self._wardrive_tab))
         # Network surface sub-views: focus the surface, then the sub-tab (re-parented under _network_surface).
         self._palette.add_command("Network Graph", lambda: self._show_subtab(self._network_surface, self._network_tab))
         self._palette.add_command("Cross-Comm Dashboard", lambda: self._show_subtab(self._network_surface, self._cross_comm_tab))
@@ -1697,8 +1704,8 @@ class CyberControllerWindow(QMainWindow):
 
     def _on_howto(self) -> None:
         """Open the in-app How-To guide (renders docs/HOWTO.md) in a dialog. Lives under Help rather than a
-        top-level tab so the strip stays at the 5 working surfaces (Flash/Connect/Operate/Network/Settings)
-        + Help — the same "help content in a dialog" pattern as _on_user_guide."""
+        top-level tab so the strip stays at the 6 working surfaces (Flash/Connect/Operate/Survey/Analyze/
+        Settings) + Help — the same "help content in a dialog" pattern as _on_user_guide."""
         from src.ui.qt.howto_tab import HowToTab
         dlg = QDialog(self)
         dlg.setWindowTitle("Cyber Controller — How-To")
@@ -2196,9 +2203,9 @@ class CyberControllerWindow(QMainWindow):
     def _on_flock_heatmap(self) -> None:
         """Focus the Flock Map tab (FL F5) — located ALPR-camera detections from a scan's GeoJSON.
 
-        The map used to open as a standalone Tools window; it's a sub-tab of the Operate surface now, so this
-        menu / palette action just navigates to it."""
-        self._show_subtab(self._operate_surface, self._flock_heatmap)
+        The map used to open as a standalone Tools window; since WS-6 A it's a sub-tab of the Survey surface,
+        so this menu / palette action just navigates to it."""
+        self._show_subtab(self._survey_surface, self._flock_heatmap)
 
     # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
     # These MUST equal the real BaseProtocol.protocol_name values (ghost_esp.py -> "ghost-esp",
