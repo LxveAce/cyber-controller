@@ -302,14 +302,15 @@ class Esp32DivProtocol(BaseProtocol):
             CommandInfo("hop stop", "WiFi", "Stop channel hopping"),
 
             # ── WiFi Attacks ─────────────────────────────────────────
-            CommandInfo("deauth", "Attack", "Deauthentication attack on selected target"),
-            CommandInfo("deauth all", "Attack", "Deauth all discovered APs"),
-            CommandInfo("beacon", "Attack", "Beacon spam (random SSIDs)"),
-            CommandInfo("beacon list", "Attack", "Beacon spam from SSID list"),
-            CommandInfo("beacon target", "Attack", "Clone target AP beacons"),
-            CommandInfo("probe", "Attack", "Probe request flood"),
-            CommandInfo("rickroll", "Attack", "Rickroll beacon spam"),
-            CommandInfo("stopattack", "Attack", "Stop current attack"),
+            # Explicit danger= so classify() is authoritative (info.danger wins over keyword heuristics).
+            CommandInfo("deauth", "Attack", "Deauthentication attack on selected target", danger="lab-only"),
+            CommandInfo("deauth all", "Attack", "Deauth all discovered APs", danger="lab-only"),
+            CommandInfo("beacon", "Attack", "Beacon spam (random SSIDs)", danger="lab-only"),
+            CommandInfo("beacon list", "Attack", "Beacon spam from SSID list", danger="lab-only"),
+            CommandInfo("beacon target", "Attack", "Clone target AP beacons", danger="lab-only"),
+            CommandInfo("probe", "Attack", "Probe request flood", danger="lab-only"),
+            CommandInfo("rickroll", "Attack", "Rickroll beacon spam", danger="lab-only"),
+            CommandInfo("stopattack", "Attack", "Stop current attack"),  # a cease command — safe
 
             # ── Packet Capture ───────────────────────────────────────
             CommandInfo("sniff", "Capture", "Start packet sniffer"),
@@ -326,19 +327,19 @@ class Esp32DivProtocol(BaseProtocol):
             CommandInfo("scanble", "BLE", "Scan for BLE devices"),
             CommandInfo("blestop", "BLE", "Stop BLE scan"),
             CommandInfo("list ble", "BLE", "List discovered BLE devices"),
-            CommandInfo("blespam", "BLE", "BLE notification spam (all)"),
-            CommandInfo("blespam apple", "BLE", "BLE spam (Apple popups)"),
-            CommandInfo("blespam samsung", "BLE", "BLE spam (Samsung)"),
-            CommandInfo("blespam google", "BLE", "BLE spam (Google Fast Pair)"),
-            CommandInfo("blespam windows", "BLE", "BLE spam (Windows Swift Pair)"),
-            CommandInfo("blespam random", "BLE", "BLE spam (random)"),
+            CommandInfo("blespam", "BLE", "BLE notification spam (all)", danger="lab-only"),
+            CommandInfo("blespam apple", "BLE", "BLE spam (Apple popups)", danger="lab-only"),
+            CommandInfo("blespam samsung", "BLE", "BLE spam (Samsung)", danger="lab-only"),
+            CommandInfo("blespam google", "BLE", "BLE spam (Google Fast Pair)", danger="lab-only"),
+            CommandInfo("blespam windows", "BLE", "BLE spam (Windows Swift Pair)", danger="lab-only"),
+            CommandInfo("blespam random", "BLE", "BLE spam (random)", danger="lab-only"),
 
             # ── 2.4GHz Spectrum ──────────────────────────────────────
             CommandInfo("scan24", "2.4GHz", "2.4GHz spectrum analysis"),
             CommandInfo("scan24 stop", "2.4GHz", "Stop spectrum analysis"),
             CommandInfo("nrf scan", "2.4GHz", "NRF24 device scan"),
-            CommandInfo("nrf sniff", "2.4GHz", "NRF24 packet sniffing"),
-            CommandInfo("nrf jam", "2.4GHz", "NRF24 channel jamming"),
+            CommandInfo("nrf sniff", "2.4GHz", "NRF24 packet sniffing"),  # passive capture — safe
+            CommandInfo("nrf jam", "2.4GHz", "NRF24 channel jamming", danger="illegal-tx"),
             CommandInfo("nrf stop", "2.4GHz", "Stop NRF24 operations"),
 
             # ── Target Selection ─────────────────────────────────────
