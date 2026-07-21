@@ -205,3 +205,66 @@ def test_target_action_gates_danger(qapp, monkeypatch):
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.No))
     tab._run_target_action(safe, "COM7")
     assert ("sniffraw", "COM7") in calls
+
+
+# ── WS-5: interaction fixes (clamped zoom + drag-to-pan the canvas) ──
+
+def test_graph_zoom_ok_bounds():
+    # Pure clamp logic: block a notch only when already at/past a bound and pushing further past it.
+    from src.ui.qt.network_tab import _GRAPH_MAX_SCALE, _GRAPH_MIN_SCALE, _graph_zoom_ok
+    assert _graph_zoom_ok(1.0, True) and _graph_zoom_ok(1.0, False)     # mid-band: both directions OK
+    assert not _graph_zoom_ok(_GRAPH_MAX_SCALE, True)                   # at ceiling: no more zoom-in
+    assert _graph_zoom_ok(_GRAPH_MAX_SCALE, False)                      # ...but can zoom back out
+    assert not _graph_zoom_ok(_GRAPH_MIN_SCALE, False)                  # at floor: no more zoom-out
+    assert _graph_zoom_ok(_GRAPH_MIN_SCALE, True)                       # ...but can zoom back in
+    assert _graph_zoom_ok(0.0001, True)                                 # a below-floor fit-scale zooms in
+
+
+def test_graph_wheel_zoom_is_clamped(qapp):
+    # Hammering the wheel must not fling the scale into the void — it stays within ~one notch of the bounds.
+    from PyQt5.QtCore import QPoint
+    from PyQt5.QtWidgets import QGraphicsScene
+
+    from src.ui.qt.network_tab import _GRAPH_MAX_SCALE, _GRAPH_MIN_SCALE, _GraphView
+
+    class _Wheel:
+        def __init__(self, dy):
+            self._dy = dy
+
+        def angleDelta(self):
+            return QPoint(0, self._dy)
+
+        def accept(self):
+            pass
+
+    view = _GraphView(QGraphicsScene())
+    for _ in range(200):
+        view.wheelEvent(_Wheel(120))                       # zoom in hard
+    assert view.transform().m11() <= _GRAPH_MAX_SCALE * 1.16
+    for _ in range(400):
+        view.wheelEvent(_Wheel(-120))                      # then zoom out hard
+    assert view.transform().m11() >= _GRAPH_MIN_SCALE / 1.16
+
+
+def test_graph_pans_empty_space_but_not_nodes(qapp, monkeypatch):
+    # Left-drag on empty background pans the canvas; a press over a node does NOT pan (node keeps its drag).
+    from PyQt5.QtCore import QEvent, QPointF, Qt
+    from PyQt5.QtGui import QMouseEvent
+    from PyQt5.QtWidgets import QGraphicsScene
+
+    from src.ui.qt.network_tab import _GraphView
+
+    view = _GraphView(QGraphicsScene())
+
+    def _ev(kind):
+        return QMouseEvent(kind, QPointF(5, 5), Qt.LeftButton, Qt.LeftButton, Qt.NoModifier)
+
+    monkeypatch.setattr(view, "itemAt", lambda _p: None)   # empty background
+    view.mousePressEvent(_ev(QEvent.MouseButtonPress))
+    assert view._panning
+    view.mouseReleaseEvent(_ev(QEvent.MouseButtonRelease))
+    assert not view._panning
+
+    monkeypatch.setattr(view, "itemAt", lambda _p: object())  # over a node
+    view.mousePressEvent(_ev(QEvent.MouseButtonPress))
+    assert not view._panning, "a press on a node must not start a canvas pan"

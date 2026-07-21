@@ -15,7 +15,7 @@ from __future__ import annotations
 import math
 from typing import Callable, Optional
 
-from PyQt5.QtCore import QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QPainter, QPen
 from PyQt5.QtWidgets import (
     QGraphicsItem,
@@ -130,22 +130,78 @@ class _Edge(QGraphicsLineItem):
         self.setLine(s.x(), s.y(), d.x(), d.y())
 
 
+# Zoom bounds for the graph view. The floor/ceiling stop the classic "I zoomed out and the whole web
+# vanished into the void" / "I zoomed in past all the nodes" bugs; the clamp still lets a fit-scale that
+# lands outside the band zoom back toward it (see _graph_zoom_ok).
+_GRAPH_MIN_SCALE, _GRAPH_MAX_SCALE = 0.05, 25.0
+
+
+def _graph_zoom_ok(cur_scale: float, zoom_in: bool,
+                   lo: float = _GRAPH_MIN_SCALE, hi: float = _GRAPH_MAX_SCALE) -> bool:
+    """Whether a wheel notch should apply, given the view's current transform scale. Blocks a notch ONLY
+    when the view is already at/past a bound AND the notch would push further past it — so a fit-scale that
+    settles outside [lo, hi] can still be zoomed back toward the band. Pure + Qt-free so it's unit-testable
+    (mirrors flock_heatmap_tab.clamped_zoom_factor; without it, the graph's bare scale() zoomed unbounded)."""
+    if zoom_in and cur_scale >= hi:
+        return False
+    if not zoom_in and cur_scale <= lo:
+        return False
+    return True
+
+
 class _GraphView(QGraphicsView):
-    """QGraphicsView with wheel-zoom; node items keep their own drag (view is NoDrag)."""
+    """QGraphicsView with wheel-zoom (clamped) and click-drag panning of empty space. Node items keep their
+    own drag: a press on a node moves that node; a press on the empty background pans the canvas."""
 
     def __init__(self, scene: QGraphicsScene) -> None:
         super().__init__(scene)
         self.setRenderHint(QPainter.Antialiasing)
         self.setBackgroundBrush(QBrush(QColor("#0d1117")))
+        # NoDrag (not ScrollHandDrag): we pan manually only when the press misses every node, so dragging a
+        # node still moves the node. ScrollHandDrag would swallow the press before the movable node sees it.
         self.setDragMode(QGraphicsView.NoDrag)
         self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
         self._user_zoomed = False   # once the user zooms, stop auto-framing
         self._refitting = False
+        self._panning = False
+        self._pan_last = None       # last mouse pos while panning empty space
 
     def wheelEvent(self, event):  # noqa: N802 (Qt signature)
-        factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
-        self.scale(factor, factor)
-        self._user_zoomed = True
+        zoom_in = event.angleDelta().y() > 0
+        if _graph_zoom_ok(self.transform().m11(), zoom_in):
+            factor = 1.15 if zoom_in else 1 / 1.15
+            self.scale(factor, factor)
+            self._user_zoomed = True
+        event.accept()   # consume the notch so it can't also scroll the view
+
+    def mousePressEvent(self, event):  # noqa: N802 (Qt signature)
+        # Left-press on empty background -> pan; on a node -> let the node handle its own drag.
+        if event.button() == Qt.LeftButton and self.itemAt(event.pos()) is None:
+            self._panning = True
+            self._pan_last = event.pos()
+            self.setCursor(Qt.ClosedHandCursor)
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):  # noqa: N802 (Qt signature)
+        if self._panning and self._pan_last is not None:
+            delta = event.pos() - self._pan_last
+            self._pan_last = event.pos()
+            self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
+            self.verticalScrollBar().setValue(self.verticalScrollBar().value() - delta.y())
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):  # noqa: N802 (Qt signature)
+        if self._panning and event.button() == Qt.LeftButton:
+            self._panning = False
+            self._pan_last = None
+            self.setCursor(Qt.ArrowCursor)
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
 
     def fit_content(self) -> None:
         """Frame all nodes into the viewport (until the user zooms). Fixes the launch-render bug: the
