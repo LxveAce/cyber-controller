@@ -105,6 +105,15 @@ ICONS: dict[str, str] = {
     "crack-lab": '<rect x="5.5" y="11" width="13" height="9" rx="2" fill="none"/>'
                  '<path d="M8.5 11 V7.5 a3.5 3.5 0 0 1 6.9 -0.8"/>' + dot(12, 15, 1.3) +
                  '<line x1="12" y1="15" x2="12" y2="17.6"/>',
+    # Survey surface (GPS field survey — Wardrive/Multi-Wardrive/Flock Map): a compass, needle on the NE bearing.
+    "survey": '<circle cx="12" cy="12" r="8.5" fill="none"/>'
+              '<path d="M16 8 12.8 11.2 8 16 11.2 12.8Z" fill="none"/>' + dot(12, 12, 0.7),
+    # Analyze surface (situational awareness + offline post-processing): a magnifier over a small rising chart.
+    "analyze": '<circle cx="10.5" cy="10.5" r="6" fill="none"/><line x1="14.8" y1="14.8" x2="19.5" y2="19.5"/>'
+               '<polyline points="7.7,11.5 9.5,9 11,10.5 13.3,7.7"/>',
+    # Console (single-device command console): a terminal window with a prompt and a command line.
+    "console": '<rect x="3.5" y="5" width="17" height="14" rx="2" fill="none"/>'
+               '<path d="M7 10l2.6 2-2.6 2"/><line x1="11.8" y1="15" x2="16.5" y2="15"/>',
 
     # --- brand / product marks ---
     "cybercontroller": '<rect x="3" y="5" width="18" height="14" rx="2.2" fill="none"/>'

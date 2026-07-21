@@ -43,3 +43,12 @@ def test_label_icon_maps_known_and_falls_back(qapp):
 
 def test_tab_icon_missing_file_degrades_gracefully(qapp):
     assert tab_icon("definitely-not-an-icon-name").isNull()   # missing file -> empty QIcon, never raises
+
+
+def test_ws6_surfaces_have_icons(qapp):
+    # Regression: after WS-6 renamed "Network"->"Analyze" and added the "Survey" surface + "Console" sub-tab,
+    # and with "BLE Analyzer" never mapped, these four labels rendered icon-less (owner: "some tabs dont have
+    # symbols"). Lock each into the map with a non-null render so a future rename can't silently blank them.
+    for label in ("Survey", "Analyze", "Console", "BLE Analyzer"):
+        assert label in TAB_ICONS, f"{label} has no icon mapping"
+        assert not label_icon(label).isNull(), f"{label} rendered a null icon"

@@ -25,6 +25,13 @@ TAB_ICONS = {
     "Connect": "connect",
     "Operate": "operate",
     "Network": "network",
+    # WS-6 renamed the "Network" surface to "Analyze" and added a "Survey" surface + a "Console" sub-tab; the
+    # BLE Analyzer sub-tab has always had a "ble" asset. These four labels were unmapped, so those tabs rendered
+    # without an icon (owner-reported "some tabs dont have symbols"). Survey/Analyze/Console are their own glyphs.
+    "Analyze": "analyze",
+    "Survey": "survey",
+    "Console": "console",
+    "BLE Analyzer": "ble",
     "Settings": "settings",
     "Devices": "devices",
     "Device View": "device-view",
