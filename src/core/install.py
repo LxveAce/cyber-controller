@@ -20,6 +20,7 @@ Pure logic + filesystem only (no Qt) so it is unit-testable; the GUI shows the d
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 from datetime import datetime
@@ -45,6 +46,22 @@ _MIGRATIONS: list[tuple[str, object]] = []
 
 def config_dir() -> Path:
     return _CONFIG_DIR
+
+
+def captures_dir() -> Path:
+    """The one canonical folder for Wi-Fi captures: ``$CC_CAPTURES_DIR`` or ``~/.cyber-controller/captures``.
+
+    WS-7 unifies the capture->crack workflow around a single place: a raw ``.pcap``/``.pcapng`` retrieved
+    from a device, the ``.hc22000`` an auto-EAPOL convert writes, and Crack Lab's Browse default all point
+    here — so a just-captured file is one click from cracking (and one click from a WiGLE/WGD upload later).
+    Created on first use; falls back to the path even if the mkdir fails (a picker just opens elsewhere)."""
+    env = os.environ.get("CC_CAPTURES_DIR")
+    d = Path(env) if env else (_CONFIG_DIR / "captures")
+    try:
+        d.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        log.debug("could not create captures dir %s", d, exc_info=True)
+    return d
 
 
 def _version_file() -> Path:

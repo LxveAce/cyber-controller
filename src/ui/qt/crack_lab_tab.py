@@ -16,7 +16,6 @@ import logging
 import os
 import tempfile
 import threading
-from pathlib import Path
 
 from PyQt5.QtCore import QObject, Qt, QThread, pyqtSignal
 from PyQt5.QtWidgets import (
@@ -609,7 +608,8 @@ class CrackLabTab(QWidget):
         if self._captures is None or not self._captures.all():
             QMessageBox.information(self, "Export", "No captures to export yet.")
             return
-        default = str(Path.home() / "cyber-controller-captures.csv")
+        from src.core.install import captures_dir
+        default = str(captures_dir() / "cyber-controller-captures.csv")
         path, selected = QFileDialog.getSaveFileName(
             self, "Export captures", default, "CSV (*.csv);;JSON (*.json);;All files (*)")
         if not path:
@@ -672,8 +672,9 @@ class CrackLabTab(QWidget):
 
     # ── pickers ──────────────────────────────────────────────────────
     def _pick_capture(self) -> None:
+        from src.core.install import captures_dir
         path, _ = QFileDialog.getOpenFileName(
-            self, "Choose a Wi-Fi capture", "",
+            self, "Choose a Wi-Fi capture", str(captures_dir()),
             "Captures (*.pcapng *.pcap *.cap *.hc22000);;All files (*)")
         if path:
             self._capture_edit.setText(path)

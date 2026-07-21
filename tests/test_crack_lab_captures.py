@@ -96,6 +96,26 @@ def test_export_writes_csv(qapp, monkeypatch, tmp_path):
     assert "capture_type" in body.splitlines()[0] and "AA:BB:CC:DD:EE:FF" in body
 
 
+def test_export_default_dir_is_the_captures_dir(qapp, monkeypatch, tmp_path):
+    # WS-7: the export save-dialog defaults into the canonical captures dir, so a just-captured file and
+    # its exported log share one predictable place.
+    import src.core.install as install
+    monkeypatch.setattr(install, "_CONFIG_DIR", tmp_path / ".cyber-controller")
+    monkeypatch.delenv("CC_CAPTURES_DIR", raising=False)
+    hub = _hub_with_store()
+    hub.captures.add(_rec())
+    tab = CrackLabTab(hub)
+    captured = {}
+
+    def _fake_save(*a, **k):
+        captured["default"] = a[2]          # (self, caption, default_path, filter)
+        return ("", "")                     # user cancels -> no write
+
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", _fake_save)
+    tab._on_export_captures()
+    assert captured["default"].startswith(str(tmp_path / ".cyber-controller" / "captures"))
+
+
 def test_export_writes_json(qapp, monkeypatch, tmp_path):
     # changelog/README promise CSV *or* JSON; a .json path must route to the JSON writer, not CSV.
     # Regression: the UI wired only "Export CSV…", so JSON export was entirely unreachable.

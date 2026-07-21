@@ -25,6 +25,21 @@ def _seed_state(d, version=None):
         (d / ".installed_version").write_text(version, encoding="utf-8")
 
 
+def test_captures_dir_defaults_under_config_and_is_created(cfg, monkeypatch):
+    # The canonical captures dir sits under the config dir and is created on first use (WS-7).
+    monkeypatch.delenv("CC_CAPTURES_DIR", raising=False)
+    d = install.captures_dir()
+    assert d == cfg / "captures"
+    assert d.is_dir()
+
+
+def test_captures_dir_honors_env_override(tmp_path, monkeypatch):
+    override = tmp_path / "elsewhere" / "caps"
+    monkeypatch.setenv("CC_CAPTURES_DIR", str(override))
+    d = install.captures_dir()
+    assert d == override and d.is_dir()
+
+
 def test_fresh_when_no_state(cfg):
     assert install.has_existing_state() is False
     assert install.classify(current="1.4.0") == "fresh"
