@@ -543,6 +543,101 @@ def test_widget_lat_lon_not_swapped(qapp):
     assert pne[1] < psw[1]                                   # north -> smaller y
 
 
+# ── WS-4: street basemap tiles (offscreen; no network — the fetch is unit-tested in test_map_tiles) ──
+
+def _real_png_bytes(color: str = "#123456") -> bytes:
+    """A genuine 256×256 PNG (QPixmap.loadFromData only decodes a real image, not magic-byte stubs)."""
+    from PyQt5.QtCore import QBuffer, QByteArray
+    from PyQt5.QtGui import QColor, QImage
+    img = QImage(256, 256, QImage.Format_RGB32)
+    img.fill(QColor(color))
+    ba = QByteArray()
+    buf = QBuffer(ba)
+    buf.open(QBuffer.WriteOnly)
+    img.save(buf, "PNG")
+    return bytes(ba)
+
+
+def test_place_tile_positions_pixmap_in_the_world_plane(qapp):
+    # A placed tile must land on its tile_world_rect and be scaled 256px -> tile world-size, so the street
+    # basemap lines up with the cameras (both live in world_px).
+    from PyQt5.QtWidgets import QGraphicsItemGroup
+
+    from src.core import map_tiles as mt
+    w = FlockHeatmapTab()
+    try:
+        w._tile_group = QGraphicsItemGroup()
+        w._scene.addItem(w._tile_group)
+        w._place_tile(10, 20, 15, _real_png_bytes())
+        assert (10, 20, 15) in w._tile_items
+        item = w._tile_items[(10, 20, 15)]
+        wx, wy, size = mt.tile_world_rect(10, 20, 15)
+        assert abs(item.pos().x() - wx) < 1e-6 and abs(item.pos().y() - wy) < 1e-6
+        assert abs(item.scale() - size / 256.0) < 1e-9         # 256-px tile scaled to `size` world units
+    finally:
+        w.shutdown()
+
+
+def test_place_tile_ignores_undecodable_bytes(qapp):
+    from PyQt5.QtWidgets import QGraphicsItemGroup
+    w = FlockHeatmapTab()
+    try:
+        w._tile_group = QGraphicsItemGroup()
+        w._scene.addItem(w._tile_group)
+        w._place_tile(0, 0, 1, b"not-a-real-image")            # must not add a null pixmap item
+        assert w._tile_items == {}
+    finally:
+        w.shutdown()
+
+
+def test_streetmap_toggle_off_clears_tiles(qapp):
+    from PyQt5.QtWidgets import QGraphicsItemGroup
+    w = FlockHeatmapTab()
+    try:
+        w._tile_group = QGraphicsItemGroup()
+        w._scene.addItem(w._tile_group)
+        w._place_tile(0, 0, 1, _real_png_bytes())
+        assert w._tile_items
+        w._chk_streetmap.setChecked(False)                     # fires _on_streetmap_toggled -> _clear_tiles
+        assert w._tile_items == {} and w._tile_group is None
+    finally:
+        w.shutdown()
+
+
+def test_update_tiles_is_a_noop_while_hidden(qapp):
+    # Backgrounded tabs must not build tile items (the record/render split); showEvent re-schedules on return.
+    w = FlockHeatmapTab()
+    try:
+        w._visible = False
+        w._tile_group = None
+        w._update_tiles()
+        assert w._tile_group is None                           # nothing created while hidden
+    finally:
+        w.shutdown()
+
+
+def test_free_scene_resets_tiles_and_stops_worker(qapp, monkeypatch):
+    # Unloading a backgrounded tab drops tile refs (scene.clear() freed the C++ items) and stops the fetcher.
+    from PyQt5.QtWidgets import QGraphicsItemGroup
+    w = FlockHeatmapTab()
+    try:
+        w._tile_group = QGraphicsItemGroup()
+        w._scene.addItem(w._tile_group)
+        w._place_tile(0, 0, 1, _real_png_bytes())
+        stopped = []
+
+        class _FakeWorker:
+            def stop(self):
+                stopped.append(True)
+
+        w._tile_worker = _FakeWorker()
+        w._free_scene()
+        assert w._tile_group is None and w._tile_items == {} and w._tile_worker is None
+        assert stopped == [True]                               # the in-flight fetch was told to stop
+    finally:
+        w.shutdown()
+
+
 def test_widget_hostile_json_file_returns_zero(qapp, tmp_path):
     import json as _json
     # valid JSON, but properties:null and a non-numeric count on otherwise-valid Points -> must NOT crash.

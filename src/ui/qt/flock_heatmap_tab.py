@@ -15,7 +15,7 @@ import json
 import math
 from typing import Any, List, Optional, Tuple
 
-from src.core import flock
+from src.core import flock, map_tiles
 
 # ── pure projection core (no Qt — unit-testable) ─────────────────────
 
@@ -242,14 +242,15 @@ def _fix_status_text(fix: Any, has: bool) -> str:
 # ── Qt widget (the pure core above stays Qt-free; the widget is optional) ──
 
 try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even without PyQt5
-    from PyQt5.QtCore import Qt, QThread, QRectF, pyqtSignal
-    from PyQt5.QtGui import QBrush, QColor, QImage, QPainter, QPainterPath, QPen
+    from PyQt5.QtCore import Qt, QThread, QRectF, QTimer, pyqtSignal
+    from PyQt5.QtGui import QBrush, QColor, QImage, QPainter, QPainterPath, QPen, QPixmap
     from PyQt5.QtWidgets import (
         QCheckBox,
         QComboBox,
         QGraphicsItem,
         QGraphicsItemGroup,
         QGraphicsPathItem,
+        QGraphicsPixmapItem,
         QGraphicsScene,
         QGraphicsView,
         QHBoxLayout,
@@ -283,6 +284,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._user_zoomed = False   # once the user wheels, stop auto-refitting on resize
             self._pending_fit = None    # QRectF to (re)fit until then
             self._refitting = False     # resizeEvent re-entrancy guard
+            self.on_view_changed = None  # optional callback fired after a zoom (the tab reloads map tiles)
 
         def fit(self, rect) -> None:
             """Frame *rect* now AND remember it, so the first REAL resize after the tab is shown re-fits
@@ -318,6 +320,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             if f != 1.0:
                 self.scale(f, f)
                 self._user_zoomed = True   # the user took control — stop auto-refitting on resize
+                if callable(self.on_view_changed):
+                    self.on_view_changed()   # zoom changed the scale -> the tab reloads tiles for the new zoom
             ev.accept()   # consume the notch so it can't fall through to the scrollbars as a pan
 
     class _CameraLayer(QGraphicsItem):
@@ -479,6 +483,33 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self.line.emit("GPS tracking stopped")
                 self.stopped.emit()
 
+    class _TileFetchWorker(QThread):
+        """Fetch a batch of missing street-map tiles off the GUI thread, emitting each as it lands. Only
+        spawned when online tiles are enabled AND some visible tiles aren't cached — cache hits are read
+        synchronously on the GUI thread and never reach here. Mirrors the other workers' stop-flag lifecycle;
+        it does network+disk I/O only through the passed TileCache, which swallows every error (a failed
+        tile is just skipped, so the map leaves that square blank)."""
+        tile = pyqtSignal(int, int, int, bytes)   # x, y, z, PNG/JPEG bytes
+        done = pyqtSignal()
+
+        def __init__(self, cache, tiles) -> None:
+            super().__init__()
+            self._cache = cache
+            self._tiles = list(tiles)
+            self._stop = False
+
+        def stop(self) -> None:
+            self._stop = True
+
+        def run(self) -> None:  # pragma: no cover — network/disk loop; the cache + tile math are unit-tested
+            for (x, y, z) in self._tiles:
+                if self._stop:
+                    break
+                data = self._cache.get_or_fetch(x, y, z, allow_network=True)
+                if data and not self._stop:
+                    self.tile.emit(x, y, z, data)
+            self.done.emit()
+
     class FlockHeatmapTab(QWidget):
         """A heatmap of located ALPR cameras from a Flock scan's GeoJSON. Offscreen-renderable."""
 
@@ -493,14 +524,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._unloaded = False   # True while the scene is freed for a backgrounded tab (see hideEvent)
 
             root = QVBoxLayout(self)
-            _wip = QLabel(
-                "\U0001F6A7  Work in progress — the Flock map is still being built. Cameras only appear "
-                "from a live scan or a loaded cameras.geojson; a bundled dataset + one-click update are "
-                "still coming.")
-            _wip.setWordWrap(True)
-            _wip.setStyleSheet("background:#3d2c00;color:#f0c000;border:1px solid #7a5c00;"
-                               "border-radius:6px;padding:8px 10px;font-weight:600;")
-            root.addWidget(_wip)
+            _note = QLabel(
+                "Cameras appear from a live scan or a loaded cameras.geojson, on a real street basemap. "
+                "The first time you have internet, leave “Online tiles” on and pan your area to cache "
+                "the map for offline use. A bundled camera dataset is still coming.")
+            _note.setWordWrap(True)
+            _note.setStyleSheet("color:#8b949e;padding:4px 2px;")
+            root.addWidget(_note)
             file_row = QHBoxLayout()
             self._btn_load = QPushButton("Load cameras.geojson…")
             self._btn_load.setToolTip("Open a saved Flock scan (the cameras.geojson a FlockSession writes).")
@@ -556,6 +586,18 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                          "in real-world context. Zoom/pan out to see it; toggle off for a plain map.")
             self._chk_basemap.setChecked(True)
             self._chk_basemap.stateChanged.connect(lambda _s: self._rebuild())
+            self._chk_streetmap = QCheckBox("Street map")
+            self._chk_streetmap.setToolTip("Show a real street basemap (OpenStreetMap tiles) under the cameras, "
+                                           "so a scan sits on actual roads. Offline-first: cached tiles render "
+                                           "with no network. On by default.")
+            self._chk_streetmap.setChecked(True)
+            self._chk_streetmap.stateChanged.connect(lambda _s: self._on_streetmap_toggled())
+            self._chk_online = QCheckBox("Online tiles")
+            self._chk_online.setToolTip("When connected, download the street tiles for the area you're viewing "
+                                        "and cache them for offline use later. Only the current view is fetched — "
+                                        "never a bulk download. Turn off to stay fully offline (cached tiles only).")
+            self._chk_online.setChecked(True)
+            self._chk_online.stateChanged.connect(lambda _s: self._schedule_tiles())
             self._chk_mylocation = QCheckBox("My location (GPS)")
             self._chk_mylocation.setToolTip("When a GPS is streaming (during a live scan), drop a 'you are here' "
                                             "marker at your real-world position. Off by default; needs a GPS fix.")
@@ -575,6 +617,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                         "background. A live scan keeps recording either way. On by default.")
             self._chk_unload.setChecked(True)
             map_row.addWidget(self._btn_reset_view)
+            map_row.addWidget(self._chk_streetmap)
+            map_row.addWidget(self._chk_online)
             map_row.addWidget(self._chk_basemap)
             map_row.addWidget(self._chk_mylocation)
             map_row.addWidget(self._chk_follow)
@@ -583,9 +627,34 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             map_row.addStretch(1)
             root.addLayout(map_row)
 
+            # Street basemap (WS-4): real XYZ map tiles under the cameras, in the SAME world_px plane, so a scan
+            # sits on actual roads. Offline-first — a disk cache serves tiles with no network; "Online tiles"
+            # opts into fetching the current view's missing tiles and caching them. The loader is viewport-driven
+            # and debounced so panning/zooming coalesces into one refresh; fetches run on _TileFetchWorker. Built
+            # BEFORE the attribution label below, which reads the active provider's required credit.
+            self._tile_cache = map_tiles.TileCache()
+            self._tile_group = None                  # QGraphicsItemGroup holding placed tile pixmaps
+            self._tile_items: "dict" = {}            # (x,y,z) -> QGraphicsPixmapItem currently placed
+            self._tile_needed: "set" = set()         # (x,y,z) the last refresh wants — guards stale async placement
+            self._tile_worker = None
+            self._tile_timer = QTimer(self)
+            self._tile_timer.setSingleShot(True)
+            self._tile_timer.setInterval(180)        # coalesce a pan/zoom burst into one tile refresh
+            self._tile_timer.timeout.connect(self._update_tiles)
+            self._view.on_view_changed = self._schedule_tiles
+            self._view.horizontalScrollBar().valueChanged.connect(self._schedule_tiles)
+            self._view.verticalScrollBar().valueChanged.connect(self._schedule_tiles)
+
             self._legend = QLabel("No detections loaded. Blue = few sightings · red = many.")
             self._legend.setStyleSheet("color:#8b949e;")
             root.addWidget(self._legend)
+
+            # Map-tile attribution — OSM's ODbL requires visible credit whenever its tiles are shown. Kept in
+            # sync with the active provider; hidden when the street basemap is off.
+            self._attribution = QLabel(self._tile_cache.provider.attribution)
+            self._attribution.setStyleSheet("color:#6e7681;font-size:8pt;")
+            self._attribution.setVisible(self._chk_streetmap.isChecked())
+            root.addWidget(self._attribution)
 
             # Live-scan diagnostics surface. The worker emits every notice (start/stop, per-camera, and
             # the failure paths — pyserial-missing / busy-or-denied COM port) on its `line` signal; without
@@ -666,6 +735,117 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 item.setBrush(brush)
             self._scene.addItem(group)
             self._basemap_group = group
+
+        # ── street basemap tiles (WS-4) ──────────────────────────────
+        def _schedule_tiles(self, *_a) -> None:
+            """Debounced request to refresh the street tiles for the current view — pan/zoom bursts coalesce
+            into one refresh. Fires only when the tab is up; showEvent re-schedules on return. Takes ``*_a`` so
+            it can connect straight to a scrollbar's ``valueChanged(int)`` and the view's zoom callback alike."""
+            timer = getattr(self, "_tile_timer", None)
+            if timer is not None:
+                timer.start()
+
+        def _on_streetmap_toggled(self) -> None:
+            """Street-map toggle: show + refresh the tiles, or clear them and hide the attribution."""
+            on = self._chk_streetmap.isChecked()
+            self._attribution.setVisible(on)
+            if on:
+                self._schedule_tiles()
+            else:
+                self._clear_tiles()
+
+        def _stop_tile_worker(self) -> None:
+            w = self._tile_worker
+            if w is not None:
+                w.stop()
+                self._tile_worker = None
+
+        def _clear_tiles(self) -> None:
+            """Remove every placed tile item and stop any in-flight fetch. Safe if none exist."""
+            self._stop_tile_worker()
+            grp = self._tile_group
+            if grp is not None:
+                try:
+                    self._scene.removeItem(grp)
+                except Exception:  # noqa: BLE001 — scene may already have dropped it via scene.clear()
+                    pass
+            self._tile_group = None
+            self._tile_items = {}
+            self._tile_needed = set()
+
+        def _reset_tile_state(self) -> None:
+            """Drop tile REFERENCES after a scene.clear()/free (which already deleted the C++ items) and stop
+            the worker — so a later _update_tiles rebuilds cleanly instead of touching deleted items."""
+            self._stop_tile_worker()
+            self._tile_group = None
+            self._tile_items = {}
+            self._tile_needed = set()
+
+        def _update_tiles(self) -> None:
+            """Place the street tiles covering the current view: cache hits now, misses fetched off-thread
+            when Online tiles is on. Prunes tiles that scrolled off. No-op when the street map is off or the
+            tab isn't visible. The group sits below the cameras and above the country outline."""
+            if not self._chk_streetmap.isChecked() or not self._visible or self._unloaded:
+                return
+            scale = self._view.transform().m11()
+            if scale <= 0:
+                return
+            vis = self._view.mapToScene(self._view.viewport().rect()).boundingRect()
+            if vis.isEmpty():
+                return
+            z, needed = map_tiles.tiles_for_viewport(
+                vis.left(), vis.top(), vis.right(), vis.bottom(), 1.0 / scale)
+            self._tile_needed = set(needed)
+            if self._tile_group is None:
+                self._tile_group = QGraphicsItemGroup()
+                self._tile_group.setZValue(-900)          # above the country outline (-1000), below cameras (0)
+                self._scene.addItem(self._tile_group)
+            # Prune tiles no longer needed (panned out of view, or a stale zoom).
+            for key in list(self._tile_items):
+                if key not in self._tile_needed:
+                    item = self._tile_items.pop(key)
+                    try:
+                        self._scene.removeItem(item)
+                    except Exception:  # noqa: BLE001
+                        pass
+            # Cache hits paint immediately; misses queue for a fetch.
+            misses = []
+            for (x, y, zz) in needed:
+                if (x, y, zz) in self._tile_items:
+                    continue
+                data = self._tile_cache.get(x, y, zz)
+                if data is not None:
+                    self._place_tile(x, y, zz, data)
+                else:
+                    misses.append((x, y, zz))
+            if misses and self._chk_online.isChecked():
+                self._stop_tile_worker()                  # supersede an older batch (the view moved on)
+                self._tile_worker = _TileFetchWorker(self._tile_cache, misses)
+                self._tile_worker.tile.connect(self._on_tile_ready)
+                self._tile_worker.start()
+
+        def _place_tile(self, x: int, y: int, z: int, data: bytes) -> None:
+            """Draw one tile pixmap at its world_px rectangle (a 256-px tile scaled to the tile's world size),
+            parented to the tile group. No-op if the bytes don't decode or the group is gone."""
+            if self._tile_group is None:
+                return
+            pm = QPixmap()
+            if not pm.loadFromData(data) or pm.isNull() or pm.width() <= 0:
+                return
+            wx, wy, size = map_tiles.tile_world_rect(x, y, z)
+            item = QGraphicsPixmapItem(pm, self._tile_group)
+            item.setPos(wx, wy)
+            item.setScale(size / pm.width())              # 256-px tile -> `size` world units, aligned to world_px
+            item.setTransformationMode(Qt.SmoothTransformation)
+            self._tile_items[(x, y, z)] = item
+
+        def _on_tile_ready(self, x: int, y: int, z: int, data: bytes) -> None:
+            """A fetched tile arrived — place it only if the street map is still on and this tile is still in
+            view (the view may have panned/zoomed while it downloaded)."""
+            if not self._chk_streetmap.isChecked() or (x, y, z) not in self._tile_needed:
+                return
+            if (x, y, z) not in self._tile_items:
+                self._place_tile(x, y, z, data)
 
         # ── "you are here" GPS marker ────────────────────────────────
         def set_my_location(self, lat: float, lon: float) -> None:
@@ -772,18 +952,24 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._camera_bounds = QRectF()
             self._basemap_group = None
             self._location_marker = None                       # scene.clear() dropped it; redraw below
+            self._tile_group = None                            # scene.clear() dropped the tiles too
+            self._tile_items = {}
             show_base = self._chk_basemap.isChecked() and bool(self._basemap_rings)
+            # The scene spans the whole world whenever a global layer is on (country outline OR street tiles),
+            # so you can pan/zoom anywhere on real streets; reset_view still re-frames the cameras.
+            world_scene = show_base or self._chk_streetmap.isChecked()
             if show_base:
                 self._draw_basemap()
             if not self._features:
-                if show_base:
+                if world_scene:
                     self._scene.setSceneRect(0, 0, _WORLD_PX, _WORLD_PX)   # whole world, pannable
-                    self._legend.setText("World basemap · no detections loaded. Blue = few · red = many.")
+                    self._legend.setText("Street basemap · no detections loaded. Blue = few · red = many.")
                     self._view.fit(self._scene.sceneRect())   # frame the globe (re-fits on first resize)
                 else:
                     self._scene.setSceneRect(0, 0, _CANVAS_W, _CANVAS_H)
                     self._legend.setText("No detections loaded. Blue = few sightings · red = many.")
                 self._draw_location_marker()                   # marker can show over an empty/basemap-only map
+                self._schedule_tiles()
                 return
             counts = [_as_count(f.get("properties")) for f in self._features]
             maxc = max(counts)
@@ -821,17 +1007,19 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             # Scene rect: with the basemap on, the whole world is the scene so you can pan/zoom out to it
             # (reset_view still re-frames the cameras). Without it, just the cameras' extent + a margin so
             # pan/zoom has room and edge dots aren't clipped.
-            if show_base:
+            if world_scene:
                 self._scene.setSceneRect(0, 0, _WORLD_PX, _WORLD_PX)
             else:
                 margin = span * (0.05 + 0.024)
                 self._scene.setSceneRect(min(xs) - margin, min(ys) - margin,
                                          spanx + 2 * margin, spany + 2 * margin)
-            base_note = " · world basemap" if show_base else ""
+            base_note = (" · street basemap" if self._chk_streetmap.isChecked()
+                         else " · world basemap" if show_base else "")
             self._legend.setText(
                 f"{len(self._features)} camera(s) · blue = few sightings · red = many (up to {maxc}){base_note}. "
                 f"Drag to pan · scroll to zoom.")
             self._draw_location_marker()                       # keep the "you are here" pin above the redraw
+            self._schedule_tiles()                             # paint street tiles under the cameras
 
         def reset_view(self) -> None:
             """Re-frame the CAMERAS: drop any pan/zoom and fit the whole camera set into the view (so the
@@ -844,6 +1032,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 rect = self._scene.sceneRect()
             if rect.isValid() and not rect.isEmpty():
                 self._view.fit(rect)
+            self._schedule_tiles()                             # reframe changed the view -> reload tiles
 
         def render_native(self, width: int = _CANVAS_W, height: int = _CANVAS_H) -> "QImage":
             """Render the scene into a QImage — pure, offscreen-testable (no window needed). Frames the
@@ -973,6 +1162,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._camera_bounds = QRectF()
             self._basemap_group = None
             self._location_marker = None
+            self._reset_tile_state()               # drop tile refs + stop the fetch worker (scene.clear() freed them)
             self._unloaded = True
 
         def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
@@ -982,6 +1172,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             elif self._unloaded:
                 self._rebuild()                       # loaded-from-file map: rebuild from the retained _features
             self._unloaded = False
+            self._schedule_tiles()                    # repaint street tiles for the current view on return
             super().showEvent(ev)
 
         def hideEvent(self, ev) -> None:  # noqa: N802 (Qt override)
@@ -1007,6 +1198,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 w.stop()
                 w.wait()
             self._stop_gps_tracking()        # also tear down the standalone GPS reader + free its port
+            tw = self._tile_worker           # and the tile fetcher, so no QThread is left running at teardown
+            if tw is not None:
+                tw.stop()
+                tw.wait(1500)
+                self._tile_worker = None
 
         # ── export (the write is unit-tested; the dialog wrapper is not) ──
         def export_csv_to(self, path: str) -> int:
