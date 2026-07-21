@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 
 # `help` is the most universal probe: it answers on every text-CLI firmware we support and its output IS the
 # live command list, which is exactly what we want to learn. Kept as a tuple so it's easy to extend per-firmware.
-DEFAULT_PROBE_COMMANDS = ("help",)
+DEFAULT_PROBE_COMMANDS = ("help", "status")
 
 
 @dataclass

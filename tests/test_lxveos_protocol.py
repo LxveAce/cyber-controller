@@ -359,10 +359,10 @@ def test_arm_state_from_structured_event_and_from_prose():
 # ── auto-detect integration (handshake.detect_firmware / learn_vocabulary) ──
 
 def test_default_probe_reply_auto_detects_lxveos():
-    # CC probes an unknown text-CLI device with `help` (DEFAULT_PROBE_COMMANDS). LxveOS's reply +
+    # CC probes an unknown text-CLI device with `help` + `status` (DEFAULT_PROBE_COMMANDS). LxveOS's reply +
     # `lxveos>` prompt must resolve to the lxveos protocol, not fall back to generic — HW-confirmed
     # on the live COM23 board (beat 224).
-    assert DEFAULT_PROBE_COMMANDS == ("help",)
+    assert DEFAULT_PROBE_COMMANDS == ("help", "status")
     assert detect_firmware(_HELP_REPLY) == "lxveos"
 
 

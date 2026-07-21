@@ -84,7 +84,9 @@ def test_learn_vocabulary_empty_for_unknown_firmware():
 # ── probe command selection respects driver_type ───────────────────────
 
 def test_probe_commands_only_for_text_cli():
-    assert probe_commands_for(Device(port="C", firmware="marauder")) == ["help"]
+    # "help" + "status": LxveOS answers `status` with its LXVEOS/1 identity line; other firmwares ignore an
+    # unknown token harmlessly. Stream/controlmap firmwares still get no probe (no text CLI to answer).
+    assert probe_commands_for(Device(port="C", firmware="marauder")) == ["help", "status"]
     assert probe_commands_for(Device(port="C", firmware="meshtastic")) == []   # stream
     assert probe_commands_for(Device(port="C", firmware="bluejammer")) == []   # controlmap
 
@@ -99,7 +101,7 @@ def test_probe_device_alive_sets_health_and_banner():
     assert dev.health == "alive"
     assert "Marauder" in dev.fw_banner
     assert "scanall" in res.live_commands
-    assert conn.writes == ["help"]
+    assert conn.writes == ["help", "status"]
 
 
 def test_probe_device_no_reply_when_silent():
@@ -140,6 +142,36 @@ def test_probe_sets_firmware_on_unknown_device():
     probe_device(_FakeConn(MARAUDER_HELP), dev)
     assert dev.firmware == "marauder"
     assert dev.protocol == Protocol.MARAUDER
+
+
+# ── LxveOS identify + the firmware_forced gate (CC-A2 #6/#7) ────────────
+
+LXVEOS_REPLY = ["LXVEOS/1 status board=cyd fw=0.1.0 arm=safe caps=0x3", "lxveos> "]
+
+
+def test_detect_firmware_identifies_lxveos():
+    assert detect_firmware(LXVEOS_REPLY) == "lxveos"
+
+
+def test_match_firmware_regex_recognizes_lxveos():
+    from src.core.device_detect import match_firmware
+    assert match_firmware("LXVEOS/1 status board=cyd fw=0.1.0")[0] == "lxveos"
+    assert match_firmware("LxveOS v0.2.0")[0] == "lxveos"
+    assert match_firmware("ESP32 Marauder v1.12.3")[0] == "marauder"  # unaffected
+
+
+def test_probe_captures_lxveos_banner_for_reautodetect():
+    # The Devices-tab connect pre-sets a provisional "marauder" default (which probe_device deliberately does
+    # not clobber). With the "status" probe, an LxveOS board still prints its LXVEOS/1 identity line, which
+    # classify_reply captures as fw_banner — and match_firmware (now LxveOS-aware) recognizes it, so
+    # device_tab._reautodetect_after_probe swaps to the real LxveOS parser. This is the end-to-end path that
+    # made LxveOS auto-detect work without changing the "don't clobber a known firmware" gate.
+    from src.core.device_detect import match_firmware
+    dev = Device(port="C_LX", firmware="marauder")
+    probe_device(_FakeConn(LXVEOS_REPLY), dev)
+    assert dev.firmware == "marauder"                    # gate preserved: the provisional default is untouched
+    assert "LXVEOS/1" in dev.fw_banner                   # but the identity line is captured
+    assert match_firmware(dev.fw_banner)[0] == "lxveos"  # -> _reautodetect resolves + swaps to LxveOS
     assert dev.health == "alive"
 
 

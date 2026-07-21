@@ -11,6 +11,10 @@ and never authors radio frames.
   the confirmed chip and prefers it over the USB-VID guess for the firmware-compatibility hints, so a classic
   ESP32 on a shared CP210x/CH340 bridge is no longer treated as an unknown chip. First step of the auto-detect
   hardening; validated on real ESP32 hardware.
+- **Fixed: LxveOS is auto-detected on connect.** The connect-time probe also sends `status` (LxveOS answers with
+  its `LXVEOS/1` identity line, which classic Marauder's `help` reply doesn't reveal), and the firmware-signature
+  matcher now recognizes LxveOS, so an LxveOS board is identified and routed to its own parser instead of staying
+  on the provisional Marauder default.
 - **New: a BLE Analyzer view.** A firmware-agnostic Bluetooth analyzer that reproduces the on-device
   view — a live RSSI-over-time graph plus a de-duplicated device table — so one view serves every BLE
   firmware (Marauder / GhostESP / Flipper / HaleHound / ESP32-DIV / LxveOS). Built on a Qt-free,

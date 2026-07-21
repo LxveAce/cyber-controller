@@ -61,6 +61,10 @@ FIRMWARE_SIGNATURES: Dict[str, str] = {
     # CH340 VID/PID alone can't distinguish a BW16 from a classic ESP32 (they share it),
     # so probe the serial banner for these RTL markers. Version is usually absent.
     "bw16":       r"(?:RTL8720|BW16|AmebaD|rltk_wlan|RTL_HalBleMacInit|hci_read_rom_check)\w*\s*v?([\d.]*)",
+    # LxveOS (the LxveAce security-panel firmware): the machine-readable "LXVEOS/1 status …" line or a
+    # "LxveOS vX.Y" banner. The protocol's identify() is the primary detector (handshake.detect_firmware);
+    # this regex covers the scan_ports / post-probe re-detect fallback that keys off match_firmware.
+    "lxveos":     r"LXVEOS/\d|LxveOS(?:\s+v?([\d.]+))?",
 }
 
 # compiled once
