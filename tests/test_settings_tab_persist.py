@@ -80,3 +80,39 @@ def test_save_does_not_revert_a_concurrent_disk_write(qapp, isolated_settings):
     assert gathered["updates"]["suppressed"] is True          # concurrent write NOT reverted
     assert gathered["updates"]["dismissed_version"] == "v9.9.9"
     assert gathered["updates"]["enabled"] is True             # widget-backed key still applied
+
+
+# ── WS-9: the update-status line (owner: "refine auto update, idk if its working properly") ──
+
+def test_format_update_status_never_checked():
+    from src.ui.qt.settings_tab import format_update_status
+    s = format_update_status("1.8.0", {})
+    assert "Current: v1.8.0" in s and "not checked yet" in s
+
+
+def test_format_update_status_up_to_date():
+    from src.ui.qt.settings_tab import format_update_status
+    s = format_update_status(
+        "1.8.0", {"last_check_iso": "2026-07-21T14:30:00+00:00", "last_seen_latest": "v1.8.0"})
+    assert "last checked 2026-07-21 14:30:00+00:00" in s   # the 'T' is humanised to a space
+    assert "up to date" in s
+
+
+def test_format_update_status_flags_a_newer_release():
+    from src.ui.qt.settings_tab import format_update_status
+    s = format_update_status(
+        "1.8.0", {"last_check_iso": "2026-07-21T00:00:00+00:00", "last_seen_latest": "v1.9.0"})
+    assert "newer release available: v1.9.0" in s
+
+
+def test_settings_update_status_label_is_wired(qapp, isolated_settings):
+    # End-to-end: construction loads settings and paints the status line with the running version.
+    from src.config import settings as S
+    from src.ui.qt.settings_tab import SettingsTab
+    from src.version import __version__
+    S.save_settings({"updates": {
+        "enabled": True, "last_check_iso": "2026-07-21T14:30:00+00:00", "last_seen_latest": "v99.9.9"}})
+    tab = SettingsTab()
+    txt = tab._update_status_lbl.text()
+    assert f"v{__version__}" in txt
+    assert "newer release available: v99.9.9" in txt       # 99.9.9 is ahead of any real current version

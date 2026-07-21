@@ -31,6 +31,23 @@ from src.config.settings import DEFAULTS, load_settings, save_settings
 log = logging.getLogger(__name__)
 
 
+def format_update_status(current: str, updates: dict) -> str:
+    """One human line describing the update state — so the operator can SEE the check runs, not just
+    trust it (the owner's 'idk if it's working'). Pure + Qt-free so it's unit-testable. Shows the
+    running version, when it last checked, and whether the newest release seen is ahead."""
+    parts = [f"Current: v{current}"]
+    last = str((updates or {}).get("last_check_iso") or "").strip()
+    parts.append(f"last checked {last.replace('T', ' ')}" if last else "not checked yet")
+    seen = str((updates or {}).get("last_seen_latest") or "").strip()
+    if seen:
+        from src.core import install
+        if install._parse(seen) > install._parse(current):
+            parts.append(f"newer release available: {seen}")
+        else:
+            parts.append("up to date")
+    return "   ·   ".join(parts)
+
+
 def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
     """Create a card-styled QFrame with optional title label."""
     card = QFrame()
@@ -124,14 +141,20 @@ class SettingsTab(QWidget):
         self._updates_card, updates_outer = _make_card("Updates")
         updates_card = self._updates_card
         updates_desc = QLabel(
-            "On launch, quietly check GitHub for a newer release and offer a link to download it. "
-            "No auto-download or self-update — you stay in control of what gets installed."
+            "On launch, quietly check GitHub for a newer release. On a packaged build you can install it "
+            "in place — the download is SHA-256 verified, then the app swaps itself and restarts; from a "
+            "source checkout it links you to the release page instead. You choose when to update."
         )
         updates_desc.setObjectName("muted")
         updates_desc.setWordWrap(True)
         updates_outer.addWidget(updates_desc)
         self._updates_enabled_check = QCheckBox("Automatically check for updates")
         updates_outer.addWidget(self._updates_enabled_check)
+        # A live status line so the check is visible, not just trusted (owner: "idk if it's working").
+        self._update_status_lbl = QLabel("")
+        self._update_status_lbl.setObjectName("muted")
+        self._update_status_lbl.setWordWrap(True)
+        updates_outer.addWidget(self._update_status_lbl)
         updates_btn_row = QHBoxLayout()
         updates_btn_row.addStretch()
         self._check_updates_btn = QPushButton("Check now")
@@ -302,6 +325,7 @@ class SettingsTab(QWidget):
 
         updates = settings.get("updates", {})
         self._updates_enabled_check.setChecked(bool(updates.get("enabled", True)))
+        self._refresh_update_status(updates)
 
     def _gather(self) -> dict:
         """Read the current UI state into a settings dict.
@@ -454,6 +478,12 @@ class SettingsTab(QWidget):
         except Exception:  # noqa: BLE001
             self._gate_status_lbl.setText("Status: unavailable")
 
+    def _refresh_update_status(self, updates: dict | None = None) -> None:
+        """Repaint the update-status line from the given (or on-disk) ``updates`` settings block."""
+        from src.version import __version__
+        upd = updates if updates is not None else load_settings().get("updates", {})
+        self._update_status_lbl.setText(format_update_status(__version__, upd))
+
     def _on_browse_vault(self) -> None:
         start = self._vault_dir_edit.text().strip() or ""
         path = QFileDialog.getExistingDirectory(self, "Select Firmware Vault Directory", start)
@@ -472,6 +502,9 @@ class SettingsTab(QWidget):
         if not self._dirty:
             self._load_into_ui(self._settings)
         self._refresh_gate_status()
+        # Always refresh the update status from disk — an on-launch/background check may have run since
+        # the tab was last shown, and it's stored (last_check_iso) even when the widgets aren't reloaded.
+        self._refresh_update_status(self._settings.get("updates", {}))
 
     # ── Accessors / helpers ──────────────────────────────────────────
 
