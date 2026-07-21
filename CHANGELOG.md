@@ -6,6 +6,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 In-progress work toward the next release. Backend/serial control only — CC issues firmware CLI commands
 and never authors radio frames.
+- **New: the Auto-detect firmware selector now shows what it detected.** After a board is identified on
+  connect, the Devices-tab firmware picker reads "Auto-detect (detected: ESP32 Marauder)" instead of a bare
+  "Auto-detect" that scrolled the result off in the terminal. It only claims a detection when there's a real
+  identifying banner (never the connect-time default guess), clears when the device disconnects, and the
+  auto-vs-forced logic is now index-based so the dynamic label can't desync it.
 - **Changed: the Operate console now works on every firmware, not just LxveOS.** Offensive commands
   (deauth, beacon, spam, jam, and the like) used to be permanently blocked on Marauder, ESP32-DIV, GhostESP,
   and Bruce, because the "armed" state they required is only implemented by LxveOS. Those firmwares have no

@@ -88,3 +88,24 @@ def test_end_to_end_probe_then_swap(_qapp):
     assert dev.fw_banner                         # a banner was captured
     tab._on_probe_done("C_E")
     assert tab._ingest_proto["C_E"] == _GHOST    # auto-routed to GhostESP end to end
+
+
+def test_reautodetect_relabels_auto_item_with_detected_firmware(_qapp):
+    # Owner ask: the Auto-detect combo item must name what was detected, e.g.
+    # "Auto-detect (detected: GhostESP)". The gate stays index-based so auto behavior is unchanged.
+    tab, dev, _conn = _tab("C_G", GHOST_HELP)
+    dev.fw_banner = "GhostESP v1.0.0"
+    assert tab._firmware_combo.itemText(0) == "Auto-detect"        # plain before detection
+
+    tab._reautodetect_after_probe("C_G")
+
+    assert tab._firmware_combo.itemText(0) == f"Auto-detect (detected: {PROTOCOL_DISPLAY_NAMES[_GHOST]})"
+    assert tab._is_auto_selected()                                 # still the auto item (index 0)
+
+
+def test_auto_item_stays_plain_without_a_real_banner(_qapp):
+    # Honesty: with no identifying banner (just the connect-time default), never claim a detection.
+    tab, dev, _conn = _tab("C_M", MARAUDER_HELP)
+    dev.fw_banner = ""                                             # unprobed / no identifying line
+    tab._reautodetect_after_probe("C_M")
+    assert tab._firmware_combo.itemText(0) == "Auto-detect"

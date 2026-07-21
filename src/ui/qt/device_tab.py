@@ -580,6 +580,30 @@ class DeviceTab(QWidget):
         self._update_alert_line()
         self._update_snapshot_line()  # airspace snapshot is device-specific too
 
+    def _is_auto_selected(self) -> bool:
+        """True when the firmware combo is on the Auto-detect item (always index 0), regardless of its
+        label text — which may read ``"Auto-detect (detected: <firmware>)"``. All gate logic keys off this
+        index, not the display text, so the dynamic label can never desync the auto-vs-forced decision."""
+        return self._firmware_combo.currentIndex() == 0
+
+    def _set_auto_detect_label(self, dev) -> None:
+        """Rewrite the Auto-detect item (index 0) to name the firmware that was actually detected, e.g.
+        ``"Auto-detect (detected: ESP32 Marauder)"`` — the owner's "show what it detected" ask. Plain
+        ``"Auto-detect"`` when nothing is confirmed. Honest: it only claims a detection when the device has
+        a real identifying probe *banner* (``fw_banner``), never the connect-time default guess. Signal-safe
+        and edits only item 0's display text, so the index-based gate and item data stay untouched."""
+        fw = (getattr(dev, "firmware", "") if dev is not None else "") or ""
+        banner = (getattr(dev, "fw_banner", "") if dev is not None else "") or ""
+        disp = PROTOCOL_DISPLAY_NAMES.get(fw, "") if (fw and banner.strip()) else ""
+        text = f"{_AUTO_DETECT} (detected: {disp})" if disp else _AUTO_DETECT
+        if self._firmware_combo.itemText(0) == text:
+            return
+        blocked = self._firmware_combo.blockSignals(True)
+        try:
+            self._firmware_combo.setItemText(0, text)
+        finally:
+            self._firmware_combo.blockSignals(blocked)
+
     def _sync_firmware_combo_to(self, dev) -> None:
         """Re-point the (global) firmware combo at the SELECTED device, so _selected_protocol /
         _update_bj_panel / the Send-enable logic judge the device the user just clicked — not whichever
@@ -594,12 +618,16 @@ class DeviceTab(QWidget):
         forced = bool(getattr(dev, "firmware_forced", False))
         fw = getattr(dev, "firmware", "") or ""
         display = PROTOCOL_DISPLAY_NAMES.get(fw) if (forced and fw) else None
-        target = display if (display and self._firmware_combo.findText(display) >= 0) else _AUTO_DETECT
-        if self._firmware_combo.currentText() == target:
+        # Target by INDEX (not text): a forced firmware's item if present, else the Auto-detect item (0).
+        target_index = self._firmware_combo.findText(display) if (display and self._firmware_combo.findText(display) >= 0) else 0
+        if target_index == 0:
+            # Landing on Auto-detect: refresh its label to this device's detected firmware (or plain).
+            self._set_auto_detect_label(dev)
+        if self._firmware_combo.currentIndex() == target_index:
             return
         blocked = self._firmware_combo.blockSignals(True)
         try:
-            self._firmware_combo.setCurrentText(target)
+            self._firmware_combo.setCurrentIndex(target_index)
         finally:
             self._firmware_combo.blockSignals(blocked)
 
@@ -690,6 +718,7 @@ class DeviceTab(QWidget):
         self._btn_send.setEnabled(False)
         if hasattr(self, "_health_label"):
             self._health_label.setText("")  # link closed — the last probe result is now stale
+        self._set_auto_detect_label(None)   # clear any "(detected: …)" — the detection is now stale
         self._dms_seen.discard(port)  # re-evaluate afresh if something else is later connected on this port
         self._refresh_devices()
         self._update_bj_panel()
@@ -745,7 +774,7 @@ class DeviceTab(QWidget):
         here must never break the probe-done slot or the connection.
         """
         try:
-            if self._firmware_combo.currentText() != _AUTO_DETECT:
+            if not self._is_auto_selected():
                 return
             dev = self._dm.get_device(port)
             if dev is None or not dev.connected:
@@ -770,6 +799,7 @@ class DeviceTab(QWidget):
                 return
             if port == getattr(self, "_active_port", ""):
                 self._update_bj_panel()  # -> _apply_line_ending + _update_capabilities off the new firmware
+                self._set_auto_detect_label(dev)  # combo now reads "Auto-detect (detected: <firmware>)"
                 try:
                     self._terminal.append(
                         f"[auto-detected {proto.protocol_name} — cross-comm parser switched]"
@@ -845,10 +875,9 @@ class DeviceTab(QWidget):
         the flagship ESP32 firmware) so a Flipper isn't silently parsed with the Marauder grammar + LF.
         Full runtime detection that distinguishes the ESP32 firmwares (marauder vs ghostesp vs bruce, which
         share a USB VID) via identify() is a cross-comm-rework item — the user can still pick explicitly."""
-        choice = self._firmware_combo.currentText()
-        if choice == _AUTO_DETECT:
+        if self._is_auto_selected():
             return self._autodetect_protocol()
-        return get_protocol_by_display(choice)
+        return get_protocol_by_display(self._firmware_combo.currentText())
 
     def _autodetect_protocol(self):
         from src.models.device import BoardType
@@ -904,7 +933,7 @@ class DeviceTab(QWidget):
                 return
             # Route through the central setter so the Broadcast panel (and anything on on_device_changed)
             # stays in sync. An explicit (non-Auto) pick is a manual FORCE that re-autodetect must honour.
-            forced = self._firmware_combo.currentText() != _AUTO_DETECT
+            forced = not self._is_auto_selected()
             self._dm.set_firmware(port, fw, forced=forced)
 
     def _open_bj_webui(self) -> None:
