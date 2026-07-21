@@ -355,6 +355,15 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("attack -t probe", "Attack", "Probe request flood"),
             CommandInfo("attack -t rickroll", "Attack", "Rickroll beacon attack"),
             CommandInfo("stopscan", "Attack", "Stop current attack"),
+            # ---- Evil Portal ----
+            # Real Marauder verbs (CommandLine.cpp EVIL_PORTAL_CMD: -c start [-w <html>] / sethtml /
+            # setap). A rogue captive-portal that harvests credentials from lured clients. The firmware
+            # stops it with stopscan ("Stop with stopscan"), so that's the cease button. reset/ack are
+            # firmware no-op stubs and sethtmlstr streams HTML over serial, so neither is a button here.
+            CommandInfo("evilportal -c start", "Evil Portal", "Start Evil Portal captive-portal attack", danger="lab-only"),
+            CommandInfo("evilportal -c setap <idx>", "Evil Portal", "Set the portal's target AP by index", "idx", danger="lab-only"),
+            CommandInfo("evilportal -c sethtml <file>", "Evil Portal", "Set the portal HTML file from the SD card", "file", danger="lab-only"),
+            CommandInfo("stopscan", "Evil Portal", "Stop the Evil Portal"),
             # ---- Sniffing ----
             CommandInfo("sniffbeacon", "Sniffing", "Sniff beacon frames"),
             CommandInfo("sniffdeauth", "Sniffing", "Sniff deauth frames"),
@@ -450,6 +459,7 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("Probe Flood", "attack -t probe", "Flood probe requests for this SSID", ActionCategory.ATTACK),
         TargetAction("Rickroll Beacon", "attack -t rickroll", "Broadcast rickroll beacon spam", ActionCategory.ATTACK),
         TargetAction("Karma Clone", "karma -s {ssid}", "Start evil-twin karma attack for this SSID", ActionCategory.ATTACK),
+        TargetAction("Evil Portal", "evilportal -c start", "Spin up a captive-portal clone of this AP to harvest credentials", ActionCategory.ATTACK, pre_commands=["evilportal -c setap {index}"]),
         TargetAction("Wardrive Log", "wardrive", "Start wardrive logging (requires GPS)", ActionCategory.SCAN),
     ],
     TargetType.CLIENT: [

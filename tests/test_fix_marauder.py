@@ -97,3 +97,29 @@ def test_marauder_ap_actions_use_documented_grammar():
     # No AP action may carry the bogus -s on an attack verb
     assert not any("attack -t beacon -s" in a.command_template or "attack -t probe -s" in a.command_template
                    for a in TARGET_ACTIONS[TargetType.AP])
+
+
+def test_marauder_evil_portal_commands_present_and_gated():
+    """Evil Portal is a real Marauder verb (CommandLine.cpp EVIL_PORTAL_CMD: -c start/setap/sethtml) and
+    was the audit's confirmed gap. The active verbs must be present and gated lab-only; stop is stopscan."""
+    from src.protocols import get_protocol
+    from src.core import safety
+
+    cmds = {c.name: c for c in get_protocol("marauder").get_commands()}
+    for name in ("evilportal -c start", "evilportal -c setap <idx>", "evilportal -c sethtml <file>"):
+        assert name in cmds, f"missing documented evil-portal verb: {name}"
+        assert safety.classify(name, cmds[name]) == safety.LAB_ONLY
+    # We must NOT expose the firmware's no-op stubs or the serial-stream variant as buttons.
+    assert "evilportal -c reset" not in cmds
+    assert "evilportal -c ack" not in cmds
+    assert "evilportal -c sethtmlstr" not in cmds
+
+
+def test_marauder_evil_portal_ap_action_uses_real_grammar():
+    """The AP Evil Portal action selects the target via `evilportal -c setap {index}` then `-c start` —
+    both real firmware verbs (setap addresses the AP by its scan index, exactly like the CLI)."""
+    from src.protocols.marauder import TARGET_ACTIONS
+    from src.models.target import TargetType
+    by_name = {a.name: a for a in TARGET_ACTIONS[TargetType.AP]}
+    assert by_name["Evil Portal"].command_template == "evilportal -c start"
+    assert by_name["Evil Portal"].pre_commands == ["evilportal -c setap {index}"]

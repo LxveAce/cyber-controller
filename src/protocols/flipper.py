@@ -198,6 +198,11 @@ class FlipperProtocol(BaseProtocol):
         return [
             # ---- System ----
             CommandInfo("device_info", "System", "Device / firmware info"),
+            # loader_cli.c registers top-level "loader" with these real subcommands. Both are
+            # pure CLI control (no radio/physical target), so CC can drive them over serial.
+            # `loader open` needs the app name as an argument -> placeholder (P4 arg-entry).
+            CommandInfo("loader list", "System", "List installed apps"),
+            CommandInfo("loader open <app>", "System", "Launch installed app by name", "app"),
             # ---- SubGHz ----
             CommandInfo("subghz rx", "SubGHz", "Receive SubGHz signals"),
             CommandInfo("subghz tx", "SubGHz", "Transmit SubGHz signal", danger="lab-only"),
@@ -205,10 +210,10 @@ class FlipperProtocol(BaseProtocol):
             # ---- NFC ----
             CommandInfo("nfc detect", "NFC", "Detect NFC tags"),
             CommandInfo("nfc read", "NFC", "Read NFC tag data"),
-            CommandInfo("nfc emulate", "NFC", "Emulate NFC tag"),
+            CommandInfo("nfc emulate", "NFC", "Emulate NFC tag", danger="lab-only"),
             # ---- RFID ----
             CommandInfo("rfid read", "RFID", "Read 125kHz RFID"),
-            CommandInfo("rfid emulate", "RFID", "Emulate RFID tag"),
+            CommandInfo("rfid emulate", "RFID", "Emulate RFID tag", danger="lab-only"),
             # ---- IR ----
             CommandInfo("ir rx", "IR", "Receive IR signal"),
             CommandInfo("ir tx", "IR", "Transmit IR signal"),

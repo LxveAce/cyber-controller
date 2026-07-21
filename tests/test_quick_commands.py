@@ -45,7 +45,9 @@ def test_ghostesp_resolves_despite_naming_mismatch():
 
 def test_offensive_commands_flagged_even_when_name_lacks_keyword():
     # The danger lives in the DESCRIPTION/CATEGORY, not the command name — the label must not fail open.
-    cases = {"marauder": "sniffpwn", "esp32div": "probe", "halehound": "iot_recon", "ghostesp": "startportal"}
+    # HaleHound intentionally omitted: it has no scriptable CLI, so it surfaces no quick commands
+    # (get_commands() is empty). See src/protocols/halehound.py / cc-control-coverage-PLAN.md.
+    cases = {"marauder": "sniffpwn", "esp32div": "probe", "ghostesp": "startportal"}
     for fw, cmd in cases.items():
         by = {q.command: q.danger for q in quick_commands_for(fw)}
         assert by.get(cmd), f"{fw}/{cmd} must be flagged (label-never-block), got {by.get(cmd)!r}"

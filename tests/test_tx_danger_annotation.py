@@ -2,8 +2,12 @@
 
 Regression: several TX commands carried danger="" and no keyword the substring scan catches, so
 safety.classify returned SAFE and device_tab._on_send transmitted them with NO confirmation —
-HaleHound tesla_charge (315/433 MHz opener), nfc_clone, and Bruce/Flipper 'subghz tx' /
-'subghz tx_from_file' (SubGHz replay, which the disclaimer explicitly names). Pure logic."""
+Bruce/Flipper 'subghz tx' / 'subghz tx_from_file' (SubGHz replay, which the disclaimer explicitly
+names). Pure logic.
+
+(HaleHound's tesla_charge / nfc_clone were also here, but HaleHound has no scriptable serial CLI —
+its whole command catalog was removed as fictional, so there is nothing left to gate. See
+src/protocols/halehound.py and cc-control-coverage-PLAN.md.)"""
 
 from __future__ import annotations
 
@@ -25,8 +29,6 @@ def _ci(fw, name):
     ("bruce", "subghz tx"),
     ("bruce", "subghz tx_from_file"),
     ("flipper", "subghz tx"),
-    ("halehound", "tesla_charge"),
-    ("halehound", "nfc_clone"),
 ])
 def test_rf_transmit_commands_are_gated(fw, name):
     ci = _ci(fw, name)

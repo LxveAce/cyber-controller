@@ -7,13 +7,19 @@ an ``AT``-prefixed command terminated by CRLF, the firmware may stream one or mo
 (success), ``ERROR`` (failure), or ``busy p...`` (still processing). On boot it
 prints a bare ``ready`` once the AT interface is up.
 
-This is a modem firmware — there is NO offensive/RF-attack transmit surface — so
-every command this parser offers is a SAFE, read-only query (danger=""). AT
-requires CRLF, so ``line_ending`` is overridden to ``"\r\n"``.
+Most of the AT command set is passive recon: pings, version/heap queries, AP
+scans, Wi-Fi/BLE state queries. Those are SAFE (danger=""). The firmware also
+exposes two active-transmit capabilities that CC keeps and labels rather than
+hides: bringing up the device's own SoftAP (``AT+CWSAP`` set form, a beaconing
+AP that can be used as a rogue/evil-twin) and BLE advertising (``AT+BLEADVDATA``
++ ``AT+BLEADVSTART``, which broadcast attacker-controlled BLE frames). Those
+carry danger="lab-only" so the safety layer confirm-gates them. AT requires CRLF,
+so ``line_ending`` is overridden to ``"\r\n"``.
 
-Source-verified serial commands (AT command set): ``AT`` (ping), ``AT+GMR``
-(version), ``AT+CWLAP`` (list APs), ``AT+CWMODE?`` (query Wi-Fi mode),
-``AT+CIFSR`` (local IP/MAC).
+Source-verified against Espressif's AT command reference (Basic / Wi-Fi / BLE /
+TCP-IP command pages). BLE and SoftAP verbs depend on the chip and the compiled
+build (e.g. the ESP32-S2 has no BLE); ``AT+CMD`` self-enumerates what the
+attached build actually supports.
 
 Example serial exchange:
     AT+CWMODE?
@@ -32,7 +38,8 @@ class EspAtProtocol(BaseProtocol):
     # AT requires a CRLF terminator after each command — LF alone is ignored by the AT parser.
     line_ending = "\r\n"
 
-    # A Wi-Fi/BT modem: it does Wi-Fi (STA/AP) and BLE/BT, but no offensive RF.
+    # A Wi-Fi/BT modem: Wi-Fi (STA/AP) plus BLE/BT. Mostly passive recon, with a couple of
+    # labeled active-TX verbs (SoftAP set form, BLE advertising).
     capabilities = frozenset({"wifi", "ble", "bt"})
 
     @property
@@ -72,19 +79,45 @@ class EspAtProtocol(BaseProtocol):
     # ── Commands ─────────────────────────────────────────────────────
 
     def get_commands(self) -> list[CommandInfo]:
-        """ESP-AT read-only AT helper set (all SAFE — no transmit/attack surface).
+        """ESP-AT command set, verified against Espressif's AT command reference.
 
         Each ``name`` is the literal wire command the AT parser accepts (the interactive
         command palette sends it verbatim), so friendly intent lives in the description.
+        Most verbs are passive queries (danger=""); the two active-transmit forms
+        (SoftAP set, BLE advertising) carry danger="lab-only" so safety confirm-gates them.
         """
         return [
-            # ---- System ----
+            # ---- System / Basic ----
             CommandInfo("AT", "System", "Ping the AT interface (expect OK)"),
             CommandInfo("AT+GMR", "System", "Show AT / SDK / compile version banner"),
+            CommandInfo("AT+CMD", "System", "List every AT command the current firmware build supports"),
+            CommandInfo("AT+RST", "System", "Restart / reboot the module"),
+            CommandInfo("AT+SYSRAM", "System", "Query free and minimum-ever heap memory"),
             # ---- Wi-Fi ----
             CommandInfo("AT+CWLAP", "Wi-Fi", "List/scan nearby Wi-Fi access points"),
+            CommandInfo("AT+CWLAPOPT", "Wi-Fi", "Configure AT+CWLAP output (columns, RSSI filter, sort)"),
             CommandInfo("AT+CWMODE?", "Wi-Fi", "Query current Wi-Fi mode (STA / AP / STA+AP)"),
+            CommandInfo("AT+CWSTATE", "Wi-Fi", "Query Wi-Fi connection state and info"),
+            CommandInfo("AT+CWJAP?", "Wi-Fi", "Query the associated AP (SSID/BSSID/channel/RSSI)"),
             CommandInfo("AT+CIFSR", "Wi-Fi", "Show the assigned local IP and MAC address"),
+            CommandInfo("AT+CWLIF", "Wi-Fi", "List stations (IP + MAC) joined to the device's own SoftAP"),
+            CommandInfo("AT+CWSAP?", "Wi-Fi", "Query the device's SoftAP config (SSID/channel/encryption)"),
+            # SET form stands up a beaconing SoftAP (usable as a rogue / evil-twin AP) — active TX.
+            CommandInfo("AT+CWSAP", "Wi-Fi", "Configure and start the device's SoftAP (beaconing AP)",
+                        danger="lab-only"),
+            # ---- BLE ----
+            # BLE requires an init first, and only exists on BLE-capable chips/builds (AT+CMD confirms).
+            CommandInfo("AT+BLEINIT", "BLE", "Initialize the BLE stack (required before BLE scan/advertise)"),
+            CommandInfo("AT+BLESCAN", "BLE", "Passive BLE device scan"),
+            # These two broadcast attacker-controlled BLE advertising frames — active TX.
+            CommandInfo("AT+BLEADVDATA", "BLE", "Set the BLE advertising payload (up to 31 bytes)",
+                        danger="lab-only"),
+            CommandInfo("AT+BLEADVSTART", "BLE", "Start BLE advertising / broadcasting",
+                        danger="lab-only"),
+            # ---- Network (TCP-IP) ----
+            CommandInfo("AT+PING", "Network", "Ping a remote host and report round-trip latency"),
+            CommandInfo("AT+CIPDOMAIN", "Network", "Resolve a domain name to an IP via DNS"),
+            CommandInfo("AT+CIPSTATE", "Network", "Show active TCP/UDP/SSL connection info"),
         ]
 
     # ── Formatting ───────────────────────────────────────────────────

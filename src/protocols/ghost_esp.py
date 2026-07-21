@@ -265,35 +265,98 @@ class GhostESPProtocol(BaseProtocol):
     # ── Commands ─────────────────────────────────────────────────────
 
     def get_commands(self) -> list[CommandInfo]:
-        """GhostESP command set."""
+        """GhostESP command set.
+
+        Verbs are the ones documented at docs.ghostesp.net / the Spooks4576 wiki. Offensive-TX verbs
+        (deauth/EAPOL-logoff/SAE flood/beacon spam/probe flood/KARMA/BLE spam/AirTag spoof/DHCP starve)
+        carry an explicit danger= so safety.classify() is authoritative rather than relying on the
+        keyword-scan fallback. Scans/lists/captures/settings are receive-only or config -> safe.
+        """
         return [
-            # WiFi scanning
+            # WiFi scanning / association
             CommandInfo("scanap", "WiFi", "Scan for access points"),
             CommandInfo("scansta", "WiFi", "Scan for stations"),
+            CommandInfo("scanall", "WiFi", "Combined AP + station scan"),
             CommandInfo("stopscan", "WiFi", "Stop current scan"),
             CommandInfo("list -a", "WiFi", "List scanned APs"),
             CommandInfo("list -s", "WiFi", "List scanned stations"),
+            CommandInfo("connect <ssid> [pass]", "WiFi", "Join an infrastructure network (enables on-LAN recon)", "ssid,pass"),
+            CommandInfo("disconnect", "WiFi", "Leave the current network"),
+            CommandInfo("listenprobes", "WiFi", "Passively monitor probe requests"),
+            CommandInfo("listenprobes stop", "WiFi", "Stop the probe-request monitor"),
+            CommandInfo("pineap", "WiFi", "Monitor for Wi-Fi Pineapple / rogue-AP beacons"),
+            CommandInfo("pineap -s", "WiFi", "Stop the Pineapple monitor"),
+            # On-LAN recon (needs a prior connect)
+            CommandInfo("scanports", "WiFi", "Port-scan the joined LAN"),
+            CommandInfo("scanarp", "WiFi", "ARP-sweep the joined LAN"),
+            CommandInfo("scanlocal", "WiFi", "mDNS / host discovery on the joined LAN"),
+            CommandInfo("scanssh", "WiFi", "Discover SSH hosts on the joined LAN"),
             # WiFi attacks
-            CommandInfo("attack -d", "Attack", "Deauthentication attack (needs a prior select -a)"),
-            CommandInfo("beaconspam -r", "Attack", "Beacon spam attack"),
-            CommandInfo("probe", "Attack", "Probe request flood"),
-            CommandInfo("beaconspam -rr", "Attack", "Rickroll beacon spam"),
+            CommandInfo("attack -d", "Attack", "Deauthentication attack (needs a prior select -a)", danger="lab-only"),
+            CommandInfo("attack -e", "Attack", "EAPOL logoff (works where 802.11w PMF blocks classic deauth)", danger="lab-only"),
+            CommandInfo("attack -s <password>", "Attack", "SAE flood vs WPA3 (needs ESP32-C5/C6 + target PSK)", "password", danger="lab-only"),
+            CommandInfo("saeflood <password>", "Attack", "SAE association flood vs WPA3", "password", danger="lab-only"),
+            CommandInfo("stopsaeflood", "Attack", "Stop the SAE flood"),
+            CommandInfo("beaconspam -r", "Attack", "Beacon spam (random SSIDs)", danger="lab-only"),
+            CommandInfo("beaconspam -rr", "Attack", "Rickroll beacon spam", danger="lab-only"),
+            CommandInfo("beaconspam -l", "Attack", "Beacon spam cloning all visible SSIDs", danger="lab-only"),
+            CommandInfo("beaconspam <name>", "Attack", "Beacon spam a specific SSID", "name", danger="lab-only"),
+            CommandInfo("probe", "Attack", "Probe request flood", danger="lab-only"),
+            CommandInfo("karma start", "Attack", "KARMA evil-twin: answer probes with the SSIDs clients ask for", danger="lab-only"),
+            CommandInfo("karma stop", "Attack", "Stop KARMA"),
+            CommandInfo("dhcpstarve start", "Attack", "DHCP-starvation flood (exhaust a LAN's address pool)", danger="lab-only"),
+            CommandInfo("dhcpstarve stop", "Attack", "Stop DHCP starvation"),
+            CommandInfo("dhcpstarve display", "Attack", "Show DHCP-starvation status"),
             CommandInfo("stop", "Attack", "Stop current attack"),
             # Evil portal
             CommandInfo("startportal", "Portal", "Start evil portal"),
             CommandInfo("stopportal", "Portal", "Stop evil portal"),
+            CommandInfo("listportals", "Portal", "List installed portal bundles"),
+            CommandInfo("evilportal -c <cmd>", "Portal", "Manage portal HTML (sethtmlstr / clear)", "cmd"),
+            CommandInfo("webauth on", "Portal", "Enable web-UI auth"),
+            CommandInfo("webauth off", "Portal", "Disable web-UI auth"),
             # BLE
             CommandInfo("blescan", "BLE", "Scan for BLE devices"),
             CommandInfo("blescan -s", "BLE", "Stop BLE operations"),
+            CommandInfo("blescan -f", "BLE", "Scan for Flipper Zero devices"),
+            CommandInfo("blescan -ds", "BLE", "Detect BLE-spam sources"),
+            CommandInfo("blescan -r", "BLE", "Raw BLE traffic scan"),
             CommandInfo("bletrack", "BLE", "BLE device tracking"),
             CommandInfo("bleskimmer", "BLE", "BLE skimmer detection"),
+            CommandInfo("blewardriving", "BLE", "BLE wardriving (GPS-tagged beacons)"),
+            CommandInfo("blewardriving -s", "BLE", "Stop BLE wardriving"),
+            CommandInfo("blespam", "BLE", "BLE advertisement spam (pairing popups)", danger="lab-only"),
+            CommandInfo("blespam -s", "BLE", "Stop BLE spam"),
             CommandInfo("airtag scan", "BLE", "Scan for AirTags"),
-            # Packet capture
-            CommandInfo("capture -eapol", "Capture", "Start packet capture"),
+            CommandInfo("listairtags", "BLE", "List detected AirTags"),
+            CommandInfo("selectairtag <idx>", "BLE", "Select an AirTag by index", "idx"),
+            CommandInfo("spoofairtag", "BLE", "Spoof an AirTag advertisement", danger="lab-only"),
+            CommandInfo("stopspoof", "BLE", "Stop the AirTag spoof"),
+            CommandInfo("listflippers", "BLE", "List nearby Flipper Zero devices"),
+            CommandInfo("selectflipper <idx>", "BLE", "Select a Flipper by index", "idx"),
+            # Packet capture (receive-only)
+            CommandInfo("capture -eapol", "Capture", "Capture EAPOL / handshakes"),
+            CommandInfo("capture -probe", "Capture", "Capture probe requests"),
+            CommandInfo("capture -deauth", "Capture", "Capture deauth frames"),
+            CommandInfo("capture -beacon", "Capture", "Capture beacon frames"),
+            CommandInfo("capture -raw", "Capture", "Capture raw 802.11 traffic"),
+            CommandInfo("capture -wps", "Capture", "Capture WPS traffic"),
+            CommandInfo("capture -pwn", "Capture", "Capture Pwnagotchi frames"),
             CommandInfo("capture -stop", "Capture", "Stop packet capture"),
             # Wardrive
             CommandInfo("startwd", "Wardrive", "Start wardriving"),
             CommandInfo("startwd -s", "Wardrive", "Stop wardriving"),
+            # Cast
+            CommandInfo("dialconnect", "Cast", "DIAL / Chromecast control of LAN smart TVs"),
+            # Print
+            CommandInfo("powerprinter <ip> <text> <font> <align>", "Print", "Send a job to a LAN printer", "ip,text,font,align"),
+            # Comm bridge (ESP-to-ESP over UART)
+            CommandInfo("commdiscovery", "Comm", "Discover a peer ESP over the comm bridge"),
+            CommandInfo("commconnect", "Comm", "Connect to a discovered peer ESP"),
+            CommandInfo("commsend <cmd>", "Comm", "Relay a command to the peer ESP", "cmd"),
+            CommandInfo("commstatus", "Comm", "Comm bridge status"),
+            CommandInfo("commdisconnect", "Comm", "Disconnect the comm bridge"),
+            CommandInfo("commsetpins <rx> <tx>", "Comm", "Set the comm-bridge UART pins", "rx,tx"),
             # System
             CommandInfo("chipinfo", "System", "Device / chip info"),
             CommandInfo("reboot", "System", "Reboot device"),
@@ -301,6 +364,13 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("sd info", "System", "SD card info"),
             CommandInfo("led set <r> <g> <b>", "System", "Set LED colour", "r,g,b"),
             CommandInfo("settings", "System", "Show settings"),
+            CommandInfo("settings list", "System", "List all settings"),
+            CommandInfo("settings get <key>", "System", "Read a setting value", "key"),
+            CommandInfo("settings set <key> <value>", "System", "Write a setting value", "key,value"),
+            CommandInfo("settings reset", "System", "Reset settings to defaults"),
+            CommandInfo("mem", "System", "Heap diagnostics"),
+            CommandInfo("mem dump", "System", "Dump heap diagnostics"),
+            CommandInfo("timezone <TZ>", "System", "Set the device timezone", "TZ"),
             CommandInfo("help", "System", "Show help"),
             # Channel
             CommandInfo("setch <ch>", "Channel", "Set Wi-Fi channel", "ch"),

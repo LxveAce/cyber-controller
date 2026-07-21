@@ -3,13 +3,18 @@
 Bruce is a multi-tool firmware for ESP32 boards (CYD, Cardputer, M5Stack, …).
 Its serial interface is a Flipper-CLI-style shell: it echoes the command it is
 running, prints any output, then reports a pass/fail result and re-draws the
-prompt. The radio/menu features (WiFi / BLE / NFC scanning and attacks) are
-driven from the on-device UI, the loader, or the JS interpreter — they are NOT
-exposed as named serial commands. So this parser surfaces shell status/info
-events only and never fabricates target discoveries.
+prompt. WiFi / BLE / NFC scanning and attacks have no dedicated named serial
+verb of their own — they are driven from the on-device UI or scripted through
+the `js` interpreter (`js run_from_file` / `js run_from_buffer`), which IS a
+real serial command. So this parser surfaces shell status/info events only and
+never fabricates target discoveries.
 
-Source-verified serial commands: info, free, uptime, reboot, ir rx, ir tx,
-subghz rx, subghz tx, subghz tx_from_file, badusb run_from_file, loader open.
+Source-verified serial commands (firmware src/core/serial_commands/*.cpp):
+info, free, uptime, reboot; ir rx [raw], ir tx, ir tx_from_file; subghz rx
+[raw], subghz tx, subghz tx_from_file; badusb run_from_file, badusb
+run_from_buffer; js run_from_file, js run_from_buffer; storage
+list/read/write/remove/mkdir/rename/copy/md5/crc32; i2c scan; gpio
+mode/set/read; settings; webui; loader open.
 
 Example serial exchange:
     COMMAND: info
@@ -82,11 +87,16 @@ class BruceProtocol(BaseProtocol):
     def get_commands(self) -> list[CommandInfo]:
         """Bruce serial-CLI command set (source-verified).
 
-        Only the commands the Bruce serial shell actually accepts are listed.
-        The former WiFi/BLE/NFC entries were fabricated — there is no such
-        serial command (those features live in the on-device menu / loader /
-        JS interpreter) — so they are removed rather than shipped as broken
-        buttons.
+        Every entry is a real verb registered in the firmware's
+        src/core/serial_commands/*.cpp (cross-checked against the 2026-07-15
+        command-surface audit). The former WiFi/BLE/NFC entries were fabricated
+        — there is no such dedicated serial command (WiFi/BLE/NFC scanning and
+        attacks are driven on-device or scripted via the `js` interpreter) — so
+        they stay removed rather than shipped as dead buttons.
+
+        Danger flags: active RF/HID emitters (ir tx*, subghz tx*, badusb run_*,
+        js run_*) are lab-only; passive rx/raw captures, file management, and
+        recon (i2c/gpio read/settings/webui) are safe.
         """
         return [
             # ---- System ----
@@ -94,16 +104,47 @@ class BruceProtocol(BaseProtocol):
             CommandInfo("free", "System", "Show free heap memory"),
             CommandInfo("uptime", "System", "Show device uptime"),
             CommandInfo("reboot", "System", "Reboot device"),
+            CommandInfo("webui", "System", "Start the on-device web UI / server"),
+            # ---- Config ----
+            CommandInfo("settings", "Config", "Dump device settings as JSON"),
+            CommandInfo("settings <key> <value>", "Config", "Read or change a setting", "key,value"),
             # ---- IR ----
-            CommandInfo("ir rx", "IR", "Receive an IR signal"),
-            CommandInfo("ir tx", "IR", "Transmit an IR signal"),
+            CommandInfo("ir rx", "IR", "Receive (decode) an IR signal"),
+            CommandInfo("ir rx raw", "IR", "Capture raw (unparsed) IR timing"),
+            CommandInfo("ir tx", "IR", "Transmit an IR signal", danger="lab-only"),
+            CommandInfo("ir tx_from_file <path>", "IR", "Replay a saved .ir capture", "path",
+                        danger="lab-only"),
             # ---- SubGHz ----
-            CommandInfo("subghz rx", "SubGHz", "Receive SubGHz signals"),
+            CommandInfo("subghz rx", "SubGHz", "Receive (decode) SubGHz signals"),
+            CommandInfo("subghz rx raw", "SubGHz", "Capture raw (unparsed) SubGHz samples"),
             CommandInfo("subghz tx", "SubGHz", "Transmit a SubGHz signal", danger="lab-only"),
             CommandInfo("subghz tx_from_file", "SubGHz", "Replay a saved SubGHz capture",
                         danger="lab-only"),
-            # ---- BadUSB ----
-            CommandInfo("badusb run_from_file <script>", "BadUSB", "Run a BadUSB/Ducky script file", "script"),
+            # ---- BadUSB (HID injection) ----
+            CommandInfo("badusb run_from_file <script>", "BadUSB", "Run a BadUSB/Ducky script file",
+                        "script", danger="lab-only"),
+            CommandInfo("badusb run_from_buffer", "BadUSB", "Run a Ducky/HID payload streamed over serial",
+                        danger="lab-only"),
+            # ---- Scripting (JS interpreter — the bridge to radio/menu features) ----
+            CommandInfo("js run_from_file <path>", "Scripting", "Run an on-device JavaScript automation script",
+                        "path", danger="lab-only"),
+            CommandInfo("js run_from_buffer <size>", "Scripting", "Run a JS payload streamed over serial",
+                        "size", danger="lab-only"),
+            # ---- Storage (SD / LittleFS file management — passive) ----
+            CommandInfo("storage list <path>", "Storage", "List files at a path", "path"),
+            CommandInfo("storage read <path>", "Storage", "Read a file over serial", "path"),
+            CommandInfo("storage write <path>", "Storage", "Write a file over serial", "path"),
+            CommandInfo("storage remove <path>", "Storage", "Delete a file", "path"),
+            CommandInfo("storage mkdir <path>", "Storage", "Create a directory", "path"),
+            CommandInfo("storage rename <old> <new>", "Storage", "Rename a file", "old,new"),
+            CommandInfo("storage copy <src> <dst>", "Storage", "Copy a file", "src,dst"),
+            CommandInfo("storage md5 <path>", "Storage", "MD5 checksum of a file", "path"),
+            CommandInfo("storage crc32 <path>", "Storage", "CRC32 checksum of a file", "path"),
+            # ---- Hardware (recon / bus) ----
+            CommandInfo("i2c scan", "Hardware", "Enumerate I2C bus addresses"),
+            CommandInfo("gpio read <pin>", "Hardware", "Read a GPIO pin", "pin"),
+            CommandInfo("gpio mode <pin>", "Hardware", "Set a GPIO pin mode", "pin"),
+            CommandInfo("gpio set <pin> <0/1>", "Hardware", "Drive a GPIO pin high/low", "pin,value"),
             # ---- Apps ----
             CommandInfo("loader open <app>", "Apps", "Open an app / module by name", "app"),
         ]

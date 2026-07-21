@@ -104,6 +104,14 @@ class HaleHoundProtocol(BaseProtocol):
 
     capabilities = frozenset({"ble", "nfc", "nrf24", "subghz", "wifi"})
 
+    # HaleHound is a menu/touch-driven firmware (CYD touchscreen): it has NO scriptable serial
+    # command shell. Text written to the port is not a control channel, so we must not present
+    # "send" buttons that the device silently ignores. Control lives on the device itself; CC's
+    # honest role here is flash + serial-monitor (read/parse the lines it prints). driver_type
+    # "controlmap" tells the UI there is no text command channel (no fake "sent"). See the coverage
+    # plan: cc-control-coverage-PLAN.md — "HaleHound … no scriptable CLI exists".
+    driver_type = "controlmap"
+
     # ── Parsing ──────────────────────────────────────────────────────
 
     def parse_line(self, line: str) -> ParsedEvent | None:
@@ -242,44 +250,19 @@ class HaleHoundProtocol(BaseProtocol):
     # ── Commands ─────────────────────────────────────────────────────
 
     def get_commands(self) -> list[CommandInfo]:
-        """HaleHound command set (ported from source command catalog)."""
-        return [
-            # ---- WiFi ----
-            CommandInfo("wifi_scan", "WiFi", "Scan WiFi access points"),
-            CommandInfo("wifi_deauth", "WiFi", "WiFi deauth attack"),
-            # ---- IoT ----
-            CommandInfo(
-                "iot_recon",
-                "IoT",
-                "IoT Recon -- automated LAN scan + credential brute force",
-            ),
-            # ---- BLE ----
-            CommandInfo("ble_scan", "BLE", "BLE device scan"),
-            CommandInfo("ble_cinder", "BLE", "BLE Cinder attack"),
-            # ---- SubGHz ----
-            CommandInfo("subghz_scan", "SubGHz", "SubGHz spectrum scan (CC1101)"),
-            CommandInfo("subghz_replay", "SubGHz", "SubGHz replay attack"),
-            CommandInfo("subghz_brute", "SubGHz", "SubGHz brute force"),
-            CommandInfo(
-                "tesla_charge", "SubGHz", "Tesla charge port opener (315/433MHz)",
-                danger="lab-only",
-            ),
-            # ---- NFC ----
-            CommandInfo("nfc_scan", "NFC", "NFC card scan (PN532)"),
-            CommandInfo("nfc_read", "NFC", "NFC card read"),
-            CommandInfo("nfc_clone", "NFC", "NFC card clone", danger="lab-only"),
-            # ---- NRF24 ----
-            CommandInfo("nrf_scan", "NRF24", "NRF24 2.4GHz scan"),
-            # ---- MouseJack ----
-            CommandInfo("mousejack", "MouseJack", "MouseJack keystroke injection"),
-            # ---- Guardian ----
-            CommandInfo("guardian", "Guardian", "WiFi Guardian -- rogue AP detection"),
-            CommandInfo("stalkerware", "Guardian", "Stalkerware Detect"),
-            # ---- System ----
-            CommandInfo("stop", "System", "Stop current operation"),
-            CommandInfo("status", "System", "Device status"),
-            CommandInfo("reboot", "System", "Reboot device"),
-        ]
+        """No serial command catalog — HaleHound has no scriptable CLI.
+
+        The former 19-entry catalog (wifi_scan/wifi_deauth/iot_recon/ble_cinder/subghz_*/
+        nfc_*/mousejack/guardian/…) was ported speculatively from the firmware's on-device
+        *menu*, but HaleHound is a touchscreen-driven build with no text command shell: those
+        strings are not verbs the firmware parses off the serial port, so every one was a dead
+        button that the device would silently ignore (and worse, several — wifi_deauth,
+        ble_cinder, subghz_replay — would have read as "sent" for offensive TX that never left
+        the host). None can be proven real against a CLI that does not exist, so the honest
+        catalog is empty. Control happens on the device; CC's role is flash + serial-monitor.
+        Re-add a command ONLY if a real HaleHound serial CLI is ever confirmed on hardware.
+        """
+        return []
 
     # ── Formatting ───────────────────────────────────────────────────
 
@@ -316,13 +299,9 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
 
 # --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
 # Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
-from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
-
-BROADCAST_CAPABILITIES = {
-    BroadcastVerb.FIND_APS:     ((), "wifi_scan"),
-    BroadcastVerb.BLE_SCAN:     ((), "ble_scan"),
-    BroadcastVerb.SUBGHZ_SCAN:  ((), "subghz_scan"),
-    BroadcastVerb.DEAUTH_ALL:   ((), "wifi_deauth"),
-    BroadcastVerb.BLE_SPAM:     ((), "ble_cinder"),
-    BroadcastVerb.STOP_ALL:     ((), "stop"),
-}
+# HaleHound declares NO broadcast verbs: it has no scriptable serial CLI (driver_type
+# "controlmap"), so any native command string here would be serial text the touchscreen
+# firmware ignores — a fake "sent". An empty map makes Broadcast skip HaleHound honestly
+# rather than reporting no-op sends. The former entries (wifi_scan/ble_scan/subghz_scan/
+# wifi_deauth/ble_cinder/stop) were the same fictional catalog removed from get_commands().
+BROADCAST_CAPABILITIES: dict = {}

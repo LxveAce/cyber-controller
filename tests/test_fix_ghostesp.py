@@ -114,10 +114,15 @@ def test_old_verbs_gone_from_broadcast() -> None:
 
 # ── dropped phantom entries ──────────────────────────────────────────
 
-def test_phantom_blespam_dropped() -> None:
+def test_blespam_uses_real_documented_form() -> None:
+    # The command-surface audit (2026-07-15, cross-checked vs docs.ghostesp.net) confirms
+    # `blespam [mode|-s]` is a REAL GhostESP verb, so it now ships in the palette. What was dropped
+    # was the OLD phantom `blespam all` form / its TargetAction / the BLE_SPAM broadcast verb — those
+    # stay gone (CC exposes blespam via the command palette only, not as a per-target/broadcast action).
     names = _command_names()
-    assert not any(n.startswith("blespam") for n in names), "phantom blespam* survived"
-    # ...and the BLE-spam TargetAction / broadcast verb went with it.
+    assert "blespam" in names, "real 'blespam' verb missing from palette"
+    assert "blespam -s" in names, "real 'blespam -s' stop verb missing from palette"
+    assert "blespam all" not in names, "old phantom 'blespam all' form must stay gone"
     assert "blespam all" not in _action_templates()
     assert BroadcastVerb.BLE_SPAM not in BROADCAST_CAPABILITIES
 
