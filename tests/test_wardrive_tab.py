@@ -53,3 +53,25 @@ def test_wigle_upload_gate_needs_a_saved_csv(qapp, monkeypatch, tmp_path):
     tab._on_upload_wigle()
     assert tab._upload_worker is None
     assert "no saved csv" in tab._log.toPlainText().lower()
+
+
+def test_shutdown_joins_the_upload_worker(qapp, monkeypatch):
+    # Capstone fix: an in-flight WiGLE upload QThread must be joined on app teardown, or it's destroyed
+    # mid-run ('QThread: Destroyed while thread is still running') and aborts on exit.
+    tab = _tab(monkeypatch)
+
+    class _FakeUpload:
+        def __init__(self):
+            self.waited = False
+
+        def isRunning(self):
+            return True
+
+        def wait(self, ms=None):
+            self.waited = True
+            return True
+
+    fake = _FakeUpload()
+    tab._upload_worker = fake
+    tab.shutdown()
+    assert fake.waited is True, "shutdown() must wait() on a running upload worker"

@@ -53,6 +53,23 @@ def test_upload_requires_a_token(tmp_path):
         W.upload_csv(str(csv), "")
 
 
+def test_upload_rejects_a_token_with_a_line_break(tmp_path, monkeypatch):
+    # Capstone fix: a token pasted wrapped across two lines keeps an internal CR/LF that .strip() can't
+    # remove; left unchecked http.client raises with the token in the message and it leaks to the log.
+    # upload_csv must reject it up front with a safe message, and must NOT hit the network.
+    csv = tmp_path / "d.csv"
+    csv.write_text("WigleWifi-1.6\nrow\n", encoding="utf-8")
+
+    def must_not_be_called(req, timeout=None):
+        raise AssertionError("network was hit despite a malformed token")
+
+    monkeypatch.setattr(W.urllib.request, "urlopen", must_not_be_called)
+    with pytest.raises(W.WigleError, match="malformed"):
+        W.upload_csv(str(csv), "Basic AbC\nSeCReT")
+    with pytest.raises(W.WigleError, match="malformed"):
+        W.upload_csv(str(csv), "tok\ren")
+
+
 def test_upload_rejects_missing_and_empty_files(tmp_path):
     with pytest.raises(W.WigleError, match="could not read"):
         W.upload_csv(str(tmp_path / "nope.csv"), "tok")

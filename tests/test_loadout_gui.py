@@ -56,14 +56,15 @@ def test_apply_loadout_hides_unused_tabs(qapp, isolated_settings):
         lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
         win.apply_loadout(lo, persist=False)
         labels = _labels(win)
-        # WS-6 A: under a mesh-only loadout the only hidden *top-level* surface is "Analyze" (the wifi_scanning
-        # surface, was "Network"). Flash/Connect/Operate/Survey are always-shown surfaces; their members are
-        # sub-views now, never top-level labels. ("Network" is gone entirely — replaced by "Analyze".)
-        assert "Analyze" not in labels and "Network" not in labels
+        # WS-6 A + capstone fix: post-reorg every surface is ALWAYS (Analyze is now always shown because it
+        # holds the offline Crack Lab + BLE Analyzer), so a mesh-only loadout hides no top-level SURFACE — it
+        # only ever grouped the sub-views. This test now locks the grouping invariant: sub-views are never
+        # top-level, and all six surfaces stay reachable. ("Network" is gone entirely — replaced by "Analyze".)
+        assert "Network" not in labels
         for subview in ("Devices", "Health", "Software OS", "Targets", "Broadcast", "Macros", "Wardrive",
                         "Cross-Comm", "Crack Lab", "Flock Map"):
             assert subview not in labels  # grouped into a surface, never a top-level label post-regroup
-        for core in ("Flash", "Connect", "Operate", "Survey", "Settings"):
+        for core in ("Flash", "Connect", "Operate", "Survey", "Analyze", "Settings"):
             assert core in labels
         # Full Stack restores everything
         win.apply_loadout(L.full_stack_loadout(), persist=False)

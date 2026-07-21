@@ -35,22 +35,20 @@ def test_core_tabs_always_visible():
         assert sub not in vis  # Connect sub-views now, never top-level
 
 
-def test_wifi_scanning_gates_analyze_surface():
-    # WS-6 A: the wifi_scanning-gated *top-level* surface is "Analyze" (was "Network"; now holds Graph +
-    # Cross-Comm + Crack Lab + BLE Analyzer). Targets/Broadcast/Console/Macros are the always-shown "Operate"
-    # surface, and the survey/map trio is the always-shown "Survey" surface — so wifi gating for any of those
-    # is a documented per-sub-tab follow-up; none are top-level tabs.
+def test_analyze_surface_always_shown_holds_offline_tools():
+    # WS-6 A + capstone fix: "Analyze" (the surface previously labelled "Network") is now ALWAYS shown, not
+    # wifi-gated. Unlike the old Network (Graph + Cross-Comm only), Analyze also holds the OFFLINE Crack Lab
+    # (cracks a saved .pcap/.hc22000, no radio) and the BLE Analyzer (BLE, not wifi_scanning) — gating the
+    # whole surface on wifi would hide those functional, hardware-independent tools from a mesh-only loadout.
+    # So no top-level surface is wifi-gated anymore; real de-bloat is firmware-level + a per-sub-tab follow-up.
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    assert "Analyze" not in vis            # no wifi fw -> the wifi-gated Analyze surface is hidden
+    assert "Analyze" in vis                # always shown now — holds the offline Crack Lab + BLE Analyzer
     assert "Network" not in vis            # the old label is gone
-    assert "Operate" in vis and "Survey" in vis   # both always shown
     for sub in ("Targets", "Broadcast", "Cross-Comm", "Crack Lab", "Graph"):
         assert sub not in vis              # sub-views now, never top-level
-    # add Marauder -> the wifi-gated Analyze surface appears (Operate/Survey were already shown)
-    lo2 = {**lo, "firmwares": ["meshtastic", "marauder"]}
-    vis2 = L.visible_tabs(lo2)
-    assert "Analyze" in vis2 and "Operate" in vis2 and "Survey" in vis2
+    # Every surface shows for any configured loadout (all surfaces are ALWAYS post-reorg).
+    assert set(vis) == set(L.TAB_ORDER)
 
 
 def test_operate_surface_always_shown_holds_wardrive():

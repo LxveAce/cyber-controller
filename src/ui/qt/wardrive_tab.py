@@ -522,13 +522,16 @@ class WardriveTab(QWidget):
                 self._on_stop()          # worker.stop(): firmware STOP verb + owner-aware port release + CSV close
             except Exception:            # noqa: BLE001 — teardown must never raise
                 pass
-        # The _dm-less fallback worker is a QThread; join it so it isn't destroyed mid-run on exit.
-        w = getattr(self, "_worker", None)
-        try:
-            if w is not None and hasattr(w, "isRunning") and w.isRunning():
-                w.wait(3000)
-        except RuntimeError:
-            pass
+        # Join every QThread this tab owns so none is destroyed mid-run on exit (the "QThread: Destroyed
+        # while thread is still running" abort). That's the _dm-less fallback capture worker AND the WiGLE
+        # upload worker (a large CSV upload can still be in flight when the app closes).
+        for attr in ("_worker", "_upload_worker"):
+            w = getattr(self, attr, None)
+            try:
+                if w is not None and hasattr(w, "isRunning") and w.isRunning():
+                    w.wait(3000)
+            except RuntimeError:
+                pass
 
     def _logmsg(self, msg: str) -> None:
         self._log.appendPlainText(msg)

@@ -91,6 +91,13 @@ def upload_csv(csv_path: str, token: str, *, donate: bool = False,
     token = (token or "").strip()
     if not token:
         raise WigleError("no WiGLE token set — paste your 'Encoded for use' token in Settings first")
+    # Reject a token with embedded control chars (a CR/LF survives .strip() when a token is pasted wrapped
+    # across two lines). Left unchecked it reaches the "Authorization: Basic <token>" header, where
+    # http.client raises a ValueError whose message contains the whole token verbatim — which would then
+    # escape into the (screenshot-able) log. Fail here with a safe message instead of leaking the credential.
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in token):
+        raise WigleError("that WiGLE token looks malformed (it has a line break or control character) — "
+                         "re-copy the 'Encoded for use' value as a single line")
     if not WIGLE_UPLOAD_URL.lower().startswith("https://"):   # defensive: never upload over plaintext
         raise WigleError("refusing to upload over a non-HTTPS endpoint")
     import os

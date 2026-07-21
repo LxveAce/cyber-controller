@@ -628,6 +628,32 @@ def test_update_tiles_is_a_noop_while_hidden(qapp):
         w.shutdown()
 
 
+def test_stop_tile_worker_retains_until_reaped(qapp):
+    # Capstone fix: superseding a running tile fetcher must NOT drop its last reference (that risks a
+    # 'QThread destroyed while running' abort). _stop_tile_worker clears the ACTIVE handle but keeps the
+    # worker in _tile_workers; _reap_tile_worker (fired on the worker's finished signal) removes it.
+    w = FlockHeatmapTab()
+    try:
+        class _FakeWorker:
+            def __init__(self):
+                self.stopped = False
+
+            def stop(self):
+                self.stopped = True
+
+        fake = _FakeWorker()
+        w._tile_worker = fake
+        w._tile_workers = [fake]
+        w._stop_tile_worker()
+        assert fake.stopped is True                    # cooperatively asked to stop
+        assert w._tile_worker is None                  # no longer the ACTIVE worker
+        assert fake in w._tile_workers                 # ...but still retained (not GC'd mid-run)
+        w._reap_tile_worker(fake)                       # its finished signal fires later
+        assert fake not in w._tile_workers             # now released
+    finally:
+        w.shutdown()
+
+
 def test_free_scene_resets_tiles_and_stops_worker(qapp, monkeypatch):
     # Unloading a backgrounded tab drops tile refs (scene.clear() freed the C++ items) and stops the fetcher.
     from PyQt5.QtWidgets import QGraphicsItemGroup

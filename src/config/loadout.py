@@ -54,9 +54,12 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
     # map with no hardware, so hiding the surface could remove reachable functionality.
     "Survey": ALWAYS,
     # WS-6 A: "Analyze" is the surface previously labelled "Network" (Graph + Cross-Comm + Crack Lab + BLE
-    # Analyzer). It gates as one wifi_scanning unit — its members are all Wi-Fi/BLE analysis or WPA cracking,
-    # so a non-scanning loadout de-bloats it, exactly as "Network" did.
-    "Analyze": {"wifi_scanning"},
+    # Analyzer). Kept ALWAYS (fail-open): unlike the old wifi-gated "Network" (Graph + Cross-Comm only), this
+    # surface now also holds the **offline** Crack Lab (cracks a saved .pcap/.hc22000 — no radio needed) and
+    # the BLE Analyzer (BLE, not wifi_scanning). Gating the whole surface on wifi_scanning would hide those
+    # functional, hardware-independent tools from a Flipper-only / mesh-only / BLE-only loadout — exactly the
+    # functionality-hiding the fail-open rule forbids (same reasoning that keeps Survey/Flock-Map ALWAYS).
+    "Analyze": ALWAYS,
     "Settings": ALWAYS,
 }
 

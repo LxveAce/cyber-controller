@@ -637,7 +637,10 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._tile_group = None                  # QGraphicsItemGroup holding placed tile pixmaps
             self._tile_items: "dict" = {}            # (x,y,z) -> QGraphicsPixmapItem currently placed
             self._tile_needed: "set" = set()         # (x,y,z) the last refresh wants — guards stale async placement
-            self._tile_worker = None
+            self._tile_worker = None                 # the ACTIVE tile fetcher (or None)
+            self._tile_workers: "list" = []          # every live fetcher incl. superseded-but-still-finishing ones,
+            #                                          retained so a running QThread is never GC'd mid-run (reaped
+            #                                          on its finished signal); shutdown() joins them all
             self._tile_timer = QTimer(self)
             self._tile_timer.setSingleShot(True)
             self._tile_timer.setInterval(180)        # coalesce a pan/zoom burst into one tile refresh
@@ -756,10 +759,28 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self._clear_tiles()
 
         def _stop_tile_worker(self) -> None:
+            """Ask the current tile fetcher to stop, but KEEP it referenced (in _tile_workers) until it
+            actually finishes. This runs on every pan/zoom supersede, so a blocking wait() here would freeze
+            the GUI up to a per-tile network timeout; and dropping a running QThread's last Python reference
+            risks a 'QThread: Destroyed while thread is still running' abort. The worker reaps itself via its
+            finished -> _reap_tile_worker connection once its C++ thread has fully exited."""
             w = self._tile_worker
             if w is not None:
                 w.stop()
-                self._tile_worker = None
+                self._tile_worker = None   # no longer the ACTIVE worker; still retained in _tile_workers till done
+
+        def _reap_tile_worker(self, w) -> None:
+            """A tile worker finished (naturally or after stop()): drop our retained reference and schedule
+            its deletion. Fires on the GUI thread via the queued finished signal, so the C++ thread has
+            already exited — safe to release."""
+            try:
+                self._tile_workers.remove(w)
+            except ValueError:
+                pass
+            try:
+                w.deleteLater()
+            except Exception:  # noqa: BLE001 — already torn down
+                pass
 
         def _clear_tiles(self) -> None:
             """Remove every placed tile item and stop any in-flight fetch. Safe if none exist."""
@@ -791,11 +812,16 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             scale = self._view.transform().m11()
             if scale <= 0:
                 return
-            vis = self._view.mapToScene(self._view.viewport().rect()).boundingRect()
+            vp = self._view.viewport().rect()
+            vis = self._view.mapToScene(vp).boundingRect()
             if vis.isEmpty():
                 return
+            # Cap the tile count to what THIS viewport actually needs (+ a margin), not a fixed 80 — a
+            # maximized 4K/ultrawide window is a scale-matched ~130-150 tiles, which the old default dropped
+            # to an empty list, blanking the whole basemap exactly when zoomed in to street level.
+            cap = (vp.width() // map_tiles.TILE_SIZE + 3) * (vp.height() // map_tiles.TILE_SIZE + 3)
             z, needed = map_tiles.tiles_for_viewport(
-                vis.left(), vis.top(), vis.right(), vis.bottom(), 1.0 / scale)
+                vis.left(), vis.top(), vis.right(), vis.bottom(), 1.0 / scale, cap=max(80, cap))
             self._tile_needed = set(needed)
             if self._tile_group is None:
                 self._tile_group = QGraphicsItemGroup()
@@ -821,9 +847,12 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                     misses.append((x, y, zz))
             if misses and self._chk_online.isChecked():
                 self._stop_tile_worker()                  # supersede an older batch (the view moved on)
-                self._tile_worker = _TileFetchWorker(self._tile_cache, misses)
-                self._tile_worker.tile.connect(self._on_tile_ready)
-                self._tile_worker.start()
+                w = _TileFetchWorker(self._tile_cache, misses)
+                self._tile_workers.append(w)              # retain so a running QThread is never GC'd mid-run
+                w.tile.connect(self._on_tile_ready)
+                w.finished.connect(lambda w=w: self._reap_tile_worker(w))
+                self._tile_worker = w
+                w.start()
 
         def _place_tile(self, x: int, y: int, z: int, data: bytes) -> None:
             """Draw one tile pixmap at its world_px rectangle (a 256-px tile scaled to the tile's world size),
@@ -1199,11 +1228,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 w.stop()
                 w.wait()
             self._stop_gps_tracking()        # also tear down the standalone GPS reader + free its port
-            tw = self._tile_worker           # and the tile fetcher, so no QThread is left running at teardown
-            if tw is not None:
+            # Join EVERY live tile fetcher (the active one + any superseded-but-still-finishing), so no
+            # QThread is left running at teardown — this is the one place a bounded blocking wait is right.
+            for tw in list(self._tile_workers):
                 tw.stop()
                 tw.wait(1500)
-                self._tile_worker = None
+            self._tile_workers = []
+            self._tile_worker = None
 
         # ── export (the write is unit-tested; the dialog wrapper is not) ──
         def export_csv_to(self, path: str) -> int:

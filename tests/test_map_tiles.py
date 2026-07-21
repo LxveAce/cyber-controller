@@ -91,6 +91,18 @@ def test_tiles_for_viewport_matches_scale_and_caps():
     assert capped == []
 
 
+def test_tiles_for_viewport_large_view_needs_a_bigger_cap():
+    # Capstone fix: a maximized 4K/ultrawide view is a scale-matched ~130 tiles — the old default cap=80
+    # dropped the whole basemap to []. A viewport-sized cap returns the full set.
+    lat, lon = 51.5074, -0.1278
+    wx, wy = world_px(lat, lon)
+    half_w, half_h = 3840 * 4 / 2, 2160 * 4 / 2          # ~4K view at ~4 world-units/screen-px
+    _, dropped = mt.tiles_for_viewport(wx - half_w, wy - half_h, wx + half_w, wy + half_h, 4.0, cap=80)
+    assert dropped == []                                 # the old default silently blanks the basemap
+    _, full = mt.tiles_for_viewport(wx - half_w, wy - half_h, wx + half_w, wy + half_h, 4.0, cap=400)
+    assert len(full) > 80                                # a viewport-derived cap returns them all
+
+
 def test_get_provider_fallback():
     assert mt.get_provider("osm").key == "osm"
     assert mt.get_provider("nonsense").key == mt.DEFAULT_PROVIDER
