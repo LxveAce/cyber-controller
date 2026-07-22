@@ -110,6 +110,13 @@ and never authors radio frames.
   cached it now says "no firmware cached yet" instead of "all cached firmware is up to date."
 - **Fixed: an NFC clone reaches the safety confirm gate.** `nfc … clone <UID>` (copying an access credential)
   now classifies lab-only and prompts to confirm, matching what the command catalog already documented.
+- **Fixed: phantom command buttons removed from Marauder and GhostESP.** Both catalogs were audited against the
+  firmwares' own source (Marauder `CommandLine.h`, GhostESP-Revival `commandline.c`) and the verbs the device
+  silently ignored were corrected: Marauder's `sigmon` is really `foxhunt` and there is no `deselect` (clear a
+  selection with `clearlist`); GhostESP's `airtag scan` / `bletrack` / `led set` / `flipper bt` are really
+  `aerialscan` / `trackgatt` / `rgbmode` / `blebridge`, and `probe` / `bleskimmer` / `setch` / `getch` /
+  `flipper gps` have no firmware equivalent and were dropped. Every remaining verb in both catalogs is now a
+  real command the firmware accepts.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

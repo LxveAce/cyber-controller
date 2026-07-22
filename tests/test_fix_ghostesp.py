@@ -63,6 +63,11 @@ def test_renamed_command_verbs_present() -> None:
         "chipinfo",         # was "info" / "version"
         "blescan -s",       # was "blestop"
         "stop",             # was "stopattack"
+        # QA-6 #11/#12/#15/#16 — verified vs GhostESP-Revival commandline.c:
+        "aerialscan",       # was "airtag scan"
+        "trackgatt",        # was "bletrack"
+        "rgbmode",          # was "led set <r> <g> <b>"
+        "blebridge",        # was "flipper bt"
     ):
         assert verb in names, f"expected renamed verb {verb!r} in get_commands()"
 
@@ -91,6 +96,16 @@ _OLD_VERBS = (
     "version",
     "blestop",
     "stopattack",
+    # QA-6 #10/#12/#13/#14/#16 — phantom verbs removed/renamed (verified absent from commandline.c):
+    "probe",
+    "airtag scan",
+    "bletrack",
+    "bleskimmer",
+    "led set <r> <g> <b>",
+    "setch <ch>",
+    "getch",
+    "flipper bt",
+    "flipper gps",
 )
 
 

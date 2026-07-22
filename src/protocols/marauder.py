@@ -344,8 +344,8 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("select -s <idx>", "Selection", "Select station by index", "idx"),
             CommandInfo("select -a all", "Selection", "Select all APs"),
             CommandInfo("select -s all", "Selection", "Select all stations"),
-            CommandInfo("deselect -a <idx>", "Selection", "Deselect AP by index", "idx"),
-            CommandInfo("deselect -s <idx>", "Selection", "Deselect station by index", "idx"),
+            # Marauder has no `deselect` verb (checked CommandLine.h); use `clearlist -a/-s` above.
+            # The old `deselect -a/-s` entries were phantom (the device ignored them).
             # ---- Attack ----
             CommandInfo("attack -t deauth", "Attack", "Deauthentication attack on selected"),
             CommandInfo("attack -t deauth -c <ch>", "Attack", "Deauth on specific channel", "ch"),
@@ -406,7 +406,8 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("wardrive", "Wardrive", "Start wardriving (GPS required)"),
             CommandInfo("wardrive -s", "Wardrive", "Stop wardriving"),
             # ---- Signal Strength ----
-            CommandInfo("sigmon", "Signal", "Signal strength monitor"),
+            # Real Marauder verb is `foxhunt` (CommandLine.h SIGSTREN_CMD); `sigmon` was phantom.
+            CommandInfo("foxhunt", "Signal", "Signal-strength monitor / fox-hunt (-b/-w)"),
             # ---- System / Misc ----
             CommandInfo("info", "System", "Show firmware info"),
             CommandInfo("help", "System", "Show help text"),

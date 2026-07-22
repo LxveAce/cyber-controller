@@ -301,7 +301,7 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("beaconspam -rr", "Attack", "Rickroll beacon spam", danger="lab-only"),
             CommandInfo("beaconspam -l", "Attack", "Beacon spam cloning all visible SSIDs", danger="lab-only"),
             CommandInfo("beaconspam <name>", "Attack", "Beacon spam a specific SSID", "name", danger="lab-only"),
-            CommandInfo("probe", "Attack", "Probe request flood", danger="lab-only"),
+            # (removed phantom `probe`: no probe-flood verb in GhostESP; verified vs commandline.c)
             CommandInfo("karma start", "Attack", "KARMA evil-twin: answer probes with the SSIDs clients ask for", danger="lab-only"),
             CommandInfo("karma stop", "Attack", "Stop KARMA"),
             CommandInfo("dhcpstarve start", "Attack", "DHCP-starvation flood (exhaust a LAN's address pool)", danger="lab-only"),
@@ -321,13 +321,13 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("blescan -f", "BLE", "Scan for Flipper Zero devices"),
             CommandInfo("blescan -ds", "BLE", "Detect BLE-spam sources"),
             CommandInfo("blescan -r", "BLE", "Raw BLE traffic scan"),
-            CommandInfo("bletrack", "BLE", "BLE device tracking"),
-            CommandInfo("bleskimmer", "BLE", "BLE skimmer detection"),
+            CommandInfo("trackgatt", "BLE", "Track a BLE (GATT) device by RSSI"),
+            # (removed phantom `bleskimmer`: skimmer detection is Marauder's sniffskim, not this fw)
             CommandInfo("blewardriving", "BLE", "BLE wardriving (GPS-tagged beacons)"),
             CommandInfo("blewardriving -s", "BLE", "Stop BLE wardriving"),
             CommandInfo("blespam", "BLE", "BLE advertisement spam (pairing popups)", danger="lab-only"),
             CommandInfo("blespam -s", "BLE", "Stop BLE spam"),
-            CommandInfo("airtag scan", "BLE", "Scan for AirTags"),
+            CommandInfo("aerialscan", "BLE", "Scan for AirTags / aerial trackers"),
             CommandInfo("listairtags", "BLE", "List detected AirTags"),
             CommandInfo("selectairtag <idx>", "BLE", "Select an AirTag by index", "idx"),
             CommandInfo("spoofairtag", "BLE", "Spoof an AirTag advertisement", danger="lab-only"),
@@ -362,7 +362,7 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("reboot", "System", "Reboot device"),
             CommandInfo("gpsinfo", "System", "GPS status"),
             CommandInfo("sd info", "System", "SD card info"),
-            CommandInfo("led set <r> <g> <b>", "System", "Set LED colour", "r,g,b"),
+            CommandInfo("rgbmode", "System", "Set the RGB LED mode"),
             CommandInfo("settings", "System", "Show settings"),
             CommandInfo("settings list", "System", "List all settings"),
             CommandInfo("settings get <key>", "System", "Read a setting value", "key"),
@@ -372,12 +372,9 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("mem dump", "System", "Dump heap diagnostics"),
             CommandInfo("timezone <TZ>", "System", "Set the device timezone", "TZ"),
             CommandInfo("help", "System", "Show help"),
-            # Channel
-            CommandInfo("setch <ch>", "Channel", "Set Wi-Fi channel", "ch"),
-            CommandInfo("getch", "Channel", "Get current channel"),
-            # Flipper bridge
-            CommandInfo("flipper bt", "Flipper", "Flipper BT bridge"),
-            CommandInfo("flipper gps", "Flipper", "Flipper GPS bridge"),
+            # (removed phantom `setch`/`getch`: GhostESP has no standalone channel verb)
+            # Flipper bridge (list/select are in the BLE group; only a BT bridge verb exists)
+            CommandInfo("blebridge", "Flipper", "Bridge to a selected Flipper over BLE"),
         ]
 
     # ── Formatting ───────────────────────────────────────────────────
@@ -405,14 +402,14 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("Beacon Spam", "beaconspam -r", "Broadcast beacon flood near this AP", ActionCategory.ATTACK),
         TargetAction("Evil Portal", "startportal", "Start evil portal captive page", ActionCategory.ATTACK, chain_events=["portal_cred"]),
         TargetAction("Capture Traffic", "capture -eapol", "Start packet capture on this channel", ActionCategory.CAPTURE),
-        TargetAction("Probe Flood", "probe", "Flood probe requests", ActionCategory.ATTACK),
+        # (removed "Probe Flood" -> phantom `probe` verb; GhostESP has no probe-flood command)
     ],
     TargetType.CLIENT: [
         TargetAction("Deauth Client", "attack -d", "Disconnect this client", ActionCategory.ATTACK, requires_selection=True, pre_commands=["select -a {index}"]),
     ],
     TargetType.BLE: [
-        TargetAction("AirTag Scan", "airtag scan", "Scan for nearby AirTags", ActionCategory.SCAN),
-        TargetAction("BLE Track", "bletrack", "Track this BLE device", ActionCategory.MONITOR),
+        TargetAction("AirTag Scan", "aerialscan", "Scan for nearby AirTags", ActionCategory.SCAN),
+        TargetAction("BLE Track", "trackgatt", "Track this device (RSSI)", ActionCategory.MONITOR),
     ],
 }
 

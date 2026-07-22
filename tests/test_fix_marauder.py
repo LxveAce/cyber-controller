@@ -16,6 +16,10 @@ def test_marauder_tokens_corrected():
     assert "blescan" not in names and "bletrack" not in names
     # blespam token fixes
     assert any("sourapple" in n for n in names) and not any("blespam -t apple" == n for n in names)
+    # QA-6 #8/#9 (verified vs CommandLine.h): real signal verb is `foxhunt`, not `sigmon`; and there
+    # is no `deselect` verb (only `select`, plus `clearlist` to clear a selection).
+    assert "foxhunt" in names and "sigmon" not in names
+    assert not any(n.startswith("deselect") for n in names)
 
 
 def test_marauder_multiline_ap_parse():
