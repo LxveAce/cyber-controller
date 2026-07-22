@@ -235,23 +235,6 @@ class CyberControllerWindow(QMainWindow):
         # File
         file_menu = mb.addMenu("&File")
 
-        act_new = QAction("&New Session", self)
-        act_new.setShortcut("Ctrl+N")
-        act_new.triggered.connect(self._on_new_session)
-        file_menu.addAction(act_new)
-
-        act_open = QAction("&Open Session...", self)
-        act_open.setShortcut("Ctrl+O")
-        act_open.triggered.connect(self._on_open_session)
-        file_menu.addAction(act_open)
-
-        act_save = QAction("&Save Session", self)
-        act_save.setShortcut("Ctrl+S")
-        act_save.triggered.connect(self._on_save_session)
-        file_menu.addAction(act_save)
-
-        file_menu.addSeparator()
-
         act_quit = QAction("&Quit", self)
         act_quit.setShortcut("Ctrl+Q")
         act_quit.triggered.connect(self.close)
@@ -1983,9 +1966,6 @@ class CyberControllerWindow(QMainWindow):
 
         shortcuts = [
             ("Ctrl+Q", "Quit"),
-            ("Ctrl+N", "New Session"),
-            ("Ctrl+O", "Open Session"),
-            ("Ctrl+S", "Save Session"),
             ("Ctrl+= / Ctrl+-", "Font Size Up / Down"),
             ("Ctrl+F", "Search (in targets)"),
             ("F5", "Refresh Devices / Scan Ports"),
@@ -2019,15 +1999,6 @@ class CyberControllerWindow(QMainWindow):
         dlg.exec_()
 
     # ── Slots ────────────────────────────────────────────────────────
-
-    def _on_new_session(self) -> None:
-        log.info("New session requested")
-
-    def _on_open_session(self) -> None:
-        log.info("Open session requested")
-
-    def _on_save_session(self) -> None:
-        log.info("Save session requested")
 
     def _change_font_size(self, delta: int) -> None:
         font = QApplication.font()
