@@ -1,21 +1,21 @@
 # Credits & Acknowledgments
 
-Cyber Controller is a controller and flasher — it writes, drives, and coordinates
+Cyber Controller is a controller and flasher. It writes, drives, and coordinates
 hardware, but it does not author the firmware that hardware runs. Every device profile,
-flash backend, parser, and feature in this project stands on the work of upstream
-firmware authors, tool maintainers, OS projects, and library developers who built the
-hard parts first. This file exists to thank them, by name, with gratitude.
+flash backend, parser, and feature here builds on the work of upstream
+firmware authors, tool maintainers, OS projects, and library developers who did the
+hard parts first. This file thanks them by name.
 
 **None of the projects, people, or organizations listed below endorse, sponsor, or are
 affiliated with Cyber Controller.** Cyber Controller is an independent, self-taught hobby
 project by the author (LxveAce). All firmware, tools, distributions, trademarks, logos,
 and copyrights named here belong to their respective owners. Firmware and OS binaries are
 fetched from each project's own official releases at flash time, pinned and SHA-256
-verified — they are **never vendored, modified, or redistributed by this repository**.
+verified. They are **never vendored, modified, or redistributed by this repository**.
 
 Licenses below were checked against each project's published license metadata where
 possible. Anything that could not be confirmed is marked **`verify:`** rather than
-asserted — if you are the author and a marking is wrong, please tell us (see
+asserted. If you are the author and a marking is wrong, please tell us (see
 [Notes](#notes)) and it will be corrected.
 
 ---
@@ -72,7 +72,7 @@ build, bundle, or alter them.
 
 ### Closed-source / pre-compiled firmware
 
-These ship as vendor binaries only — there is no open build to compile from. Cyber
+These ship as vendor binaries only; there is no open build to compile from. Cyber
 Controller fetches the official release binaries (pinned + SHA-256 verified) and never
 redistributes them. They are included strictly as flash-and-study targets; CC exposes no
 transmit/operate control for them.
@@ -86,8 +86,8 @@ transmit/operate control for them.
 
 ## Flashing & tooling
 
-The actual byte-level flashing is done by these tools — Cyber Controller orchestrates
-them, it does not reimplement them.
+The actual byte-level flashing is done by these tools. Cyber Controller orchestrates
+them; it does not reimplement them.
 
 | Tool | Author / Org | Link | License |
 |------|-------------|------|---------|
@@ -131,7 +131,7 @@ Cyber Controller is written in Python and depends on the following open-source l
 The Software (OS) tab can write these bootable operating systems to a removable USB drive.
 Each image is downloaded from the project's own official mirror, **SHA-256 + OpenPGP
 integrity-checked**, and written **as-is** by the user. Cyber Controller does **not** host,
-mirror, repackage, or redistribute any of these — it only verifies and writes what the user
+mirror, repackage, or redistribute any of these. It only verifies and writes what the user
 fetches from the upstream project.
 
 | OS image | Author / Org | Official source | License / status |
@@ -147,32 +147,32 @@ fetches from the upstream project.
 Beyond the upstream authors above, Cyber Controller grows from the ideas, feature requests,
 and real-device field testing of its community. Named here with thanks:
 
-- **RedneckNetrunner** (GOS Discord) — firmware-coverage requests and hands-on field testing
+- **RedneckNetrunner** (GOS Discord): firmware-coverage requests and hands-on field testing
   that directly shaped the firmware-expansion work:
-  - **M5PORKCHOP** and **M5Gotchi** profiles — from his daily-carry firmware list.
+  - **M5PORKCHOP** and **M5Gotchi** profiles, from his daily-carry firmware list.
   - **Evil-M5** family support (Evil Cardputer / EvilM5Core / EvilM5Project).
-  - **GhostESP** and **ESP32 Marauder** on **M5Cardputer / M5StickC** — including flagging that
+  - **GhostESP** and **ESP32 Marauder** on **M5Cardputer / M5StickC**, including flagging that
     Marauder-on-Cardputer had "until recently been extremely rough," and testing GhostESP on his
     own M5StickC and reporting back that it ran fine.
   - **ESP32 Bus Pirate** and **Bruce** raised as daily-carry firmwares to keep well-supported.
   - Proposed **Cardputer-control-from-the-PC** (a qFlipper-style control surface for the Cardputer)
     and championed the **pop-out / focus-in firmware-menu** direction (blowing up the connect/operate
-    panels to focus on them) — realized in the aspect-locked Device-View pop-out (**DV1**: the window holds
+    panels to focus on them), realized in the aspect-locked Device-View pop-out (**DV1**: the window holds
     the firmware skin's native ratio on resize instead of letterboxing dead-space), its crisp-zoom modes
     (**DV2**: Fit / integer 1×/2×/3× nearest-neighbor / 1:1, so blowing the skin up stays sharp), and
     per-firmware palettes (**DV3**: each skin reads its own colour scheme so Marauder / GhostESP / ESP32-DIV
-    look like their real firmware instead of one shared theme — honest reconstructions, not pixel captures),
+    look like their real firmware instead of one shared theme; honest reconstructions, not pixel captures),
     and the **Bruce** skin he flagged as daily-carry (**DV4**: a reconstructed Bruce menu whose every leaf is
     a real Bruce serial command, with the argument-taking ones marked so they don't fire a broken command).
-  - Proposed **Cardputer control** — groundwork in per-board Device-View sizing (**CP1**: a skin can now be
+  - Proposed **Cardputer control**: groundwork in per-board Device-View sizing (**CP1**: a skin can now be
     shaped to its real board, e.g. Cardputer 240×135 landscape / M5StickC 135×240, instead of a fixed portrait
     frame; the aspect-lock, zoom, and hit-testing all follow the board's resolution), then the **Cardputer
-    Remote** itself (**CP2**: that Cardputer-shaped skin plus a raw CLI console — two input lanes that both drive
+    Remote** itself (**CP2**: that Cardputer-shaped skin plus a raw CLI console, two input lanes that both drive
     the device through the one guarded send path, so a raw line gets the same firmware-match, safety-confirm, and
     write validation as a menu tap).
   - His firmware-menu direction now reaches every frontend equally (**DV-tk**: the reconstructed skins that
     started as the Qt pop-out are now a navigable Device View on the plain-Tkinter build too, driven by the same
-    UI-agnostic menu model — leaves fire the real serial command through the same guarded write + safety-confirm,
+    UI-agnostic menu model; leaves fire the real serial command through the same guarded write + safety-confirm,
     so the lightweight GUI has full parity with the Qt/web views).
 
   These suggestions and test reports made the firmware coverage broader and better grounded in how
@@ -196,4 +196,4 @@ and real-device field testing of its community. Named here with thanks:
   project's attribution corrected, expanded, or removed, that will be honored. Please open
   an issue at https://github.com/LxveAce/cyber-controller/issues and it will be addressed.
 
-_With genuine thanks to everyone above — Cyber Controller would not exist without your work._
+_With genuine thanks to everyone above. Cyber Controller would not exist without your work._
