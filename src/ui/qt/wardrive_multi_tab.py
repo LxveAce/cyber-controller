@@ -162,6 +162,14 @@ class WardriveMultiTab(QWidget):
         checked = {p for p, _ in self._checked_boards()}
         boards = self._connected_boards()
         self._board_list.clear()
+        if not boards:
+            # A5 #2: an empty list looked broken — say why + how to fill it, and make it
+            # un-checkable so the placeholder is never mistaken for a real board to tick.
+            hint = QListWidgetItem("No boards connected — open one on the Devices tab to add it.")
+            hint.setFlags(Qt.NoItemFlags)
+            self._board_list.addItem(hint)
+            self._seen_ports = set()
+            return
         for port, fw in boards:
             item = QListWidgetItem(f"{port}  —  {fw or '(unknown fw → Marauder default)'}")
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)

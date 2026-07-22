@@ -97,7 +97,10 @@ def test_start_guards_when_no_board_selected(qapp):
 
 def test_no_device_manager_is_safe(qapp):
     tab = WardriveMultiTab(device_manager=None)
-    assert tab._board_list.count() == 0                    # nothing to list, no crash
+    # A5 #2: nothing to list → the guidance placeholder (not a bare list), and still no crash.
+    assert tab._board_list.count() == 1
+    assert "No boards connected" in tab._board_list.item(0).text()
+    assert tab._checked_boards() == []                     # placeholder is not a real board
     tab._on_start()
     assert tab._controller is None
 
@@ -124,3 +127,24 @@ def test_unchecked_board_stays_unchecked_across_refresh(qapp):
 
     tab._refresh_boards()                                    # no topology change
     assert tab._checked_boards() == [("COM3", "marauder")]  # untick preserved, not new
+
+
+def test_empty_board_list_shows_guidance_placeholder(qapp):
+    # A5 #2: with no boards connected the list must explain itself, and the placeholder must
+    # never be counted as a selectable/tickable board.
+    tab = WardriveMultiTab(device_manager=_FakeDM([]))
+    assert tab._board_list.count() == 1
+    item = tab._board_list.item(0)
+    assert "No boards connected" in item.text()
+    assert item.flags() == Qt.NoItemFlags          # not user-checkable, not selectable
+    assert tab._checked_boards() == []             # placeholder is never a real board
+
+
+def test_placeholder_replaced_when_a_board_appears(qapp):
+    dm = _MutableDM([])
+    tab = WardriveMultiTab(device_manager=dm)
+    assert tab._board_list.count() == 1 and tab._checked_boards() == []   # placeholder only
+    dm.set([("COM3", "marauder")])
+    tab._refresh_boards()
+    assert tab._board_list.count() == 1
+    assert tab._checked_boards() == [("COM3", "marauder")]                # real board, auto-ticked

@@ -164,8 +164,9 @@ and never authors radio frames.
   idle header distinguishes "no BLE device connected" from "connected, just not scanning"; a disabled offensive-TX
   button's tooltip now points at the arm gate that unlocks it; the Nodes tab shows a "provision one to start" hint
   on an empty table and a clear "select a node first" note instead of silently ignoring a click with no selection;
-  the Targets right-click menu distinguishes "no device connected" from "no actions for this target"; and the graph
-  hint mentions double-click-for-commands. Same features — they just explain themselves now.
+  the Targets right-click menu distinguishes "no device connected" from "no actions for this target"; the
+  Multi-Wardrive board list shows a "no boards connected — open one on the Devices tab" placeholder instead of a
+  blank box; and the graph hint mentions double-click-for-commands. Same features — they just explain themselves now.
 - **New: the command palette reaches every sub-view.** Control, BLE Analyzer, Crack Lab, and Manage Nodes are now
   jump-to entries in the Ctrl+K palette, so a grouped sub-tab is one keystroke away instead of a surface-then-tab hunt.
 
