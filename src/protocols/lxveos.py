@@ -58,10 +58,13 @@ _RE_ARM_STATE = re.compile(r"^arm\s+state:\s*(\w+)", re.IGNORECASE)
 _RE_ARM_ARMED = re.compile(r"\bARMED\b")  # the confirm reply; \b keeps it from matching DISARMED
 
 # LxveOS capability bitmask -> slug, in the EXACT bit order of the firmware's `lxveos_cap_t` enum
-# (components/lxveos_caps: WIFI=bit0, BLE=1, BT_CLASSIC=2, DISPLAY=3, STORAGE=4, GPS=5, IR=6, SUBGHZ=7,
-# NRF24=8, NFC=9). Verified against source AND a live board (COM23 caps=0x007 -> wifi/ble/bt_classic).
+# (components/lxveos_caps: WIFI=bit0, BLE=1, BT_CLASSIC=2, DISPLAY=3, STORAGE=4, GPS=5, IR_RX=6,
+# SUBGHZ=7, NRF24=8, NFC=9, WIFI_5GHZ=10, IR_TX=11). IR splits into ir_rx (bit 6, the old `ir` slot)
+# and ir_tx (bit 11, appended so no existing bit moves) -- a board can have an IR receiver but no
+# emitter. Verified against source and a live board (COM23 caps=0x007 -> wifi/ble/bt_classic).
 _CAP_SLUGS = (
-    "wifi", "ble", "bt_classic", "display", "storage", "gps", "ir", "subghz", "nrf24", "nfc",
+    "wifi", "ble", "bt_classic", "display", "storage", "gps", "ir_rx", "subghz", "nrf24", "nfc",
+    "wifi_5ghz", "ir_tx",
 )
 
 # Event type -> (CC event_type, int-typed fields, hex-encoded free-text fields). MAC-shaped fields

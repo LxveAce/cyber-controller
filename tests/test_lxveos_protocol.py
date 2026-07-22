@@ -103,20 +103,23 @@ def test_snapshot_counts_are_typed_ints():
 
 def test_caps_bitmask_decodes_in_firmware_bit_order():
     # Bit order is the firmware's lxveos_cap_t enum (lxveos_caps): wifi=0 ble=1 bt_classic=2
-    # display=3 storage=4 gps=5 ir=6 subghz=7 nrf24=8 nfc=9. Locked so a bit-order drift is caught.
+    # display=3 storage=4 gps=5 ir_rx=6 subghz=7 nrf24=8 nfc=9 wifi_5ghz=10 ir_tx=11. Locked so a
+    # bit-order drift is caught. IR splits RX/TX: ir_rx keeps bit 6 (old `ir`), ir_tx is bit 11.
     assert _decode_caps(0x000) == []
     assert _decode_caps(0x007) == ["wifi", "ble", "bt_classic"]
     assert _decode_caps(0x0a0) == ["gps", "subghz"]
-    assert _decode_caps(0x3ff) == [
-        "wifi", "ble", "bt_classic", "display", "storage", "gps", "ir", "subghz", "nrf24", "nfc",
+    assert _decode_caps(0xc00) == ["wifi_5ghz", "ir_tx"]   # the two appended bits (10 and 11)
+    assert _decode_caps(0xfff) == [
+        "wifi", "ble", "bt_classic", "display", "storage", "gps", "ir_rx", "subghz", "nrf24", "nfc",
+        "wifi_5ghz", "ir_tx",
     ]
 
 
 def test_caps_decode_surfaces_unknown_future_bits():
-    # A set bit beyond the known M0 range must be surfaced (capN), not dropped — an M1 capability
-    # firmware reports can't silently vanish from the operator's view.
-    assert _decode_caps(0x400) == ["cap10"]
-    assert _decode_caps(0x401) == ["wifi", "cap10"]
+    # A set bit beyond the known range must surface as capN, not drop -- a future capability the
+    # firmware reports can't silently vanish from the operator's view. Bits 0-11 known; 12+ not.
+    assert _decode_caps(0x1000) == ["cap12"]
+    assert _decode_caps(0x1001) == ["wifi", "cap12"]
 
 
 def test_status_tolerates_unknown_future_keys():
