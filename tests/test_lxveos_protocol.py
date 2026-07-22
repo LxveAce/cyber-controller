@@ -73,6 +73,34 @@ def test_status_tx_and_arm_fields_typed():
     assert d["arm"] == "bogus"
 
 
+def test_surveil_alert_subcounts_are_typed_ints():
+    # A counter-surveillance sweep emits `LXVEOS/1 alert kind=surveil count=N` plus a uint tally per
+    # category (verbatim firmware shape — lxveos_cli.c cmd_surveil). Each tally must arrive as an int
+    # for the dashboard, not a raw string.
+    p = LxveOSProtocol()
+    ev = p.parse_line(
+        "LXVEOS/1 alert kind=surveil count=3 tracker=1 flock=0 meta=1 flipper=0 skimmer=1"
+    )
+    assert ev is not None and ev.event_type == "alert"
+    d = ev.data
+    assert d["kind"] == "surveil"                       # kind is a string identifier, left as-is
+    for key, want in {"count": 3, "tracker": 1, "flock": 0,
+                      "meta": 1, "flipper": 0, "skimmer": 1}.items():
+        assert d[key] == want and isinstance(d[key], int), f"{key} should be int, got {d[key]!r}"
+
+
+def test_snapshot_counts_are_typed_ints():
+    # The airspace/snapshot summary emits ONLY aps/open/wps/bles/trackers (verbatim firmware — the
+    # `LXVEOS/1 snapshot` emitter in lxveos_cli.c); there is no stas/alerts key. All present keys
+    # are uint counts and must type to int.
+    p = LxveOSProtocol()
+    ev = p.parse_line("LXVEOS/1 snapshot aps=12 open=3 wps=1 bles=7 trackers=2")
+    assert ev is not None and ev.event_type == "snapshot"
+    d = ev.data
+    for key, want in {"aps": 12, "open": 3, "wps": 1, "bles": 7, "trackers": 2}.items():
+        assert d[key] == want and isinstance(d[key], int)
+
+
 def test_caps_bitmask_decodes_in_firmware_bit_order():
     # Bit order is the firmware's lxveos_cap_t enum (lxveos_caps): wifi=0 ble=1 bt_classic=2
     # display=3 storage=4 gps=5 ir=6 subghz=7 nrf24=8 nfc=9. Locked so a bit-order drift is caught.

@@ -75,13 +75,16 @@ _EVENT_MAP: dict[str, tuple[str, "frozenset[str]", "frozenset[str]"]] = {
     "hs":       ("handshake_captured", frozenset(),                                  frozenset({"essid"})),
     "pcap":     ("pcap_saved",         frozenset({"bytes"}),                         frozenset()),
     "arm":      ("arm_state",          frozenset({"token", "window", "idle"}),       frozenset()),
+    # `tracker/flock/meta/flipper/skimmer` are the kind=surveil sweep subcounts (one uint tally per
+    # category) — typed here so they arrive as ints, not strings.
     "alert":    ("alert",              frozenset({"count", "bssids", "rate", "deauth", "disassoc",
-                                                   "open", "enc", "grade", "wps", "uniq", "rssi"}),
+                                                   "open", "enc", "grade", "wps", "uniq", "rssi",
+                                                   "tracker", "flock", "meta", "flipper", "skimmer"}),
                                         frozenset({"ssid", "name"})),
     "bridge":   ("bridge_state",       frozenset(),                                  frozenset()),
     "done":     ("batch_done",         frozenset({"n"}),                             frozenset()),
-    "snapshot": ("snapshot",           frozenset({"aps", "open", "wps", "bles", "trackers",
-                                                   "stas", "alerts"}),                frozenset()),
+    "snapshot": ("snapshot",           frozenset({"aps", "open", "wps", "bles", "trackers"}),
+                                        frozenset()),
 }
 
 
