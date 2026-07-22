@@ -48,6 +48,14 @@ def test_get_protocol_resolves_both_spellings():
     assert isinstance(get_protocol("flock-you"), FlockYouProtocol)
 
 
+def test_passive_sensor_is_not_text_cli():
+    # QA-6 #3: Flock-You is a passive receive-only sensor with no command channel, so it must NOT be
+    # a "text-cli" node — else the connect probe writes an unsolicited `help` it can never answer.
+    proto = FlockYouProtocol()
+    assert proto.driver_type != "text-cli"       # non-CLI -> probe reports "no-cli", writes nothing
+    assert proto.get_commands() == []            # and it genuinely has nothing to send
+
+
 def test_profile_binds_the_parser():
     import json
     from pathlib import Path

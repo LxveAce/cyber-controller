@@ -117,6 +117,10 @@ and never authors radio frames.
   `aerialscan` / `trackgatt` / `rgbmode` / `blebridge`, and `probe` / `bleskimmer` / `setch` / `getch` /
   `flipper gps` have no firmware equivalent and were dropped. Every remaining verb in both catalogs is now a
   real command the firmware accepts.
+- **Fixed: two more honest-capability corrections.** A "BLE Scan" fan-out no longer runs a no-op on a Flipper
+  (its `bt info` shows adapter info, not a nearby-BLE scan, so a Flipper is now honestly skipped); and a
+  passive Flock-You detector is no longer sent an unsolicited `help` probe on connect — it's marked no-CLI
+  like the other receive-only detectors.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

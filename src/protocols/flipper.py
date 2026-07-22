@@ -277,7 +277,8 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
 from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
 
 BROADCAST_CAPABILITIES = {
-    BroadcastVerb.BLE_SCAN:    ((), "bt info"),
     BroadcastVerb.SUBGHZ_SCAN: ((), "subghz rx"),
+    # No BLE_SCAN: stock Flipper "bt info" prints adapter info; it does NOT scan nearby BLE, so a
+    # BLE-Scan fan-out honestly SKIPS a Flipper instead of running a no-op (phantom removed).
     # No BLE_SPAM: stock Flipper CLI has no "bt spam" command (phantom removed).
 }

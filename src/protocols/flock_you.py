@@ -70,6 +70,10 @@ class FlockYouProtocol(BaseProtocol):
     ``[flockyou]`` status lines; everything else is treated as noise.
     """
 
+    # Passive receive-only sensor: no text CLI, so mark it non-"text-cli" (like halehound) — the
+    # connect probe then reports "no-cli" without writing an unsolicited `help` it can't answer.
+    driver_type = "controlmap"
+
     # The firmware is a passive WiFi sniffer; the wardriving rig carries GPS host-side.
     capabilities = frozenset({"wifi", "gps"})
 

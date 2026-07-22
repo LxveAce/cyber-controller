@@ -19,6 +19,15 @@ def test_flipper_ble_spam_broadcast_removed():
     assert BroadcastVerb.BLE_SPAM not in flipper.BROADCAST_CAPABILITIES
 
 
+def test_flipper_ble_scan_broadcast_removed():
+    # QA-6 #7: stock Flipper "bt info" prints adapter info, not a nearby-BLE scan, so a BLE-Scan
+    # fan-out must SKIP a Flipper (honest) instead of running the no-op.
+    from src.core.broadcast import BroadcastVerb
+    from src.protocols import flipper
+    assert BroadcastVerb.BLE_SCAN not in flipper.BROADCAST_CAPABILITIES
+    assert BroadcastVerb.SUBGHZ_SCAN in flipper.BROADCAST_CAPABILITIES   # the real one stays
+
+
 def test_surviving_flipper_actions_intact():
     """The real Flipper actions are untouched."""
     from src.models.target import TargetType
