@@ -126,6 +126,9 @@ and never authors radio frames.
   on every connected radio at once), and Console is the single-device deep control, renamed **Control** (force
   a firmware, run that firmware's own commands, two-factor arm gate). One clear job each, and no capability is
   lost — the force-firmware picker moved to Control.
+- **Fixed: status labels scale on high-DPI displays.** The Devices/Control status labels and the access-gate
+  header used hardcoded pixel font sizes that don't scale with the system font/DPI; they now use point sizes on
+  the same scale as the rest of the theme.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

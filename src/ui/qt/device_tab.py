@@ -265,7 +265,7 @@ class DeviceTab(QWidget):
         self._caps_label.setObjectName("caps_label")
         self._caps_label.setWordWrap(True)
         self._caps_label.setTextFormat(Qt.RichText)  # capN tokens render muted/distinct
-        self._caps_label.setStyleSheet("color:#8b949e;font-size:11px;")
+        self._caps_label.setStyleSheet("color:#8b949e;font-size:9pt;")
         left_layout.addWidget(self._caps_label)
         self._update_capabilities()
 
@@ -275,7 +275,7 @@ class DeviceTab(QWidget):
         self._telemetry_label = QLabel("")
         self._telemetry_label.setObjectName("telemetry_label")
         self._telemetry_label.setWordWrap(True)
-        self._telemetry_label.setStyleSheet("color:#6e7681;font-size:11px;")
+        self._telemetry_label.setStyleSheet("color:#6e7681;font-size:9pt;")
         left_layout.addWidget(self._telemetry_label)
         self._update_telemetry()
 
@@ -286,7 +286,7 @@ class DeviceTab(QWidget):
         self._health_label.setObjectName("health_label")
         self._health_label.setTextFormat(Qt.RichText)
         self._health_label.setWordWrap(True)
-        self._health_label.setStyleSheet("font-size:11px;")
+        self._health_label.setStyleSheet("font-size:9pt;")
         left_layout.addWidget(self._health_label)
 
         # Offensive-TX ARM/SAFE lamp — a firmware that reports its arm state over serial (LxveOS
@@ -296,7 +296,7 @@ class DeviceTab(QWidget):
         self._arm_label = QLabel("")
         self._arm_label.setObjectName("arm_label")
         self._arm_label.setTextFormat(Qt.PlainText)
-        self._arm_label.setStyleSheet("font-size:11px;font-weight:bold;")
+        self._arm_label.setStyleSheet("font-size:9pt;font-weight:bold;")
         left_layout.addWidget(self._arm_label)
         self._update_arm_lamp()
 
@@ -307,7 +307,7 @@ class DeviceTab(QWidget):
         self._alert_label.setObjectName("alert_label")
         self._alert_label.setTextFormat(Qt.PlainText)
         self._alert_label.setWordWrap(True)
-        self._alert_label.setStyleSheet("color:#d29922;font-size:11px;")
+        self._alert_label.setStyleSheet("color:#d29922;font-size:9pt;")
         left_layout.addWidget(self._alert_label)
         self._update_alert_line()
 
@@ -318,7 +318,7 @@ class DeviceTab(QWidget):
         self._snapshot_label.setObjectName("snapshot_label")
         self._snapshot_label.setTextFormat(Qt.PlainText)
         self._snapshot_label.setWordWrap(True)
-        self._snapshot_label.setStyleSheet("color:#58a6ff;font-size:11px;")
+        self._snapshot_label.setStyleSheet("color:#58a6ff;font-size:9pt;")
         left_layout.addWidget(self._snapshot_label)
         self._update_snapshot_line()
 
@@ -422,7 +422,7 @@ class DeviceTab(QWidget):
             "No validated control map loaded — STOP/arm will guide you; the web UI / button / power work meanwhile."
         )
         self._bj_status.setWordWrap(True)
-        self._bj_status.setStyleSheet("color:#8b949e;font-size:11px;")
+        self._bj_status.setStyleSheet("color:#8b949e;font-size:9pt;")
         _bj_lay.addWidget(self._bj_status)
 
         _bj_btn_row = QHBoxLayout()
@@ -1063,7 +1063,7 @@ class DeviceTab(QWidget):
         self._last_arm_state = state
         text, color = self._arm_lamp_render(state)
         self._arm_label.setText(text)
-        self._arm_label.setStyleSheet(f"color:{color};font-size:11px;font-weight:bold;")
+        self._arm_label.setStyleSheet(f"color:{color};font-size:9pt;font-weight:bold;")
 
     @staticmethod
     def _arm_lamp_render(state: str) -> "tuple[str, str]":

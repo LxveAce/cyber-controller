@@ -41,7 +41,7 @@ class _GateDialog(QDialog):
         layout = QVBoxLayout(self)
         policy = self._cfg.get("policy", pk.DEFAULT_POLICY)
         head = QLabel("This Cyber Controller is locked.")
-        head.setStyleSheet("font-weight: bold; font-size: 14px;")
+        head.setStyleSheet("font-weight: bold; font-size: 11pt;")
         layout.addWidget(head)
         layout.addWidget(QLabel(self._policy_text(policy)))
 

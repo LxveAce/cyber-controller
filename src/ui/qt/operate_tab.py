@@ -120,13 +120,13 @@ class OperateTab(QWidget):
         self._telemetry_label = QLabel("")
         self._telemetry_label.setTextFormat(Qt.PlainText)
         self._telemetry_label.setWordWrap(True)
-        self._telemetry_label.setStyleSheet("color:#8b949e;font-size:11px;")
+        self._telemetry_label.setStyleSheet("color:#8b949e;font-size:9pt;")
         root.addWidget(self._telemetry_label)
 
         # SAFE/ARMED lamp
         self._arm_label = QLabel("")
         self._arm_label.setTextFormat(Qt.PlainText)
-        self._arm_label.setStyleSheet("color:#8b949e;font-size:13px;font-weight:bold;")
+        self._arm_label.setStyleSheet("color:#8b949e;font-size:10pt;font-weight:bold;")
         root.addWidget(self._arm_label)
 
         # Two-factor arm toggle. Only shown for firmwares that actually arm (LxveOS); hidden for firmwares
@@ -439,7 +439,7 @@ class OperateTab(QWidget):
             self._last_arm_state = state
             text, color = arm_lamp_render(state)
             self._arm_label.setText(text or "○ (no arm state reported)")
-            css = f"color:{color or '#8b949e'};font-size:13px;font-weight:bold;"
+            css = f"color:{color or '#8b949e'};font-size:10pt;font-weight:bold;"
             self._arm_label.setStyleSheet(css)
         # Arm box only applies to firmware that arms; hide the three dead buttons otherwise.
         arm_fw = self._active_supports_arm()
