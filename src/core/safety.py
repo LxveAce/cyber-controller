@@ -82,6 +82,7 @@ _LAB_ONLY_KEYWORDS: tuple[str, ...] = (
     "cinder",       # HaleHound BLE attack
     "mousejack",    # keystroke injection over RF
     "replay",       # SubGHz replay TX
+    "clone",        # NFC/card clone (copy an access credential) — e.g. LxveOS `nfc … clone <UID>`
 )
 
 #: Substrings whose transmission is illegal in most jurisdictions.

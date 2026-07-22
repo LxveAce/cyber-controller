@@ -102,6 +102,14 @@ and never authors radio frames.
   longer claims attach/detach "isn't wired up" — it works over a connected gateway, only over-the-air node
   discovery is still pending. The dead File ▸ New/Open/Save Session menu (whose Ctrl+S was a data-loss trap)
   is removed.
+- **Fixed: the Firmware Vault says WHY an app-only firmware can't be cached.** 'Download to Vault' on the
+  flagship Marauder (and the other app-only 'multi-file-offsets' profiles) used to fail every time with a bare
+  'download failed' you'd retry forever; it now states the real reason up front — that firmware needs a full
+  boot chain the offline vault can't store, so flash it online instead.
+- **Fixed: 'Check for Updates' no longer claims an empty vault is up to date.** On a fresh vault with nothing
+  cached it now says "no firmware cached yet" instead of "all cached firmware is up to date."
+- **Fixed: an NFC clone reaches the safety confirm gate.** `nfc … clone <UID>` (copying an access credential)
+  now classifies lab-only and prompts to confirm, matching what the command catalog already documented.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

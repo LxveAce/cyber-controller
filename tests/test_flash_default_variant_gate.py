@@ -355,6 +355,10 @@ def test_format_update_report_pure():
     assert "2 update(s) available" in rep
     assert "Marauder: cached v1.12.1 → latest v1.12.3" in rep
     assert "ghost_esp: cached 1.9.9 → latest 1.9.10" in rep  # falls back to profile_id when no name
+    # QA-6 #5: [] means "up to date" ONLY if something is cached; on an empty vault it must say so.
+    assert "no firmware cached" in flash_tab._format_update_report([], cached_count=0).lower()
+    assert "up to date" in flash_tab._format_update_report([], cached_count=3)  # cached + current
+    assert "up to date" in flash_tab._format_update_report([])  # unknown count -> old copy
 
 
 def test_check_updates_done_reports_to_log(flash_tab_widget):
@@ -373,9 +377,19 @@ def test_check_updates_done_reports_to_log(flash_tab_widget):
 
 def test_check_updates_done_all_current(flash_tab_widget):
     ft = flash_tab_widget
+    ft._vault.list_cached = lambda: {"marauder": ["v1.0"]}   # something IS cached...
+    ft._log_output.clear()
+    ft._on_check_updates_done([])                            # ...and nothing needs updating
+    assert "up to date" in ft._log_output.toPlainText()
+
+
+def test_check_updates_done_empty_vault_is_honest(flash_tab_widget):
+    # QA-6 #5: an empty result on an EMPTY vault must NOT claim cached firmware is up to date.
+    ft = flash_tab_widget
+    ft._vault.list_cached = lambda: {}
     ft._log_output.clear()
     ft._on_check_updates_done([])
-    assert "up to date" in ft._log_output.toPlainText()
+    assert "no firmware cached" in ft._log_output.toPlainText().lower()
 
 
 def test_check_updates_failure_reports_and_reenables(flash_tab_widget):

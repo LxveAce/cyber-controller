@@ -240,6 +240,23 @@ class FirmwareVault:
 
     # ── Download ─────────────────────────────────────────────────────
 
+    def uncacheable_reason(self, profile_id: str) -> str | None:
+        """Why *profile_id* can't be offline-cached, or ``None`` if it can.
+
+        download_firmware refuses an app-only ('multi-file-offsets') profile: the vault only stores
+        and flashes one merged image at 0x0. That refusal hits the logger only, so the UI showed a
+        bare 'download failed'. This surfaces the reason up front (Marauder + other multi-file
+        profiles) without the UI duplicating the vault's cacheability rule.
+        """
+        profile = self._load_profile(profile_id)
+        if not profile:
+            return f"Unknown firmware profile '{profile_id}'."
+        if profile.get("image_model") == IMAGE_MULTI:
+            return ("this firmware is app-only (needs a bootloader/partitions/boot_app0 chain at "
+                    "per-file offsets), so the vault can't store it. Caching would brick an "
+                    "offline flash; flash it online (board-aware) instead.")
+        return None
+
     def download_firmware(
         self,
         profile_id: str,

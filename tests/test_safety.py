@@ -59,6 +59,12 @@ def test_keyword_classifies_at_least_lab_only(kw: str) -> None:
     assert level != SAFE
 
 
+def test_nfc_clone_command_is_lab_only() -> None:
+    # QA-6 #6: LxveOS `nfc clone <UID>` (copy a credential) must reach the lab-only confirm gate.
+    # The lxveos docstring already claims replay/mousejack/clone are caught by the keyword scan.
+    assert classify("nfc read begin 21 22 clone 04AABBCC11") == LAB_ONLY
+
+
 @pytest.mark.parametrize(
     "kw, expected",
     [

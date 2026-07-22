@@ -181,11 +181,17 @@ class _ChipDetectWorker(QThread):
         self.done.emit(self._port, chip)
 
 
-def _format_update_report(updates: list) -> str:
+def _format_update_report(updates: list, cached_count: int | None = None) -> str:
     """Render FirmwareVault.check_updates() output as a log message. Pure/UI-free so it can be
     unit-tested. Each update dict carries name / profile_id / cached_version / latest_version.
+
+    ``cached_count`` distinguishes the two empty-list cases: check_updates() returns [] both when
+    nothing is cached and when all is current. Without it the report would claim 'up to date' on a
+    fresh vault where nothing was ever cached.
     """
     if not updates:
+        if cached_count == 0:
+            return "Firmware Vault: no firmware cached yet — nothing to check for updates."
         return "Firmware Vault: all cached firmware is up to date."
     lines = [f"Firmware Vault: {len(updates)} update(s) available —"]
     for u in updates:
@@ -1366,6 +1372,14 @@ class FlashTab(QWidget):
         except Exception:
             profile_id = profile_path.stem
 
+        # The flagship Marauder + other app-only ('multi-file-offsets') firmwares can never be
+        # vault-cached (download_firmware refuses them). Say so up front instead of a doomed
+        # download that ends in a bare 'download failed' the user retries forever.
+        reason = self._vault.uncacheable_reason(profile_id)
+        if reason:
+            self._log(f"Vault: can't cache {profile_name} — {reason}")
+            return
+
         self._log(f"Downloading {profile_name} to vault...")
 
         # Run the download on a QThread and marshal every UI update back to the GUI thread via signals.
@@ -1399,7 +1413,11 @@ class FlashTab(QWidget):
         worker.start()
 
     def _on_check_updates_done(self, updates: list) -> None:
-        self._log(_format_update_report(updates))
+        try:
+            cached_count = len(self._vault.list_cached())
+        except Exception:  # noqa: BLE001 — a status read must never break the report
+            cached_count = None
+        self._log(_format_update_report(updates, cached_count))
         self._btn_check_updates.setEnabled(True)
 
     def _on_check_updates_failed(self, msg: str) -> None:

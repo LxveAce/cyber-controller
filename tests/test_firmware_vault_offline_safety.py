@@ -45,6 +45,20 @@ def test_download_firmware_refuses_multi_file_profile(vault, monkeypatch):
     assert vault.list_cached() == {}
 
 
+def test_uncacheable_reason_flags_multi_file_and_clears_merged(vault, monkeypatch):
+    """QA-6 #4: the UI pre-checks uncacheable_reason() so app-only Marauder states the REAL reason,
+    not a bare 'download failed'. Multi-file -> a reason; merged -> None; unknown -> a reason."""
+    monkeypatch.setattr(vault, "_load_profile", lambda pid: {"image_model": "multi-file-offsets"})
+    reason = vault.uncacheable_reason("marauder")
+    assert reason and "app-only" in reason              # honest, actionable reason for the flagship
+
+    monkeypatch.setattr(vault, "_load_profile", lambda pid: {"image_model": "merged-single-bin"})
+    assert vault.uncacheable_reason("lxveos") is None   # a cacheable (merged) profile passes
+
+    monkeypatch.setattr(vault, "_load_profile", lambda pid: None)
+    assert vault.uncacheable_reason("nope")             # unknown profile -> a reason, not None
+
+
 def test_multi_file_marker_matches_flash_core(monkeypatch):
     """Guard uses flash_core's IMAGE_MULTI constant, so it tracks the real profile marker
     ('multi-file-offsets' — the value marauder.json / esp32-div carry)."""
