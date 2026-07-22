@@ -82,7 +82,11 @@ jobs:
 
   build-linux:
     runs-on: ubuntu-latest
-    if: github.event_name == 'release'
+    # Runs on a real release AND via workflow_dispatch, so linux-x64 can be (re)attached to an existing
+    # release tag after a fix — mirrors the Windows/macOS/ARM jobs, so a manual rebuild covers EVERY
+    # platform (it previously skipped dispatch, leaving a stale linux-x64 behind on any manual refresh).
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -103,13 +107,14 @@ jobs:
         run: python build.py
       - name: Rename binary
         run: |
-          mv dist/CyberController dist/cyber-controller-${{ github.event.release.tag_name }}-linux-x64
-          chmod +x dist/cyber-controller-${{ github.event.release.tag_name }}-linux-x64
+          mv dist/CyberController dist/cyber-controller-${{ env.TAG }}-linux-x64
+          chmod +x dist/cyber-controller-${{ env.TAG }}-linux-x64
       - name: Upload release asset
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ env.TAG }}
           files: |
-            dist/cyber-controller-${{ github.event.release.tag_name }}-linux-x64
+            dist/cyber-controller-${{ env.TAG }}-linux-x64
 
   build-linux-arm:
     runs-on: ubuntu-latest
