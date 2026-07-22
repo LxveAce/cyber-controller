@@ -66,6 +66,43 @@ def graph_devices(model: BleAnalyzerModel, now: float, window_s: float = _WINDOW
     return out
 
 
+def _rssi_color(rssi: "Optional[float]") -> str:
+    """Color-grade an RSSI: green strong → orange medium → red weak; muted if none (Biscuit)."""
+    if rssi is None:
+        return "#8b949e"
+    if rssi >= -60:
+        return "#3fb950"
+    if rssi >= -80:
+        return "#f0883e"
+    return "#f85149"
+
+
+# Per-operation Help sheet (Biscuit pattern, A2) — honest "what it does" for the analyzer.
+_BLE_HELP = {
+    "title": "BLE Analyzer",
+    "summary": "A passive, firmware-agnostic view of the Bluetooth Low Energy advertisements a "
+               "connected device reports — a live RSSI graph + a dedup table (transmits nothing).",
+    "what_it_does": [
+        ("📡", "Advertisement Capture",
+         "Folds in every BLE advertisement the firmware reports (Marauder / GhostESP / Flipper / "
+         "HaleHound / DIV / LxveOS)."),
+        ("📈", "Live RSSI Graph", "Plots signal strength over time as a device nears or leaves."),
+        ("🧹", "De-duplicated Table", "One row per device (by address) with vendor, hits, and age."),
+        ("🎯", "Tracker Detection", "Flags AirTags / Find My + other trackers the firmware finds."),
+    ],
+    "statistics": [
+        ("👁", "Present", "Devices seen in the last few seconds (a live scan is feeding the view)."),
+        ("Σ", "Seen", "Total distinct devices observed this session."),
+        ("📶", "Strongest", "The closest device's RSSI (higher / greener = nearer)."),
+    ],
+    "tips": [
+        "Start a BLE scan on the connected device — this view only shows what the scan finds.",
+        "Sort by Strongest to find the closest device; by Most seen to find a persistent one.",
+        "Pause freezes the view without losing data — recording continues in the background.",
+    ],
+}
+
+
 # ── Qt widget (the pure core above stays Qt-free) ──
 try:
     from PyQt5.QtCore import QPointF, QRectF, Qt, QTimer
@@ -82,6 +119,8 @@ try:
         QVBoxLayout,
         QWidget,
     )
+
+    from src.ui.qt.biscuit import HelpSheet, StatGrid
 
     from src.ui.qt.widgets.signal_bars import SignalBarsDelegate
 
@@ -175,6 +214,10 @@ try:
             self._header.setWordWrap(True)
             root.addWidget(self._header)
 
+            # Live stat grid (Biscuit statistics pattern, A2) — mirrors the header summary as tiles.
+            self._stats = StatGrid(["Present", "Seen", "Trackers", "Named", "Strongest"], columns=5)
+            root.addWidget(self._stats)
+
             self._graph = _RssiGraph(self._model)
             root.addWidget(self._graph, 1)
 
@@ -195,6 +238,11 @@ try:
             ctl.addWidget(self._btn_pause)
             ctl.addWidget(self._btn_clear)
             ctl.addStretch(1)
+            self._btn_help = QPushButton("?")
+            self._btn_help.setFixedWidth(28)
+            self._btn_help.setToolTip("What the BLE Analyzer does")
+            self._btn_help.clicked.connect(lambda: HelpSheet(_BLE_HELP, self).exec_())
+            ctl.addWidget(self._btn_help)
             root.addLayout(ctl)
 
             self._table = QTableWidget(0, len(self._COLS))
@@ -268,8 +316,21 @@ try:
                 self._header.setText(
                     f"{s['fresh']} present · {s['total']} seen · {s['trackers']} tracker(s) · "
                     f"{s['named']} named · strongest {strongest}")
+            self._update_stats(s, receiving)
             self._fill_table(now)
             self._graph.update()
+
+        def _update_stats(self, s: dict, receiving: bool) -> None:
+            """Mirror the summary into the Biscuit stat tiles (color-graded, honest when idle)."""
+            _green, _orange, _muted = "#3fb950", "#f0883e", "#8b949e"
+            strongest = s["strongest"]
+            self._stats.set_stats({
+                "Present": (s["fresh"], _green if (receiving and s["fresh"]) else _muted),
+                "Seen": s["total"],
+                "Trackers": (s["trackers"], _orange if s["trackers"] else _muted),
+                "Named": s["named"],
+                "Strongest": ("—" if strongest is None else f"{strongest}", _rssi_color(strongest)),
+            })
 
         def _fill_table(self, now: float) -> None:
             devs = self._model.devices(sort=self._sort)

@@ -134,6 +134,11 @@ and never authors radio frames.
   unanswerable probe on connect. Stock is now modeled as a no-CLI device — no probe, no phantom buttons — and the
   Console shows a clear "touch-operated; flash the ESP32-DIV serial fork to control it from here" note. The full
   serial command set lives on the ESP32-DIV serial fork (which keeps the ESP32-DIV name), reachable once flashed.
+- **New: per-operation Help + a live stat grid on the BLE Analyzer (Biscuit-inspired).** The BLE Analyzer now has
+  a "?" Help sheet that plainly explains what it does (advertisement capture, live RSSI graph, de-duplicated
+  table, tracker detection) and a color-graded stat grid (Present / Seen / Trackers / Named / Strongest). This is
+  the first surface built on a new reusable card→detail widget set (`biscuit.py`) — operation card, detail view
+  with Start/Stop + mode segment + stat grid, and the Help sheet — that more surfaces will adopt.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

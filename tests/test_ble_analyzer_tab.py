@@ -92,6 +92,23 @@ def test_widget_ingests_events_and_fills_table(qapp):
     assert "2 present" in tab._header.text() and "1 tracker" in tab._header.text()
 
 
+def test_biscuit_stat_grid_mirrors_the_summary(qapp):
+    # A2: the analyzer's Biscuit stat tiles reflect the summary (Present/Seen/Trackers/Strongest).
+    clock = [2000.0]
+    tab = _make_tab(clock)
+    tab.on_ble_event("COM4", {"mac": "aa:bb:cc:dd:ee:01", "name": "Watch", "rssi": -55})
+    tab.on_ble_event("COM23", {"addr": "aa:bb:cc:dd:ee:02", "rssi": -70, "tracker": 1})
+    tab._refresh()
+    tiles = tab._stats._tiles
+    assert tiles["Present"]._value.text() == "2"
+    assert tiles["Seen"]._value.text() == "2"
+    assert tiles["Trackers"]._value.text() == "1"
+    assert tiles["Strongest"]._value.text() == "-55"     # the strongest RSSI seen
+    # and the per-operation Help sheet spec is present (honest "what it does")
+    from src.ui.qt.ble_analyzer_tab import _BLE_HELP
+    assert _BLE_HELP["title"] == "BLE Analyzer" and _BLE_HELP["what_it_does"]
+
+
 def test_idle_until_a_scan_feeds_it(qapp):
     # Regression (owner: the BLE analyzer "starts weird as if its already searching"): with nothing feeding
     # it, the view must read as idle rather than pose as a live scan. A ble_found event flips it to the live
