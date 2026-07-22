@@ -31,6 +31,7 @@ TAB_ICONS = {
     "Analyze": "analyze",
     "Survey": "survey",
     "Console": "console",
+    "Control": "console",          # QA-1 Option B renamed "Console" -> "Control" (same glyph)
     "BLE Analyzer": "ble",
     "Settings": "settings",
     "Devices": "devices",
@@ -41,6 +42,7 @@ TAB_ICONS = {
     "Nodes": "nodes",
     "Cross-Comm": "cross-comm",
     "Broadcast": "broadcast",
+    "All Devices": "broadcast",    # QA-1 Option B renamed "Broadcast" -> "All Devices" (same glyph)
     "Health": "health",
     "Macros": "macros",
     "Targets": "targets",

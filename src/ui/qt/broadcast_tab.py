@@ -1,11 +1,10 @@
-"""Broadcast tab — a universal fan-out row PLUS a section per connected device.
+"""Broadcast tab — the universal fan-out surface (one intent → every connected radio at once).
 
-Top row: one big button per intent that fires on EVERY connected radio at once (each translated into
-that firmware's native command). Below it, a section per connected device where you can FORCE the
-device to any firmware (exposing that firmware's command set — even if it may not work on the hardware,
-for full manual control), see its capabilities, and fire that verb on just that device. Everything
-populates reactively off DeviceManager events; dangerous actions confirm via the shared safety gate;
-STOP ALL is always available.
+One big button per intent fires on EVERY connected device at once, each translated into that
+firmware's native command. The button live-enables to how many devices can do it, dangerous
+actions confirm via the shared safety gate, and STOP ALL is always available. Single-device deep
+control (force a firmware, run its own commands, arm gate) lives on the Console tab — this surface
+is ONLY the fan-out, so Broadcast and Console each have one clear job (QA-1 Option B).
 """
 from __future__ import annotations
 
@@ -15,10 +14,7 @@ from typing import Callable
 
 from PyQt5.QtCore import QObject, QTimer, pyqtSignal
 from PyQt5.QtWidgets import (
-    QComboBox,
-    QFrame,
     QGridLayout,
-    QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -31,145 +27,19 @@ from src.config.settings import load_settings
 from src.core import safety
 from src.core.broadcast import BROADCAST_ACTIONS, BroadcastEngine, BroadcastVerb
 from src.models.action import ActionCategory
-from src.protocols import PROTOCOL_DISPLAY_NAMES
 
 log = logging.getLogger(__name__)
-
-
-def _clear_layout(layout) -> None:
-    while layout.count():
-        item = layout.takeAt(0)
-        w = item.widget()
-        if w is not None:
-            w.setParent(None)
 
 
 class _Bridge(QObject):
     """Marshals worker-thread / device-callback events back onto the GUI thread."""
     done = pyqtSignal(str)      # a dispatch summary string
-    rebuild = pyqtSignal()      # device connected/disconnected/firmware-changed -> repopulate sections
-
-
-class _DeviceSection(QFrame):
-    """One connected device: header + a force-any-firmware combo + capability chips + its OWN
-    per-firmware command buttons (from ``grouped_quick_commands`` — §OP), grouped by category."""
-
-    def __init__(self, port: str, engine: BroadcastEngine, device_manager,
-                 on_cmd: Callable[[str, str, str], None]) -> None:
-        super().__init__()
-        self._port = port
-        self._engine = engine
-        self._dm = device_manager
-        self._on_cmd = on_cmd
-        self._syncing = False
-        self._last_fw: str | None = None
-        self.setObjectName("card")
-        v = QVBoxLayout(self)
-
-        head = QHBoxLayout()
-        self._title = QLabel()
-        self._title.setObjectName("card_title")
-        head.addWidget(self._title, 1)
-        head.addWidget(QLabel("Firmware:"))
-        self._fw_combo = QComboBox()
-        self._fw_combo.addItem("Clear forced firmware", None)   # data None = release the force
-        for key, disp in PROTOCOL_DISPLAY_NAMES.items():
-            self._fw_combo.addItem(disp, key)
-        self._fw_combo.setToolTip("Force this device to any firmware's command set, even if it may "
-                                  "not work on the hardware (full manual control). 'Clear forced "
-                                  "firmware' releases the force and keeps the current firmware (it "
-                                  "does not re-probe; use the Devices tab to auto-detect).")
-        self._fw_combo.currentIndexChanged.connect(self._on_fw_changed)
-        head.addWidget(self._fw_combo)
-        v.addLayout(head)
-
-        self._caps = QLabel()
-        self._caps.setObjectName("muted")
-        self._caps.setWordWrap(True)
-        v.addWidget(self._caps)
-
-        self._btn_grid = QGridLayout()
-        v.addLayout(self._btn_grid)
-        self.refresh()
-
-    def _dev(self):
-        return self._dm.get_device(self._port)
-
-    def _on_fw_changed(self, _idx: int) -> None:
-        if self._syncing:
-            return
-        dev = self._dev()
-        if dev is None:
-            return
-        data = self._fw_combo.currentData()
-        if data is None:   # release the force, keep the current firmware (no re-probe)
-            self._dm.set_firmware(self._port, dev.firmware, forced=False)
-        else:              # force to the chosen firmware + its command set
-            self._dm.set_firmware(self._port, str(data), forced=True)
-        # set_firmware fires on_device_changed -> the BroadcastBar refreshes this section.
-
-    def refresh(self) -> None:
-        dev = self._dev()
-        if dev is None:
-            return
-        name = getattr(dev, "name", "") or self._port
-        health = getattr(dev, "health", "") or ""
-        forced = bool(getattr(dev, "firmware_forced", False))
-        health_tag = f"  ·  {health}" if health and health != "unknown" else ""
-        self._title.setText(f"{self._port} — {name}{health_tag}")
-
-        # Sync the combo to the current state WITHOUT re-firing the change handler.
-        self._syncing = True
-        idx = self._fw_combo.findData(dev.firmware) if forced else 0
-        self._fw_combo.setCurrentIndex(max(0, idx))
-        self._syncing = False
-
-        try:
-            caps = sorted(dev.capabilities)
-        except Exception:  # noqa: BLE001
-            caps = []
-        cap_txt = ("Capabilities: " + ", ".join(caps)) if caps else "No known capabilities for this firmware"
-        self._caps.setText(cap_txt + ("  (firmware forced)" if forced else ""))
-
-        # Only rebuild the buttons when the firmware actually changed (avoids flicker on refresh).
-        if dev.firmware == self._last_fw:
-            return
-        self._last_fw = dev.firmware
-        _clear_layout(self._btn_grid)
-        # Personalized per-firmware buttons (§OP): each firmware shows its OWN one-tap commands,
-        # grouped by category, instead of the firmware-agnostic verb set — from the unit-tested
-        # grouped_quick_commands() (the same generator the web/tk remotes use), so a button can't
-        # fire a command the firmware lacks. Passive/CLI-only: reorganizes EXISTING commands, adds
-        # no new capability. The generic universal fan-out row lives on the BroadcastBar above.
-        from src.core.quick_commands import grouped_quick_commands
-        groups = grouped_quick_commands(dev.firmware)
-        cols = 3
-        row = 0
-        for category, cmds in groups:
-            header = QLabel(category)
-            header.setObjectName("muted")
-            self._btn_grid.addWidget(header, row, 0, 1, cols)
-            row += 1
-            for i, qc in enumerate(cmds):
-                btn = QPushButton(qc.label)
-                btn.setObjectName("broadcast_btn")
-                if qc.danger:  # lab-only / illegal-tx -> label (never block), like the verb styling
-                    btn.setProperty("danger", "true")
-                btn.setToolTip(f"{qc.command}" + (f"  ({qc.danger})" if qc.danger else ""))
-                btn.clicked.connect(
-                    lambda _=False, c=qc.command, lbl=qc.label: self._on_cmd(self._port, c, lbl))
-                self._btn_grid.addWidget(btn, row + i // cols, i % cols)
-            row += (len(cmds) + cols - 1) // cols
-        if not groups:
-            hint = QLabel("No one-tap commands for this firmware — force a different firmware, "
-                          "or use the terminal for commands that need arguments.")
-            hint.setObjectName("muted")
-            hint.setWordWrap(True)
-            self._btn_grid.addWidget(hint, 0, 0, 1, cols)
+    rebuild = pyqtSignal()      # device connect/disconnect/fw-change -> re-enable the fan-out
 
 
 class BroadcastBar(QWidget):
-    """A universal fan-out row over every connected device, plus a section per device."""
+    """The universal fan-out surface: one intent → every connected device at once (Console owns
+    single-device deep control)."""
 
     def __init__(self, engine: BroadcastEngine, device_manager, event_bus,
                  settings_loader: Callable = load_settings) -> None:
@@ -180,20 +50,18 @@ class BroadcastBar(QWidget):
         self._load_settings = settings_loader
         self._buttons: dict[BroadcastVerb, QPushButton] = {}
         self._advanced_buttons: list[QPushButton] = []
-        self._sections: dict[str, _DeviceSection] = {}
         self._bridge = _Bridge()
         self._bridge.done.connect(self._set_status)
-        self._bridge.rebuild.connect(self._rebuild_sections)
+        self._bridge.rebuild.connect(self._refresh_enabled)
         self._build_ui()
-        # Repopulate reactively when a device connects / disconnects / has its firmware forced. The
-        # callbacks fire on background threads, so marshal to the GUI thread via the bridge signal.
+        # Re-enable the fan-out reactively when a device connects / disconnects / is forced (the
+        # button counts change). Callbacks fire on background threads, so marshal via the bridge.
         for reg in ("on_device_connected", "on_device_disconnected", "on_device_changed"):
             fn = getattr(self._dm, reg, None)
             if callable(fn):
                 fn(lambda *_a: self._bridge.rebuild.emit())
         self._refresh_enabled()
-        self._rebuild_sections()
-        # A slow safety-net timer (events do the real work); the section rebuild is a cheap diff.
+        # A slow safety-net timer (events do the real work); re-enable is a cheap recompute.
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._on_timer)
         self._timer.start(4000)
@@ -205,14 +73,15 @@ class BroadcastBar(QWidget):
         title.setObjectName("card_title")
         root.addWidget(title)
         sub = QLabel(
-            "The top buttons run an action on EVERY connected device at once (each in its own native "
-            "command). Below, each connected device has its own section — force it to any firmware and "
-            "fire that firmware's commands on just that device. STOP ALL is always available.")
+            "Each button runs an action on EVERY connected device at once, translated into that "
+            "firmware's own native command. The count shows how many devices can do it; STOP ALL "
+            "is always available. For single-device deep control (force a firmware, run its own "
+            "commands), use the Console tab.")
         sub.setWordWrap(True)
         root.addWidget(sub)
 
-        # Everything scrolls so the universal grid + all per-device sections stay reachable on a small
-        # window (the whole tab was previously un-scrollable and clipped on a deck screen).
+        # Everything scrolls so the universal grid stays reachable on a small window (the tab was
+        # previously un-scrollable and clipped on a deck screen).
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
@@ -245,15 +114,6 @@ class BroadcastBar(QWidget):
         self._stop_btn.clicked.connect(lambda: self._on_verb_clicked(BroadcastVerb.STOP_ALL))
         col.addWidget(self._stop_btn)
 
-        col.addWidget(self._section_label("Per device"))
-        self._empty_hint = QLabel(
-            "No connected devices — connect a board on the Devices tab, then each one appears here.")
-        self._empty_hint.setObjectName("muted")
-        self._empty_hint.setWordWrap(True)
-        col.addWidget(self._empty_hint)
-        self._sections_layout = QVBoxLayout()
-        col.addLayout(self._sections_layout)
-
         col.addStretch()
         scroll.setWidget(inner)
         root.addWidget(scroll, 1)
@@ -270,31 +130,8 @@ class BroadcastBar(QWidget):
         return lbl
 
     # ── reactive per-device sections ─────────────────────────────────
-    def _rebuild_sections(self) -> None:
-        """Diff the connected devices against the current sections — add/remove changed ports, refresh
-        the rest. Cheap + idempotent, so the safety-net timer can call it without churning widgets."""
-        try:
-            connected = {getattr(d, "port", ""): d for d in self._dm.list_connected()}
-        except Exception:  # noqa: BLE001
-            return
-        for port in list(self._sections):
-            if port not in connected:
-                self._sections.pop(port).setParent(None)
-        for port in connected:
-            if port and port not in self._sections:
-                sec = _DeviceSection(port, self._engine, self._dm, self._on_device_cmd_clicked)
-                self._sections[port] = sec
-                self._sections_layout.addWidget(sec)
-        for sec in self._sections.values():
-            try:
-                sec.refresh()
-            except Exception:  # noqa: BLE001 — one section must never break the panel
-                log.debug("device section refresh failed", exc_info=True)
-        self._empty_hint.setVisible(not connected)
-
     def _on_timer(self) -> None:
         self._refresh_enabled()
-        self._rebuild_sections()
 
     # ── interface mode (dual-depth Simple / Pro) ─────────────────────
     def set_ui_mode(self, mode: str) -> None:
@@ -326,15 +163,6 @@ class BroadcastBar(QWidget):
     def _on_verb_clicked(self, verb: BroadcastVerb) -> None:
         """Universal row: fan *verb* out to every capable device."""
         self._launch(self._engine.plan(verb))
-
-    def _on_device_verb_clicked(self, port: str, verb: BroadcastVerb) -> None:
-        """A per-device section button: run *verb* on just that one device."""
-        self._launch(self._engine.plan_for_port(port, verb))
-
-    def _on_device_cmd_clicked(self, port: str, command: str, label: str) -> None:
-        """A per-firmware Operate button (§OP): run one raw *command* on just that device, through
-        the same confirm gate / activity log / threaded egress as a verb (via ``plan_raw``)."""
-        self._launch(self._engine.plan_raw(port, command, label=label))
 
     def _launch(self, plan) -> None:
         if not plan.concrete:

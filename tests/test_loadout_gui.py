@@ -61,8 +61,8 @@ def test_apply_loadout_hides_unused_tabs(qapp, isolated_settings):
         # only ever grouped the sub-views. This test now locks the grouping invariant: sub-views are never
         # top-level, and all six surfaces stay reachable. ("Network" is gone entirely — replaced by "Analyze".)
         assert "Network" not in labels
-        for subview in ("Devices", "Health", "Software OS", "Targets", "Broadcast", "Macros", "Wardrive",
-                        "Cross-Comm", "Crack Lab", "Flock Map"):
+        for subview in ("Devices", "Health", "Software OS", "Targets", "All Devices", "Macros",
+                        "Wardrive", "Cross-Comm", "Crack Lab", "Flock Map"):
             assert subview not in labels  # grouped into a surface, never a top-level label post-regroup
         for core in ("Flash", "Connect", "Operate", "Survey", "Analyze", "Settings"):
             assert core in labels

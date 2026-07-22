@@ -575,8 +575,10 @@ class CyberControllerWindow(QMainWindow):
         # Operate — the live action loop.
         self._operate_surface = QTabWidget()
         self._operate_surface.addTab(self._targets_tab, label_icon("Targets"), "Targets")
-        self._operate_surface.addTab(self._broadcast_bar, label_icon("Broadcast"), "Broadcast")
-        self._operate_surface.addTab(self._operate_console, label_icon("Console"), "Console")
+        # QA-1 Option B: Broadcast is now the pure fan-out ("All Devices"); Console is the
+        # single-device deep control ("Control"). One clear job each — no overlapping command grids.
+        self._operate_surface.addTab(self._broadcast_bar, label_icon("All Devices"), "All Devices")
+        self._operate_surface.addTab(self._operate_console, label_icon("Control"), "Control")
         self._operate_surface.addTab(self._macro_tab, label_icon("Macros"), "Macros")
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 

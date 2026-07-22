@@ -49,6 +49,7 @@ def test_ws6_surfaces_have_icons(qapp):
     # Regression: after WS-6 renamed "Network"->"Analyze" and added the "Survey" surface + "Console" sub-tab,
     # and with "BLE Analyzer" never mapped, these four labels rendered icon-less (owner: "some tabs dont have
     # symbols"). Lock each into the map with a non-null render so a future rename can't silently blank them.
-    for label in ("Survey", "Analyze", "Console", "BLE Analyzer"):
+    # (QA-1 Option B renamed the "Console" sub-tab to "Control" — lock the live label.)
+    for label in ("Survey", "Analyze", "Control", "BLE Analyzer"):
         assert label in TAB_ICONS, f"{label} has no icon mapping"
         assert not label_icon(label).isNull(), f"{label} rendered a null icon"

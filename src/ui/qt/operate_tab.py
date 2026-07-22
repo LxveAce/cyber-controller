@@ -64,6 +64,7 @@ class OperateTab(QWidget):
         self._tx_buttons: list = []    # offensive-TX buttons (danger != "") — on only when ARMED
         self._safe_buttons: list = []  # non-TX buttons — enabled whenever the device is connected
         self._last_arm_state: Optional[str] = None
+        self._fw_syncing = False       # guard: syncing the firmware combo must not re-fire its slot
         self._build_ui()
         self._timer = QTimer(self)
         self._timer.setInterval(2000)
@@ -94,13 +95,25 @@ class OperateTab(QWidget):
         _outer.addWidget(_scroll)
         root = QVBoxLayout(_content)
 
-        # Header: device picker + telemetry line
+        # Header: device picker + force-firmware combo + telemetry line
         head = QHBoxLayout()
         head.addWidget(QLabel("Device:"))
         self._device_combo = QComboBox()
         self._device_combo.setMinimumWidth(260)
         self._device_combo.currentIndexChanged.connect(self._on_device_changed)
         head.addWidget(self._device_combo)
+        head.addSpacing(12)
+        head.addWidget(QLabel("Firmware:"))
+        self._fw_combo = QComboBox()
+        self._fw_combo.addItem("Clear forced firmware", None)   # data None = release the force
+        for key, disp in PROTOCOL_DISPLAY_NAMES.items():
+            self._fw_combo.addItem(disp, key)
+        self._fw_combo.setToolTip("Force this device to any firmware's command set, even if it may "
+                                  "not work on the hardware (full manual control). 'Clear forced "
+                                  "firmware' releases the force and keeps the current firmware (it "
+                                  "does not re-probe; use the Devices tab to auto-detect).")
+        self._fw_combo.currentIndexChanged.connect(self._on_fw_changed)
+        head.addWidget(self._fw_combo)
         head.addStretch(1)
         root.addLayout(head)
 
@@ -184,6 +197,21 @@ class OperateTab(QWidget):
         self._active_port = self._device_combo.currentData() or ""
         self._last_arm_state = None  # force a lamp repaint for the newly-selected device
         self._refresh()
+
+    def _on_fw_changed(self, _idx: int) -> None:
+        """Force (or clear the force on) the active device's firmware — the single-device deep
+        control that used to live on Broadcast's per-device section. set_firmware fires
+        on_device_changed, so _refresh rebuilds the command grid for the new firmware."""
+        if self._fw_syncing:
+            return
+        dev = self._active_device()
+        if dev is None:
+            return
+        data = self._fw_combo.currentData()
+        if data is None:   # release the force, keep the current firmware (no re-probe)
+            self._dm.set_firmware(self._active_port, dev.firmware, forced=False)
+        else:              # force to the chosen firmware + its command set
+            self._dm.set_firmware(self._active_port, str(data), forced=True)
 
     def _active_device(self):
         port = self._active_port
@@ -388,6 +416,13 @@ class OperateTab(QWidget):
         firmware = (getattr(dev, "firmware", "") if dev is not None else "") or ""
         if firmware != self._grid_fw:
             self._rebuild_grid(firmware)
+        # Sync the force-firmware combo to the device's state WITHOUT re-firing its handler: index 0
+        # ("Clear forced firmware") unless the firmware is currently forced.
+        self._fw_syncing = True
+        forced = bool(getattr(dev, "firmware_forced", False)) if dev is not None else False
+        idx = self._fw_combo.findData(firmware) if forced else 0
+        self._fw_combo.setCurrentIndex(max(0, idx))
+        self._fw_syncing = False
         # Telemetry header.
         telemetry = getattr(dev, "telemetry", {}) if dev is not None else {}
         self._telemetry_label.setText(self._telemetry_line(telemetry))

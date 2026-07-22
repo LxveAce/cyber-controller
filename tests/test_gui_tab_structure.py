@@ -119,20 +119,20 @@ def test_connect_surface_subtabs(qapp, isolated_settings):
 
 
 def test_operate_surface_subtabs(qapp, isolated_settings):
-    # WS-6 A: Operate is the live action loop — Targets (leads), Broadcast, Console, Macros. The survey/map
-    # trio and Crack Lab + BLE Analyzer moved out (to Survey / Analyze); the re-parented widgets are the SAME
-    # objects the window exposes on named attrs.
+    # WS-6 A: Operate is the live action loop. QA-1 Option B renamed Broadcast->"All Devices" (pure
+    # fan-out) and Console->"Control" (single-device deep control). The re-parented widgets are the
+    # SAME objects the window exposes on named attrs.
     win = _make_window()
     surface = win._operate_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Targets", "Broadcast", "Console", "Macros"]
+    assert titles == ["Targets", "All Devices", "Control", "Macros"]
     assert surface.widget(0) is win._targets_tab, "Targets sub-tab must be the TargetsTab object"
-    assert surface.widget(1) is win._broadcast_bar, "Broadcast sub-tab must be the BroadcastBar object"
-    assert surface.widget(2) is win._operate_console, "Console sub-tab must be the OperateTab object"
+    assert surface.widget(1) is win._broadcast_bar, "All Devices must be the BroadcastBar object"
+    assert surface.widget(2) is win._operate_console, "Control must be the OperateTab object"
     assert surface.widget(3) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
     # None of the sub-views are direct top-level tabs anymore.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Targets", "Broadcast", "Console", "Macros"):
+    for gone in ("Targets", "All Devices", "Control", "Macros"):
         assert gone not in toplevel, f"{gone!r} should be an Operate sub-tab, not top-level"
     assert "Operate" in toplevel
 

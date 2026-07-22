@@ -121,6 +121,11 @@ and never authors radio frames.
   (its `bt info` shows adapter info, not a nearby-BLE scan, so a Flipper is now honestly skipped); and a
   passive Flock-You detector is no longer sent an unsolicited `help` probe on connect — it's marked no-CLI
   like the other receive-only detectors.
+- **Changed: Broadcast and Console no longer overlap.** They each showed a per-device command grid — the
+  "which one do I use?" confusion. Broadcast is now the pure fan-out, renamed **All Devices** (one intent runs
+  on every connected radio at once), and Console is the single-device deep control, renamed **Control** (force
+  a firmware, run that firmware's own commands, two-factor arm gate). One clear job each, and no capability is
+  lost — the force-firmware picker moved to Control.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

@@ -1,4 +1,10 @@
-"""Per-device Broadcast sections (Task 4) — reactive population + force-any-firmware. Offscreen."""
+"""QA-1 Option B — the Broadcast/Console split. Offscreen.
+
+Broadcast is now the PURE fan-out surface (one intent -> every connected device); the per-device
+sections (force-firmware combo + per-firmware command grid) were removed and the force-firmware
+control moved to the Console (OperateTab). These lock that invariant, plus the engine's still-valid
+single-port plans (plan_for_port / plan_raw) that back a fan-out.
+"""
 from __future__ import annotations
 
 import os
@@ -15,6 +21,7 @@ from src.core.cross_comm_hub import CrossCommHub  # noqa: E402
 from src.core.device_manager import DeviceManager  # noqa: E402
 from src.models.device import Device  # noqa: E402
 from src.ui.qt.broadcast_tab import BroadcastBar  # noqa: E402
+from src.ui.qt.operate_tab import OperateTab  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -29,93 +36,62 @@ def _bar():
     return BroadcastBar(hub.broadcast, dm, bus), dm
 
 
-def test_section_appears_and_disappears_with_device(qapp):
+# ── Broadcast is fan-out ONLY (no per-device sections) ────────────────────────
+def test_broadcast_is_fanout_only_no_sections(qapp):
     bar, dm = _bar()
-    assert bar._sections == {}
+    # The per-device section machinery is gone (Option B): no sections dict, layout, or empty-hint.
+    assert not hasattr(bar, "_sections")
+    assert not hasattr(bar, "_sections_layout")
+    assert not hasattr(bar, "_empty_hint")
+    # The universal fan-out buttons + STOP ALL remain.
+    assert bar._buttons, "fan-out verb buttons must still exist"
+    assert bar._stop_btn is not None
+    # Connecting a device just re-enables the fan-out; it does NOT spawn a section.
     dm.add_device(Device(port="COM7", firmware="marauder", connected=True))
-    bar._rebuild_sections()
-    assert "COM7" in bar._sections
-    assert not bar._empty_hint.isVisible()
-    dm.get_device("COM7").connected = False
-    bar._rebuild_sections()
-    assert "COM7" not in bar._sections
+    bar._on_timer()                    # the safety-net tick (was _rebuild_sections)
+    assert not hasattr(bar, "_sections")
 
 
-def test_force_firmware_updates_section_and_flag(qapp):
-    bar, dm = _bar()
+# ── the force-firmware control moved to the Console ───────────────────────────
+def test_console_force_firmware_sets_and_clears_forced(qapp):
+    dm = DeviceManager()
     dm.add_device(Device(port="COM7", firmware="marauder", connected=True))
-    bar._rebuild_sections()
-    # force to a different firmware — its command set becomes available on that device
-    dm.set_firmware("COM7", "ghost-esp", forced=True)
-    bar._rebuild_sections()
+    tab = OperateTab(dm)               # __init__ reloads devices + selects the only connected one
+    assert tab._active_port == "COM7"
+
+    # Force to the first real firmware in the combo (index 0 is "Clear forced firmware").
+    tab._fw_combo.setCurrentIndex(1)   # fires _on_fw_changed -> dm.set_firmware(..., forced=True)
+    forced_key = tab._fw_combo.itemData(1)
     dev = dm.get_device("COM7")
-    assert dev.firmware == "ghost-esp" and dev.firmware_forced is True
-    # ghost-esp's OWN per-firmware commands now drive the section buttons (§OP), not generic verbs.
-    from src.core.quick_commands import grouped_quick_commands
-    assert grouped_quick_commands("ghost-esp")
+    assert dev.firmware == str(forced_key) and dev.firmware_forced is True
+
+    # Selecting "Clear forced firmware" releases the force (keeps the firmware, no re-probe).
+    tab._fw_combo.setCurrentIndex(0)
+    assert dm.get_device("COM7").firmware_forced is False
 
 
-def test_per_device_launch_plans_only_that_port(qapp):
+def test_console_force_combo_first_item_is_honest_clear_label(qapp):
+    dm = DeviceManager()
+    dm.add_device(Device(port="COM7", firmware="marauder", connected=True))
+    tab = OperateTab(dm)
+    # index 0 = the honest "clear the force" label (not a fake "Auto-detect" that never probes).
+    assert tab._fw_combo.itemText(0) == "Clear forced firmware"
+    assert tab._fw_combo.itemData(0) is None
+
+
+# ── engine single-port plans still back a fan-out (unchanged by Option B) ──────
+def test_plan_for_port_targets_only_that_port(qapp):
     from src.core.broadcast import BroadcastVerb
     bar, dm = _bar()
     dm.add_device(Device(port="COM7", firmware="marauder", connected=True))
     dm.add_device(Device(port="COM8", firmware="marauder", connected=True))
     plan = bar._engine.plan_for_port("COM7", BroadcastVerb.FIND_APS)
-    assert [c.port for c in plan.concrete] == ["COM7"]  # single-device, not both
-
-
-# ── §OP: per-firmware personalized Operate buttons (owner feature #3) ──────────────
-
-def _grid_buttons(section):
-    from PyQt5.QtWidgets import QPushButton
-    grid = section._btn_grid
-    return [
-        grid.itemAt(i).widget()
-        for i in range(grid.count())
-        if isinstance(grid.itemAt(i).widget(), QPushButton)
-    ]
-
-
-def test_section_renders_firmwares_own_commands_not_generic_verbs(qapp):
-    """§OP: a device section now shows its firmware's OWN one-tap commands (from
-    grouped_quick_commands), and a different firmware renders a DIFFERENT set — not shared verbs."""
-    from src.core.quick_commands import grouped_quick_commands
-    bar, dm = _bar()
-    dm.add_device(Device(port="COM7", firmware="marauder", connected=True))
-    bar._rebuild_sections()
-    labels = [b.text() for b in _grid_buttons(bar._sections["COM7"])]
-    mar = {qc.label for _c, cmds in grouped_quick_commands("marauder") for qc in cmds}
-    assert labels, "marauder section should render its own command buttons"
-    assert set(labels) <= mar               # every button is a real marauder command label
-    assert "Find APs" not in labels         # the generic universal-verb label is gone here
-
-    dm.set_firmware("COM7", "ghost-esp", forced=True)
-    bar._rebuild_sections()
-    ghost_labels = [b.text() for b in _grid_buttons(bar._sections["COM7"])]
-    assert ghost_labels and ghost_labels != labels  # personalized per firmware
-
-
-def test_section_button_click_routes_raw_command_to_that_port(qapp, monkeypatch):
-    """Clicking a per-firmware button dispatches that one raw command on THIS port through the
-    normal launch path (plan_raw -> _launch). Drives the REAL button (verify-never-fake)."""
-    bar, dm = _bar()
-    dm.add_device(Device(port="COM7", firmware="marauder", connected=True))
-    bar._rebuild_sections()
-    captured = []
-    monkeypatch.setattr(bar, "_launch", lambda plan: captured.append(plan))
-
-    _grid_buttons(bar._sections["COM7"])[0].click()   # click a real rendered button
-
-    assert len(captured) == 1
-    plan = captured[0]
-    assert [c.port for c in plan.concrete] == ["COM7"]         # only this device
-    assert plan.concrete[0].command                            # a real (non-empty) firmware command
-    assert plan.action.verb.value == "custom"                 # routed as a raw command, not a verb
+    assert [c.port for c in plan.concrete] == ["COM7"]     # single device, not both
 
 
 def test_plan_raw_single_port_classifies_and_skips_unknown(qapp):
-    """plan_raw builds a one-command plan on the named port, classifies its danger via safety (so
-    the confirm gate can fire), and reports an unknown port as skipped rather than dispatching."""
+    """plan_raw builds a one-command plan on the named port and reports an unknown port as skipped
+    rather than dispatching a phantom send."""
     bar, dm = _bar()
     dm.add_device(Device(port="COM7", firmware="marauder", connected=True))
     plan = bar._engine.plan_raw("COM7", "scanap", label="Scan APs")
@@ -124,4 +100,4 @@ def test_plan_raw_single_port_classifies_and_skips_unknown(qapp):
     assert plan.action.label == "Scan APs"
 
     skip = bar._engine.plan_raw("COM_NONE", "scanap")
-    assert skip.concrete == [] and skip.skipped  # no device -> skipped, never a phantom send
+    assert skip.concrete == [] and skip.skipped            # no device -> skipped, no phantom send

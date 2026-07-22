@@ -45,7 +45,7 @@ def test_analyze_surface_always_shown_holds_offline_tools():
     vis = L.visible_tabs(lo)
     assert "Analyze" in vis                # always shown now — holds the offline Crack Lab + BLE Analyzer
     assert "Network" not in vis            # the old label is gone
-    for sub in ("Targets", "Broadcast", "Cross-Comm", "Crack Lab", "Graph"):
+    for sub in ("Targets", "All Devices", "Cross-Comm", "Crack Lab", "Graph"):
         assert sub not in vis              # sub-views now, never top-level
     # Every surface shows for any configured loadout (all surfaces are ALWAYS post-reorg).
     assert set(vis) == set(L.TAB_ORDER)
