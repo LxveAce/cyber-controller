@@ -144,6 +144,10 @@ and never authors radio frames.
   Console and All-Devices tabs use — so a scan started here shows up in the persistent terminal and is the same
   action as starting it elsewhere. Start is disabled (with guidance) when no BLE-capable device is connected. CC
   transmits nothing itself; it only issues the firmware's own scan/stop command.
+- **Changed: the Devices tab's colors come from the shared theme palette.** The ~19 hardcoded hex colors
+  scattered through the Devices tab now reference the single theme palette (three previously ad-hoc colors — a
+  dim grey, an amber alert, and an error-hover — were promoted to named tokens), so the theme has one source of
+  truth and can be re-skinned in one place. Same rendered look, cleaner internals.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

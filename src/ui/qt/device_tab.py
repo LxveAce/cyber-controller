@@ -48,6 +48,7 @@ from src.protocols import (
     resolve_protocol_name,
 )
 from src.ui.qt.arm_lamp import arm_lamp_render
+from src.ui.qt.theme import colors as C
 
 log = logging.getLogger(__name__)
 
@@ -265,7 +266,7 @@ class DeviceTab(QWidget):
         self._caps_label.setObjectName("caps_label")
         self._caps_label.setWordWrap(True)
         self._caps_label.setTextFormat(Qt.RichText)  # capN tokens render muted/distinct
-        self._caps_label.setStyleSheet("color:#8b949e;font-size:9pt;")
+        self._caps_label.setStyleSheet(f"color:{C.TEXT_MUTED};font-size:9pt;")
         left_layout.addWidget(self._caps_label)
         self._update_capabilities()
 
@@ -275,7 +276,7 @@ class DeviceTab(QWidget):
         self._telemetry_label = QLabel("")
         self._telemetry_label.setObjectName("telemetry_label")
         self._telemetry_label.setWordWrap(True)
-        self._telemetry_label.setStyleSheet("color:#6e7681;font-size:9pt;")
+        self._telemetry_label.setStyleSheet(f"color:{C.TEXT_DIM};font-size:9pt;")
         left_layout.addWidget(self._telemetry_label)
         self._update_telemetry()
 
@@ -307,7 +308,7 @@ class DeviceTab(QWidget):
         self._alert_label.setObjectName("alert_label")
         self._alert_label.setTextFormat(Qt.PlainText)
         self._alert_label.setWordWrap(True)
-        self._alert_label.setStyleSheet("color:#d29922;font-size:9pt;")
+        self._alert_label.setStyleSheet(f"color:{C.ALERT};font-size:9pt;")
         left_layout.addWidget(self._alert_label)
         self._update_alert_line()
 
@@ -318,7 +319,7 @@ class DeviceTab(QWidget):
         self._snapshot_label.setObjectName("snapshot_label")
         self._snapshot_label.setTextFormat(Qt.PlainText)
         self._snapshot_label.setWordWrap(True)
-        self._snapshot_label.setStyleSheet("color:#58a6ff;font-size:9pt;")
+        self._snapshot_label.setStyleSheet(f"color:{C.INFO};font-size:9pt;")
         left_layout.addWidget(self._snapshot_label)
         self._update_snapshot_line()
 
@@ -366,11 +367,12 @@ class DeviceTab(QWidget):
         self._bj_queue_busy: bool = False
         self._bj_panel = QFrame()
         self._bj_panel.setObjectName("card")
-        self._bj_panel.setStyleSheet("QFrame#card{border:1px solid #f0883e;background:rgba(240,136,62,0.09);}")
+        self._bj_panel.setStyleSheet(
+            f"QFrame#card{{border:1px solid {C.WARNING};background:rgba(240,136,62,0.09);}}")
         _bj_lay = QVBoxLayout(self._bj_panel)
         _bj_lay.setContentsMargins(12, 10, 12, 10)
         _bj_lbl = QLabel(
-            "<b style='color:#f0883e;'>&#9888; BlueJammer-V2 &mdash; full remote control</b><br>"
+            f"<b style='color:{C.WARNING};'>&#9888; BlueJammer-V2 &mdash; remote control</b><br>"
             "Operating an RF jammer is <b>illegal</b> outside an authorized RF-shielded enclosure "
             "(47&nbsp;U.S.C. &sect;333) &mdash; use only on hardware you own, in a lawful, shielded lab. "
             "<b>Remote control is a safety feature:</b> arm and, critically, <b>STOP</b> the device without "
@@ -388,8 +390,8 @@ class DeviceTab(QWidget):
         # STOP — the always-available safety action (ungated)
         self._bj_stop_btn = QPushButton("■  STOP  (set Idle)")
         self._bj_stop_btn.setStyleSheet(
-            "QPushButton{background:#f85149;color:#fff;font-weight:700;padding:7px;border-radius:4px;}"
-            "QPushButton:hover{background:#ff6a60;}"
+            f"QPushButton{{background:{C.ERROR};color:#fff;font-weight:700;padding:7px;"
+            f"border-radius:4px;}}QPushButton:hover{{background:{C.ERROR_BRIGHT};}}"
         )
         self._bj_stop_btn.clicked.connect(self._bj_stop)
         _bj_lay.addWidget(self._bj_stop_btn)
@@ -398,7 +400,7 @@ class DeviceTab(QWidget):
         self._bj_attest = QCheckBox(
             "I confirm an authorized, RF-shielded enclosure on hardware I own (enables arming)"
         )
-        self._bj_attest.setStyleSheet("color:#f0883e;")
+        self._bj_attest.setStyleSheet(f"color:{C.WARNING};")
         self._bj_attest.toggled.connect(self._bj_attest_changed)
         _bj_lay.addWidget(self._bj_attest)
 
@@ -422,7 +424,7 @@ class DeviceTab(QWidget):
             "No validated control map loaded — STOP/arm will guide you; the web UI / button / power work meanwhile."
         )
         self._bj_status.setWordWrap(True)
-        self._bj_status.setStyleSheet("color:#8b949e;font-size:9pt;")
+        self._bj_status.setStyleSheet(f"color:{C.TEXT_MUTED};font-size:9pt;")
         _bj_lay.addWidget(self._bj_status)
 
         _bj_btn_row = QHBoxLayout()
@@ -514,9 +516,9 @@ class DeviceTab(QWidget):
             item = QListWidgetItem(dev.display_name)
             item.setData(Qt.UserRole, dev.port)
             if dev.connected:
-                item.setForeground(QColor("#3fb950"))
+                item.setForeground(QColor(C.SUCCESS))
             else:
-                item.setForeground(QColor("#8b949e"))
+                item.setForeground(QColor(C.TEXT_MUTED))
             self._device_list.addItem(item)
             if dev.port == selected_port:
                 self._device_list.setCurrentItem(item)
@@ -536,7 +538,7 @@ class DeviceTab(QWidget):
         if self._device_list.count() == 0:
             hint = QListWidgetItem("No devices yet — plug one in and press Scan Ports.")
             hint.setFlags(Qt.NoItemFlags)
-            hint.setForeground(QColor("#8b949e"))
+            hint.setForeground(QColor(C.TEXT_MUTED))
             self._device_list.addItem(hint)
 
     def _scan_and_add(self) -> None:
@@ -834,7 +836,8 @@ class DeviceTab(QWidget):
 
     def _set_probing_label(self) -> None:
         if hasattr(self, "_health_label"):
-            self._health_label.setText("Health: <span style='color:#8b949e;'>&#9679; probing&hellip;</span>")
+            self._health_label.setText(
+                f"Health: <span style='color:{C.TEXT_MUTED};'>&#9679; probing&hellip;</span>")
 
     def _update_health_label(self) -> None:
         """Show the connect-time probe result (health + identifying banner) for the selected device. Blank
@@ -861,14 +864,14 @@ class DeviceTab(QWidget):
             return ""
         banner = html.escape((getattr(dev, "fw_banner", "") or "").strip())
         styles = {
-            "alive": ("#3fb950", "alive"),
-            "no-reply": ("#d29922", "no reply"),
-            "no-cli": ("#8b949e", "no CLI (stream device)"),
+            "alive": (C.SUCCESS, "alive"),
+            "no-reply": (C.ALERT, "no reply"),
+            "no-cli": (C.TEXT_MUTED, "no CLI (stream device)"),
         }
-        color, text = styles.get(health, ("#8b949e", html.escape(health)))
+        color, text = styles.get(health, (C.TEXT_MUTED, html.escape(health)))
         chip = f"Health: <span style='color:{color};'>&#9679; {text}</span>"
         if banner:
-            chip += f" &mdash; <span style='color:#8b949e;'>{banner}</span>"
+            chip += f" &mdash; <span style='color:{C.TEXT_MUTED};'>{banner}</span>"
         return chip
 
     # ── Serial I/O ───────────────────────────────────────────────────
@@ -997,7 +1000,7 @@ class DeviceTab(QWidget):
         chips = []
         for c in caps:
             if c.startswith("cap") and c[3:].isdigit():
-                chips.append(f'<span style="color:#6e7681;font-style:italic;">'
+                chips.append(f'<span style="color:{C.TEXT_DIM};font-style:italic;">'
                              f'unknown cap {html.escape(c[3:])}</span>')
             else:
                 chips.append(html.escape(c.upper()))
