@@ -383,10 +383,17 @@ try:
             receiving = self._is_receiving(now)
             self._graph._receiving = receiving
             s = self._model.summary(now)
+            targets = self._scan.target_count() if self._scan is not None else None
             if s["total"] == 0 and not receiving:
-                # Nothing seen and no scan feeding us — say so plainly instead of a live-looking summary.
-                self._header.setText(
-                    "Not scanning. Start a BLE scan on a connected device to see BLE advertisements here.")
+                # Nothing seen and no scan feeding us — say so plainly, and name the missing prerequisite so
+                # a disabled Start pill explains itself instead of just sitting greyed out (A5 #1).
+                if targets == 0:
+                    self._header.setText(
+                        "No BLE-capable device connected — connect one on the Devices tab, then press Start.")
+                else:
+                    self._header.setText(
+                        "Not scanning. Press Start to scan on the connected device(s), or start a scan "
+                        "elsewhere to see BLE advertisements here.")
             else:
                 strongest = "—" if s["strongest"] is None else f"{s['strongest']} dBm"
                 self._header.setText(
@@ -395,7 +402,7 @@ try:
             self._update_stats(s, receiving)
             # Keep the Start pill honest: enabled only when a BLE-capable device is connected.
             if self._scan is not None and not self._scanning:
-                self._scan_btn.set_ready(self._scan.target_count() > 0)
+                self._scan_btn.set_ready(bool(targets))   # targets is an int here (scan controller present)
             self._fill_table(now)
             self._graph.update()
 

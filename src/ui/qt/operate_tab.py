@@ -252,6 +252,16 @@ class OperateTab(QWidget):
             w = item.widget()
             if w is not None:
                 w.deleteLater()
+        # No connected device yet — explain how to get here instead of a firmware-less "no catalog" message
+        # (which reads as an error) (A5 #11/#17).
+        dev = self._active_device()
+        if dev is None or not getattr(dev, "connected", False):
+            hint = QLabel("No device connected — connect one on the Devices tab, then pick it above to "
+                          "control it here.")
+            hint.setWordWrap(True)
+            self._grid_layout.addWidget(hint)
+            self._grid_box.setTitle("Commands")
+            return
         proto = get_protocol(firmware)
         commands = list(proto.cached_commands())  # copy — the cached list is shared/read-only
         if not commands:
@@ -287,6 +297,7 @@ class OperateTab(QWidget):
                     color = "#f85149" if danger == "illegal-tx" else "#d29922"
                     btn.setStyleSheet(f"QPushButton {{ border: 1px solid {color}; color: {color}; }}")
                 btn.setToolTip(tip)
+                btn.setProperty("base_tip", tip)   # so _refresh can append the "disabled until ARMED" hint
                 btn.clicked.connect(lambda _checked=False, c=ci: self._on_command_button(c))
                 grid.addWidget(btn, i // 3, i % 3)
                 if danger:
@@ -460,8 +471,13 @@ class OperateTab(QWidget):
         # _send (owner directive 2026-07-21: authorized lab use, total functionality). _send re-checks both.
         tx_armed = connected and getattr(dev, "arm_state", "") == "armed"
         tx_enabled = tx_armed if arm_fw else connected
+        # A5 #13: when an offensive-TX button is greyed out because the arming firmware is still SAFE, its
+        # tooltip should say WHY (and how to enable it) rather than looking inexplicably dead.
+        arm_hint = "\nDisabled until ARMED — use the arm gate above (Arm… → Confirm token)."
         for b in self._tx_buttons:
             b.setEnabled(tx_enabled)
+            base = b.property("base_tip") or b.toolTip()
+            b.setToolTip(base + (arm_hint if (arm_fw and not tx_armed) else ""))
         for b in self._safe_buttons:
             b.setEnabled(connected)
         self._btn_arm.setEnabled(connected and state != "armed")

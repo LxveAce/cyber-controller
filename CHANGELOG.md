@@ -158,6 +158,16 @@ and never authors radio frames.
 - **Changed: tab-name references + BLE Analyzer help follow the rename.** After the Broadcast→"All Devices" /
   Console→"Control" rename, a few in-app pointers still said the old names; they now match. The BLE Analyzer's
   Help sheet documents every stat tile (added Trackers and Named).
+- **Changed: empty screens now tell you what to do instead of sitting blank or dead.** A pass over the
+  connect-first surfaces: the Control tab shows "connect a device on the Devices tab" instead of an empty command
+  grid; the All-Devices broadcast tab says why every button is greyed when nothing is connected; the BLE Analyzer's
+  idle header distinguishes "no BLE device connected" from "connected, just not scanning"; a disabled offensive-TX
+  button's tooltip now points at the arm gate that unlocks it; the Nodes tab shows a "provision one to start" hint
+  on an empty table and a clear "select a node first" note instead of silently ignoring a click with no selection;
+  the Targets right-click menu distinguishes "no device connected" from "no actions for this target"; and the graph
+  hint mentions double-click-for-commands. Same features — they just explain themselves now.
+- **New: the command palette reaches every sub-view.** Control, BLE Analyzer, Crack Lab, and Manage Nodes are now
+  jump-to entries in the Ctrl+K palette, so a grouped sub-tab is one keystroke away instead of a surface-then-tab hunt.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

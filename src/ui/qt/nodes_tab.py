@@ -93,6 +93,13 @@ class NodesTab(QWidget):
         self._locked_label.setStyleSheet("color:#8b949e;padding:24px;")
         root.addWidget(self._locked_label)
 
+        # A5 #7: shown when unlocked but no nodes exist yet, so the blank table isn't mistaken for an error.
+        self._empty_hint = QLabel("No nodes provisioned yet — click “Provision…” to add one.")
+        self._empty_hint.setAlignment(Qt.AlignCenter)
+        self._empty_hint.setStyleSheet("color:#8b949e;padding:24px;")
+        self._empty_hint.setVisible(False)
+        root.addWidget(self._empty_hint)
+
         self._table = QTableWidget(0, len(self._COLS))
         self._table.setHorizontalHeaderLabels(self._COLS)
         self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
@@ -133,7 +140,8 @@ class NodesTab(QWidget):
             log.debug("nodes refresh failed; falling back to the locked state", exc_info=True)
             unlocked, rows = False, []
         self._locked_label.setVisible(not unlocked)
-        self._table.setVisible(unlocked)
+        self._empty_hint.setVisible(unlocked and not rows)   # A5 #7: guide the empty unlocked table
+        self._table.setVisible(unlocked and bool(rows))
         for b in self._buttons:
             b.setEnabled(unlocked)
         self._table.setRowCount(len(rows))
@@ -203,6 +211,7 @@ class NodesTab(QWidget):
     def _on_rotate(self) -> None:
         node_id = self._selected_node_id()
         if node_id is None:
+            QMessageBox.information(self, "No node selected", "Select a node in the table first.")
             return
         if QMessageBox.question(
             self, "Rotate key",
@@ -217,6 +226,7 @@ class NodesTab(QWidget):
     def _on_deprovision(self) -> None:
         node_id = self._selected_node_id()
         if node_id is None:
+            QMessageBox.information(self, "No node selected", "Select a node in the table first.")
             return
         if QMessageBox.question(
             self, "Deprovision node", f"Delete node {node_id} and its key from the vault?"
@@ -230,6 +240,7 @@ class NodesTab(QWidget):
     def _on_attach(self) -> None:
         node_id = self._selected_node_id()
         if node_id is None:
+            QMessageBox.information(self, "No node selected", "Select a node in the table first.")
             return
         gateways = self._ctrl.available_gateways()
         if not gateways:
@@ -253,6 +264,7 @@ class NodesTab(QWidget):
     def _on_detach(self) -> None:
         node_id = self._selected_node_id()
         if node_id is None:
+            QMessageBox.information(self, "No node selected", "Select a node in the table first.")
             return
         try:
             self._do_detach(node_id)

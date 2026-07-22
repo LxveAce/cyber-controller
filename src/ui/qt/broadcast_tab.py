@@ -158,6 +158,12 @@ class BroadcastBar(QWidget):
             self._stop_btn.setEnabled(avail.get(BroadcastVerb.STOP_ALL, 0) > 0)
         except Exception:  # noqa: BLE001
             pass
+        # A5 #14: with nothing connected every button is greyed out — say why in the status line instead of
+        # a wall of dead buttons; clear the hint once a device appears.
+        if not any(avail.values()):
+            self._set_status("No devices connected — connect one on the Devices tab to broadcast.")
+        elif self._status.text().startswith("No devices connected"):
+            self._set_status("")
 
     # ── actions ──────────────────────────────────────────────────────
     def _on_verb_clicked(self, verb: BroadcastVerb) -> None:

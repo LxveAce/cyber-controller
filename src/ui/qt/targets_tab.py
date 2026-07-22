@@ -588,7 +588,15 @@ class TargetsTab(QWidget):
                 log.exception("ActionResolver.resolve() failed")
 
         if not actions_added:
-            no_act = menu.addAction("No actions available — connect a device first")
+            # A5 #12: "connect a device first" is only right when nothing is connected; if a device IS
+            # connected, its firmware just has no action for this target type — say that instead.
+            try:
+                any_connected = bool(self._dm.list_connected())
+            except Exception:  # noqa: BLE001
+                any_connected = False
+            text = ("No actions for this target from your connected device(s)." if any_connected
+                    else "No actions available — connect a device first.")
+            no_act = menu.addAction(text)
             no_act.setEnabled(False)
 
         # Always-available cross-tab + clipboard actions

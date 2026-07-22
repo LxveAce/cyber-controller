@@ -255,7 +255,8 @@ class NetworkTab(QWidget):
         btn_arrange.clicked.connect(lambda: self._auto_arrange())
         bar.addWidget(btn_arrange)
         bar.addStretch(1)
-        hint = QLabel("Drag nodes to orient the web · double-click a node for its commands · scroll to zoom")
+        hint = QLabel("Drag nodes to orient the web · drag empty space to pan · double-click a node for "
+                      "its commands · scroll to zoom")
         hint.setStyleSheet("color:#8b949e;")
         bar.addWidget(hint)
         root.addWidget(self._controls)

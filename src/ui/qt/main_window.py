@@ -1599,8 +1599,10 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("Flash Software OS", lambda: self._show_subtab(self._flash_surface, self._software_tab))
         self._palette.add_command("Connect to Device", lambda: self._show_subtab(self._connect_surface, self._device_tab))
         self._palette.add_command("View Health", lambda: self._show_subtab(self._connect_surface, self._health_tab))
+        self._palette.add_command("Manage Nodes", lambda: self._show_subtab(self._connect_surface, self._nodes_tab))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)
         # Operate surface sub-views: focus the surface, then the sub-tab (re-parented under _operate_surface).
+        self._palette.add_command("Control Device", lambda: self._show_subtab(self._operate_surface, self._operate_console))
         self._palette.add_command("View Targets", lambda: self._show_subtab(self._operate_surface, self._targets_tab))
         self._palette.add_command("Broadcast Actions", lambda: self._show_subtab(self._operate_surface, self._broadcast_bar))
         self._palette.add_command("View Macros", lambda: self._show_subtab(self._operate_surface, self._macro_tab))
@@ -1608,6 +1610,9 @@ class CyberControllerWindow(QMainWindow):
         # Network surface sub-views: focus the surface, then the sub-tab (re-parented under _network_surface).
         self._palette.add_command("Network Graph", lambda: self._show_subtab(self._network_surface, self._network_tab))
         self._palette.add_command("Cross-Comm Dashboard", lambda: self._show_subtab(self._network_surface, self._cross_comm_tab))
+        self._palette.add_command("Crack Lab", lambda: self._show_subtab(self._network_surface, self._crack_lab_tab))
+        if self._ble_analyzer is not None:
+            self._palette.add_command("BLE Analyzer", lambda: self._show_subtab(self._network_surface, self._ble_analyzer))
         self._palette.add_command("Open Settings", lambda: self._tabs.setCurrentWidget(self._settings_tab))
         self._palette.add_command("Dead Man's Switch Setup", self._on_suicide_setup)
         self._palette.add_command("Scan Ports", self._on_sidebar_scan)
