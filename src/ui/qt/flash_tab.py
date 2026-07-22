@@ -429,7 +429,7 @@ class FlashTab(QWidget):
         suicide_layout.setContentsMargins(12, 8, 12, 8)
         suicide_layout.setSpacing(4)
 
-        self._suicide_checkbox = QCheckBox("Enable Dead Man's Switch")
+        self._suicide_checkbox = QCheckBox("Provision Dead Man's Switch (host-side)")
         self._suicide_checkbox.setFont(QFont("Segoe UI", 10, QFont.Bold))
         self._suicide_checkbox.toggled.connect(self._on_suicide_toggled)
         suicide_layout.addWidget(self._suicide_checkbox)

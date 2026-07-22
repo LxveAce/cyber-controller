@@ -11,6 +11,8 @@ LAWFUL, OWNER-AUTHORIZED USE ONLY — same passive beacon+GPS logging as the sin
 from __future__ import annotations
 
 import logging
+import os
+from datetime import datetime
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
@@ -33,11 +35,18 @@ from PyQt5.QtWidgets import (
 
 from src.core.wardrive_multi import MultiWardriveController
 from src.ui.qt.flash_tab import _make_card
-from src.ui.qt.wardrive_tab import _list_serial_ports
+from src.ui.qt.wardrive_tab import _list_serial_ports, _nonclobber_path
 
 log = logging.getLogger(__name__)
 
 _STATUS_COLS = ("Port", "Firmware", "APs", "Started")
+
+
+def _default_multi_out_path() -> str:
+    """Default merged WiGLE CSV path, timestamped + under ~ so a second multi-drive can't clobber
+    a relative ``multi-wardrive.csv`` left in the CWD by an earlier run."""
+    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+    return os.path.join(os.path.expanduser("~"), f"multi-wardrive-{stamp}.csv")
 
 
 class WardriveMultiTab(QWidget):
@@ -106,7 +115,7 @@ class WardriveMultiTab(QWidget):
         gps_l.addLayout(g)
         o = QHBoxLayout()
         o.addWidget(QLabel("Output CSV:"))
-        self._out_edit = QLineEdit("multi-wardrive.csv")
+        self._out_edit = QLineEdit(_default_multi_out_path())
         o.addWidget(self._out_edit, 1)
         browse = QPushButton("Browse…")
         browse.clicked.connect(self._browse_out)
@@ -132,6 +141,12 @@ class WardriveMultiTab(QWidget):
         self._status_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self._status_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         root.addWidget(self._status_table, 1)
+
+        self._errors_label = QLabel("")
+        self._errors_label.setWordWrap(True)
+        self._errors_label.setStyleSheet("color:#f85149;")   # red: a board/GPS that failed to open
+        self._errors_label.hide()
+        root.addWidget(self._errors_label)
 
     # ── board selection (testable) ───────────────────────────────────
     def _connected_boards(self) -> list[tuple[str, str]]:
@@ -190,6 +205,14 @@ class WardriveMultiTab(QWidget):
             for c, val in enumerate(cells):
                 self._status_table.setItem(r, c, QTableWidgetItem(val))
         self._total_label.setText(f"Fix: {snap.get('fix', 'No Fix')}    Total APs: {snap.get('total_aps', 0)}")
+        errors = snap.get("errors", [])
+        if errors:
+            self._errors_label.setText(
+                "⚠ Failed to open — " + "    ".join(f"{port}: {msg}" for port, msg in errors)
+            )
+            self._errors_label.show()
+        else:
+            self._errors_label.hide()
 
     # ── lifecycle ─────────────────────────────────────────────────────
     def _on_start(self) -> None:
@@ -210,6 +233,10 @@ class WardriveMultiTab(QWidget):
         except ValueError:
             self._total_label.setText("Baud must be a number.")
             return
+        # open(out, "w") truncates, so roll over to a fresh sibling: a second drive never erases the
+        # first drive's CSV. The resolved absolute path is reflected back so the operator sees it.
+        out = _nonclobber_path(os.path.expanduser(out))
+        self._out_edit.setText(out)
         try:
             self._fh = open(out, "w", newline="", encoding="utf-8")
         except OSError as exc:
@@ -220,6 +247,7 @@ class WardriveMultiTab(QWidget):
         for port, fw in boards:
             self._controller.add_board(port, baud=dev_baud, firmware=fw)
         self._controller.start()
+        self._apply_snapshot(self._controller.snapshot())   # show any board/GPS open failure now
         self._timer.start()
         self._btn_start.setEnabled(False)
         self._btn_stop.setEnabled(True)

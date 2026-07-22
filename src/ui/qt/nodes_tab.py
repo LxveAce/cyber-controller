@@ -76,9 +76,10 @@ class NodesTab(QWidget):
         root = QVBoxLayout(_content)
 
         banner = QLabel(
-            "⚠  Preview — the relay/node ESP32 sketches now ship in firmware/ (source-only: compile and "
-            "flash them yourself). Live attach/detach over the air from this view isn't wired up yet — "
-            "it's coming in a later release."
+            "⚠  The relay/node ESP32 sketches ship as source in firmware/ — compile and flash "
+            "them yourself. Provision, attach, and detach here run over a gateway board you've "
+            "opened in the Devices tab (a live serial link); over-the-air node discovery from "
+            "this view isn't wired up yet."
         )
         banner.setWordWrap(True)
         banner.setStyleSheet(

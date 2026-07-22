@@ -88,6 +88,20 @@ and never authors radio frames.
   write at 0x0 without a boot chain.
 - **Fixed: refreshing the port list keeps your selected port.** Clicking Refresh (e.g. after plugging in another
   board) no longer silently reselects the first device, which could point the next Flash at the wrong board.
+- **Fixed: Multi-Wardrive no longer silently erases a previous drive's CSV.** The output defaults to a
+  timestamped file under your home directory (not a reused `multi-wardrive.csv` in the working dir), and a
+  second drive rolls over to a fresh sibling name instead of truncating the first. A board or GPS that fails
+  to open is now shown in the tab instead of just never appearing as started.
+- **Fixed: a recorded macro is tagged with the port's firmware.** Record now stamps the macro with the
+  selected board's firmware (so replay uses the right parser and line terminator) instead of the generic
+  "any".
+- **Changed: honest labels on controls that promised more than they did.** The Broadcast firmware picker's
+  "Auto-detect" — which only cleared a forced firmware and never re-probed — is now "Clear forced firmware";
+  the Flash tab's "Enable Dead Man's Switch" is "Provision Dead Man's Switch (host-side)" (the GUI provisions
+  the host bundle; flashing the gate to the device is the `--deadman-setup` CLI); and the Nodes banner no
+  longer claims attach/detach "isn't wired up" — it works over a connected gateway, only over-the-air node
+  discovery is still pending. The dead File ▸ New/Open/Save Session menu (whose Ctrl+S was a data-loss trap)
+  is removed.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

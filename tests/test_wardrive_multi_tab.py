@@ -71,6 +71,22 @@ def test_apply_snapshot_renders_status_table(qapp):
     assert "48.07, 11.51" in tab._total_label.text()
 
 
+def test_apply_snapshot_surfaces_open_errors(qapp):
+    # A board/GPS failing to open is recorded in controller.errors and surfaced by snapshot();
+    # the tab must SHOW it, else the board just silently never appears as started (the QA-5 #3 gap).
+    tab = WardriveMultiTab(device_manager=_FakeDM([]))
+    tab._apply_snapshot({"running": True, "fix": "No Fix", "total_aps": 0, "boards": [],
+                         "errors": [("COM7", "could not open port 'COM7'")]})
+    assert not tab._errors_label.isHidden()                 # visible when there's an error
+    assert "COM7" in tab._errors_label.text()
+    # a later clean snapshot clears the banner
+    tab._apply_snapshot({"boards": [], "errors": []})
+    assert tab._errors_label.isHidden()
+    # a snapshot without the key at all (older controller) must not crash and stays hidden
+    tab._apply_snapshot({"boards": []})
+    assert tab._errors_label.isHidden()
+
+
 def test_start_guards_when_no_board_selected(qapp):
     tab = WardriveMultiTab(device_manager=_FakeDM([("COM3", "marauder")]))
     tab._board_list.item(0).setCheckState(Qt.Unchecked)    # nothing ticked

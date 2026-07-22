@@ -168,4 +168,7 @@ class MultiWardriveController:
                  "aps": per_board.get(b["port"], 0), "started": b["conn"] is not None}
                 for b in self._boards
             ],
+            # per-board / GPS open failures from start(), surfaced so a board that silently failed
+            # to open is visible (otherwise it just never appears as started, with no reason shown).
+            "errors": list(self.errors),
         }

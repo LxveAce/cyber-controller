@@ -72,11 +72,13 @@ class _DeviceSection(QFrame):
         head.addWidget(self._title, 1)
         head.addWidget(QLabel("Firmware:"))
         self._fw_combo = QComboBox()
-        self._fw_combo.addItem("Auto-detect", None)   # data None = release any force
+        self._fw_combo.addItem("Clear forced firmware", None)   # data None = release the force
         for key, disp in PROTOCOL_DISPLAY_NAMES.items():
             self._fw_combo.addItem(disp, key)
-        self._fw_combo.setToolTip("Force this device to any firmware's command set — even if it may not "
-                                  "work on the hardware (full manual control).")
+        self._fw_combo.setToolTip("Force this device to any firmware's command set, even if it may "
+                                  "not work on the hardware (full manual control). 'Clear forced "
+                                  "firmware' releases the force and keeps the current firmware (it "
+                                  "does not re-probe; use the Devices tab to auto-detect).")
         self._fw_combo.currentIndexChanged.connect(self._on_fw_changed)
         head.addWidget(self._fw_combo)
         v.addLayout(head)
@@ -100,7 +102,7 @@ class _DeviceSection(QFrame):
         if dev is None:
             return
         data = self._fw_combo.currentData()
-        if data is None:   # Auto-detect: release the force, keep the current firmware
+        if data is None:   # release the force, keep the current firmware (no re-probe)
             self._dm.set_firmware(self._port, dev.firmware, forced=False)
         else:              # force to the chosen firmware + its command set
             self._dm.set_firmware(self._port, str(data), forced=True)

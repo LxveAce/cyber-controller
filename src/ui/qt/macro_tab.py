@@ -402,7 +402,11 @@ class MacroTab(QWidget):
         if self._recorder.is_recording:
             return
 
-        self._recorder.start_recording(port)
+        # Tag the macro with the port's known firmware so replayed commands carry the right protocol
+        # (parser + terminator) instead of the generic "any". Unknown firmware falls back to "".
+        dev = self._dm.get_device(port)
+        protocol = (getattr(dev, "firmware", "") or "") if dev is not None else ""
+        self._recorder.start_recording(port, protocol=protocol)
         self._btn_record.setText("Recording...")
         self._btn_record.setEnabled(False)
         self._btn_stop.setEnabled(True)
