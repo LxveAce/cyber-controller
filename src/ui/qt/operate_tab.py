@@ -255,7 +255,17 @@ class OperateTab(QWidget):
         proto = get_protocol(firmware)
         commands = list(proto.cached_commands())  # copy — the cached list is shared/read-only
         if not commands:
-            self._grid_layout.addWidget(QLabel("No command catalog for this device's firmware."))
+            drv = getattr(proto, "driver_type", "")
+            if firmware == "esp32-div" and drv == "controlmap":
+                msg = ("Stock ESP32-DIV is touch-operated — it takes no serial commands. Flash the "
+                       "ESP32-DIV serial fork to control it from here.")
+            elif drv == "controlmap":
+                msg = "This device has no serial command CLI — control it from the device itself."
+            else:
+                msg = "No command catalog for this device's firmware."
+            hint = QLabel(msg)
+            hint.setWordWrap(True)
+            self._grid_layout.addWidget(hint)
             return
         # Group by category, preserving first-seen order.
         groups: "dict[str, list]" = {}

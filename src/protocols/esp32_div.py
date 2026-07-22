@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import re
 
-from src.models.action import ActionCategory, TargetAction
-from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for ESP32-DIV serial output ---
@@ -135,6 +133,12 @@ class Esp32DivProtocol(BaseProtocol):
         return "esp32-div"
 
     capabilities = frozenset({"ble", "nrf24", "wifi"})
+
+    # Stock cifertech ESP32-DIV is TOUCH/button-operated and speaks nothing over serial (verified
+    # vs the firmware; the serial CLI is the separate ESP32-DIV *serial fork*, esp32_div_serial.py).
+    # So model stock as a no-CLI "controlmap" node: CC neither probes it nor offers phantom serial
+    # buttons. It still parses any lines the board prints (parse_line) and is still identified.
+    driver_type = "controlmap"
 
     # ── Parsing ──────────────────────────────────────────────────────
 
@@ -289,83 +293,9 @@ class Esp32DivProtocol(BaseProtocol):
     # ── Commands ─────────────────────────────────────────────────────
 
     def get_commands(self) -> list[CommandInfo]:
-        return [
-            # ── WiFi Scanning ────────────────────────────────────────
-            CommandInfo("scanwifi", "WiFi", "Scan for access points"),
-            CommandInfo("scansta", "WiFi", "Scan for stations / clients"),
-            CommandInfo("stopscan", "WiFi", "Stop current scan"),
-            CommandInfo("list ap", "WiFi", "List discovered access points"),
-            CommandInfo("list sta", "WiFi", "List discovered stations"),
-            CommandInfo("setch <ch>", "WiFi", "Set WiFi channel (1-14)", "ch"),
-            CommandInfo("getch", "WiFi", "Get current WiFi channel"),
-            CommandInfo("hop start", "WiFi", "Start channel hopping"),
-            CommandInfo("hop stop", "WiFi", "Stop channel hopping"),
-
-            # ── WiFi Attacks ─────────────────────────────────────────
-            # Explicit danger= so classify() is authoritative (info.danger wins over keyword heuristics).
-            CommandInfo("deauth", "Attack", "Deauthentication attack on selected target", danger="lab-only"),
-            CommandInfo("deauth all", "Attack", "Deauth all discovered APs", danger="lab-only"),
-            CommandInfo("beacon", "Attack", "Beacon spam (random SSIDs)", danger="lab-only"),
-            CommandInfo("beacon list", "Attack", "Beacon spam from SSID list", danger="lab-only"),
-            CommandInfo("beacon target", "Attack", "Clone target AP beacons", danger="lab-only"),
-            CommandInfo("probe", "Attack", "Probe request flood", danger="lab-only"),
-            CommandInfo("rickroll", "Attack", "Rickroll beacon spam", danger="lab-only"),
-            CommandInfo("stopattack", "Attack", "Stop current attack"),  # a cease command — safe
-
-            # ── Packet Capture ───────────────────────────────────────
-            CommandInfo("sniff", "Capture", "Start packet sniffer"),
-            CommandInfo("sniff stop", "Capture", "Stop packet sniffer"),
-            CommandInfo("pmkid", "Capture", "Capture PMKID hashes"),
-            CommandInfo("pmkid stop", "Capture", "Stop PMKID capture"),
-            CommandInfo("handshake", "Capture", "Capture WPA handshakes"),
-            CommandInfo("handshake stop", "Capture", "Stop handshake capture"),
-            CommandInfo("capture start", "Capture", "Start raw packet capture"),
-            CommandInfo("capture stop", "Capture", "Stop raw packet capture"),
-            CommandInfo("capture save", "Capture", "Save capture to SD card"),
-
-            # ── BLE ─────────────────────────────────────────────────
-            CommandInfo("scanble", "BLE", "Scan for BLE devices"),
-            CommandInfo("blestop", "BLE", "Stop BLE scan"),
-            CommandInfo("list ble", "BLE", "List discovered BLE devices"),
-            CommandInfo("blespam", "BLE", "BLE notification spam (all)", danger="lab-only"),
-            CommandInfo("blespam apple", "BLE", "BLE spam (Apple popups)", danger="lab-only"),
-            CommandInfo("blespam samsung", "BLE", "BLE spam (Samsung)", danger="lab-only"),
-            CommandInfo("blespam google", "BLE", "BLE spam (Google Fast Pair)", danger="lab-only"),
-            CommandInfo("blespam windows", "BLE", "BLE spam (Windows Swift Pair)", danger="lab-only"),
-            CommandInfo("blespam random", "BLE", "BLE spam (random)", danger="lab-only"),
-
-            # ── 2.4GHz Spectrum ──────────────────────────────────────
-            CommandInfo("scan24", "2.4GHz", "2.4GHz spectrum analysis"),
-            CommandInfo("scan24 stop", "2.4GHz", "Stop spectrum analysis"),
-            CommandInfo("nrf scan", "2.4GHz", "NRF24 device scan"),
-            CommandInfo("nrf sniff", "2.4GHz", "NRF24 packet sniffing"),  # passive capture — safe
-            CommandInfo("nrf jam", "2.4GHz", "NRF24 channel jamming", danger="illegal-tx"),
-            CommandInfo("nrf stop", "2.4GHz", "Stop NRF24 operations"),
-
-            # ── Target Selection ─────────────────────────────────────
-            CommandInfo("select ap <n>", "Target", "Select AP by index", "n"),
-            CommandInfo("select sta <n>", "Target", "Select station by index", "n"),
-            CommandInfo("select ble <n>", "Target", "Select BLE device by index", "n"),
-            CommandInfo("clear", "Target", "Clear all discovered targets"),
-
-            # ── Storage ─────────────────────────────────────────────
-            CommandInfo("save", "Storage", "Save results to SD card"),
-            CommandInfo("save pcap", "Storage", "Save packet capture as PCAP"),
-            CommandInfo("save hashes", "Storage", "Save captured hashes"),
-            CommandInfo("sd info", "Storage", "SD card status"),
-            CommandInfo("sd ls", "Storage", "List SD card files"),
-
-            # ── System ──────────────────────────────────────────────
-            CommandInfo("info", "System", "Device info"),
-            CommandInfo("version", "System", "Firmware version"),
-            CommandInfo("status", "System", "Current operation status"),
-            CommandInfo("stop", "System", "Stop all operations"),
-            CommandInfo("reboot", "System", "Reboot device"),
-            CommandInfo("led <r> <g> <b>", "System", "Set LED colour (0-255)", "r,g,b"),
-            CommandInfo("led off", "System", "Turn off LED"),
-            CommandInfo("settings", "System", "Show settings"),
-            CommandInfo("help", "System", "Show help"),
-        ]
+        # Stock DIV is touch/button-operated with no serial CLI (see the driver_type note).
+        # The sendable command catalog lives on the ESP32-DIV serial fork (esp32_div_serial.py).
+        return []
 
     # ── Formatting ───────────────────────────────────────────────────
 
@@ -392,106 +322,10 @@ AUTH_WARNING = (
 
 # ── Target actions: what ESP32-DIV can do to each target type ───────
 
-TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
-    TargetType.AP: [
-        TargetAction(
-            "Deauth AP", "deauth",
-            "Deauthenticate all clients from this AP",
-            ActionCategory.ATTACK,
-            requires_selection=True,
-            pre_commands=["select ap {index}"],
-        ),
-        TargetAction(
-            "Clone Beacons", "beacon target",
-            "Clone and spam this AP's beacon frames",
-            ActionCategory.ATTACK,
-            requires_selection=True,
-            pre_commands=["select ap {index}"],
-        ),
-        TargetAction(
-            "Capture PMKID", "pmkid",
-            "Capture PMKID hash from this AP",
-            ActionCategory.CAPTURE,
-            requires_selection=True,
-            pre_commands=["select ap {index}", "setch {channel}"],
-            chain_events=["pmkid_captured"],
-        ),
-        TargetAction(
-            "Capture Handshake", "handshake",
-            "Capture WPA handshake from this AP",
-            ActionCategory.CAPTURE,
-            requires_selection=True,
-            pre_commands=["select ap {index}", "setch {channel}"],
-            chain_events=["handshake_captured"],
-        ),
-        TargetAction(
-            "Sniff Traffic", "sniff",
-            "Sniff packets on this AP's channel",
-            ActionCategory.CAPTURE,
-            pre_commands=["setch {channel}"],
-        ),
-        TargetAction(
-            "Probe Flood", "probe",
-            "Flood probe requests near this AP",
-            ActionCategory.ATTACK,
-        ),
-        TargetAction(
-            "Monitor Channel", "setch {channel}",
-            "Lock to this AP's channel for monitoring",
-            ActionCategory.MONITOR,
-        ),
-    ],
-    TargetType.CLIENT: [
-        TargetAction(
-            "Deauth Client", "deauth",
-            "Disconnect this client from its AP",
-            ActionCategory.ATTACK,
-            requires_selection=True,
-            pre_commands=["select sta {index}"],
-        ),
-        TargetAction(
-            "Sniff Client", "sniff",
-            "Sniff packets from this client's AP channel",
-            ActionCategory.CAPTURE,
-            pre_commands=["setch {channel}"],
-        ),
-    ],
-    TargetType.BLE: [
-        TargetAction(
-            "BLE Spam All", "blespam",
-            "Spam BLE notifications to disrupt this device",
-            ActionCategory.ATTACK,
-        ),
-        TargetAction(
-            "BLE Spam Apple", "blespam apple",
-            "Spam Apple BLE popups",
-            ActionCategory.ATTACK,
-        ),
-        TargetAction(
-            "BLE Spam Samsung", "blespam samsung",
-            "Spam Samsung BLE notifications",
-            ActionCategory.ATTACK,
-        ),
-        TargetAction(
-            "Rescan BLE", "scanble",
-            "Rescan to update BLE device info",
-            ActionCategory.SCAN,
-        ),
-    ],
-}
+TARGET_ACTIONS: dict = {}  # stock DIV is touch-only: no serial per-target actions
 
 
 # --- Unified Action Broadcast capability map (verb -> (pre_commands, command)).
 # Commands are each firmware's NATIVE realization; absent verb == device skipped. ---
-from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoids a cycle)
 
-BROADCAST_CAPABILITIES = {
-    BroadcastVerb.FIND_APS:           ((), "scanwifi"),
-    BroadcastVerb.SCAN_STATIONS:      ((), "scansta"),
-    BroadcastVerb.BLE_SCAN:           ((), "scanble"),
-    BroadcastVerb.CAPTURE_HANDSHAKES: ((), "handshake"),
-    BroadcastVerb.DEAUTH_ALL:         ((), "deauth all"),
-    BroadcastVerb.BEACON_SPAM:        ((), "beacon"),
-    BroadcastVerb.BLE_SPAM:           ((), "blespam"),
-    BroadcastVerb.STOP_ALL:           ((), "stop"),
-}
+BROADCAST_CAPABILITIES: dict = {}  # stock DIV is touch-only: no serial broadcast verbs

@@ -44,10 +44,8 @@ def test_needs_arg_leaves_preserved():
 
 
 def test_danger_tags_flag_offensive_not_passive():
-    div = {leaf["command"]: leaf["danger"] for leaf in _leaves(menu_tree("esp32div")["root"])}
-    assert div["deauth"] == "lab-only" and div["beacon"] == "lab-only"
-    assert div["nrf jam"] == "illegal-tx"              # jamming is the strongest level
-    assert div["scanwifi"] == "" and div["sniff"] == "" and div["reboot"] == ""
+    # (Stock ESP32-DIV is now touch-only — no command leaves — so the menu-tree danger-tag
+    # mechanism is exercised via GhostESP here; DIV verb danger is covered in test_fix_esp32_div.)
     ghost = {leaf["command"]: leaf["danger"] for leaf in _leaves(menu_tree("ghostesp")["root"])}
     assert ghost["attack -d"] == "lab-only"            # offensive deauth flagged (was phantom "probe")
     assert ghost["startportal"] == "lab-only"          # danger via the protocol's CommandInfo/category

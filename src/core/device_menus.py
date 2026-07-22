@@ -105,17 +105,28 @@ def ghostesp_menu() -> "list[MenuNode]":
     ]
 
 
-# ── a faithful ESP32-DIV menu (leaves are real ESP32-DIV serial commands) ──
-def esp32div_menu() -> "list[MenuNode]":
+# ── stock ESP32-DIV is touch-only: no serial CLI, so its menu is an honest note ──
+def esp32div_stock_menu() -> "list[MenuNode]":
+    M = MenuNode
+    return [
+        M("Touch-operated device", children=[
+            M("Stock ESP32-DIV has no serial CLI — operate it from the on-device touchscreen."),
+            M("Flash the ESP32-DIV serial fork to enable command control from here."),
+        ]),
+    ]
+
+
+# ── the ESP32-DIV SERIAL FORK menu (leaves are real serial-fork commands) ──
+def esp32div_serial_menu() -> "list[MenuNode]":
     M = MenuNode
     return [
         M("WiFi", children=[
             M("Scan APs", command="scanwifi"),
             M("Scan Stations", command="scansta"),
             M("Capture", children=[
-                M("Sniff", command="sniff"),
-                M("PMKID", command="pmkid"),
-                M("Handshake", command="handshake"),
+                M("Sniff", command="sniff start"),
+                M("PMKID", command="pmkid start"),
+                M("Handshake", command="handshake start"),
             ]),
             M("Attacks", children=[
                 M("Deauth", command="deauth"),
@@ -135,7 +146,7 @@ def esp32div_menu() -> "list[MenuNode]":
             M("NRF Jam", command="nrf jam"),
         ]),
         M("Device", children=[
-            M("Info", command="info"),
+            M("Status", command="status"),
             M("SD Info", command="sd info"),
             M("Settings", command="settings"),
             M("Reboot", command="reboot"),
@@ -177,9 +188,12 @@ def bruce_menu() -> "list[MenuNode]":
 SKINS = {
     "marauder": ("ESP32 Marauder", marauder_menu),
     "ghostesp": ("GhostESP", ghostesp_menu),
-    "esp32div": ("ESP32-DIV", esp32div_menu),
+    "esp32div": ("ESP32-DIV", esp32div_stock_menu),   # stock = touch-only note (no serial CLI)
     "bruce": ("Bruce", bruce_menu),
 }
+# NOTE: the ESP32-DIV *serial fork* is driven through the Operate/Console command grid (its full
+# get_commands catalog), not a device-view skin — so `esp32div_serial_menu` above is defined +
+# leaf-locked against the fork's verbs (test_device_view), ready to wire as a fork skin later.
 
 
 def resolve_skin(firmware: "Optional[str]") -> "Optional[str]":

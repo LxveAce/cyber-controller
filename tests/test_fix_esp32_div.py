@@ -45,7 +45,8 @@ def test_div_offensive_verbs_carry_explicit_danger():
     from src.core import safety
     from src.protocols import get_protocol
 
-    cmds = {ci.name: ci for ci in get_protocol("esp32-div").cached_commands()}
+    # Stock ESP32-DIV is touch-only (no serial CLI); the offensive verbs live on the serial fork.
+    cmds = {ci.name: ci for ci in get_protocol("esp32-div-serial").cached_commands()}
     for verb in ("deauth", "deauth all", "beacon", "beacon target", "probe", "rickroll",
                  "blespam", "blespam apple"):
         assert safety.classify(cmds[verb].name, cmds[verb]) == safety.LAB_ONLY, verb
@@ -53,5 +54,5 @@ def test_div_offensive_verbs_carry_explicit_danger():
     # Genuinely passive verbs stay safe (no false danger on scans / sniffs / captures).
     # (Note: "stopattack" trips classify's "attack" keyword heuristic — a harmless pre-existing
     # false-positive that just adds a confirm to a cease command; not part of this annotation change.)
-    for verb in ("scanwifi", "nrf sniff", "sniff", "handshake", "pmkid"):
+    for verb in ("scanwifi", "nrf sniff", "sniff start", "handshake start", "pmkid start"):
         assert safety.classify(cmds[verb].name, cmds[verb]) == safety.SAFE, verb

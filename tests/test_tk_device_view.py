@@ -63,20 +63,24 @@ def test_safe_leaf_sends_real_command(tk_root):
 
 
 def test_flagged_leaf_requires_confirm(tk_root):
+    # (Stock ESP32-DIV is now touch-only with no flagged leaves; use GhostESP's deauth, a real
+    # lab-only leaf. illegal-tx confirm is covered by the safety tests + the DIV serial-fork grid.)
     # deny path: confirm returns False → NOT sent (but the option to proceed always exists)
     sent, asked = [], []
     def deny(danger, cmd): asked.append((danger, cmd)); return False
-    v = _view(tk_root, firmware="esp32div", sent=sent, confirm=deny)
-    v.activate(_index_of(v, "2.4GHz"))
-    v.activate(_index_of(v, "NRF Jam"))              # illegal-tx
-    assert asked and asked[0][0] == "illegal-tx" and sent == []
+    v = _view(tk_root, firmware="ghostesp", sent=sent, confirm=deny)
+    v.activate(_index_of(v, "WiFi"))
+    v.activate(_index_of(v, "Attacks"))
+    v.activate(_index_of(v, "Deauth"))               # attack -d, lab-only
+    assert asked and asked[0][0] == "lab-only" and sent == []
 
     # allow path: confirm returns True → sent
     sent2, allow = [], (lambda danger, cmd: True)
-    v2 = _view(tk_root, firmware="esp32div", sent=sent2, confirm=allow)
-    v2.activate(_index_of(v2, "2.4GHz"))
-    v2.activate(_index_of(v2, "NRF Jam"))
-    assert sent2 == ["nrf jam"]
+    v2 = _view(tk_root, firmware="ghostesp", sent=sent2, confirm=allow)
+    v2.activate(_index_of(v2, "WiFi"))
+    v2.activate(_index_of(v2, "Attacks"))
+    v2.activate(_index_of(v2, "Deauth"))
+    assert sent2 == ["attack -d"]
 
 
 def test_needs_arg_leaf_never_sends(tk_root):
@@ -158,7 +162,9 @@ def test_every_flagged_leaf_across_all_skins_requires_confirm(tk_root):
                 v2.activate(idx)
             v2.activate(path[-1])
             assert allow_sent == [cmd], f"{fw}:{cmd!r} not sent on allow"
-    assert checked >= 15, f"expected many flagged leaves, only checked {checked}"
+    # (Stock ESP32-DIV's offensive leaves moved off the device-view skins to the serial-fork grid,
+    # so the SKINS menus now carry ~13 flagged leaves — still "many", all confirm-gated.)
+    assert checked >= 12, f"expected many flagged leaves, only checked {checked}"
 
 
 def test_listbox_event_path_fires_leaf(tk_root):

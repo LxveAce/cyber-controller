@@ -24,7 +24,8 @@ from src.ui.qt.device_view import (  # noqa: E402
     MenuNode,
     SkinSpec,
     bruce_menu,
-    esp32div_menu,
+    esp32div_serial_menu,
+    esp32div_stock_menu,
     ghostesp_menu,
     marauder_menu,
 )
@@ -60,11 +61,18 @@ def test_every_ghostesp_leaf_is_a_real_command():
         assert cmd in real, f"skin leaf {cmd!r} is not a real GhostESP command"
 
 
-def test_every_esp32div_leaf_is_a_real_command():
-    from src.protocols.esp32_div import Esp32DivProtocol
-    real = {c.name for c in Esp32DivProtocol().get_commands()}
-    for cmd in _leaf_commands(esp32div_menu()):
-        assert cmd in real, f"skin leaf {cmd!r} is not a real ESP32-DIV command"
+def test_every_esp32div_serial_leaf_is_a_real_command():
+    # The serial-CLI menu belongs to the ESP32-DIV SERIAL FORK; validate leaves against the fork's
+    # get_commands. (Stock DIV is touch-only, so its skin is a note with no command leaves.)
+    from src.protocols.esp32_div_serial import Esp32DivSerialProtocol
+    real = {c.name for c in Esp32DivSerialProtocol().get_commands()}
+    for cmd in _leaf_commands(esp32div_serial_menu()):
+        assert cmd in real, f"serial skin leaf {cmd!r} is not a real ESP32-DIV serial-fork command"
+
+
+def test_stock_esp32div_menu_is_touch_only_note():
+    # Stock DIV is touch-operated: its skin carries NO command leaves (no phantom serial buttons).
+    assert _leaf_commands(esp32div_stock_menu()) == []
 
 
 def test_every_bruce_leaf_is_a_real_command():

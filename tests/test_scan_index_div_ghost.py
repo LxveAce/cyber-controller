@@ -28,22 +28,20 @@ def _resolve(port: str, firmware: str, target):
     return ActionResolver(dm).resolve(target)
 
 
-def test_div_ap_gets_index_and_offers_deauth():
+def test_div_ap_gets_index_but_offers_no_serial_actions():
+    # Stock ESP32-DIV is touch-only: its parser still assigns a scan index (target pool), but it
+    # offers NO serial target actions — deauth/capture live on the serial fork's command palette.
     t = _target("esp32-div", "COM3", "AP: SSID=HomeNet BSSID=AA:BB:CC:DD:EE:FF CH=6 RSSI=-40")
     assert t.extra.get("index") == 0
-    actions = _resolve("COM3", "esp32-div", t)["COM3"]
-    names = [a.name for a in actions]
-    assert "Deauth AP" in names and "Capture Handshake" in names
-    deauth = next(a for a in actions if a.name == "Deauth AP")
-    assert deauth.pre_commands == ["select ap 0"]  # {index} filled, not dropped
+    actions = _resolve("COM3", "esp32-div", t).get("COM3", [])
+    assert all(a.name not in ("Deauth AP", "Capture Handshake") for a in actions)  # none offered
 
 
-def test_div_client_gets_station_index_and_offers_deauth():
+def test_div_client_gets_station_index_but_offers_no_serial_actions():
     t = _target("esp32-div", "COM3", "STA: MAC=11:22:33:44:55:66 BSSID=AA:BB:CC:DD:EE:FF RSSI=-50")
     assert t.extra.get("index") == 0
-    actions = _resolve("COM3", "esp32-div", t)["COM3"]
-    deauth = next(a for a in actions if a.name == "Deauth Client")
-    assert deauth.pre_commands == ["select sta 0"]
+    actions = _resolve("COM3", "esp32-div", t).get("COM3", [])
+    assert all(a.name != "Deauth Client" for a in actions)
 
 
 def test_div_index_is_stable_per_mac():

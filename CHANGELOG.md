@@ -129,6 +129,11 @@ and never authors radio frames.
 - **Fixed: status labels scale on high-DPI displays.** The Devices/Control status labels and the access-gate
   header used hardcoded pixel font sizes that don't scale with the system font/DPI; they now use point sizes on
   the same scale as the rest of the theme.
+- **Fixed: stock ESP32-DIV is honestly touch-only.** The stock cifertech ESP32-DIV is operated from its own
+  touchscreen and takes no serial commands, but CC offered ~60 phantom serial buttons for it and wrote an
+  unanswerable probe on connect. Stock is now modeled as a no-CLI device — no probe, no phantom buttons — and the
+  Console shows a clear "touch-operated; flash the ESP32-DIV serial fork to control it from here" note. The full
+  serial command set lives on the ESP32-DIV serial fork (which keeps the ESP32-DIV name), reachable once flashed.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

@@ -27,7 +27,8 @@ from src.core.device_menus import (  # noqa: F401
     SKINS,
     MenuNode,
     bruce_menu,
-    esp32div_menu,
+    esp32div_serial_menu,
+    esp32div_stock_menu,
     ghostesp_menu,
     marauder_menu,
 )
