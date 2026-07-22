@@ -148,6 +148,16 @@ and never authors radio frames.
   scattered through the Devices tab now reference the single theme palette (three previously ad-hoc colors — a
   dim grey, an amber alert, and an error-hover — were promoted to named tokens), so the theme has one source of
   truth and can be re-skinned in one place. Same rendered look, cleaner internals.
+- **Fixed: the firmware auto-detect label no longer claims a false detection.** The Devices firmware picker used
+  to append "(detected: ESP32 Marauder)" whenever *any* probe reply arrived — even when the reply didn't identify
+  Marauder — so an unrecognized board falsely read as detected-Marauder. It now only names a firmware when the
+  probe banner actually identifies it; otherwise it stays a plain "Auto-detect."
+- **Fixed: a flash locks the other serial buttons.** During a flash, Backup / Erase / Detect board / Detect chip
+  stayed clickable — starting a competing serial op on the same port mid-flash could corrupt it. They're now
+  disabled for the duration and re-enabled when the flash finishes.
+- **Changed: tab-name references + BLE Analyzer help follow the rename.** After the Broadcast→"All Devices" /
+  Console→"Control" rename, a few in-app pointers still said the old names; they now match. The BLE Analyzer's
+  Help sheet documents every stat tile (added Trackers and Named).
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new

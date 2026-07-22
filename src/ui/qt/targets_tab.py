@@ -264,7 +264,7 @@ class TargetsTab(QWidget):
         # list) and that a fresh scan repopulates it — the data path re-adds re-observed APs
         # (verified). Clear is a session wipe by design (tooltip: "affects all tabs").
         self._HINT_NEVER_SCANNED = (
-            "No targets yet — run a scan from Operate ▸ Broadcast, or send a scan command "
+            "No targets yet — run a scan from Operate ▸ All Devices, or send a scan command "
             "on the Devices tab. Discovered targets land here in the shared pool."
         )
         self._HINT_AFTER_CLEAR = (

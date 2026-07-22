@@ -138,6 +138,8 @@ _BLE_HELP = {
     "statistics": [
         ("👁", "Present", "Devices seen in the last few seconds (a live scan is feeding the view)."),
         ("Σ", "Seen", "Total distinct devices observed this session."),
+        ("🎯", "Trackers", "How many look like trackers (AirTags / Find My, etc.)."),
+        ("🏷", "Named", "How many advertise a device name."),
         ("📶", "Strongest", "The closest device's RSSI (higher / greener = nearer)."),
     ],
     "tips": [

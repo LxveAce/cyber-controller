@@ -1101,6 +1101,9 @@ class FlashTab(QWidget):
         # clicking it started a concurrent batch mid-flash. Re-enabled in _on_flash_done.
         self._btn_flash.setEnabled(False)
         self._btn_flash_queue.setEnabled(False)
+        # A5 #6: also lock the other serial-op buttons (Backup / Erase / Detect / Detect chip) so
+        # can start a competing serial op on the same port mid-flash. Re-enabled in _on_flash_done.
+        self._set_detect_busy(True)
         self._progress.setValue(0)
 
         self._release_port_for_flash(port)  # release an open monitor so esptool can claim the port
@@ -1287,6 +1290,7 @@ class FlashTab(QWidget):
     def _on_flash_done(self, success: bool) -> None:
         self._btn_flash.setEnabled(True)
         self._btn_flash_queue.setEnabled(True)
+        self._set_detect_busy(False)   # A5 #6: re-enable Backup/Erase/Detect after the flash
         if success:
             self._progress.setValue(100)
             self._log("Flash completed successfully.")

@@ -3,8 +3,8 @@
 One big button per intent fires on EVERY connected device at once, each translated into that
 firmware's native command. The button live-enables to how many devices can do it, dangerous
 actions confirm via the shared safety gate, and STOP ALL is always available. Single-device deep
-control (force a firmware, run its own commands, arm gate) lives on the Console tab — this surface
-is ONLY the fan-out, so Broadcast and Console each have one clear job (QA-1 Option B).
+control (force a firmware, run its own commands, arm gate) lives on the Control tab — this surface
+is ONLY the fan-out, so All Devices and Control each have one clear job (QA-1 Option B).
 """
 from __future__ import annotations
 
@@ -38,8 +38,8 @@ class _Bridge(QObject):
 
 
 class BroadcastBar(QWidget):
-    """The universal fan-out surface: one intent → every connected device at once (Console owns
-    single-device deep control)."""
+    """The universal fan-out surface: one intent → every connected device at once (the Control tab
+    owns single-device deep control)."""
 
     def __init__(self, engine: BroadcastEngine, device_manager, event_bus,
                  settings_loader: Callable = load_settings) -> None:
@@ -76,7 +76,7 @@ class BroadcastBar(QWidget):
             "Each button runs an action on EVERY connected device at once, translated into that "
             "firmware's own native command. The count shows how many devices can do it; STOP ALL "
             "is always available. For single-device deep control (force a firmware, run its own "
-            "commands), use the Console tab.")
+            "commands), use the Control tab.")
         sub.setWordWrap(True)
         root.addWidget(sub)
 

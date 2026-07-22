@@ -230,3 +230,11 @@ def test_analyzer_without_controller_disables_start(qapp):
     tab = _make_tab([1000.0])                           # no scan_controller injected
     assert tab._scan is None
     assert not tab._scan_btn.isEnabled()                # honest: can't start a scan with no engine
+
+
+def test_ble_help_documents_every_stat_tile(qapp):
+    # A5 #3: the Help sheet's Statistics section must document every live stat tile.
+    from src.ui.qt.ble_analyzer_tab import _BLE_HELP
+    help_stats = {name for _icon, name, _desc in _BLE_HELP["statistics"]}
+    grid_labels = {"Present", "Seen", "Trackers", "Named", "Strongest"}
+    assert grid_labels <= help_stats

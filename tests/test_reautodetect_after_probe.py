@@ -109,3 +109,18 @@ def test_auto_item_stays_plain_without_a_real_banner(_qapp):
     dev.fw_banner = ""                                             # unprobed / no identifying line
     tab._reautodetect_after_probe("C_M")
     assert tab._firmware_combo.itemText(0) == "Auto-detect"
+
+
+def test_auto_item_stays_plain_when_banner_does_not_identify_the_firmware(_qapp):
+    # A5 #21: fw_banner falls back to the FIRST reply line even when nothing was identified, and the
+    # firmware may be the connect-time default guess — so a non-identifying banner must NOT match it
+    # default. The label must stay "Auto-detect", not falsely claim "(detected: ESP32 Marauder)".
+    tab, dev, _conn = _tab("C_M", MARAUDER_HELP, provisional="marauder")
+    dev.fw_banner = "Commands:"                          # a reply line that identifies nothing
+    tab._set_auto_detect_label(dev)
+    assert tab._firmware_combo.itemText(0) == "Auto-detect"
+    # a banner that DOES name the firmware still annotates honestly
+    dev.fw_banner = "ESP32 Marauder v1.2.3"
+    tab._set_auto_detect_label(dev)
+    disp = PROTOCOL_DISPLAY_NAMES["marauder"]
+    assert tab._firmware_combo.itemText(0) == f"Auto-detect (detected: {disp})"

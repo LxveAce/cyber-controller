@@ -600,7 +600,16 @@ class DeviceTab(QWidget):
         and edits only item 0's display text, so the index-based gate and item data stay untouched."""
         fw = (getattr(dev, "firmware", "") if dev is not None else "") or ""
         banner = (getattr(dev, "fw_banner", "") if dev is not None else "") or ""
-        disp = PROTOCOL_DISPLAY_NAMES.get(fw, "") if (fw and banner.strip()) else ""
+        # Only claim a detection when the banner names this firmware — not just because a banner
+        # exists. fw_banner falls back to the first reply line even when nothing identified, and
+        # the connect-time default guess, so a bare "banner present" check would falsely assert
+        # "detected: <default>". Require match_firmware(banner) to resolve to fw (A5 #21).
+        disp = ""
+        if fw and banner.strip():
+            from src.core.device_detect import match_firmware
+            matched = resolve_protocol_name((match_firmware(banner)[0] or "").strip())
+            if matched == fw:
+                disp = PROTOCOL_DISPLAY_NAMES.get(fw, "")
         text = f"{_AUTO_DETECT} (detected: {disp})" if disp else _AUTO_DETECT
         if self._firmware_combo.itemText(0) == text:
             return

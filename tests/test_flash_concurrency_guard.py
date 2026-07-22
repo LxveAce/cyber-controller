@@ -115,3 +115,15 @@ def test_flash_done_reenables_both_flash_buttons(flash_tab):
 
     assert ft._btn_flash.isEnabled()
     assert ft._btn_flash_queue.isEnabled()   # was left disabled before the fix
+
+
+def test_flash_done_reenables_the_serial_op_buttons(flash_tab):
+    # A5 #6: a flash locks Backup / Erase / Detect too (a competing serial op mid-flash would
+    # corrupt it); _on_flash_done must re-enable them all.
+    ft = flash_tab
+    ops = (ft._btn_backup, ft._btn_erase, ft._btn_detect, ft._btn_detect_chip)
+    for b in ops:
+        b.setEnabled(False)   # as _on_flash's _set_detect_busy(True) leaves them
+    ft._on_flash_done(True)
+    for b in ops:
+        assert b.isEnabled()
