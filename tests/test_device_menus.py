@@ -49,7 +49,7 @@ def test_danger_tags_flag_offensive_not_passive():
     assert div["nrf jam"] == "illegal-tx"              # jamming is the strongest level
     assert div["scanwifi"] == "" and div["sniff"] == "" and div["reboot"] == ""
     ghost = {leaf["command"]: leaf["danger"] for leaf in _leaves(menu_tree("ghostesp")["root"])}
-    assert ghost["probe"] == "lab-only"                # danger only in the label ("Probe Flood")
+    assert ghost["attack -d"] == "lab-only"            # offensive deauth flagged (was phantom "probe")
     assert ghost["startportal"] == "lab-only"          # danger via the protocol's CommandInfo/category
     assert ghost["stopportal"] == "" and ghost["scanap"] == ""   # cease + scan stay safe
 

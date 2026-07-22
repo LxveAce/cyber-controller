@@ -76,7 +76,6 @@ def ghostesp_menu() -> "list[MenuNode]":
             M("Attacks", children=[
                 M("Deauth", command="attack -d"),
                 M("Beacon Spam", command="beaconspam -r"),
-                M("Probe Flood", command="probe"),
                 M("Rick Roll", command="beaconspam -rr"),
             ]),
             M("Capture", children=[
@@ -90,7 +89,7 @@ def ghostesp_menu() -> "list[MenuNode]":
         ]),
         M("Bluetooth", children=[
             M("BLE Scan", command="blescan"),
-            M("BLE Track", command="bletrack"),
+            M("BLE Track", command="trackgatt"),
         ]),
         M("Wardrive", children=[
             M("Start", command="startwd"),
