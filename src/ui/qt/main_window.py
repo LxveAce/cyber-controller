@@ -569,8 +569,13 @@ class CyberControllerWindow(QMainWindow):
         # BLE Analyzer (output view): the on-device Bluetooth-analyzer visual — a live RSSI graph + device
         # table, fed by ble_found events from EVERY BLE firmware via the ingestor tap (see _wire_ble_analyzer).
         # An awareness/analysis view (it transmits nothing), so it lives in Analyze.
-        from src.ui.qt.ble_analyzer_tab import BleAnalyzerTab
-        self._ble_analyzer = BleAnalyzerTab() if BleAnalyzerTab is not None else None
+        from src.ui.qt.ble_analyzer_tab import BleAnalyzerTab, BleScanController
+        # A3: the analyzer's Start/Stop drives a BLE scan on every connected device via the SAME
+        # shared broadcast engine the Console/All-Devices tabs use (each runs its own scan verb),
+        # and the sends surface in the shared terminal — so scanning cross-talks across surfaces.
+        _ble_scan = BleScanController(self._broadcast) if BleAnalyzerTab is not None else None
+        self._ble_analyzer = (BleAnalyzerTab(scan_controller=_ble_scan)
+                              if BleAnalyzerTab is not None else None)
 
         # Operate — the live action loop.
         self._operate_surface = QTabWidget()

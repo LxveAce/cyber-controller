@@ -268,6 +268,48 @@ def _row_card() -> "tuple[QFrame, QVBoxLayout]":
     return card, layout
 
 
+class StartStopButton(QPushButton):
+    """The Biscuit primary action pill: green filled 'Start' → red filled 'Stop'. Emits the intent
+    (:attr:`start_requested` / :attr:`stop_requested`); the host confirms real state via
+    :meth:`set_running`. :meth:`set_ready` disables Start (Stop stays reachable while running)."""
+
+    start_requested = pyqtSignal()
+    stop_requested = pyqtSignal()
+
+    def __init__(self, parent: "Optional[QWidget]" = None) -> None:
+        super().__init__("Start", parent)
+        self._running = False
+        self._ready = True
+        self.setMinimumHeight(40)
+        self.setCursor(Qt.PointingHandCursor)
+        self.clicked.connect(self._on_click)
+        self._paint()
+
+    def set_running(self, running: bool) -> None:
+        self._running = bool(running)
+        self._paint()
+
+    def set_ready(self, ready: bool) -> None:
+        self._ready = bool(ready)
+        self._paint()
+
+    def _on_click(self) -> None:
+        (self.stop_requested if self._running else self.start_requested).emit()
+
+    def _paint(self) -> None:
+        if self._running:
+            self.setText("Stop")
+            self.setEnabled(True)
+            bg, fg = C.ERROR, "#ffffff"
+        else:
+            self.setText("Start")
+            self.setEnabled(self._ready)
+            bg, fg = (C.SUCCESS, C.BG_DEEP) if self._ready else (C.BG_INPUT, C.TEXT_DISABLED)
+        self.setStyleSheet(
+            f"QPushButton {{ background:{bg}; color:{fg}; border:none; border-radius:10px; "
+            f"font-weight:bold; font-size:11pt; }}")
+
+
 class OperationDetail(QWidget):
     """The operation detail view: a header (title + Help ?), an optional Mode segment, a stat grid,
     a big Start/Stop pill, and a status line. Behavior is the host's — it emits signals and reflects
@@ -323,12 +365,10 @@ class OperationDetail(QWidget):
         self._status.setStyleSheet(f"color:{C.TEXT_MUTED}; font-size:9pt;")
         root.addWidget(self._status)
 
-        self._btn = QPushButton("Start")
-        self._btn.setMinimumHeight(40)
-        self._btn.setCursor(Qt.PointingHandCursor)
-        self._btn.clicked.connect(self._on_click)
+        self._btn = StartStopButton()
+        self._btn.start_requested.connect(self.start_requested)
+        self._btn.stop_requested.connect(self.stop_requested)
         root.addWidget(self._btn)
-        self._paint_button()
 
     # ── host API ──────────────────────────────────────────────────────
     def set_stats(self, stats: dict) -> None:
@@ -342,7 +382,7 @@ class OperationDetail(QWidget):
         """Reflect the real operation state (the host sets this after it actually starts/stops)."""
         self._running = bool(running)
         self._status.setText(status or ("Running" if running else "Ready"))
-        self._paint_button()
+        self._btn.set_running(running)
 
     def set_ready(self, ready: bool, reason: str = "") -> None:
         """Enable/disable Start with honest guidance (e.g. 'Select a target first'). While running,
@@ -350,27 +390,10 @@ class OperationDetail(QWidget):
         self._ready = bool(ready)
         if not ready and reason:
             self._status.setText(reason)
-        self._paint_button()
+        self._btn.set_ready(ready)
 
     # ── internals ─────────────────────────────────────────────────────
-    def _on_click(self) -> None:
-        # Optimistic: emit intent; the host confirms real state via set_running.
-        (self.stop_requested if self._running else self.start_requested).emit()
-
     def _on_help(self) -> None:
         self.help_requested.emit()
         if self._help_spec is not None:
             HelpSheet(self._help_spec, self).exec_()
-
-    def _paint_button(self) -> None:
-        if self._running:
-            self._btn.setText("Stop")
-            self._btn.setEnabled(True)
-            bg, fg = C.ERROR, "#ffffff"
-        else:
-            self._btn.setText("Start")
-            self._btn.setEnabled(self._ready)
-            bg, fg = (C.SUCCESS, C.BG_DEEP) if self._ready else (C.BG_INPUT, C.TEXT_DISABLED)
-        self._btn.setStyleSheet(
-            f"QPushButton {{ background:{bg}; color:{fg}; border:none; border-radius:10px; "
-            f"font-weight:bold; font-size:11pt; }}")

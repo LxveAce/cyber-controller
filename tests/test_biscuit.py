@@ -22,6 +22,7 @@ from src.ui.qt.biscuit import (  # noqa: E402
     ModeSegment,
     OperationCard,
     OperationDetail,
+    StartStopButton,
     StatGrid,
 )
 
@@ -107,3 +108,20 @@ def test_detail_without_help_has_no_help_button(qapp):
     det = OperationDetail("Passive Monitor")
     assert det._help_spec is None
     assert det.current_mode() == ""
+
+
+def test_start_stop_button_toggles_and_gates(qapp):
+    btn = StartStopButton()
+    starts, stops = [], []
+    btn.start_requested.connect(lambda: starts.append(True))
+    btn.stop_requested.connect(lambda: stops.append(True))
+    assert btn.text() == "Start" and btn.isEnabled()
+    btn.click()                                        # request start
+    assert starts == [True] and stops == []
+    btn.set_running(True)                              # host confirms running -> Stop, enabled
+    assert btn.text() == "Stop" and btn.isEnabled()
+    btn.click()
+    assert stops == [True]
+    btn.set_running(False)
+    btn.set_ready(False)                    # not ready -> Start disabled (guidance on host)
+    assert btn.text() == "Start" and not btn.isEnabled()

@@ -11,10 +11,55 @@ widget is import-guarded and offscreen-renderable via render_native() for a wind
 """
 from __future__ import annotations
 
+import threading
 import time
 from typing import List, Optional
 
 from src.core.ble_analyzer import BleAnalyzerModel, BleDevice
+from src.core.broadcast import BroadcastVerb
+
+
+class BleScanController:
+    """Start/stop a BLE scan on every connected BLE-capable device via the shared broadcast engine:
+    each device runs its OWN native BLE-scan verb; CC transmits nothing. Cross-talk: the sends flow
+    through the app-wide activity_log, so the terminal + other surfaces reflect the same action."""
+
+    def __init__(self, engine) -> None:
+        self._engine = engine
+
+    def target_count(self) -> int:
+        """How many connected devices can run a BLE scan (drives Start's enabled state)."""
+        try:
+            return len(self._engine.plan(BroadcastVerb.BLE_SCAN).concrete)
+        except Exception:  # noqa: BLE001
+            return 0
+
+    def start(self) -> int:
+        return self._dispatch(BroadcastVerb.BLE_SCAN)
+
+    def stop(self) -> int:
+        return self._dispatch(BroadcastVerb.STOP_ALL)
+
+    def _dispatch(self, verb: "BroadcastVerb") -> int:
+        try:
+            plan = self._engine.plan(verb)
+        except Exception:  # noqa: BLE001
+            return 0
+        if not plan.concrete:
+            return 0
+        from src.core.activity_log import activity_log
+        act = activity_log()
+        for c in plan.concrete:   # surface each native send in the shared terminal (cross-talk)
+            act.emit_line("ble-analyzer", f"[{c.port}] {c.firmware}: {c.command}")
+        threading.Thread(target=self._safe_dispatch, args=(plan,), daemon=True).start()
+        return len(plan.concrete)
+
+    def _safe_dispatch(self, plan) -> None:
+        try:
+            self._engine.dispatch(plan, confirmed=True)   # BLE_SCAN/STOP_ALL are safe; guarded path
+        except Exception:  # noqa: BLE001 — a send error must never crash a background thread
+            pass
+
 
 # ── pure pixel mapping (Qt-free, unit-testable) ──
 _RSSI_TOP = -30       # graph top edge dBm (very strong)
@@ -120,7 +165,7 @@ try:
         QWidget,
     )
 
-    from src.ui.qt.biscuit import HelpSheet, StatGrid
+    from src.ui.qt.biscuit import HelpSheet, StartStopButton, StatGrid
 
     from src.ui.qt.widgets.signal_bars import SignalBarsDelegate
 
@@ -199,13 +244,16 @@ try:
         _COLS = ("Signal", "Name", "Address", "Vendor", "Trk", "Hits", "Age")
         _ACTIVE_WINDOW_S = 10.0   # a ble_found event within this many seconds = a scan is actively feeding us
 
-        def __init__(self, parent: "Optional[QWidget]" = None) -> None:
+        def __init__(self, scan_controller: "Optional[BleScanController]" = None,
+                     parent: "Optional[QWidget]" = None) -> None:
             super().__init__(parent)
             self._model = BleAnalyzerModel()
             self._now_fn = time.monotonic
             self._sort = "rssi"
             self._paused = False
             self._last_event_ts: "Optional[float]" = None   # when we last folded in a ble_found event
+            self._scan = scan_controller     # None -> Start disabled (no engine wired; a bare tab)
+            self._scanning = False           # whether WE started a scan here (drives the pill)
 
             root = QVBoxLayout(self)
             self._header = QLabel(
@@ -217,6 +265,15 @@ try:
             # Live stat grid (Biscuit statistics pattern, A2) — mirrors the header summary as tiles.
             self._stats = StatGrid(["Present", "Seen", "Trackers", "Named", "Strongest"], columns=5)
             root.addWidget(self._stats)
+
+            # Start/Stop (A3): the primary pill runs the CONNECTED firmware's own BLE-scan verb on
+            # every BLE-capable device via the shared broadcast engine (CC transmits nothing).
+            self._scan_btn = StartStopButton()
+            self._scan_btn.setToolTip("Start a BLE scan on every connected BLE-capable device.")
+            self._scan_btn.start_requested.connect(self._on_start_scan)
+            self._scan_btn.stop_requested.connect(self._on_stop_scan)
+            self._scan_btn.set_ready(self._scan is not None)   # disabled until an engine is wired
+            root.addWidget(self._scan_btn)
 
             self._graph = _RssiGraph(self._model)
             root.addWidget(self._graph, 1)
@@ -294,6 +351,23 @@ try:
             self._model.clear()
             self._refresh()
 
+        # ── scan control (A3) ──
+        def _on_start_scan(self) -> None:
+            """Start a BLE scan on every connected BLE-capable device (guarded broadcast path)."""
+            if self._scan is None:
+                return
+            n = self._scan.start()
+            self._scanning = n > 0
+            self._scan_btn.set_running(self._scanning)
+            if not self._scanning:
+                self._scan_btn.set_ready(False)   # nothing to scan on — reflect it honestly
+
+        def _on_stop_scan(self) -> None:
+            if self._scan is not None:
+                self._scan.stop()
+            self._scanning = False
+            self._scan_btn.set_running(False)
+
         # ── render ──
         def _is_receiving(self, now: float) -> bool:
             """True when a ble_found event arrived recently — i.e. a scan is actually feeding this view.
@@ -317,6 +391,9 @@ try:
                     f"{s['fresh']} present · {s['total']} seen · {s['trackers']} tracker(s) · "
                     f"{s['named']} named · strongest {strongest}")
             self._update_stats(s, receiving)
+            # Keep the Start pill honest: enabled only when a BLE-capable device is connected.
+            if self._scan is not None and not self._scanning:
+                self._scan_btn.set_ready(self._scan.target_count() > 0)
             self._fill_table(now)
             self._graph.update()
 

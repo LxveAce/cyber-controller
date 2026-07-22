@@ -163,3 +163,70 @@ def test_pause_freezes_repaint_but_keeps_recording(qapp):
     tab._on_pause(False)
     tab._refresh()
     assert tab._table.rowCount() == 1            # resume catches the table up
+
+
+# ── A3: real Start/Stop via the shared broadcast engine + cross-talk ──
+class _Cmd:
+    def __init__(self, port, fw, cmd):
+        self.port, self.firmware, self.command, self.pre_commands = port, fw, cmd, ()
+
+
+class _Plan:
+    def __init__(self, concrete):
+        self.concrete, self.worst_danger, self.skipped = concrete, "", []
+
+
+class _FakeEngine:
+    """Minimal broadcast engine: BLE_SCAN -> the native scan verb; STOP_ALL -> its stop."""
+
+    def __init__(self, concrete=1):
+        self._concrete = concrete
+        self.dispatched = []
+
+    def plan(self, verb):
+        from src.core.broadcast import BroadcastVerb
+        cmd = "sniffbt" if verb == BroadcastVerb.BLE_SCAN else "stopscan"
+        return _Plan([_Cmd("COM3", "marauder", cmd) for _ in range(self._concrete)])
+
+    def dispatch(self, plan, confirmed=False):
+        self.dispatched.append([c.command for c in plan.concrete])
+        return []
+
+
+def test_scan_controller_dispatches_scan_and_stop(qapp):
+    import time
+    from src.ui.qt.ble_analyzer_tab import BleScanController
+    eng = _FakeEngine(concrete=2)
+    ctrl = BleScanController(eng)
+    assert ctrl.target_count() == 2                    # two BLE-capable devices connected
+    assert ctrl.start() == 2                            # dispatched to both
+    time.sleep(0.1)
+    assert eng.dispatched == [["sniffbt", "sniffbt"]]  # each ran its native BLE-scan verb
+    ctrl.stop()
+    time.sleep(0.1)
+    assert eng.dispatched[-1] == ["stopscan", "stopscan"]
+
+
+def test_scan_controller_no_targets_sends_nothing(qapp):
+    from src.ui.qt.ble_analyzer_tab import BleScanController
+    ctrl = BleScanController(_FakeEngine(concrete=0))
+    assert ctrl.target_count() == 0
+    assert ctrl.start() == 0                            # nothing connected -> no phantom send
+
+
+def test_analyzer_start_stop_pill_wiring(qapp):
+    from src.ui.qt.ble_analyzer_tab import BleScanController
+    tab = _make_tab([1000.0])
+    tab._scan = BleScanController(_FakeEngine(concrete=1))
+    tab._refresh()
+    assert tab._scan_btn.isEnabled() and tab._scan_btn.text() == "Start"   # a target is present
+    tab._on_start_scan()
+    assert tab._scanning and tab._scan_btn.text() == "Stop"
+    tab._on_stop_scan()
+    assert not tab._scanning and tab._scan_btn.text() == "Start"
+
+
+def test_analyzer_without_controller_disables_start(qapp):
+    tab = _make_tab([1000.0])                           # no scan_controller injected
+    assert tab._scan is None
+    assert not tab._scan_btn.isEnabled()                # honest: can't start a scan with no engine

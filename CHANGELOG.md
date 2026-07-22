@@ -139,6 +139,11 @@ and never authors radio frames.
   table, tracker detection) and a color-graded stat grid (Present / Seen / Trackers / Named / Strongest). This is
   the first surface built on a new reusable card→detail widget set (`biscuit.py`) — operation card, detail view
   with Start/Stop + mode segment + stat grid, and the Help sheet — that more surfaces will adopt.
+- **New: the BLE Analyzer can start/stop a scan itself.** A Start/Stop pill runs a BLE scan on every connected
+  BLE-capable device by sending each one its OWN native BLE-scan verb through the same shared broadcast engine the
+  Console and All-Devices tabs use — so a scan started here shows up in the persistent terminal and is the same
+  action as starting it elsewhere. Start is disabled (with guidance) when no BLE-capable device is connected. CC
+  transmits nothing itself; it only issues the firmware's own scan/stop command.
 
 ## [1.8.0] — 2026-07-15
 Feature release: first-class support for **LxveOS** (the LxveAce security-panel firmware), a new
