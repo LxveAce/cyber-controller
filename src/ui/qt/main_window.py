@@ -454,7 +454,7 @@ class CyberControllerWindow(QMainWindow):
         top_layout.addWidget(sidebar)
 
         # ── Tab widget (right side) ──────────────────────────────────
-        # Detachable: any tab can pop out into its own resizable window and re-dock seamlessly.
+        # Detachable: any tab can pop out into its own resizable window and re-docks back in.
         self._tabs = DetachableTabWidget()
         top_layout.addWidget(self._tabs)
 

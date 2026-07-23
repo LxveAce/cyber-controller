@@ -1,7 +1,7 @@
 """Detachable / pop-out tabs.
 
 Any tab can pop out into its own resizable, top-level window — drag it to a second monitor, resize it
-freely — and re-dock seamlessly back onto the tab strip, or just close it (closing re-docks by default so
+freely, and re-dock back onto the tab strip, or just close it (closing re-docks by default so
 a working panel is never lost). This is the foundation for the per-firmware "Device View" pop-outs and for
 multi-monitor cyberdeck ops.
 
