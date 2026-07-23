@@ -35,6 +35,7 @@ from src.protocols.flock_you import FlockYouProtocol
 from src.protocols.ghost_esp import GhostESPProtocol
 from src.protocols.halehound import HaleHoundProtocol
 from src.protocols.lxveos import LxveOSProtocol
+from src.protocols.lxvenode import LxveNodeProtocol
 from src.protocols.marauder import MarauderProtocol
 from src.protocols.meshtastic import MeshtasticProtocol
 from src.protocols.nrf_bluenullifier import NrfBlueNullifier2Protocol
@@ -82,6 +83,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "flipper": FlipperProtocol,
     "halehound": HaleHoundProtocol,
     "lxveos": LxveOSProtocol,
+    "lxvenode": LxveNodeProtocol,
     "meshtastic": MeshtasticProtocol,
     "esp32-div": Esp32DivProtocol,
     "esp32-div-serial": Esp32DivSerialProtocol,
@@ -105,6 +107,11 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "flipper": "Flipper Zero",
     "halehound": "HaleHound",
     "lxveos": "LxveOS",
+    # NOTE: "lxvenode" (the LxveNode relay/repeater) is registered in PROTOCOLS above and works via
+    # identify()/get_protocol (so a connected node's LXVENODE/1 console + link telemetry parses), but is
+    # intentionally NOT given a public display name yet — the board is private + unfabbed, so it must not
+    # inflate the advertised parser/firmware count. Add the display name (and the src/config/profiles/
+    # lxvenode.json flash profile) when the LxveNode board ships. Same posture as esp32-div-serial above.
     "meshtastic": "Meshtastic",
     "esp32-div": "ESP32-DIV",
     # NOTE: "esp32-div-serial" (the LxveLabs serial fork) is registered in PROTOCOLS above and works via
@@ -239,6 +246,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "flipper": "src.protocols.flipper",
     "halehound": "src.protocols.halehound",
     "lxveos": "src.protocols.lxveos",
+    "lxvenode": "src.protocols.lxvenode",
     "meshtastic": "src.protocols.meshtastic",
     "esp32-div": "src.protocols.esp32_div",
     "bw16": "src.protocols.bw16",
@@ -289,6 +297,7 @@ __all__ = [
     "NrfBlueNullifier2Protocol",
     "FlockYouProtocol",
     "LxveOSProtocol",
+    "LxveNodeProtocol",
     "EspAtProtocol",
     "GenericProtocol",
     "PROTOCOLS",

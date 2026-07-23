@@ -102,6 +102,10 @@ class Device:
     #: latest-wins situational summary (the LxveOS ``airspace`` command), NOT a counted stream — there is
     #: no counter. Display-only; the device tab surfaces it as an at-a-glance tile below the alert line.
     last_snapshot: dict = field(default_factory=dict)
+    #: latest LxveNode ``link_state`` (tier / rssi / snr / latency_ms / dr / mode / role / peer / ...),
+    #: merged latest-wins so a `stats`- or `tier`-only line updates its fields without clearing the rest.
+    #: Feeds the Operate/Devices Link strip; empty until a relay node reports a link.
+    link: dict = field(default_factory=dict)
 
     #: device_info keys kept as telemetry — identifying status-line fields EXCEPT the
     #: raw caps bitmask + its decoded tokens (those drive runtime_capabilities instead).
@@ -182,6 +186,20 @@ class Device:
         if new == self.last_snapshot:
             return False
         self.last_snapshot = new
+        return True
+
+    def apply_link_state(self, data: dict) -> bool:
+        """Absorb a parsed ``link_state`` event (LxveNode ``link``/``tier``/``stats``/``tele``): merge the
+        current link tier + quality so the Link strip can render "how is my link right now". Merge (not
+        replace) so a `stats`-only or `tier`-only line updates its fields without clearing the rest. Returns
+        True if anything changed. A non-dict is ignored (never clears a live link indicator)."""
+        if not isinstance(data, dict):
+            return False
+        merged = dict(self.link)
+        merged.update(data)
+        if merged == self.link:
+            return False
+        self.link = merged
         return True
 
     @property

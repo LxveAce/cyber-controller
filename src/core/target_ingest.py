@@ -211,6 +211,24 @@ class TargetIngestor:
                 self._apply_alert(ev, port)
             elif ev_type == "snapshot":
                 self._apply_snapshot(ev, port)
+            elif ev_type == "link_state":
+                self._apply_link_state(ev, port)
+
+    def _apply_link_state(self, ev: Any, port: str) -> None:
+        """Route a ``link_state`` event (LxveNode link/tier/stats/tele) to the connected Device's link
+        state, so the Operate/Devices Link strip can show the active tier + quality. Same guarded shape as
+        :meth:`_apply_arm_state` — a bad line or exotic registry never breaks serial ingestion."""
+        try:
+            dev = self._devices.get_device(port)
+        except Exception:
+            log.exception("TargetIngestor: device lookup failed on %s", port)
+            return
+        apply = getattr(dev, "apply_link_state", None)
+        if callable(apply):
+            try:
+                apply(getattr(ev, "data", {}) or {})
+            except Exception:
+                log.exception("TargetIngestor: apply_link_state failed on %s", port)
 
     def _apply_device_info(self, ev: Any, port: str) -> None:
         """Route a device_info event to the connected Device's live identity + runtime capabilities
