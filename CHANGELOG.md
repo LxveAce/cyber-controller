@@ -4,6 +4,9 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+- **LxveOS bridge: randomized-MAC flag.** The `sta` (client) event now carries a typed `random` flag when the
+  firmware sees a client using a randomized or spoofed MAC (the 802.11 locally-administered bit), so the client
+  view can distinguish a privacy-randomized device from one exposing its real vendor address.
 - **LxveOS bridge: attachable-ops split + sniff telemetry.** The status parser now reads the firmware's new
   `ops_attach` field (how many of the `ops=` third number are attachable, i.e. runnable once an add-on module
   is wired, versus truly unavailable), and the `LXVEOS/1 sniff` frame-type tally event (total / mgmt / data /

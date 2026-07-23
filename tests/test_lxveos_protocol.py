@@ -79,6 +79,19 @@ def test_sniff_event_counts_are_typed_ints():
         assert d[key] == want and isinstance(d[key], int), f"{key} should be int, got {d[key]!r}"
 
 
+def test_sta_random_mac_field_typed():
+    # a client hiding behind a randomized/spoofed MAC carries `random=1` in its sta event (firmware cmd_stations
+    # sets it when the MAC's locally-administered bit is set); it must type to int, and be absent otherwise.
+    p = LxveOSProtocol()
+    ev = p.parse_line("LXVEOS/1 sta mac=da:a1:19:22:33:44 ap=de:ad:be:ef:00:01 rssi=-40 frames=12 random=1")
+    assert ev is not None and ev.event_type == "client_found"
+    assert ev.data["random"] == 1 and isinstance(ev.data["random"], int)
+    # a burned-in-vendor-MAC client omits the field entirely
+    ev = p.parse_line("LXVEOS/1 sta mac=24:0a:c4:11:22:33 ap=de:ad:be:ef:00:01 rssi=-40 frames=3")
+    assert ev is not None and ev.event_type == "client_found"
+    assert "random" not in ev.data
+
+
 def test_status_tx_and_arm_fields_typed():
     # current firmware appends `arm=<state>` (token) + `tx=<0|1>` (offensive-TX compiled in). tx is typed
     # to a bool so the TX-lockout UI can tell a TX-capable-but-SAFE unit from one that can never arm.
