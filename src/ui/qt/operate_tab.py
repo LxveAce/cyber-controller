@@ -1,8 +1,13 @@
 """Operate console (B16) — a focused operator surface for a single connected device.
 
-This is the button-driven counterpart to the Devices tab's free-text terminal: a 2-second
-status-poll header, a prominent SAFE/ARMED lamp, the LxveOS two-factor arm-token toggle, and a
-catalog-driven command grid whose offensive-TX buttons stay disabled until the device is ARMED.
+This is the button-driven counterpart to the Devices tab's free-text terminal: a status-poll
+header, a prominent SAFE/ARMED lamp, the LxveOS two-factor arm-token toggle, and a catalog-driven
+command grid whose offensive-TX buttons stay disabled until the device is ARMED.
+
+When the active device is a relayed target behind a LxveNode, a read-only Link strip surfaces the
+link tier + quality, the poll cadence lengthens on a constrained LoRa/compact link (so the auto-
+``status`` probe can't saturate the mesh), and high-bandwidth STREAM verbs are disabled on that link.
+The tier decisions are pure functions in ``src.ui.qt.link_strip``; this tab only renders them.
 
 It is a POLL-DRIVEN, READ-ONLY VIEW of shared ``Device`` state: the TargetIngestor mutates the
 Device on the serial reader thread; this tab only reads it (on the Qt thread, via the timer or a
@@ -39,6 +44,12 @@ from src.config.settings import load_settings
 from src.core import safety
 from src.protocols import PROTOCOL_DISPLAY_NAMES, get_protocol
 from src.ui.qt.arm_lamp import arm_lamp_render
+from src.ui.qt.link_strip import (
+    POLL_BASE_MS,
+    link_strip_render,
+    poll_interval_ms,
+    stream_blocked,
+)
 
 log = logging.getLogger(__name__)
 
@@ -63,11 +74,16 @@ class OperateTab(QWidget):
         self._grid_fw: str = ""        # firmware the grid was built for (skip rebuilds)
         self._tx_buttons: list = []    # offensive-TX buttons (danger != "") — on only when ARMED
         self._safe_buttons: list = []  # non-TX buttons — enabled whenever the device is connected
+        self._stream_buttons: list = []  # high-bandwidth STREAM verbs (ci.stream) — off on a LoRa relay link
         self._last_arm_state: Optional[str] = None
+        self._last_link_view = None    # last Link-strip render, to repaint only on change
         self._fw_syncing = False       # guard: syncing the firmware combo must not re-fire its slot
         self._build_ui()
         self._timer = QTimer(self)
-        self._timer.setInterval(2000)
+        # The poll cadence is tier-aware (see _apply_poll_interval): base on USB/Wi-Fi, lengthened on a
+        # constrained LoRa relay link so the auto-`status` probe can't saturate the mesh. Starts at base.
+        self._poll_ms = POLL_BASE_MS
+        self._timer.setInterval(self._poll_ms)
         self._timer.timeout.connect(self._poll_tick)
         self._reload_devices()
         self._refresh()
@@ -116,6 +132,16 @@ class OperateTab(QWidget):
         head.addWidget(self._fw_combo)
         head.addStretch(1)
         root.addLayout(head)
+
+        # LxveNode Link strip (read-only): tier badge + link quality + most-recent failover + role/peer,
+        # shown only when the active device is on a relay link. Mirrors the arm-lamp one-liner idiom; the
+        # state is derived by the pure link_strip_render so this stays a thin renderer. Hidden by default.
+        self._link_label = QLabel("")
+        self._link_label.setTextFormat(Qt.PlainText)
+        self._link_label.setWordWrap(True)
+        self._link_label.setStyleSheet("font-size:9pt;font-weight:bold;")
+        self._link_label.setVisible(False)
+        root.addWidget(self._link_label)
 
         self._telemetry_label = QLabel("")
         self._telemetry_label.setTextFormat(Qt.PlainText)
@@ -243,6 +269,7 @@ class OperateTab(QWidget):
         self._grid_fw = firmware
         self._tx_buttons = []
         self._safe_buttons = []
+        self._stream_buttons = []
         # Personalize the group title with the firmware so the operator sees whose buttons these are.
         disp = PROTOCOL_DISPLAY_NAMES.get(firmware, firmware) if firmware else ""
         self._grid_box.setTitle(f"Commands — {disp}" if disp else "Commands")
@@ -304,6 +331,11 @@ class OperateTab(QWidget):
                     self._tx_buttons.append(btn)
                 else:
                     self._safe_buttons.append(btn)
+                # A high-bandwidth stream verb (ci.stream) is additionally gated by the link tier in
+                # _refresh — a verb can be both a stream AND a TX verb, so this is a separate list that
+                # layers on top of the tx/safe enable, never instead of it.
+                if getattr(ci, "stream", False):
+                    self._stream_buttons.append(btn)
             self._grid_layout.addWidget(box)
 
     def _on_command_button(self, ci) -> None:
@@ -483,6 +515,49 @@ class OperateTab(QWidget):
         self._btn_arm.setEnabled(connected and state != "armed")
         self._btn_confirm.setEnabled(connected and state == "pending")
         self._btn_disarm.setEnabled(connected)
+        # Tier-aware stream gate (LxveNode): high-bandwidth STREAM verbs (live pcap / packet monitor /
+        # sniff / wardrive tail) are disabled on a constrained LoRa/compact relay link, so the operator
+        # can't fire something the link can't carry — the target's compact console text still streams
+        # back regardless. Layered AFTER the tx/safe enable pass: a stream verb keeps its normal
+        # connected/armed logic AND is additionally gated by the link tier. Tooltips are rebuilt from
+        # base_tip each pass (never appended in place) so a hint can't accumulate across refreshes.
+        link = getattr(dev, "link", {}) if dev is not None else {}
+        stream_off = stream_blocked(link)
+        stream_hint = "\nLoRa link: compact commands only — move to Wi-Fi range to stream."
+        for b in self._stream_buttons:
+            suffix = ""
+            if b in self._tx_buttons and arm_fw and not tx_armed:
+                suffix += arm_hint
+            if stream_off:
+                b.setEnabled(False)
+                suffix += stream_hint
+            b.setToolTip((b.property("base_tip") or "") + suffix)
+        # Link strip + tier-aware poll cadence, both derived from the same read-only Device.link.
+        self._update_link_strip(link)
+        self._apply_poll_interval(link)
+
+    def _update_link_strip(self, link: dict) -> None:
+        """Repaint the LxveNode Link strip from the active Device's (read-only) link state. Hidden when
+        the device reports no link; otherwise a compact tier/quality/failover/role one-liner. Re-renders
+        only when the derived view changes (cheap on the Qt thread), mirroring the arm-lamp idiom. The
+        strip is display-only telemetry — it drives nothing."""
+        view = link_strip_render(link if isinstance(link, dict) else {})
+        if view == self._last_link_view:
+            return
+        self._last_link_view = view
+        self._link_label.setVisible(view.visible)
+        if view.visible:
+            self._link_label.setText(view.text)
+            self._link_label.setStyleSheet(f"color:{view.color};font-size:9pt;font-weight:bold;")
+
+    def _apply_poll_interval(self, link: dict) -> None:
+        """Lengthen the status-poll cadence on a constrained LoRa/compact relay link so the auto-``status``
+        probe doesn't saturate the mesh (base 2 s on USB/Wi-Fi, ~15 s on LoRa). The decision is the pure
+        :func:`poll_interval_ms`; this only applies the result to the timer when it changes."""
+        want = poll_interval_ms(link if isinstance(link, dict) else {})
+        if want != self._poll_ms:
+            self._poll_ms = want
+            self._timer.setInterval(want)
 
     # Public slot so main_window can push a live serial line for an immediate repaint (no second
     # subscription — the Device is already mutated by the ingestor; this just repaints if shown).

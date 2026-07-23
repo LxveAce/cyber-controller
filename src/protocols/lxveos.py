@@ -300,14 +300,20 @@ class LxveOSProtocol(BaseProtocol):
             C("reboot", "System", "Reboot the device"),
             # Recon — Wi-Fi (passive, listen-only)
             C("scan", "Recon-WiFi", "Passive Wi-Fi AP scan"),
-            C("sniff", "Recon-WiFi", "Passive packet monitor (frame-type tally)", args="[seconds] [channel]"),
+            # stream=True: a continuous packet monitor -> high-bandwidth. Gated on a LoRa/compact relay
+            # link (LxveNode) where the link can't carry it; unaffected on USB/Wi-Fi.
+            C("sniff", "Recon-WiFi", "Passive packet monitor (frame-type tally)", args="[seconds] [channel]",
+              stream=True),
             C("stations", "Recon-WiFi", "Passive client-station scan", args="[seconds] [channel]"),
             C("probes", "Recon-WiFi", "Probe-request SSID logger", args="[seconds] [channel]"),
-            C("capture", "Recon-WiFi", "EAPOL/PMKID capture -> hashcat 22000", args="[seconds] [channel]"),
-            C("wardrive", "Recon-WiFi", "Wardrive CSV export (bssid,ssid,ch,rssi,auth)"),
+            # stream=True: live EAPOL/PMKID capture (produces a pcap firehose) — gated on a LoRa relay link.
+            C("capture", "Recon-WiFi", "EAPOL/PMKID capture -> hashcat 22000", args="[seconds] [channel]",
+              stream=True),
+            # stream=True: a wardrive CSV tail streams a row per AP seen — gated on a LoRa relay link.
+            C("wardrive", "Recon-WiFi", "Wardrive CSV export (bssid,ssid,ch,rssi,auth)", stream=True),
             # Recon — BLE / add-on radios
             C("blescan", "Recon-BLE", "BLE device scan (+vendor/appearance/service-UUIDs)", args="[seconds]"),
-            C("blewardrive", "Recon-BLE", "BLE wardrive CSV (addr,name,rssi,vendor,tracker)"),
+            C("blewardrive", "Recon-BLE", "BLE wardrive CSV (addr,name,rssi,vendor,tracker)", stream=True),
             C("subghz", "Recon-Radio", "CC1101 sub-GHz (add-on module)",
               args="begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] | replay <gdo0> | end"),
             C("nrf24", "Recon-Radio", "nRF24 2.4GHz (add-on module)",

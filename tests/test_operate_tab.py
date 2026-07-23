@@ -308,3 +308,84 @@ def test_arming_firmware_still_shows_arm_box_and_gates_tx(qapp):
     # LxveOS arms -> the arm box is shown (not hidden) and offensive TX stays locked until ARMED.
     assert not tab._arm_box.isHidden()
     assert all(not b.isEnabled() for b in tab._tx_buttons)
+
+
+# ── LxveNode Link strip: read-only tier/quality telemetry, hidden without a relay link ────────
+
+def test_link_strip_hidden_when_device_has_no_link(qapp):
+    from src.models.device import Device
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    tab = _tab(dev)
+    # A plain USB target reports no link -> the strip is explicitly hidden (not just off-screen).
+    assert tab._link_label.isHidden()
+
+
+def test_link_strip_shows_tier_when_a_relay_link_is_reported(qapp):
+    from src.models.device import Device
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    tab = _tab(dev)
+    dev.apply_link_state({"link_event": "link", "tier": "lora", "rssi": -104,
+                          "dr": "sf9bw125", "up": True})
+    tab._refresh()
+    assert not tab._link_label.isHidden()
+    assert "LoRa" in tab._link_label.text()
+    assert "sf9bw125" in tab._link_label.text()
+
+
+# ── Tier-aware poll cadence: the timer lengthens on a constrained LoRa link ────────────────────
+
+def test_poll_interval_is_base_without_a_link(qapp):
+    from src.models.device import Device
+    from src.ui.qt.link_strip import POLL_BASE_MS
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    tab = _tab(dev)
+    assert tab._timer.interval() == POLL_BASE_MS
+
+
+def test_poll_interval_throttles_on_a_lora_link_and_recovers(qapp):
+    from src.models.device import Device
+    from src.ui.qt.link_strip import POLL_BASE_MS, POLL_THROTTLED_MS
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    tab = _tab(dev)
+    dev.apply_link_state({"link_event": "link", "tier": "lora", "up": True})
+    tab._refresh()
+    assert tab._timer.interval() == POLL_THROTTLED_MS   # constrained mesh link -> back off the poll
+    # Failover back to Wi-Fi restores the fast cadence (tracked off the `tier` frame's to= field).
+    dev.apply_link_state({"link_event": "tier", "from": "lora", "to": "wifi", "reason": "rssi"})
+    tab._refresh()
+    assert tab._timer.interval() == POLL_BASE_MS
+
+
+# ── Tier-aware stream gate: high-bandwidth verbs off on LoRa, live on Wi-Fi ────────────────────
+
+def test_stream_buttons_disabled_on_a_lora_link(qapp):
+    from src.models.device import Device
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    tab = _tab(dev)
+    assert tab._stream_buttons, "lxveos marks sniff/capture/wardrive as stream verbs"
+    # On Wi-Fi (or no link) a connected device's recon-stream verbs are live...
+    dev.apply_link_state({"link_event": "link", "tier": "wifi", "up": True})
+    tab._refresh()
+    assert all(b.isEnabled() for b in tab._stream_buttons)
+    # ...but a constrained LoRa link disables them (the link can't carry a live capture/monitor).
+    dev.apply_link_state({"link_event": "tier", "from": "wifi", "to": "lora", "reason": "rssi"})
+    tab._refresh()
+    assert all(not b.isEnabled() for b in tab._stream_buttons)
+    assert "LoRa link" in tab._stream_buttons[0].toolTip()
+
+
+def test_stream_gate_does_not_touch_non_stream_verbs(qapp):
+    from src.models.device import Device
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    tab = _tab(dev)
+    dev.apply_link_state({"link_event": "link", "tier": "lora", "up": True})
+    tab._refresh()
+    # A passive non-stream recon verb (e.g. `scan`) stays enabled on LoRa — only the firehose is gated.
+    non_stream_safe = [b for b in tab._safe_buttons if b not in tab._stream_buttons]
+    assert non_stream_safe and all(b.isEnabled() for b in non_stream_safe)

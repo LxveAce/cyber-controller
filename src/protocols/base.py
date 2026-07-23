@@ -37,6 +37,13 @@ class CommandInfo:
             "illegal-tx" = transmission that is illegal in most jurisdictions
             (e.g. broadband jamming). The UI gates non-empty values behind a
             confirmation unless the user has suppressed warnings.
+        stream: True for a high-bandwidth STREAM verb (live pcap / packet
+            monitor / sniff dump / wardrive tail / video) that a constrained
+            LoRa/compact relay link (LxveNode) can't carry. The Operate console
+            disables these buttons when the active device is on such a link
+            (see ``src.ui.qt.link_strip.stream_blocked``). Default False, so
+            every non-streaming verb — and every firmware that never sets it —
+            is unaffected; the flag is inert on a normal USB/Wi-Fi link.
     """
 
     name: str
@@ -44,6 +51,7 @@ class CommandInfo:
     description: str = ""
     args: str = ""
     danger: str = ""
+    stream: bool = False
 
 
 class BaseProtocol(ABC):
