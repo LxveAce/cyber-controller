@@ -414,7 +414,13 @@ class FlashTab(QWidget):
         )
         self._btn_erase.clicked.connect(self._on_erase)
         btn_col.addWidget(self._btn_erase)
+        # Cluster the three actions at the top so they line up with the card headers instead of
+        # drifting apart down the full column height.
+        btn_col.addStretch(1)
 
+        # Uniform width so the action column reads as one group, not three stray buttons.
+        for _b in (self._btn_flash, self._btn_backup, self._btn_erase):
+            _b.setMinimumWidth(120)
         top.addLayout(btn_col)
         root.addLayout(top)
 

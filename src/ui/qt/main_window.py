@@ -420,6 +420,8 @@ class CyberControllerWindow(QMainWindow):
 
         # Device list
         self._sidebar_device_list = QListWidget()
+        # Elide long device rows instead of growing a horizontal scrollbar in the narrow sidebar.
+        self._sidebar_device_list.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self._sidebar_device_list.currentItemChanged.connect(self._on_sidebar_device_selected)
         # Route a sidebar device pick to the Devices tab so the selection actually drives something
         # (focus that device / make it the active device). The slot guards on _device_tab existing,
@@ -427,8 +429,8 @@ class CyberControllerWindow(QMainWindow):
         self.device_selected.connect(self._focus_device_in_devices_tab)
         sidebar_layout.addWidget(self._sidebar_device_list)
 
-        # Quick-action buttons
-        quick_actions = QHBoxLayout()
+        # Quick-action buttons — stacked so the labels don't clip when the sidebar is narrow.
+        quick_actions = QVBoxLayout()
         quick_actions.setContentsMargins(4, 4, 4, 4)
         quick_actions.setSpacing(4)
 

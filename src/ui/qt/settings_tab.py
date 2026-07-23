@@ -100,6 +100,9 @@ class SettingsTab(QWidget):
         serial_card, serial_outer = _make_card("Serial Defaults")
         serial_form = QFormLayout()
         serial_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+        # Keep the field at its natural width (a baud value is 6 digits) instead of stretching it
+        # across the whole card with the value hugging the left edge.
+        serial_form.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
         self._baud_combo = QComboBox()
         self._baud_combo.setEditable(True)
         self._baud_combo.setMinimumWidth(120)
@@ -112,6 +115,7 @@ class SettingsTab(QWidget):
         flash_card, flash_outer = _make_card("Flash Defaults")
         flash_form = QFormLayout()
         flash_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+        flash_form.setFieldGrowthPolicy(QFormLayout.FieldsStayAtSizeHint)
         self._flash_baud_combo = QComboBox()
         self._flash_baud_combo.setEditable(True)
         self._flash_baud_combo.setMinimumWidth(120)

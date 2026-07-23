@@ -226,7 +226,7 @@ class DeviceTab(QWidget):
         left_scroll = QScrollArea()
         left_scroll.setWidgetResizable(True)
         left_scroll.setFrameShape(QFrame.NoFrame)
-        left_scroll.setMinimumWidth(160)
+        left_scroll.setMinimumWidth(200)
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
