@@ -65,12 +65,33 @@ FIRMWARE_SIGNATURES: Dict[str, str] = {
     # "LxveOS vX.Y" banner. The protocol's identify() is the primary detector (handshake.detect_firmware);
     # this regex covers the scan_ports / post-probe re-detect fallback that keys off match_firmware.
     "lxveos":     r"LXVEOS/\d|LxveOS(?:\s+v?([\d.]+))?",
+    # Biscuit Pro — a closed 2-ESP appliance (WROOM BLE-gateway + ESP32-C5 scanner) running its OWN custom
+    # firmware, NOT Marauder. Identified from the real boot banner (HIL 2026-07-23,
+    # command-center hil/biscuit-pro-serial-transcript-2026-07-23.txt). It is driven ONLY over BLE-GATT by
+    # its phone app — NEITHER USB port exposes a serial command CLI. Detect it so CC names it correctly AND
+    # knows never to send it serial verbs (see NON_SERIAL_CLI_FIRMWARE / has_serial_cli).
+    "biscuit":    r"BISCUIT V\d|Biscuit Pro|Ready for commands from WROOM",
 }
 
 # compiled once
 _SIG_COMPILED: Dict[str, re.Pattern] = {
     name: re.compile(pat, re.IGNORECASE) for name, pat in FIRMWARE_SIGNATURES.items()
 }
+
+# Detected firmwares that expose NO serial command CLI — they run, but are driven over another transport
+# (BLE / the app), so their USB is a boot/debug console only. CC must DETECT + label them, but NEVER send
+# them serial verbs: a blind write no-ops silently and looks exactly like a dead control (the Biscuit bug).
+# Grounded in the HIL transcript, not an assumption.
+NON_SERIAL_CLI_FIRMWARE: frozenset = frozenset({"biscuit"})
+
+
+def has_serial_cli(firmware: Optional[str]) -> bool:
+    """Whether a firmware is driven by a serial command CLI (Marauder / GhostESP / LxveOS / ...).
+
+    False for a firmware detected as app/BLE-driven with no serial CLI (Biscuit), so callers can gate
+    blind command writes. False for None/unknown too — don't blast verbs at something we can't confirm
+    speaks a CLI (the user can still force a firmware explicitly). Route to this, not to guesswork."""
+    return bool(firmware) and firmware not in NON_SERIAL_CLI_FIRMWARE
 
 # chip identification from boot output
 _CHIP_PATTERNS: Dict[str, re.Pattern] = {
