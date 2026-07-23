@@ -14,6 +14,7 @@ import threading
 from typing import Any, Callable, Optional, TextIO
 
 from src.core.wardrive import MultiWardriveSession, scan_commands_for
+from src.protocols import driver_type_for
 
 
 class MultiWardriveController:
@@ -64,6 +65,15 @@ class MultiWardriveController:
                 self._gps_conn = None
         for b in self._boards:
             conn = cb = None
+            # Honesty guard: a device with no text CLI (a Biscuit BLE gateway, a Meshtastic protobuf stream,
+            # a stock touch-only board, ...) can't be commanded to wardrive over serial — sending it scan
+            # verbs is a silent no-op that just looks like a dead board. Skip it + record why, rather than
+            # blind-writing. text-cli firmwares — and unknown ones, which default to text-cli — are unaffected.
+            dt = driver_type_for(b["firmware"])
+            if dt != "text-cli":
+                self.errors.append((b["port"], f"{b['firmware']}: no serial command CLI "
+                                    f"(driver_type '{dt}') — can't wardrive over serial; skipped"))
+                continue
             try:
                 conn = self._dm.open_connection(b["port"], b["baud"], owner=self.OWNER)
                 cb = self._make_dev_cb(b["port"])

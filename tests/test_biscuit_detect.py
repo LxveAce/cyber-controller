@@ -44,6 +44,14 @@ def test_biscuit_not_misdetected_as_marauder():
     assert fw != "marauder"
 
 
+def test_biscuit_driver_type_is_controlmap():
+    # driver_type_for maps the detected Biscuit to a no-serial-channel type, so the EXISTING guards
+    # (handshake probe, multi-wardrive, network_tab badge) all treat it as "no CLI" without a parallel path.
+    from src.protocols import driver_type_for
+    assert driver_type_for("biscuit") == "controlmap"
+    assert driver_type_for("marauder") == "text-cli"   # a real serial CLI is unaffected
+
+
 def test_biscuit_ultra_matched_by_name():
     # No Ultra HIL transcript yet — the Ultra shares the Pro's dual-ESP BLE-controlled architecture
     # (biscuitshop.us: "extended range, SD storage, 3x battery"), so it's matched by name until a real

@@ -34,8 +34,8 @@ from src.protocols.flipper import FlipperProtocol
 from src.protocols.flock_you import FlockYouProtocol
 from src.protocols.ghost_esp import GhostESPProtocol
 from src.protocols.halehound import HaleHoundProtocol
-from src.protocols.lxveos import LxveOSProtocol
 from src.protocols.lxvenode import LxveNodeProtocol
+from src.protocols.lxveos import LxveOSProtocol
 from src.protocols.marauder import MarauderProtocol
 from src.protocols.meshtastic import MeshtasticProtocol
 from src.protocols.nrf_bluenullifier import NrfBlueNullifier2Protocol
@@ -212,11 +212,23 @@ def capabilities_for(name: str) -> "frozenset[str]":
         return frozenset()
 
 
+# Firmwares that CC DETECTS (device_detect) but that aren't protocol classes, and expose no serial command
+# channel — driven over BLE / their own app. Declared here so driver_type_for() returns the honest no-CLI
+# type instead of the "text-cli" default. Kept in sync with core.device_detect.NON_SERIAL_CLI_FIRMWARE.
+_DETECTED_NO_CLI_DRIVER_TYPE = {
+    "biscuit": "controlmap",   # Biscuit Pro/Ultra: BLE-app-driven, no USB serial CLI (HIL-verified 2026-07-23)
+}
+
+
 def driver_type_for(name: str) -> str:
     """The transport/driver kind CC uses to talk to a firmware: "text-cli" (a line-based command shell —
     the default), "stream" (a binary/framed link with no text command channel, e.g. Meshtastic protobuf), or
-    "controlmap" (no serial command channel at all, e.g. BlueJammer's web-UI control). Lets a node say
-    honestly whether it even has a sendable command channel. Falls back to "text-cli" for unknown firmwares."""
+    "controlmap" (no serial command channel at all — controlled by its own app / web UI, e.g. BlueJammer, the
+    Biscuit). Lets a node say honestly whether it even has a sendable command channel. Falls back to
+    "text-cli" for unknown firmwares."""
+    override = _DETECTED_NO_CLI_DRIVER_TYPE.get(name)
+    if override:
+        return override
     try:
         return getattr(get_protocol(name), "driver_type", "text-cli") or "text-cli"
     except Exception:  # noqa: BLE001

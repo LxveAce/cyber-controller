@@ -61,6 +61,21 @@ def _ctrl(dm, gps="COM_GPS"):
     return MultiWardriveController(dm, io.StringIO(), gps_port=gps)
 
 
+def test_no_cli_board_is_skipped_not_blind_written():
+    # A Biscuit (BLE-app-driven, driver_type 'controlmap', no serial CLI) added to a wardrive must NOT be
+    # blind-written scan verbs — that no-ops silently and looks like a dead board (the bug). It's skipped,
+    # recorded, and never opened; the real text-cli board still runs.
+    dm = _FakeDM()
+    c = _ctrl(dm)
+    c.add_board("COM3", firmware="marauder")
+    c.add_board("COM6", firmware="biscuit")              # WROOM BLE gateway — no serial CLI
+    c.start()
+    assert ("COM3", "wardrive-multi") in dm.opened       # the real CLI board is driven
+    assert "scanall" in dm.conns["COM3"].written
+    assert "COM6" not in dm.conns                         # the Biscuit is never opened / written
+    assert any(p == "COM6" and "no serial command CLI" in m for p, m in c.errors)
+
+
 def test_two_boards_share_one_gps_and_merge():
     dm = _FakeDM()
     c = _ctrl(dm)
