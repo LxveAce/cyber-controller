@@ -191,12 +191,16 @@ def test_analyze_surface_subtabs(qapp, isolated_settings):
     expected = ["Graph", "Cross-Comm", "Crack Lab"]
     if win._ble_analyzer is not None:
         expected.append("BLE Analyzer")
+    if win._wifi_analyzer is not None:
+        expected.append("Wi-Fi Analyzer")
     assert titles == expected
     assert surface.widget(0) is win._network_tab, "Graph sub-tab must be the NetworkTab object"
     assert surface.widget(1) is win._cross_comm_tab, "Cross-Comm sub-tab must be the CrossCommTab object"
     assert surface.widget(2) is win._crack_lab_tab, "Crack Lab sub-tab must be the CrackLabTab object"
     if win._ble_analyzer is not None:
         assert surface.widget(3) is win._ble_analyzer, "BLE Analyzer must be the BleAnalyzerTab object"
+    if win._wifi_analyzer is not None:
+        assert surface.widget(4) is win._wifi_analyzer, "Wi-Fi Analyzer must be the WifiAnalyzerTab"
     # These are sub-views now, not top-level; the old "Network" label is gone, replaced by "Analyze".
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
     for gone in ("Cross-Comm", "Crack Lab", "Graph", "Network"):

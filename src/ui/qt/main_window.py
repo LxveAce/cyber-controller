@@ -576,6 +576,13 @@ class CyberControllerWindow(QMainWindow):
         _ble_scan = BleScanController(self._broadcast) if BleAnalyzerTab is not None else None
         self._ble_analyzer = (BleAnalyzerTab(scan_controller=_ble_scan)
                               if BleAnalyzerTab is not None else None)
+        # Wi-Fi Analyzer (output view): the on-device Wi-Fi-analyzer visual — a channel-occupancy
+        # graph + an AP table (SSID/BSSID/channel/enc/clients/handshake), fed by ap_found / rogue_ap
+        # / client_found / handshake_captured / pmkid_captured events from EVERY scanning firmware via
+        # the ingestor tap (see _wire_wifi_analyzer). Awareness-only — it transmits nothing and has no
+        # scan control of its own, so it lives in Analyze next to the BLE Analyzer.
+        from src.ui.qt.wifi_analyzer_tab import WifiAnalyzerTab
+        self._wifi_analyzer = WifiAnalyzerTab() if WifiAnalyzerTab is not None else None
 
         # Operate — the live action loop.
         self._operate_surface = QTabWidget()
@@ -613,6 +620,9 @@ class CyberControllerWindow(QMainWindow):
         if self._ble_analyzer is not None:
             self._network_surface.addTab(self._ble_analyzer, label_icon("BLE Analyzer"), "BLE Analyzer")
             self._wire_ble_analyzer()   # tap ble_found events now the tab exists (see the method)
+        if self._wifi_analyzer is not None:
+            self._network_surface.addTab(self._wifi_analyzer, label_icon("Wi-Fi Analyzer"), "Wi-Fi Analyzer")
+            self._wire_wifi_analyzer()  # tap ap_found/handshake events now the tab exists (see the method)
         self._tabs.addTab(self._network_surface, label_icon("Analyze"), "Analyze")
 
         # (Mission Planner tab removed — was a non-functional "coming soon" placeholder; tracked as a
@@ -1313,6 +1323,41 @@ class CyberControllerWindow(QMainWindow):
         except Exception:  # noqa: BLE001 — analyzer wiring must never break app startup
             log.exception("BLE analyzer: failed to register ingestor observer")
 
+    def _wire_wifi_analyzer(self) -> None:
+        """Feed the Wi-Fi Analyzer tab from the ingestor's parsed-event stream. It fires on
+        the serial reader thread, so it emits a Qt signal to marshal each Wi-Fi event onto the GUI
+        thread before the tab folds it in. No-op if the tab or ingestor is unavailable."""
+        analyzer = getattr(self, "_wifi_analyzer", None)
+        ingestor = getattr(self, "_ingestor", None)
+        if analyzer is None or ingestor is None:
+            return
+        from PyQt5.QtCore import QObject
+        from PyQt5.QtCore import pyqtSignal as _sig
+
+        class _WifiEventSignal(QObject):
+            wifi_event = _sig(str, str, object)  # (port, event_type, event-data dict)
+
+        self._wifi_event_signal = _WifiEventSignal()
+        self._wifi_event_signal.wifi_event.connect(analyzer.on_wifi_event)
+
+        # The Wi-Fi discovery + capture events the AP view folds in
+        # (mirrors _event_to_target / _event_to_capture).
+        _wifi_types = frozenset({
+            "ap_found", "rogue_ap", "client_found", "handshake_captured", "pmkid_captured",
+        })
+
+        def _observer(ev, port):
+            # Serial-thread callback: keep only Wi-Fi events; emit queues onto the GUI thread.
+            et = getattr(ev, "event_type", "")
+            if et in _wifi_types:
+                self._wifi_event_signal.wifi_event.emit(port, et, getattr(ev, "data", {}) or {})
+
+        self._wifi_event_observer = _observer  # keep a strong ref so it isn't garbage-collected
+        try:
+            ingestor.add_event_observer(_observer)
+        except Exception:  # noqa: BLE001 — analyzer wiring must never break app startup
+            log.exception("Wi-Fi analyzer: failed to register ingestor observer")
+
     @pyqtSlot(str, str)
     def _pterm_on_line(self, port: str, line: str) -> None:
         """Handle a serial line from a device in the persistent terminal."""
@@ -1613,6 +1658,8 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("Crack Lab", lambda: self._show_subtab(self._network_surface, self._crack_lab_tab))
         if self._ble_analyzer is not None:
             self._palette.add_command("BLE Analyzer", lambda: self._show_subtab(self._network_surface, self._ble_analyzer))
+        if self._wifi_analyzer is not None:
+            self._palette.add_command("Wi-Fi Analyzer", lambda: self._show_subtab(self._network_surface, self._wifi_analyzer))
         self._palette.add_command("Open Settings", lambda: self._tabs.setCurrentWidget(self._settings_tab))
         self._palette.add_command("Dead Man's Switch Setup", self._on_suicide_setup)
         self._palette.add_command("Scan Ports", self._on_sidebar_scan)
