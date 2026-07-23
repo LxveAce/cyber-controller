@@ -65,12 +65,13 @@ FIRMWARE_SIGNATURES: Dict[str, str] = {
     # "LxveOS vX.Y" banner. The protocol's identify() is the primary detector (handshake.detect_firmware);
     # this regex covers the scan_ports / post-probe re-detect fallback that keys off match_firmware.
     "lxveos":     r"LXVEOS/\d|LxveOS(?:\s+v?([\d.]+))?",
-    # Biscuit Pro — a closed 2-ESP appliance (WROOM BLE-gateway + ESP32-C5 scanner) running its OWN custom
-    # firmware, NOT Marauder. Identified from the real boot banner (HIL 2026-07-23,
-    # command-center hil/biscuit-pro-serial-transcript-2026-07-23.txt). It is driven ONLY over BLE-GATT by
-    # its phone app — NEITHER USB port exposes a serial command CLI. Detect it so CC names it correctly AND
-    # knows never to send it serial verbs (see NON_SERIAL_CLI_FIRMWARE / has_serial_cli).
-    "biscuit":    r"BISCUIT V\d|Biscuit Pro|Ready for commands from WROOM",
+    # Biscuit family (Pro + Ultra) — a closed dual-ESP appliance (WROOM BLE-gateway + ESP32-C5 scanner,
+    # "native 5GHz + WiFi 6, app-controlled"; the Ultra adds SD/battery/range) running its OWN custom
+    # firmware, NOT Marauder, driven ONLY over BLE-GATT — NEITHER USB port exposes a serial command CLI.
+    # The Pro is HIL-verified (2026-07-23, command-center hil/biscuit-pro-serial-transcript-2026-07-23.txt);
+    # the Ultra shares the architecture and is matched by name until its own HIL confirms. Detect it so CC
+    # names it correctly AND knows never to send it serial verbs (see NON_SERIAL_CLI_FIRMWARE / has_serial_cli).
+    "biscuit":    r"\bBiscuit\s+(?:Pro|Ultra)\b|BISCUIT\s+V\d|Ready for commands from WROOM",
 }
 
 # compiled once

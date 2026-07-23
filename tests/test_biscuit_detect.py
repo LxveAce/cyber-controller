@@ -42,3 +42,12 @@ def test_biscuit_not_misdetected_as_marauder():
     # The old assumption was "biscuits use marauder"; the banner must NOT match marauder.
     fw, _ = match_firmware(WROOM_BANNER)
     assert fw != "marauder"
+
+
+def test_biscuit_ultra_matched_by_name():
+    # No Ultra HIL transcript yet — the Ultra shares the Pro's dual-ESP BLE-controlled architecture
+    # (biscuitshop.us: "extended range, SD storage, 3x battery"), so it's matched by name until a real
+    # Ultra capture confirms. Same family => same no-serial-CLI treatment.
+    fw, _ = match_firmware("  BISCUIT V2 - WROOM BLE Gateway\r\n  Device name: Biscuit Ultra\r\n")
+    assert fw == "biscuit"
+    assert has_serial_cli("biscuit") is False
