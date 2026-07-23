@@ -72,7 +72,7 @@ def test_real_status_line_types_live_values():
     assert d["fw"] == "0.1.0-m0"
     assert d["caps"] == 0x007 and d["caps_tokens"] == ["wifi", "ble", "bt_classic"]
     # the LIVE op tally + heap (differ from the synthetic fixture — this pins the real values)
-    assert d["ops"] == {"ready": 17, "planned": 7, "unavailable": 12}
+    assert d["ops"] == {"ready": 17, "planned": 7, "attachable_unavailable": 12}
     assert d["heap"] == 157244
     # arm gate + TX capability: the board is TX-capable but currently SAFE
     assert d["arm"] == "safe" and d["tx"] is True
@@ -160,6 +160,6 @@ def test_real_boot_to_arm_session_drives_device_state():
     assert dev.runtime_capabilities == frozenset({"wifi", "ble", "bt_classic"})
     assert dev.telemetry["board"] == "bare_esp32_headless"
     assert dev.telemetry["heap"] == 157244
-    assert dev.telemetry["ops"] == {"ready": 17, "planned": 7, "unavailable": 12}
+    assert dev.telemetry["ops"] == {"ready": 17, "planned": 7, "attachable_unavailable": 12}
     # arm gate progressed pending -> armed -> safe; the lamp reads the final SAFE
     assert dev.arm_state == "safe"

@@ -74,6 +74,7 @@ _EVENT_MAP: dict[str, tuple[str, "frozenset[str]", "frozenset[str]"]] = {
     "ap":       ("ap_found",           frozenset({"ch", "rssi"}),                    frozenset({"ssid"})),
     "sta":      ("client_found",       frozenset({"rssi", "frames"}),                frozenset({"essid"})),
     "probe":    ("probe_request",      frozenset({"rssi", "seen"}),                  frozenset({"ssid"})),
+    "sniff":    ("wifi_sniff",         frozenset({"total", "mgmt", "data", "ctrl", "misc", "dwells"}), frozenset()),
     "ble":      ("ble_found",          frozenset({"rssi", "appr", "company", "fp", "tracker"}), frozenset({"name"})),
     "hs":       ("handshake_captured", frozenset(),                                  frozenset({"essid"})),
     "pcap":     ("pcap_saved",         frozenset({"bytes"}),                         frozenset()),
@@ -133,12 +134,19 @@ def _coerce_status_field(key: str, val: str):
             return int(val)
         except ValueError:
             return val
-    if key == "ops":  # ready/planned/unavailable operation tally
+    if key == "ops":  # ready/planned/(attachable+unavailable) operation tally. The firmware folds the
+        # attachable ops (runnable once an add-on module is wired) into the 3rd number so the tuple stays
+        # three fields for older hosts; the separate `ops_attach=` field breaks out the attachable part.
         parts = val.split("/")
         # len<=20 bounds int() against a hostile 4301-digit run (isdigit() alone imposes no length
         # limit, so a huge run would pass the guard and raise ValueError on int()).
         if len(parts) == 3 and all(p.isdigit() and len(p) <= 20 for p in parts):
-            return {"ready": int(parts[0]), "planned": int(parts[1]), "unavailable": int(parts[2])}
+            return {"ready": int(parts[0]), "planned": int(parts[1]),
+                    "attachable_unavailable": int(parts[2])}
+        return val
+    if key == "ops_attach":  # of the ops= 3rd number, how many are attachable (wire an add-on module)
+        if val.isdigit() and len(val) <= 20:  # same length guard as ops= against a hostile digit run
+            return int(val)
         return val
     if key == "arm":  # runtime arm-gate state. A build-time TX-lockout shows up as tx=0, so arm= is
         # one of the three runtime states. The allow-list documents the known set; an unknown/future
@@ -285,7 +293,7 @@ class LxveOSProtocol(BaseProtocol):
             C("status", "System", "One machine-readable status line (CC bridge format)"),
             C("bridge", "System", "Toggle LXVEOS/1 event emission for the CC bridge", args="on|off|status"),
             C("caps", "System", "List the active capability registry"),
-            C("features", "System", "Operation catalog (ready/planned/unavailable per op)"),
+            C("features", "System", "Operation catalog (ready/planned/attachable/unavailable per op)"),
             C("sysinfo", "System", "Chip / reset-reason / heap system details"),
             C("loglevel", "System", "Set ESP-IDF log verbosity", args="<tag|*> <level>"),
             C("nvs", "System", "Operator key/value store", args="get|set <key> [value]"),

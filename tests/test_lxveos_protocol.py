@@ -50,8 +50,33 @@ def test_status_bridge_line_parses_with_typed_fields():
     assert d["fw"] == "0.1.0-m0" and d["panel"] == "none"
     assert d["caps"] == 0x007 and isinstance(d["caps"], int)  # hex bitmask -> int
     assert d["caps_tokens"] == ["wifi", "ble", "bt_classic"]  # decoded from the live COM23 mask
-    assert d["ops"] == {"ready": 12, "planned": 3, "unavailable": 6}
+    assert d["ops"] == {"ready": 12, "planned": 3, "attachable_unavailable": 6}
     assert d["heap"] == 184988 and isinstance(d["heap"], int)
+
+
+def test_status_ops_attach_field_typed():
+    # The firmware folds attachable ops into the ops= 3rd number (kept a 3-tuple for older hosts) and
+    # reports the attachable subcount in a separate ops_attach= field. Parse it to an int; the ops dict's
+    # 3rd key is attachable_unavailable so its meaning is not misstated.
+    p = LxveOSProtocol()
+    d = p.parse_line(_STATUS + " ops_attach=2").data
+    assert d["ops"] == {"ready": 12, "planned": 3, "attachable_unavailable": 6}
+    assert d["ops_attach"] == 2 and isinstance(d["ops_attach"], int)
+    # a malformed or hostile-length value stays a raw string, never crashes the parser
+    assert p.parse_line(_STATUS + " ops_attach=x").data["ops_attach"] == "x"
+    assert p.parse_line(_STATUS + f" ops_attach={'9' * 40}").data["ops_attach"] == "9" * 40
+
+
+def test_sniff_event_counts_are_typed_ints():
+    # `sniff` emits a passive 802.11 frame-type tally (verbatim firmware — cmd_sniff): total/mgmt/data/
+    # ctrl/misc + channel dwells. All are uint counts and must type to int for the dashboard.
+    p = LxveOSProtocol()
+    ev = p.parse_line("LXVEOS/1 sniff total=210 mgmt=140 data=55 ctrl=10 misc=5 dwells=8")
+    assert ev is not None and ev.event_type == "wifi_sniff"
+    d = ev.data
+    for key, want in {"total": 210, "mgmt": 140, "data": 55,
+                      "ctrl": 10, "misc": 5, "dwells": 8}.items():
+        assert d[key] == want and isinstance(d[key], int), f"{key} should be int, got {d[key]!r}"
 
 
 def test_status_tx_and_arm_fields_typed():

@@ -1047,7 +1047,7 @@ class DeviceTab(QWidget):
         ops = t.get("ops")
         if isinstance(ops, dict):
             parts.append(f"ops {ops.get('ready', 0)}/{ops.get('planned', 0)}/"
-                         f"{ops.get('unavailable', 0)} (ready/planned/unavailable)")
+                         f"{ops.get('attachable_unavailable', 0)} (ready/planned/attachable+unavailable)")
         heap = t.get("heap")
         if isinstance(heap, int):
             parts.append(f"heap {heap // 1024} KB")

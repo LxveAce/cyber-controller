@@ -3,6 +3,13 @@
 All notable changes to Cyber Controller are documented here. This project adheres to
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+- **LxveOS bridge: attachable-ops split + sniff telemetry.** The status parser now reads the firmware's new
+  `ops_attach` field (how many of the `ops=` third number are attachable, i.e. runnable once an add-on module
+  is wired, versus truly unavailable), and the `LXVEOS/1 sniff` frame-type tally event (total / mgmt / data /
+  ctrl / misc + channel dwells). The `ops=` third field is relabelled attachable+unavailable to match what the
+  firmware reports, so the device panel no longer calls it just "unavailable".
+
 ## [1.9.0-beta] — 2026-07-21
 A broad feature beta. Backend/serial control only — CC issues firmware CLI commands
 and never authors radio frames.

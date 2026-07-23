@@ -15,7 +15,7 @@ from src.protocols.lxveos import LxveOSProtocol
 # Verbatim COM23 captures (LxveOS 0.1.0-m0, bare_esp32_headless) — as in the protocol tests.
 _STATUS = (
     "LXVEOS/1 status board=bare_esp32_headless chip=esp32 ui=headless fw=0.1.0-m0 "
-    "panel=none caps=0x007 ops=12/3/6 heap=184988"
+    "panel=none caps=0x007 ops=12/3/6 ops_attach=2 heap=184988"
 )
 _INFO = [
     "fw    : LxveOS 0.1.0-m0", "board : bare_esp32_headless", "chip  : esp32", "ui    : headless",
@@ -72,7 +72,8 @@ def test_apply_device_info_from_status_sets_runtime_caps_and_telemetry():
     assert dev.telemetry["chip"] == "esp32"
     assert dev.telemetry["ui"] == "headless"
     assert dev.telemetry["panel"] == "none"
-    assert dev.telemetry["ops"] == {"ready": 12, "planned": 3, "unavailable": 6}
+    assert dev.telemetry["ops"] == {"ready": 12, "planned": 3, "attachable_unavailable": 6}
+    assert dev.telemetry["ops_attach"] == 2
     assert dev.telemetry["heap"] == 184988
     assert dev.telemetry["proto_version"] == 1
     # The raw bitmask + decoded tokens are NOT duplicated into telemetry (they drive runtime caps).

@@ -85,7 +85,7 @@ class Device:
     # statically declares nothing still surfaces wifi/ble once spoken. Empty until one lands.
     runtime_capabilities: "frozenset[str]" = frozenset()
     #: Live device telemetry from the same device_info (fw version, board, chip, ui, panel, the
-    #: ready/planned/unavailable ops tally, free heap). Display-only; refreshed on each device_info.
+    #: ready/planned/attachable+unavailable ops tally + ops_attach, heap). Refreshed per poll.
     telemetry: dict = field(default_factory=dict)
     #: Offensive-TX arm state a firmware reports over serial (an ``arm_state`` event from LxveOS
     #: ``arm``/``disarm``): "" (unknown / never reported), "safe", "pending", "armed", or
@@ -109,7 +109,8 @@ class Device:
 
     #: device_info keys kept as telemetry — identifying status-line fields EXCEPT the
     #: raw caps bitmask + its decoded tokens (those drive runtime_capabilities instead).
-    _TELEMETRY_KEYS = ("fw", "board", "chip", "ui", "panel", "ops", "heap", "proto_version")
+    _TELEMETRY_KEYS = ("fw", "board", "chip", "ui", "panel", "ops", "ops_attach", "heap",
+                       "proto_version")
 
     def __post_init__(self) -> None:
         if not self.name:

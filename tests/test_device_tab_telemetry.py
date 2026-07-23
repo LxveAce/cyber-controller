@@ -42,7 +42,7 @@ def test_telemetry_line_renders_full_status_fields():
     assert "bare_esp32_headless/esp32" in line
     assert "fw 0.1.0-m0" in line
     assert "ui headless" in line
-    assert "ops 12/3/6 (ready/planned/unavailable)" in line
+    assert "ops 12/3/6 (ready/planned/attachable+unavailable)" in line
     assert "heap 180 KB" in line  # 184988 // 1024
 
 
@@ -82,7 +82,7 @@ def test_telemetry_label_shows_connected_device_telemetry(qapp):
     tab = _tab_with_device(dev)
     tab._update_telemetry()
     txt = tab._telemetry_label.text()
-    assert "heap 180 KB" in txt and "ops 12/3/6 (ready/planned/unavailable)" in txt
+    assert "heap 180 KB" in txt and "ops 12/3/6 (ready/planned/attachable+unavailable)" in txt
 
 
 def test_incoming_line_refreshes_telemetry_from_device(qapp):
