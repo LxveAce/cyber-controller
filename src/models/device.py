@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 
@@ -106,6 +107,9 @@ class Device:
     #: merged latest-wins so a `stats`- or `tier`-only line updates its fields without clearing the rest.
     #: Feeds the Operate/Devices Link strip; empty until a relay node reports a link.
     link: dict = field(default_factory=dict)
+    #: Monotonic time the last link_state frame was absorbed (0.0 = never). Lets the Link strip show a
+    #: relay that has gone silent (no explicit DOWN frame) as stale instead of indefinitely live.
+    link_ts: float = 0.0
 
     #: device_info keys kept as telemetry — identifying status-line fields EXCEPT the
     #: raw caps bitmask + its decoded tokens (those drive runtime_capabilities instead).
@@ -196,6 +200,9 @@ class Device:
         True if anything changed. A non-dict is ignored (never clears a live link indicator)."""
         if not isinstance(data, dict):
             return False
+        # Stamp last-heard on every valid frame (even an identical one — the relay is still alive) so
+        # the Link strip can render a relay that has gone silent as stale instead of forever-live.
+        self.link_ts = time.monotonic()
         merged = dict(self.link)
         merged.update(data)
         if merged == self.link:

@@ -21,6 +21,7 @@ gate itself transmits nothing — it just toggles whether the firmware will hono
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any, Optional
 
 from PyQt5.QtCore import Qt, QTimer
@@ -45,6 +46,7 @@ from src.core import safety
 from src.protocols import PROTOCOL_DISPLAY_NAMES, get_protocol
 from src.ui.qt.arm_lamp import arm_lamp_render
 from src.ui.qt.link_strip import (
+    LINK_STALE_S,
     POLL_BASE_MS,
     link_strip_render,
     poll_interval_ms,
@@ -522,7 +524,11 @@ class OperateTab(QWidget):
         # connected/armed logic AND is additionally gated by the link tier. Tooltips are rebuilt from
         # base_tip each pass (never appended in place) so a hint can't accumulate across refreshes.
         link = getattr(dev, "link", {}) if dev is not None else {}
-        stream_off = stream_blocked(link)
+        # A relay that has gone silent (no frame within LINK_STALE_S) — its tier/quality are now old, so
+        # treat the link as stale: the strip shows it muted, the poll throttles, and streams are gated.
+        link_ts = getattr(dev, "link_ts", 0.0) if dev is not None else 0.0
+        stale_link = bool(link_ts) and (time.monotonic() - link_ts) > LINK_STALE_S
+        stream_off = stream_blocked(link, stale_link)
         stream_hint = "\nLoRa link: compact commands only — move to Wi-Fi range to stream."
         for b in self._stream_buttons:
             suffix = ""
@@ -533,15 +539,15 @@ class OperateTab(QWidget):
                 suffix += stream_hint
             b.setToolTip((b.property("base_tip") or "") + suffix)
         # Link strip + tier-aware poll cadence, both derived from the same read-only Device.link.
-        self._update_link_strip(link)
-        self._apply_poll_interval(link)
+        self._update_link_strip(link, stale_link)
+        self._apply_poll_interval(link, stale_link)
 
-    def _update_link_strip(self, link: dict) -> None:
+    def _update_link_strip(self, link: dict, stale: bool = False) -> None:
         """Repaint the LxveNode Link strip from the active Device's (read-only) link state. Hidden when
-        the device reports no link; otherwise a compact tier/quality/failover/role one-liner. Re-renders
-        only when the derived view changes (cheap on the Qt thread), mirroring the arm-lamp idiom. The
-        strip is display-only telemetry — it drives nothing."""
-        view = link_strip_render(link if isinstance(link, dict) else {})
+        the device reports no link; otherwise a compact tier/quality/failover/role one-liner (muted +
+        "stale" when the relay has gone silent). Re-renders only when the derived view changes (cheap on
+        the Qt thread), mirroring the arm-lamp idiom. The strip is display-only telemetry — it drives nothing."""
+        view = link_strip_render(link if isinstance(link, dict) else {}, stale)
         if view == self._last_link_view:
             return
         self._last_link_view = view
@@ -550,11 +556,12 @@ class OperateTab(QWidget):
             self._link_label.setText(view.text)
             self._link_label.setStyleSheet(f"color:{view.color};font-size:9pt;font-weight:bold;")
 
-    def _apply_poll_interval(self, link: dict) -> None:
-        """Lengthen the status-poll cadence on a constrained LoRa/compact relay link so the auto-``status``
-        probe doesn't saturate the mesh (base 2 s on USB/Wi-Fi, ~15 s on LoRa). The decision is the pure
-        :func:`poll_interval_ms`; this only applies the result to the timer when it changes."""
-        want = poll_interval_ms(link if isinstance(link, dict) else {})
+    def _apply_poll_interval(self, link: dict, stale: bool = False) -> None:
+        """Lengthen the status-poll cadence on a constrained LoRa/compact relay link (or a stale one) so
+        the auto-``status`` probe doesn't saturate the mesh / hammer a dead relay (base 2 s on USB/Wi-Fi,
+        ~15 s on LoRa/stale). The decision is the pure :func:`poll_interval_ms`; this only applies the
+        result to the timer when it changes."""
+        want = poll_interval_ms(link if isinstance(link, dict) else {}, stale=stale)
         if want != self._poll_ms:
             self._poll_ms = want
             self._timer.setInterval(want)

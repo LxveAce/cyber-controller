@@ -43,6 +43,12 @@ _LOW_BANDWIDTH_TIERS = frozenset({"lora"})
 POLL_BASE_MS = 2000
 POLL_THROTTLED_MS = 15000
 
+# A relay reports its link roughly on the status-poll cadence. If no frame has been heard for this long
+# the link is treated as STALE — a relay gone silent without an explicit DOWN frame — so the strip stops
+# showing a live green tier and CC stops trusting the (now old) tier for the poll/stream decisions.
+# Generous enough to clear the slowest (LoRa, ~15 s) cadence without false-flagging a healthy slow link.
+LINK_STALE_S = 45.0
+
 
 @dataclass(frozen=True)
 class LinkStripView:
@@ -79,23 +85,25 @@ def _is_constrained(link: dict) -> bool:
 
 
 def poll_interval_ms(link: dict, base_ms: int = POLL_BASE_MS,
-                     throttled_ms: int = POLL_THROTTLED_MS) -> int:
+                     throttled_ms: int = POLL_THROTTLED_MS, stale: bool = False) -> int:
     """Tier-aware status-poll cadence in ms.
 
     On a low-bandwidth far/relayed link (LoRa, or a firmware-declared ``mode=compact``) CC lengthens the
     poll so the ``status`` probe itself doesn't saturate a constrained mesh link; on Wi-Fi/ESP-NOW-near —
-    or a plain non-relayed device with no link dict at all — it polls at the normal cadence. Pure."""
-    return throttled_ms if _is_constrained(link) else base_ms
+    or a plain non-relayed device with no link dict at all — it polls at the normal cadence. A ``stale``
+    link (a relay gone silent) also throttles — don't hammer a relay that may be gone. Pure."""
+    return throttled_ms if (stale or _is_constrained(link)) else base_ms
 
 
-def stream_blocked(link: dict) -> bool:
+def stream_blocked(link: dict, stale: bool = False) -> bool:
     """Whether high-bandwidth "stream" verbs (live pcap / packet monitor / sniff dump / wardrive tail /
     video) should be disabled for the active link.
 
-    True on a constrained LoRa/compact relay link, False on Wi-Fi/ESP-NOW-near or a plain non-relayed
+    True on a constrained LoRa/compact relay link OR a ``stale`` link (a relay gone silent — don't start
+    a firehose over a link that may be dead), False on a fresh Wi-Fi/ESP-NOW-near or plain non-relayed
     device. The relayed target's console text still streams back either way (it is compact line text) —
     only the firehose verbs the link can't carry are gated. Pure."""
-    return _is_constrained(link)
+    return stale or _is_constrained(link)
 
 
 def _badge_label(tier: str) -> str:
@@ -150,8 +158,10 @@ def _role_peer_str(link: dict) -> str:
     return role or peer
 
 
-def link_strip_render(link: dict) -> LinkStripView:
-    """Derive the Link strip from a ``Device.link`` dict.
+def link_strip_render(link: dict, stale: bool = False) -> LinkStripView:
+    """Derive the Link strip from a ``Device.link`` dict. ``stale`` (set by the caller from the link's
+    last-heard time) renders the last-known tier muted and marked "stale" — a relay gone silent without a
+    DOWN frame — instead of a live green tier.
 
     Hidden (``visible=False``) when the device reported no link — a plain USB target that isn't relayed
     never grows a strip. Otherwise a compact, single line: an active-tier badge, the link quality, the
@@ -169,6 +179,11 @@ def link_strip_render(link: dict) -> LinkStripView:
     if link.get("up") is False:
         parts.append(f"⛌ {badge} DOWN")
         color = _DOWN
+    elif stale:
+        # A relay that stopped reporting without an explicit DOWN frame: show the last-known tier
+        # muted + marked stale, not a live green tier — it may be gone and the quality below is old.
+        parts.append(f"⚠ {badge} stale")
+        color = _MUTED
     else:
         parts.append(f"▮ {badge}")
 

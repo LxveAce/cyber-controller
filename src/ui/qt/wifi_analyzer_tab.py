@@ -310,8 +310,12 @@ try:
                     "Not scanning. Start a Wi-Fi scan on a connected device to see access points.")
             else:
                 strongest = "—" if s["strongest"] is None else f"{s['strongest']} dBm"
+                # If no scan has fed us within the active window, the counts are last-seen, not live
+                # (an AP stays "fresh" for 30s but "receiving" is a 10s judgement). Say so, so a
+                # stopped scan doesn't read as a live one during that gap.
+                prefix = "" if receiving else "Scan stopped · showing last seen — "
                 self._header.setText(
-                    f"{s['fresh']} present · {s['total']} seen · {s['open']} open · "
+                    f"{prefix}{s['fresh']} present · {s['total']} seen · {s['open']} open · "
                     f"{s['handshakes']} handshakes · {s['clients']} clients · top {strongest}")
             self._update_stats(s, receiving)
             self._fill_table(now)

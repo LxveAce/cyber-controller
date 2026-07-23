@@ -244,10 +244,10 @@ class WifiAnalyzerModel:
         self._max_aps = max(1, int(max_aps))
         self._max_clients_per_ap = max(1, int(max_clients_per_ap))
         self._client_macs: "Set[str]" = set()   # global distinct stations (incl. unattributed ones)
-        # ESSID → capture kind ("eapol" / "pmkid") for BSSID-less captures
-        # (LxveOS hs), so an AP with
-        # that SSID seen later still gets flagged.
-        self._essid_captures: "Dict[str, str]" = {}
+        # ESSID → set of capture kinds ({"eapol", "pmkid"}) for BSSID-less captures (LxveOS hs), so
+        # an AP with that SSID seen later gets flagged for EACH kind. Bounded on insert (see
+        # _remember_essid_capture) so a flood of distinct fake SSIDs can't grow it without limit.
+        self._essid_captures: "Dict[str, Set[str]]" = {}
 
     # ── ingest ───────────────────────────────────────────────────────
     def observe(self, event_type: str, data: object, now: float) -> Optional[AccessPoint]:
@@ -302,7 +302,11 @@ class WifiAnalyzerModel:
             ap.rogue = True
 
         rssi = _as_int(data.get("rssi"))
-        if rssi is not None:
+        # WiFi RSSI at the antenna is always negative dBm. A 0 or positive value is a firmware
+        # "no reading" sentinel (Marauder/GhostESP/FlockYou emit rssi:0 for a missing reading), not
+        # a real full-strength signal — drop it to None so it isn't painted as the strongest AP,
+        # per this module's own contract (see the docstring).
+        if rssi is not None and rssi < 0:
             ap.rssi = rssi
             ap.rssi_min = rssi if ap.rssi_min is None else min(ap.rssi_min, rssi)
             ap.rssi_max = rssi if ap.rssi_max is None else max(ap.rssi_max, rssi)
@@ -332,6 +336,11 @@ class WifiAnalyzerModel:
         reports only the ESSID, so match every AP with that SSID
         and remember it for later-seen APs."""
         bssid = normalize_bssid(data)
+        # A handshake_captured event tagged kind=pmkid is a PMKID regardless of whether it also
+        # carries a BSSID — honor the override on BOTH paths, not just the BSSID-less one.
+        data_kind = data.get("kind")
+        if isinstance(data_kind, str) and data_kind.strip().lower() == "pmkid":
+            kind = "pmkid"
         if bssid is not None:
             ap = self._get_or_create(bssid, now)
             ap.last_seen = now
@@ -341,16 +350,12 @@ class WifiAnalyzerModel:
                 ap.ssid = ssid.strip()
             return ap
         # BSSID-less capture (LxveOS hs carries essid + kind).
-        # Match by SSID; remember for the future.
+        # Match by SSID; remember (accumulating kinds) for the future.
         essid = data.get("essid") or data.get("ssid")
         if not isinstance(essid, str) or not essid.strip():
             return None
         key = essid.strip().lower()
-        # A PMKID capture reported as kind=pmkid via the handshake_captured path is honored too.
-        data_kind = data.get("kind")
-        if isinstance(data_kind, str) and data_kind.strip().lower() == "pmkid":
-            kind = "pmkid"
-        self._essid_captures[key] = kind
+        self._remember_essid_capture(key, kind)
         matched: Optional[AccessPoint] = None
         for ap in self._aps.values():
             if ap.ssid.strip().lower() == key:
@@ -358,6 +363,19 @@ class WifiAnalyzerModel:
                 ap.last_seen = now
                 matched = ap
         return matched
+
+    def _remember_essid_capture(self, key: str, kind: str) -> None:
+        """Remember a BSSID-less capture kind for an ESSID so a later-seen AP with that SSID is
+        flagged. Accumulates kinds (a network can have both an EAPOL handshake and a PMKID) and is
+        bounded: at the AP cap a new ESSID evicts the oldest remembered one, so a flood of distinct
+        fake SSIDs can't grow this map without limit."""
+        kinds = self._essid_captures.get(key)
+        if kinds is None:
+            if len(self._essid_captures) >= self._max_aps:
+                self._essid_captures.pop(next(iter(self._essid_captures)), None)
+            kinds = set()
+            self._essid_captures[key] = kinds
+        kinds.add(kind)
 
     @staticmethod
     def _flag_capture(ap: AccessPoint, kind: str) -> None:
@@ -369,8 +387,7 @@ class WifiAnalyzerModel:
     def _apply_essid_capture(self, ap: AccessPoint) -> None:
         if not ap.ssid:
             return
-        kind = self._essid_captures.get(ap.ssid.strip().lower())
-        if kind is not None:
+        for kind in self._essid_captures.get(ap.ssid.strip().lower(), ()):
             self._flag_capture(ap, kind)
 
     def _evict_stalest(self) -> None:
