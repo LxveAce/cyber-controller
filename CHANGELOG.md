@@ -4,6 +4,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+- **Better device vendor names.** BLE advertisers now resolve their manufacturer company id to a name
+  (e.g. Apple, Google, Samsung) — useful because most BLE devices randomize their MAC, so the usual MAC-OUI
+  lookup is blank. And MAC-vendor lookup now understands IEEE's 28-bit (MA-M) and 36-bit (MA-S) sub-blocks
+  via a longest-prefix match, so a device in a sub-assigned block resolves to its real vendor instead of the
+  block administrator. (Both vendor tables now also ship correctly in the packaged build — they previously
+  only worked when running from source.)
 - **New: Meshtastic is a real integration, not just a flasher.** Connect a Meshtastic node over USB and CC now
   speaks its protobuf StreamAPI directly: it reads the mesh — your node list (names, hardware model, SNR,
   battery), your channels, and incoming text messages — and lets you send a text on any channel from a

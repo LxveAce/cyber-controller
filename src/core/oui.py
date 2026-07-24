@@ -28,6 +28,7 @@ log = logging.getLogger(__name__)
 # never shipped in the frozen .exe (vendor lookups silently returned "" in the installed app). C-8 class.
 _TABLE_PATH = resource_path("src", "config", "oui_table.tsv.gz")
 _HEX6 = re.compile(r"[0-9A-Fa-f]{6}")
+_HEX_ONLY = re.compile(r"[0-9A-Fa-f]+")
 _NON_HEX = re.compile(r"[^0-9A-Fa-f]")
 
 # Lazy cache: OUI prefix (6 uppercase hex) -> organization name. None until first load.
@@ -76,7 +77,8 @@ def _load_table() -> dict[str, str]:
             for line in f:
                 pref, _sep, name = line.partition("\t")
                 name = name.rstrip("\n")
-                if len(pref) == 6 and name:
+                # Variable-length prefixes: 6 hex = 24-bit MA-L, 7 = 28-bit MA-M, 9 = 36-bit MA-S.
+                if len(pref) in (6, 7, 9) and name:
                     tbl[pref.upper()] = name
     except FileNotFoundError:
         log.warning("OUI table missing at %s; vendor lookups will return ''", _TABLE_PATH)
@@ -93,12 +95,40 @@ def _load_table() -> dict[str, str]:
     return _table
 
 
+def _clean_mac(mac: str) -> str | None:
+    """Full 12-hex uppercase MAC if it's a real unicast, globally-administered address, else None.
+
+    Same guards as :func:`normalize_oui` — multicast (group bit) and locally-administered (randomized privacy)
+    MACs carry no IEEE vendor — but returns the WHOLE MAC so a longest-prefix lookup can test the 36/28/24-bit
+    prefixes, not just the 24-bit OUI."""
+    if not mac:
+        return None
+    hex_only = _NON_HEX.sub("", mac)
+    if len(hex_only) < 12:
+        return None
+    first_octet = int(hex_only[:2], 16)
+    if first_octet & 0b01:   # multicast / group address
+        return None
+    if first_octet & 0b10:   # locally administered (randomized privacy MAC) — no IEEE vendor
+        return None
+    return hex_only[:12].upper()
+
+
 def lookup_vendor(mac: str) -> str:
-    """Resolve *mac* to its IEEE-registered vendor, or "" if unknown / not vendor-assigned."""
-    pref = normalize_oui(mac)
-    if pref is None:
+    """Resolve *mac* to its IEEE-registered vendor, or "" if unknown / not vendor-assigned.
+
+    Longest-prefix match: a 36-bit (MA-S) or 28-bit (MA-M) sub-block wins over the 24-bit (MA-L) OUI, because
+    IEEE sub-assigns a /24 administrator's space to many small orgs — so a 24-bit-only lookup returns the block
+    administrator (often blank/withheld), not the device's actual vendor."""
+    full = _clean_mac(mac)
+    if full is None:
         return ""
-    return _load_table().get(pref, "")
+    table = _load_table()
+    for n in (9, 7, 6):   # MA-S (36-bit) -> MA-M (28-bit) -> MA-L (24-bit)
+        org = table.get(full[:n])
+        if org:
+            return org
+    return ""
 
 
 def load_ieee_csv(path: str | Path) -> int:
@@ -118,22 +148,25 @@ def load_ieee_csv(path: str | Path) -> int:
 
 
 def load_manuf(path: str | Path) -> int:
-    """Merge a Wireshark ``manuf`` file (``AA:BB:CC<TAB>Short[<TAB>Long]``) into the live table.
-    Only 24-bit OUIs are used (longer MA-M/MA-S blocks are skipped). Returns the number merged."""
+    """Merge a Wireshark ``manuf`` file (``MAC[/bits]<TAB>Short[<TAB>Long]``) into the live table, keyed by the
+    variable-length IEEE prefix — 24-bit (MA-L), 28-bit (MA-M) AND 36-bit (MA-S) blocks all merge, so a runtime
+    refresh matches the bundled table's coverage. Prefers the full vendor name (3rd column). Returns the count."""
     table = _load_table()
     added = 0
     with open(path, encoding="utf-8", errors="replace") as f:
         for raw in f:
-            line = raw.strip()
+            line = raw.rstrip("\n")
             if not line or line.startswith("#"):
                 continue
             parts = line.split("\t")
             token = parts[0].split("/")
-            if len(token) == 2 and token[1].strip() != "24":
-                continue  # a sub-OUI (MA-M/MA-S) block — we key strictly on 24-bit prefixes
-            pref = _NON_HEX.sub("", token[0])[:6].upper()
-            name = parts[1].strip() if len(parts) > 1 else ""
-            if _HEX6.fullmatch(pref) and name:
+            nhex = (int(token[1]) // 4) if len(token) == 2 and token[1].strip().isdigit() else 6
+            if nhex not in (6, 7, 9):  # IEEE block sizes are 24/28/36 bits
+                continue
+            pref = _NON_HEX.sub("", token[0])[:nhex].upper()
+            full = parts[2].strip() if len(parts) > 2 and parts[2].strip() else ""
+            name = full or (parts[1].strip() if len(parts) > 1 else "")
+            if len(pref) == nhex and _HEX_ONLY.fullmatch(pref) and name:
                 table[pref] = name
                 added += 1
     return added

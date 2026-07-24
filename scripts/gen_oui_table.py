@@ -1,26 +1,59 @@
 #!/usr/bin/env python3
-"""Generate the bundled OUI→vendor table from the public IEEE MA-L registry.
+"""Generate the bundled MAC-prefix→vendor table from the public IEEE registry.
 
-Source (free, authoritative): https://standards-oui.ieee.org/oui/oui.csv
-Columns: ``Registry,Assignment,Organization Name,Organization Address``. ``Assignment`` is the
-24-bit OUI as 6 hex digits. The registry is factual assignment data (as bundled by Wireshark,
-nmap, aircrack-ng, …); we redistribute the prefix→organization mapping only, with attribution.
+The registry is factual assignment data (as bundled by Wireshark, nmap, aircrack-ng, …); we redistribute the
+prefix→organization mapping only, with attribution. Two input formats:
 
-Usage:
-    python scripts/gen_oui_table.py path/to/oui.csv
-    # writes src/config/oui_table.tsv.gz  (prefix<TAB>organization, gzipped, sorted)
+  * **Wireshark manuf** (RECOMMENDED — covers all three IEEE block sizes MA-L/M/S; the IEEE site blocks
+    automated .csv access): ``MAC[/bits]<TAB>Short<TAB>Full``. Canonical:
+    https://www.wireshark.org/download/automated/data/manuf
+        python scripts/gen_oui_table.py --manuf path/to/manuf
+  * **IEEE MA-L oui.csv** (24-bit only): ``Registry,Assignment,Organization Name,Address``.
+        python scripts/gen_oui_table.py path/to/oui.csv
 
-Re-run whenever you refresh oui.csv from IEEE. The runtime loader is ``src/core/oui.py``; a user
-can also load a fresh oui.csv at runtime via ``oui.load_ieee_csv(path)`` without regenerating.
+Both write ``src/config/oui_table.tsv.gz`` (``prefix<TAB>organization``, gzipped, sorted; prefix is 6/7/9 hex
+for 24/28/36-bit blocks). The runtime loader is ``src/core/oui.py`` (longest-prefix match).
 """
 from __future__ import annotations
 
 import csv
 import gzip
+import re
 import sys
 from pathlib import Path
 
 _OUT = Path(__file__).resolve().parent.parent / "src" / "config" / "oui_table.tsv.gz"
+_NON_HEX = re.compile(r"[^0-9A-Fa-f]")
+
+
+def _write(entries: dict[str, str]) -> int:
+    body = "".join(f"{p}\t{entries[p]}\n" for p in sorted(entries))
+    _OUT.parent.mkdir(parents=True, exist_ok=True)
+    with gzip.open(_OUT, "wt", encoding="utf-8", newline="") as gz:
+        gz.write(body)
+    return len(entries)
+
+
+def build_from_manuf(src: str) -> int:
+    """Read a Wireshark ``manuf`` file (MA-L/M/S) and write the variable-length prefix→org table."""
+    entries: dict[str, str] = {}
+    with open(src, encoding="utf-8", errors="replace") as f:
+        for raw in f:
+            line = raw.rstrip("\n")
+            if not line or line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) < 2:
+                continue
+            token = parts[0].split("/")
+            nhex = (int(token[1]) // 4) if len(token) == 2 and token[1].strip().isdigit() else 6
+            if nhex not in (6, 7, 9):  # IEEE block sizes: 24/28/36 bits
+                continue
+            pref = _NON_HEX.sub("", token[0])[:nhex].upper()
+            name = parts[2].strip() if len(parts) > 2 and parts[2].strip() else parts[1].strip()
+            if len(pref) == nhex and all(c in "0123456789ABCDEF" for c in pref) and name:
+                entries[pref] = name
+    return _write(entries)
 
 
 def build(src_csv: str) -> int:
@@ -37,16 +70,15 @@ def build(src_csv: str) -> int:
             if not name or name.lower() == "private":  # unassigned/withheld blocks carry no vendor
                 continue
             entries[pref] = name
-    body = "".join(f"{p}\t{entries[p]}\n" for p in sorted(entries))
-    _OUT.parent.mkdir(parents=True, exist_ok=True)
-    with gzip.open(_OUT, "wt", encoding="utf-8", newline="") as gz:
-        gz.write(body)
-    return len(entries)
+    return _write(entries)
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) == 3 and sys.argv[1] == "--manuf":
+        n = build_from_manuf(sys.argv[2])
+    elif len(sys.argv) == 2 and not sys.argv[1].startswith("--"):
+        n = build(sys.argv[1])
+    else:
         print(__doc__)
         raise SystemExit(2)
-    n = build(sys.argv[1])
-    print(f"wrote {_OUT} ({n} OUIs)")
+    print(f"wrote {_OUT} ({n} prefixes)")

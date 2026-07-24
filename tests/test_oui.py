@@ -41,6 +41,12 @@ def test_lookup_vendor_resolves_known_ieee_ouis():
     assert oui.lookup_vendor("D8:3A:DD:00:11:22") == "Raspberry Pi Trading Ltd"
 
 
+def test_lookup_vendor_longest_prefix_ma_s_wins():
+    # 00:1B:C5 is a MA-S administrator block (no /24 vendor); the device's real org lives in a /36 sub-block.
+    # A 24-bit-only lookup would return "" (or the admin); longest-prefix returns the actual vendor.
+    assert oui.lookup_vendor("00:1B:C5:00:00:01") == "Converging Systems Inc."
+
+
 def test_lookup_vendor_empty_for_unknown_and_randomized(monkeypatch):
     assert oui.lookup_vendor("02:AA:BB:CC:DD:EE") == ""   # locally administered -> no vendor
     assert oui.lookup_vendor("not-a-mac") == ""
@@ -68,21 +74,25 @@ def test_load_ieee_csv_merges_quoted_names_and_skips_private(monkeypatch):
     assert oui.lookup_vendor("3C:AB:02:00:00:00") == ""      # 'Private' skipped
 
 
-def test_load_manuf_merges_24bit_and_skips_sub_oui(monkeypatch):
+def test_load_manuf_merges_all_block_sizes_longest_prefix(monkeypatch):
     monkeypatch.setattr(oui, "_table", {})
     manuf = (
         "# a comment line\n"
-        "08:AB:01\tAcmeShort\tAcme Corporation Long\n"
-        "08:AB:02/36\tSubBlock\n"          # a /36 MA-S block — must be skipped (we key on 24-bit)
+        "08:AB:01\tAcmeShort\tAcme Corporation Long\n"        # /24 MA-L, full name preferred
+        "08:AB:03:00/28\tMidShort\tMid Block GmbH\n"           # /28 MA-M
+        "10:CD:EF\tRegAdmin\tRegistry Admin\n"                 # /24 administrator block
+        "10:CD:EF:00:00/36\tRealShort\tReal Vendor Inc\n"      # /36 MA-S inside the /24 admin
     )
     import tempfile
     from pathlib import Path
     f = Path(tempfile.mkdtemp()) / "manuf"
     f.write_text(manuf, encoding="utf-8")
     added = oui.load_manuf(f)
-    assert added == 1
-    assert oui.lookup_vendor("08:AB:01:aa:bb:cc") == "AcmeShort"
-    assert oui.lookup_vendor("08:AB:02:aa:bb:cc") == ""      # the /36 sub-block was not merged
+    assert added == 4                                          # all three block sizes now merge
+    assert oui.lookup_vendor("08:AB:01:aa:bb:cc") == "Acme Corporation Long"  # full name (col 3) preferred
+    assert oui.lookup_vendor("08:AB:03:0a:bb:cc") == "Mid Block GmbH"         # /28 resolves
+    assert oui.lookup_vendor("10:CD:EF:00:00:0f") == "Real Vendor Inc"        # /36 WINS over the /24 admin
+    assert oui.lookup_vendor("10:CD:EF:99:99:99") == "Registry Admin"         # outside the /36 -> /24 admin
 
 
 # ── TargetIngestor wiring (real table, real ingestor path) ──────────────────────
