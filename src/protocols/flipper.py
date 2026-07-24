@@ -243,16 +243,21 @@ class FlipperProtocol(BaseProtocol):
     # ── Auto-detection ───────────────────────────────────────────────
 
     def identify(self, line: str) -> bool:
-        """Return True if line looks like Flipper Zero CLI output."""
-        markers = (
-            "SubGhz:",
-            "NFC:",
-            "RFID:",
-            "Flipper",
-            ">: ",
-            "Power: Battery:",
+        """Return True if line looks like genuine Flipper Zero CLI output.
+
+        Care: OTHER firmware (LxveOS, GhostESP, Marauder) ships a Flipper *detector* feature that prints
+        "Flipper Zero detector" / a "flipper" command — a Flipper HUNTER is not a Flipper. Matching a bare
+        "Flipper" substring misidentified an LxveOS device (whose "Passive Flipper Zero detector" help line
+        contains the name) as a Flipper (HW-confirmed on a real LxveOS board, 2026-07-23). So identify only on
+        Flipper's OWN CLI markers, and accept the device name only outside a detector/scanner context.
+        """
+        strong = ("SubGhz:", "NFC:", "RFID:", ">: ", "Power: Battery:")
+        if any(m in line for m in strong):
+            return True
+        low = line.lower()
+        return "flipper zero" in low and not any(
+            w in low for w in ("detect", "hunter", "passive", "sniff", "scan")
         )
-        return any(m in line for m in markers)
 
 
 # --- Target actions: what this protocol can do to each target type ---

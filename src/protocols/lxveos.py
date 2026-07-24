@@ -359,9 +359,15 @@ class LxveOSProtocol(BaseProtocol):
     # ── Auto-detection ───────────────────────────────────────────────
 
     def identify(self, line: str) -> bool:
-        """Return True if the line looks like LxveOS output."""
-        return (
-            line.startswith("LXVEOS/")
-            or "LxveOS" in line
-            or bool(_RE_PROMPT.match(line.strip()))
-        )
+        """Return True if the line looks like LxveOS output.
+
+        Beyond the ``LXVEOS/1`` machine line, the ``LxveOS`` banner, and the ``lxveos>`` prompt, also match the
+        definitive lock/consent line ("type 'agree' to accept the authorized-use terms" / "RESPONSIBLE-USE.md")
+        — a real locked LxveOS board answers ``info``/``caps``/``status`` with only that line + the prompt (no
+        ``LxveOS`` banner), so without it a locked board can fall through to a weaker false match (HW-confirmed).
+        """
+        stripped = line.strip()
+        if line.startswith("LXVEOS/") or "LxveOS" in line or _RE_PROMPT.match(stripped):
+            return True
+        low = line.lower()
+        return "authorized-use terms" in low or "responsible-use.md" in low
