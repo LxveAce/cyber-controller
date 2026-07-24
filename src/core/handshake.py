@@ -133,6 +133,77 @@ def learn_vocabulary(lines, device) -> "frozenset[str]":
     return frozenset(present)
 
 
+def _probe_meshtastic_stream(conn, *, timeout: float = 1.2) -> bool:
+    """Definitive Meshtastic check: send ONE framed want_config and look for a valid FromRadio reply.
+
+    A running Meshtastic node ignores ``help`` and its steady-state serial has no text marker, so the text
+    probe can't identify it — but it always answers the protobuf StreamAPI. A text-CLI firmware never emits a
+    valid 0x94/0xC3 frame that decodes to a FromRadio, so a positive here is specific. Temporarily switches
+    the connection to raw byte mode and restores the prior mode on exit. Best-effort — never raises. DMS-gated
+    ports never reach here (the connect probe skips them), so this inherits that safety; it only runs for a
+    device the text probe left unidentified.
+    """
+    writer = getattr(conn, "write_bytes", None)
+    on_bytes = getattr(conn, "on_bytes", None)
+    remove_bytes = getattr(conn, "remove_byte_callback", None)
+    if writer is None or on_bytes is None or remove_bytes is None:
+        return False
+    from src.protocols import meshtastic_proto as mp
+    from src.protocols.stream_framer import StreamFramer
+
+    framer = StreamFramer()
+    frames: list[bytes] = []
+
+    def _collect(data: bytes) -> None:
+        try:
+            frames.extend(framer.feed(data))
+        except Exception:  # noqa: BLE001
+            pass
+
+    prev_raw = getattr(conn, "raw", False)
+    config_id = 0x63636363
+    try:
+        on_bytes(_collect)
+        conn.raw = True
+        writer(StreamFramer.frame(mp.encode_want_config(config_id)))
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline and not _is_meshtastic_reply(frames, config_id):
+            time.sleep(0.05)
+    except Exception:  # noqa: BLE001 — a probe must never raise
+        return False
+    finally:
+        try:
+            conn.raw = prev_raw
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            remove_bytes(_collect)
+        except Exception:  # noqa: BLE001
+            pass
+    return _is_meshtastic_reply(frames, config_id)
+
+
+def _is_meshtastic_reply(frames, config_id: int) -> bool:
+    """True only on a frame that PROVES a real FromRadio, never one that could be a device echoing our
+    want_config back. We send a ToRadio with field 3 (want_config_id) as a VARINT; an echoing shell (some
+    ESP32 firmwares echo input at a prompt) reflects those exact bytes, which decode as a FromRadio ``my_info``
+    with ``my_node_num=None`` (field 3 in FromRadio is my_info) — a false positive. So require a signal we
+    never sent: node_info / channel / a text packet (fields 4/10/2, impossible to echo from our field-3
+    frame), a config_complete_id that echoes OUR id (field 7), or a my_info carrying a REAL my_node_num
+    (field 3 as a MyNodeInfo sub-message, not our reflected varint)."""
+    from src.protocols import meshtastic_proto as mp
+
+    for f in frames:
+        res = mp.decode_fromradio(f)
+        if res.kind in ("node_info", "channel", "text"):
+            return True
+        if res.kind == "config_complete" and res.config_complete_id == config_id:
+            return True
+        if res.kind == "my_info" and res.my_node_num is not None:
+            return True
+    return False
+
+
 def probe_device(conn, device, *, timeout: float = 0.8, settle: float = 0.15) -> HandshakeResult:
     """Probe an OPEN connection and set ``device.health`` / ``device.fw_banner``.
 
@@ -168,12 +239,30 @@ def probe_device(conn, device, *, timeout: float = 0.8, settle: float = 0.15) ->
     if not _has_known_firmware(device):
         detected = detect_firmware(lines)
         if detected:
+            from src.protocols import driver_type_for
+            if driver_type_for(detected) == "stream":
+                # A stream device (Meshtastic) attaches its backend via DeviceManager.on_device_changed, which
+                # fires only on a set_firmware CHANGE. Setting device.firmware here directly would make the
+                # caller's re-autodetect set_firmware a no-op, so the backend + panel would never attach. Set a
+                # canonical identifying banner instead and return early (so classify_reply doesn't overwrite
+                # it); the caller's re-autodetect matches the banner and sets the firmware through the DM.
+                device.health = "no-cli"
+                device.fw_banner = "meshtastic/firmware (StreamAPI)"
+                return HandshakeResult(health="no-cli", banner=device.fw_banner)
             device.firmware = detected
             try:
                 from src.models.device import Protocol
                 device.protocol = Protocol(detected)
             except ValueError:
                 pass  # firmware string is the source of truth; some names have no Protocol enum (esp32-div/bw16)
+
+    # A running Meshtastic node has no text tell, so the text probe above found nothing. Ask the StreamAPI
+    # directly — a single framed want_config draws a valid FromRadio only from a Meshtastic node. Same
+    # banner-not-firmware handling as above, for the same on_device_changed reason.
+    if not _has_known_firmware(device) and _probe_meshtastic_stream(conn):
+        device.health = "no-cli"
+        device.fw_banner = "meshtastic/firmware (StreamAPI)"
+        return HandshakeResult(health="no-cli", banner=device.fw_banner)
 
     health, banner = classify_reply(lines, device)
     vocab = learn_vocabulary(lines, device)

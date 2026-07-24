@@ -53,7 +53,11 @@ FIRMWARE_SIGNATURES: Dict[str, str] = {
     "ghostesp":   r"GhostESP\s+[Vv]?([\w.]+)",
     "bruce":      r"Bruce\s+[Vv]?([\d.]+)",
     "halehound":  r"HaleHound.*?[Vv]?([\d.]+)",
-    "meshtastic": r"Meshtastic\s+[Vv]?([\d.]+)",
+    # Meshtastic's serial banner is protobuf, not a "Meshtastic vX.Y" line — the reliable text tells are the
+    # boot line `S:B:<hw>,<ver>,<board>,meshtastic/firmware` and any `meshtastic/firmware` mention (verified
+    # against a real Heltec V3, 2026-07-23). The definitive detector is the StreamAPI probe in handshake.py
+    # (a running node has no text marker at all); this regex covers the boot-banner / debug-log fallback.
+    "meshtastic": r"Meshtastic\s+[Vv]?([\d.]+)|meshtastic/firmware",
     "esp32-div":  r"ESP32.?DIV\s+[Vv]?([\d.]+)",
     "flipper":    r"Flipper\s+Zero\s+[Vv]?([\d.]+)",
     "evil-portal": r"Evil.?Portal\s+[Vv]?([\d.]+)",
