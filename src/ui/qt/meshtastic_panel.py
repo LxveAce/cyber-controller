@@ -36,7 +36,8 @@ from src.ui.qt.theme import colors as C
 
 log = logging.getLogger(__name__)
 
-_MESH_TOPICS = ("mesh.my_info", "mesh.node", "mesh.channel", "mesh.text", "mesh.config_complete")
+_MESH_TOPICS = ("mesh.my_info", "mesh.node", "mesh.channel", "mesh.text", "mesh.config",
+                "mesh.config_complete")
 
 
 class MeshtasticPanel(QWidget):
@@ -158,7 +159,7 @@ class MeshtasticPanel(QWidget):
         if topic == "mesh.text":
             frm = payload.get("from_id", "?")
             self._append_log(frm, payload.get("text", ""), incoming=True)
-        elif topic in ("mesh.node", "mesh.my_info", "mesh.config_complete"):
+        elif topic in ("mesh.node", "mesh.my_info", "mesh.config", "mesh.config_complete"):
             self._refresh_nodes()
             self._refresh_status()
         elif topic == "mesh.channel":
@@ -182,9 +183,15 @@ class MeshtasticPanel(QWidget):
         self._input.setEnabled(True)
         me = ("me " + backend.node_list()[0].node_id) if backend.nodes else "connecting…"
         state = "config synced" if backend.config_complete else "waiting for config…"
-        self._status.setText(
-            f"{len(backend.nodes)} node(s) · {len(backend.active_channels())} channel(s) · {state} · {me}"
-        )
+        parts = [f"{len(backend.nodes)} node(s)", f"{len(backend.active_channels())} channel(s)", state, me]
+        cfg = backend.lora_config
+        if cfg is not None and cfg.region_label:
+            # Show the node's LoRa region (+ preset when it uses a named one) — labels only, never a write.
+            radio = cfg.region_label
+            if cfg.modem_preset_label:
+                radio += f"/{cfg.modem_preset_label}"
+            parts.insert(2, radio)
+        self._status.setText(" · ".join(parts))
 
     def _refresh_nodes(self) -> None:
         backend = self._backend()

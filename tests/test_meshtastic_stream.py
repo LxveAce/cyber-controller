@@ -226,3 +226,22 @@ def test_concurrent_feed_and_read_no_crash():
         stop.set()
         t.join(timeout=3)
     assert not errors, errors[:3]
+
+
+def _framed_config(region: int, modem_preset: int, use_preset: int = 1) -> bytes:
+    # FromRadio.config(5) -> Config.lora(6) -> LoRaConfig{use_preset=1, modem_preset=2, region=7}
+    lora = mp.field_varint(1, use_preset) + mp.field_varint(2, modem_preset) + mp.field_varint(7, region)
+    return StreamFramer.frame(mp.field_bytes(5, mp.field_bytes(6, lora)))
+
+
+def test_config_populates_lora_state_and_emits_event():
+    backend, _, events, _ = _make_backend()
+    backend.feed_bytes(_framed_config(1, 0))  # US / LONG_FAST
+    assert backend.lora_config is not None
+    assert backend.lora_config.region == 1 and backend.lora_config.region_label == "US"
+    assert backend.lora_config.modem_preset_label == "LONG_FAST"
+    cfg_events = [d for t, d in events if t == "mesh_config"]
+    assert len(cfg_events) == 1
+    assert cfg_events[0]["region_name"] == "US"
+    assert cfg_events[0]["modem_preset_name"] == "LONG_FAST"
+    assert cfg_events[0]["use_preset"] is True

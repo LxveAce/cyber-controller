@@ -1,8 +1,9 @@
-"""Meshtastic reference enums — HardwareModel + PortNum names (comms rework, Wave 8 follow-up).
+"""Meshtastic reference enums — HardwareModel + PortNum + LoRa RegionCode/ModemPreset names.
 
 Snapshotted verbatim from the upstream protobuf definitions (meshtastic/protobufs mesh.proto HardwareModel,
-portnums.proto PortNum), retrieved 2026-07-23. Field/enum values are fixed by contract, so a static snapshot
-is safe; refresh by re-running the enum extractor against the current .proto.
+portnums.proto PortNum, config.proto LoRaConfig.RegionCode + ModemPreset), HardwareModel/PortNum retrieved
+2026-07-23 and RegionCode/ModemPreset retrieved 2026-07-24. Field/enum values are fixed by contract, so a
+static snapshot is safe; refresh by re-running the enum extractor against the current .proto.
 
 This replaces a small hand-typed hardware-model map that had SIX wrong values (e.g. 71 was labelled RAK4631
 when it is TRACKER_T1000_E, 4 was HELTEC_V1 when it is TBEAM) — the exact kind of from-memory error
@@ -73,3 +74,37 @@ def portnum_name(code: int | None) -> str:
     if code is None:
         return ""
     return PORTNUMS.get(code, f"portnum#{code}")
+
+
+# LoRaConfig.RegionCode (config.proto) — the node's regulatory region. 0 = UNSET (region not chosen yet).
+# 15 (UA_868) is deprecated upstream but kept here so a node that still reports it labels correctly.
+REGION_CODES: dict[int, str] = {
+    0: "UNSET", 1: "US", 2: "EU_433", 3: "EU_868", 4: "CN", 5: "JP", 6: "ANZ", 7: "KR", 8: "TW",
+    9: "RU", 10: "IN", 11: "NZ_865", 12: "TH", 13: "LORA_24", 14: "UA_433", 15: "UA_868", 16: "MY_433",
+    17: "MY_919", 18: "SG_923", 19: "PH_433", 20: "PH_868", 21: "PH_915", 22: "ANZ_433", 23: "KZ_433",
+    24: "KZ_863", 25: "NP_865", 26: "BR_902", 27: "ITU1_2M", 28: "ITU2_2M", 29: "EU_866", 30: "EU_874",
+    31: "EU_917", 32: "EU_N_868", 33: "ITU3_2M", 34: "ITU1_70CM", 35: "ITU2_70CM", 36: "ITU3_70CM",
+    37: "ITU2_125CM",
+}
+
+# LoRaConfig.ModemPreset (config.proto) — the radio preset (bandwidth/spread-factor/coding-rate combo).
+# Values 1 and 2 are gaps upstream (removed LONG_SLOW / VERY_LONG_SLOW).
+MODEM_PRESETS: dict[int, str] = {
+    0: "LONG_FAST", 3: "MEDIUM_SLOW", 4: "MEDIUM_FAST", 5: "SHORT_SLOW", 6: "SHORT_FAST",
+    7: "LONG_MODERATE", 8: "SHORT_TURBO", 9: "LONG_TURBO", 10: "LITE_FAST", 11: "LITE_SLOW",
+    12: "NARROW_FAST", 13: "NARROW_SLOW", 14: "TINY_FAST", 15: "TINY_SLOW", 16: "MEDIUM_TURBO",
+}
+
+
+def region_name(code: int | None) -> str:
+    """Human name for a LoRa RegionCode (e.g. 1 -> 'US'), or ``"region#N"`` for one not in the snapshot."""
+    if code is None:
+        return ""
+    return REGION_CODES.get(code, f"region#{code}")
+
+
+def modem_preset_name(code: int | None) -> str:
+    """Human name for a ModemPreset (e.g. 0 -> 'LONG_FAST'), or ``"preset#N"`` for one not in the snapshot."""
+    if code is None:
+        return ""
+    return MODEM_PRESETS.get(code, f"preset#{code}")

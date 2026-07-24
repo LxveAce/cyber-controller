@@ -24,7 +24,7 @@ import struct
 from dataclasses import dataclass, field
 
 from src.protocols.meshtastic_ref import hardware_model_name as hw_model_name
-from src.protocols.meshtastic_ref import portnum_name
+from src.protocols.meshtastic_ref import modem_preset_name, portnum_name, region_name
 
 # ── Wire types (protobuf) ────────────────────────────────────────────────────
 WT_VARINT = 0
@@ -244,14 +244,33 @@ class MeshText:
 
 
 @dataclass
+class MeshConfig:
+    """The node's LoRaConfig as CC reads it (region + modem preset). Raw enum ints + name helpers."""
+    region: int | None = None
+    modem_preset: int | None = None
+    use_preset: bool | None = None
+
+    @property
+    def region_label(self) -> str:
+        """The RegionCode as a name (e.g. 1 -> 'US'), or '' when the node didn't report a region."""
+        return region_name(self.region)
+
+    @property
+    def modem_preset_label(self) -> str:
+        """The ModemPreset as a name (e.g. 0 -> 'LONG_FAST'), or '' when there's no preset."""
+        return modem_preset_name(self.modem_preset)
+
+
+@dataclass
 class FromRadioResult:
     """Tagged result of decoding one FromRadio frame. ``kind`` is one of:
-    'my_info', 'node_info', 'channel', 'text', 'config_complete', 'packet', 'other'."""
+    'my_info', 'node_info', 'channel', 'text', 'config', 'config_complete', 'packet', 'other'."""
 
     kind: str
     node: MeshNode | None = None
     channel: MeshChannel | None = None
     text: MeshText | None = None
+    config: MeshConfig | None = None
     my_node_num: int | None = None
     config_complete_id: int | None = None
     portnum: int | None = None
@@ -287,9 +306,32 @@ def decode_fromradio(payload: bytes) -> FromRadioResult:
         return FromRadioResult("my_info", my_node_num=num)
     if 10 in f:  # channel (Channel)
         return FromRadioResult("channel", channel=_decode_channel(_first(f, 10)))
+    if 5 in f:  # config (Config) — carries the node's LoRaConfig on the want_config burst
+        cfg = _decode_config(_first(f, 5))
+        if cfg is not None:
+            return FromRadioResult("config", config=cfg)
     if 7 in f:  # config_complete_id (uint32)
         return FromRadioResult("config_complete", config_complete_id=as_u32(_first(f, 7)))
     return FromRadioResult("other", raw_fields=f)
+
+
+def _decode_config(data) -> MeshConfig | None:
+    """Decode FromRadio.config (Config). Only the LoRaConfig variant (Config.lora = field 6) is surfaced —
+    region (LoRaConfig field 7) + modem_preset (field 2) + use_preset (field 1). Other Config variants
+    (device/position/power/…) return None so the frame falls through to 'other'. Field numbers are from
+    config.proto (retrieved 2026-07-24), not memory — this is the read-path label, never a write."""
+    if not isinstance(data, bytes):
+        return None
+    lora = _first(parse(data), 6)  # Config.lora (LoRaConfig)
+    if not isinstance(lora, bytes):
+        return None
+    lf = parse(lora)
+    use_preset = _first(lf, 1)
+    return MeshConfig(
+        region=as_u32(_first(lf, 7)),
+        modem_preset=as_u32(_first(lf, 2)),
+        use_preset=None if use_preset is None else bool(use_preset),
+    )
 
 
 def _decode_nodeinfo(data) -> MeshNode:

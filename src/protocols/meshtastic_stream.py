@@ -70,6 +70,7 @@ class MeshtasticBackend:
         self.nodes: dict[int, mp.MeshNode] = {}
         self.channels: dict[int, mp.MeshChannel] = {}
         self.my_node_num: int | None = None
+        self.lora_config: mp.MeshConfig | None = None  # the node's LoRa region + modem preset, once read
         self.config_complete = False
 
     # ── lifecycle ────────────────────────────────────────────────────────────
@@ -126,6 +127,15 @@ class MeshtasticBackend:
                 "from_num": t.from_num, "from_id": mp.node_id_str(t.from_num),
                 "to_num": t.to_num, "channel": t.channel, "text": t.text,
                 "rx_snr": t.rx_snr, "rx_rssi": t.rx_rssi, "packet_id": t.packet_id,
+            })
+        elif res.kind == "config" and res.config is not None:
+            cfg = res.config
+            with self._lock:
+                self.lora_config = cfg
+            self._emit("mesh_config", {
+                "region": cfg.region, "region_name": cfg.region_label,
+                "modem_preset": cfg.modem_preset, "modem_preset_name": cfg.modem_preset_label,
+                "use_preset": cfg.use_preset,
             })
         elif res.kind == "config_complete":
             self.config_complete = True

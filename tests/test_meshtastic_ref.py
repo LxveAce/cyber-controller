@@ -11,7 +11,9 @@ from src.protocols.meshtastic_ref import (
     HARDWARE_MODELS,
     PORTNUMS,
     hardware_model_name,
+    modem_preset_name,
     portnum_name,
+    region_name,
 )
 
 
@@ -60,3 +62,20 @@ def test_portnum_label_on_packet_result():
 def test_enum_coverage():
     assert len(HARDWARE_MODELS) == 145
     assert len(PORTNUMS) == 40
+
+
+def test_region_and_modem_preset_names():
+    # snapshot from config.proto (retrieved 2026-07-24); values are fixed by protobuf contract
+    assert region_name(1) == "US"
+    assert region_name(3) == "EU_868"
+    assert region_name(15) == "UA_868"  # deprecated upstream but still labeled if a node reports it
+    assert region_name(0) == "UNSET"    # region not chosen yet — meaningful, not blank
+    assert modem_preset_name(0) == "LONG_FAST"
+    assert modem_preset_name(16) == "MEDIUM_TURBO"
+
+
+def test_region_and_preset_unknown_and_none():
+    assert region_name(999) == "region#999"   # unknown -> visible marker, never a fabricated name
+    assert modem_preset_name(99) == "preset#99"
+    assert region_name(None) == ""
+    assert modem_preset_name(None) == ""

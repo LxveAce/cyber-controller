@@ -242,3 +242,24 @@ def test_as_float_and_as_u32():
     assert mp.as_u32(struct.pack("<I", 0xCAFEBABE)) == 0xCAFEBABE
     assert mp.as_u32(42) == 42
     assert mp.as_float(None) is None
+
+
+def test_decode_config_lora_region_and_preset():
+    # FromRadio.config(5) -> Config.lora(6) -> LoRaConfig{use_preset=1, modem_preset=0, region=1 US}
+    # Field numbers are from config.proto (retrieved 2026-07-24), not memory.
+    lora = mp.field_varint(1, 1) + mp.field_varint(2, 0) + mp.field_varint(7, 1)
+    payload = mp.field_bytes(5, mp.field_bytes(6, lora))
+    res = mp.decode_fromradio(payload)
+    assert res.kind == "config"
+    assert res.config is not None
+    assert res.config.region == 1 and res.config.region_label == "US"
+    assert res.config.modem_preset == 0 and res.config.modem_preset_label == "LONG_FAST"
+    assert res.config.use_preset is True
+
+
+def test_decode_config_non_lora_variant_falls_through():
+    # a Config carrying only device(1), not lora(6) -> 'other', never a mislabeled/empty config result
+    payload = mp.field_bytes(5, mp.field_bytes(1, mp.field_varint(1, 1)))
+    res = mp.decode_fromradio(payload)
+    assert res.kind == "other"
+    assert res.config is None

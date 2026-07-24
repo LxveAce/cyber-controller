@@ -22,6 +22,8 @@ All notable changes to Cyber Controller are documented here. This project adhere
   The decode/encode is a small dependency-free codec (no new runtime dependency, no protobuf/PyInstaller
   breakage), validated against a real Heltec V3 on 915 MHz. Licensed ISM-band comms — CC relays your typed text
   and the node's own control (want_config / heartbeat / disconnect), and authors no RF frames.
+  CC now also reads and labels the node's **LoRa region + modem preset** (e.g. "US/LONG_FAST") in the panel
+  status line, decoded from the config the node sends on connect — read-only labeling, never a config write.
 - **New: Heltec WiFi LoRa 32 V4 flash support.** The Meshtastic flash profile now offers the `heltec-v4` target
   (ESP32-S3, 16 MB, merged factory bin) alongside the V3, plus `heltec-wireless-tracker-v2`. The V4 uses native
   USB DFU — hold BOOT while connecting for the first full flash.
