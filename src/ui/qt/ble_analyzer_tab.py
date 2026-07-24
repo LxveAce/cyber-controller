@@ -125,8 +125,9 @@ def _rssi_color(rssi: "Optional[float]") -> str:
 # Per-operation Help sheet (Biscuit pattern, A2) — honest "what it does" for the analyzer.
 _BLE_HELP = {
     "title": "BLE Analyzer",
-    "summary": "A passive, firmware-agnostic view of the Bluetooth Low Energy advertisements a "
-               "connected device reports — a live RSSI graph + a dedup table (transmits nothing).",
+    "summary": "A firmware-agnostic view of the Bluetooth Low Energy advertisements a connected "
+               "device reports: start or stop a scan, watch a live RSSI graph, read a "
+               "de-duplicated table. CC drives the firmware's own BLE-scan verb, no RF of its own.",
     "what_it_does": [
         ("📡", "Advertisement Capture",
          "Folds in every BLE advertisement the firmware reports (Marauder / GhostESP / Flipper / "
