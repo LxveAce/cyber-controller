@@ -428,7 +428,9 @@ try:
                     "" if d.rssi is None else str(d.rssi),   # SignalBarsDelegate reads the RSSI int
                     d.display_name(),
                     d.addr,
-                    d.vendor or "",
+                    # OUI vendor from the MAC, else the SIG company name from the advert's mfg data — most BLE
+                    # devices randomize their MAC (no OUI vendor), but still advertise a company id.
+                    d.vendor or d.company_name or "",
                     "⚑" if d.tracker else "",
                     str(d.hits),
                     "now" if age < 1 else f"{int(age)}s",

@@ -19,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
+from src.core.ble_numbers import lookup_company
+
 # ── bounds (a BLE-advert flood must not grow the model without limit) ──
 _MAX_DEVICES = 4096      # stalest device is evicted when a new address arrives at the cap
 _MAX_SAMPLES = 240       # per-device RSSI ring buffer for the graph — a few minutes at ~1 Hz
@@ -96,6 +98,7 @@ class BleDevice:
     name: str = ""
     vendor: str = ""
     company: str = ""          # raw company/manufacturer id when a firmware sends one (LxveOS ble)
+    company_name: str = ""     # the id resolved to a Bluetooth-SIG vendor name (e.g. 76 -> "Apple, Inc.")
     addr_type: str = ""        # "public" / "random" when reported
     tracker: bool = False
     rssi: Optional[int] = None
@@ -133,6 +136,7 @@ class BleDevice:
             "name": self.name,
             "vendor": self.vendor,
             "company": self.company,
+            "company_name": self.company_name,
             "addr_type": self.addr_type,
             "tracker": self.tracker,
             "rssi": self.rssi,
@@ -189,6 +193,13 @@ class BleAnalyzerModel:
                 setattr(dev, dst, val.strip())
             elif val is not None and not isinstance(val, str):
                 setattr(dev, dst, str(val))  # LxveOS company is numeric — keep as a string tag
+        if dev.company:
+            # Resolve the numeric SIG company id to a vendor name (all 3998 companies, vs the ~6 the
+            # firmware names). Keep the raw id; only set the name when the lookup is certain (never blank a
+            # prior name with an "" from an unknown id).
+            resolved = lookup_company(dev.company)
+            if resolved:
+                dev.company_name = resolved
         if _truthy(data.get("tracker")):
             dev.tracker = True  # sticky: a tracker verdict isn't un-flagged by a later plain hit
 

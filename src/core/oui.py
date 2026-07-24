@@ -19,9 +19,14 @@ import re
 import zlib
 from pathlib import Path
 
+from src.core.resources import resource_path
+
 log = logging.getLogger(__name__)
 
-_TABLE_PATH = Path(__file__).resolve().parent.parent / "config" / "oui_table.tsv.gz"
+# Frozen-safe (resource_path resolves to the repo in dev and _MEIPASS in the PyInstaller build). Was a
+# __file__-relative path, which — combined with the table not being --add-data'd — meant the OUI vendor table
+# never shipped in the frozen .exe (vendor lookups silently returned "" in the installed app). C-8 class.
+_TABLE_PATH = resource_path("src", "config", "oui_table.tsv.gz")
 _HEX6 = re.compile(r"[0-9A-Fa-f]{6}")
 _NON_HEX = re.compile(r"[^0-9A-Fa-f]")
 

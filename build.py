@@ -122,6 +122,15 @@ def _build() -> int:
     if os_catalog.is_file():
         cmd.extend(["--add-data", f"{os_catalog}{sep}src/config"])
 
+    # Bundled lookup tables (gzipped): the IEEE OUI MAC-vendor table (src/core/oui.py) and the Bluetooth-SIG
+    # company-id table (src/core/ble_numbers.py). Both resolve via resource_path("src","config",...), so they
+    # MUST be added here or the vendor/company enrichment silently returns "" in the frozen .exe (C-8 class —
+    # previously the OUI table was never bundled at all).
+    for _tbl in ("oui_table.tsv.gz", "ble_company_ids.tsv.gz"):
+        _tbl_path = _ROOT / "src" / "config" / _tbl
+        if _tbl_path.is_file():
+            cmd.extend(["--add-data", f"{_tbl_path}{sep}src/config"])
+
     # Include assets (logo, icons)
     assets_dir = _ROOT / "assets"
     if assets_dir.is_dir():
