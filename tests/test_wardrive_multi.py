@@ -181,3 +181,43 @@ def test_add_board_after_start_raises():
     with pytest.raises(RuntimeError):
         c.add_board("COM4")
     c.stop()
+
+
+# ── liveness (honesty guard Wave 0.3): a started-but-silent radio is flagged, not shown healthy ──
+
+def test_snapshot_flags_a_silent_started_board_stale():
+    dm = _FakeDM()
+    c = _ctrl(dm, gps="")
+    c.add_board("COM3", firmware="marauder")
+    c.add_board("COM4", firmware="marauder")
+    c.start()
+    # Force COM3's last line far in the past; COM4 just spoke. `now` is injected for determinism.
+    c._last_data["COM3"] = 100.0
+    c._last_data["COM4"] = 124.0
+    rows = {b["port"]: b for b in c.snapshot(now=125.0)["boards"]}
+    assert rows["COM3"]["stale"] is True and rows["COM3"]["silent_s"] == 25.0   # >20 s of silence
+    assert rows["COM4"]["stale"] is False and rows["COM4"]["silent_s"] == 1.0   # fresh
+    c.stop()
+
+
+def test_snapshot_liveness_only_on_started_boards():
+    # A no-CLI board is skipped (never started) -> it's in errors, not flagged with liveness keys.
+    dm = _FakeDM()
+    c = _ctrl(dm, gps="")
+    c.add_board("COM3", firmware="marauder")
+    c.add_board("COM6", firmware="biscuit")              # controlmap, skipped by the guard
+    c.start()
+    rows = {b["port"]: b for b in c.snapshot(now=999.0)["boards"]}
+    assert rows["COM3"]["started"] is True and "stale" in rows["COM3"]
+    assert rows["COM6"]["started"] is False and "stale" not in rows["COM6"]
+
+
+def test_snapshot_board_that_just_spoke_is_not_stale():
+    dm = _FakeDM()
+    c = _ctrl(dm, gps="")
+    c.add_board("COM3", firmware="marauder")
+    c.start()
+    dm.conns["COM3"].feed(AP1)                            # a line arrives -> liveness refreshed
+    row = next(b for b in c.snapshot()["boards"] if b["port"] == "COM3")
+    assert row["stale"] is False and row["silent_s"] < c.LIVENESS_TIMEOUT
+    c.stop()

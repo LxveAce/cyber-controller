@@ -11,6 +11,7 @@ DeviceManager. An optional ``on_update`` callback fires after each line so a UI 
 from __future__ import annotations
 
 import threading
+import time
 from typing import Any, Callable, Optional, TextIO
 
 from src.core.wardrive import MultiWardriveSession, scan_commands_for
@@ -23,6 +24,11 @@ class MultiWardriveController:
 
     OWNER = "wardrive-multi"
 
+    # Honesty/liveness: a started board that hasn't produced a single line in this many seconds is
+    # flagged "silent" in snapshot() — so a radio that opened but is dead/mis-flashed/idle reads as a
+    # warning, not as a healthy 0-AP board. Labels only; it never stops or reconfigures the capture.
+    LIVENESS_TIMEOUT = 20.0
+
     def __init__(self, device_manager: Any, out: TextIO, gps_port: str = "", gps_baud: int = 9600,
                  on_update: Optional[Callable[[], None]] = None) -> None:
         self._dm = device_manager
@@ -32,6 +38,7 @@ class MultiWardriveController:
         self._lock = threading.Lock()
         self._session = MultiWardriveSession(out)
         self._boards: list[dict] = []          # {port, baud, firmware, stop_cmd, conn, cb}
+        self._last_data: dict[str, float] = {}  # port -> monotonic time of its last line (liveness)
         self._gps_conn = None
         self._gps_cb = None
         self._running = False
@@ -87,6 +94,7 @@ class MultiWardriveController:
                 for start_cmd in cmds.start:
                     conn.write(start_cmd)
                 b["conn"], b["cb"] = conn, cb
+                self._last_data[b["port"]] = time.monotonic()  # fresh: not "silent" until N s of no lines
             except Exception as exc:  # noqa: BLE001 — isolate one bad board from the rest of the deck
                 self.errors.append((b["port"], str(exc)))
                 if conn is not None:               # opened but failed mid-start: don't leak the port/callback
@@ -137,6 +145,7 @@ class MultiWardriveController:
                 if not self._running:
                     return
                 self._session.observe(port, line)
+                self._last_data[port] = time.monotonic()  # this board is alive (liveness)
             self._on_update()
         return _cb
 
@@ -163,21 +172,35 @@ class MultiWardriveController:
         fix = self._session.fix
         return f"{fix.lat:.5f}, {fix.lon:.5f}" if (fix and fix.has_fix) else "No Fix"
 
-    def snapshot(self) -> dict:
-        """A thread-safe view for the UI: aggregate + per-board counts."""
+    def snapshot(self, now: Optional[float] = None) -> dict:
+        """A thread-safe view for the UI: aggregate + per-board counts + per-board liveness.
+
+        ``now`` (monotonic seconds) is injectable for tests; defaults to ``time.monotonic()``. A
+        started board silent for ``LIVENESS_TIMEOUT`` seconds is flagged ``stale`` with the elapsed
+        ``silent_s`` — an honesty signal so a dead/mis-flashed radio doesn't read as a healthy 0-AP
+        board. Labels only; never stops or reconfigures the capture."""
+        if now is None:
+            now = time.monotonic()
         with self._lock:
             per_board = dict(self._session.per_board)
             total = self._session.ap_count
             fix_text = self.fix_text
+            last_data = dict(self._last_data)
+        boards = []
+        for b in self._boards:
+            started = b["conn"] is not None
+            row = {"port": b["port"], "firmware": b["firmware"],
+                   "aps": per_board.get(b["port"], 0), "started": started}
+            if started:
+                silent = max(0.0, now - last_data.get(b["port"], now))
+                row["silent_s"] = round(silent, 1)
+                row["stale"] = silent > self.LIVENESS_TIMEOUT  # "no data in N s" — flag it honestly
+            boards.append(row)
         return {
             "running": self._running,
             "fix": fix_text,
             "total_aps": total,
-            "boards": [
-                {"port": b["port"], "firmware": b["firmware"],
-                 "aps": per_board.get(b["port"], 0), "started": b["conn"] is not None}
-                for b in self._boards
-            ],
+            "boards": boards,
             # per-board / GPS open failures from start(), surfaced so a board that silently failed
             # to open is visible (otherwise it just never appears as started, with no reason shown).
             "errors": list(self.errors),

@@ -4,6 +4,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+- **Multi-board wardrive now flags a silent radio instead of hiding it.** During a multi-device wardrive, a
+  board that opened fine but has produced no data for 20 s is now marked "silent" in the status view (with the
+  seconds since its last line) — so a dead, mis-flashed, or idle radio reads as an honest warning, not as a
+  healthy board sitting at 0 APs. It's a label only: nothing is stopped, closed, or reconfigured.
 - **Correct bootloader flash offsets for ESP32-P4 / H4 / C61.** The per-chip bootloader-offset table only
   special-cased the C5, so the P4 and H4 fell through to the classic 0x1000 default (they need 0x2000, the same
   gotcha as the C5) and the C61 fell to 0x1000 (it needs 0x0). Corrected to match esptool, with a golden-offset
