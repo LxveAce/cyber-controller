@@ -83,6 +83,27 @@ _SIG_COMPILED: Dict[str, re.Pattern] = {
     name: re.compile(pat, re.IGNORECASE) for name, pat in FIRMWARE_SIGNATURES.items()
 }
 
+# Command-set fingerprints — the fallback when a firmware's version banner is NOT in the captured
+# read window. Real-HW finding (HIL capture 2026-07-24, machine `extra`): three Marauder boards on
+# COM34/35/36 emitted the identical Marauder command list, yet only the one that happened to reprint
+# its "Marauder vX.Y" banner in the window matched above; the other two came back unidentified. A
+# firmware's command SET is a far more stable tell than a one-shot version banner, so fall back to
+# it when the version regex misses. Match requires ALL tokens (no version is captured this way).
+_COMMAND_FINGERPRINTS: Dict[str, Tuple[str, ...]] = {
+    # Marauder's serial command set — these tokens co-occur in no other supported firmware's help,
+    # so requiring several together makes a false positive effectively impossible.
+    "marauder": ("sniffbeacon", "sniffdeauth", "evilportal", "wardrive"),
+}
+
+
+def _fingerprint_firmware(text: str) -> Optional[str]:
+    """Identify firmware by its command set when no version banner matched (returns name only)."""
+    low = text.lower()
+    for name, tokens in _COMMAND_FINGERPRINTS.items():
+        if all(tok in low for tok in tokens):
+            return name
+    return None
+
 # Detected firmwares that expose NO serial command CLI — they run, but are driven over another transport
 # (BLE / the app), so their USB is a boot/debug console only. CC must DETECT + label them, but NEVER send
 # them serial verbs: a blind write no-ops silently and looks exactly like a dead control (the Biscuit bug).
@@ -163,7 +184,8 @@ def match_firmware(text: str) -> Tuple[Optional[str], Optional[str]]:
         if m:
             ver = m.group(1) if m.lastindex and m.lastindex >= 1 else None
             return name, ver
-    return None, None
+    # No version-banner signature matched — fall back to the command-set fingerprint (name only).
+    return _fingerprint_firmware(text), None
 
 
 def detect_chip_from_text(text: str) -> Optional[str]:
