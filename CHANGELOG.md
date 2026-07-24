@@ -4,6 +4,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+- **New: Meshtastic is a real integration, not just a flasher.** Connect a Meshtastic node over USB and CC now
+  speaks its protobuf StreamAPI directly: it reads the mesh — your node list (names, hardware model, SNR,
+  battery), your channels, and incoming text messages — and lets you send a text on any channel from a
+  dedicated Meshtastic panel (the stream device has no text CLI, so this panel replaces the inert command grid).
+  The decode/encode is a small dependency-free codec (no new runtime dependency, no protobuf/PyInstaller
+  breakage), validated against a real Heltec V3 on 915 MHz. Licensed ISM-band comms — CC relays your typed text
+  and the node's own control (want_config / heartbeat / disconnect), and authors no RF frames.
+- **New: Heltec WiFi LoRa 32 V4 flash support.** The Meshtastic flash profile now offers the `heltec-v4` target
+  (ESP32-S3, 16 MB, merged factory bin) alongside the V3, plus `heltec-wireless-tracker-v2`. The V4 uses native
+  USB DFU — hold BOOT while connecting for the first full flash.
 - **LxveOS bridge: randomized-MAC flag.** The `sta` (client) event now carries a typed `random` flag when the
   firmware sees a client using a randomized or spoofed MAC (the 802.11 locally-administered bit), so the client
   view can distinguish a privacy-randomized device from one exposing its real vendor address.

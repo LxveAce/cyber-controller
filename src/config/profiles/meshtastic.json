@@ -12,6 +12,14 @@
       "flash_mode": "dio",
       "flash_freq": "80m",
       "lora_frequency": "915MHz"
+    },
+    {
+      "name": "Heltec LoRa V4",
+      "chip": "esp32s3",
+      "flash_size": "16MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "lora_frequency": "915MHz"
     }
   ],
   "default_baud": 115200,
@@ -36,9 +44,10 @@
       "version_group": 2,
       "boards_by_chip": {
         "esp32s3": [
-          "heltec-v3", "heltec-wireless-tracker", "heltec-wsl-v3", "tbeam-s3-core",
-          "t-deck", "t-deck-pro", "t-watch-s3", "t-eth-elite", "seeed-xiao-s3", "station-g2",
-          "station-g3", "tlora-t3s3-v1", "tlora-pager", "m5stack-cores3", "picomputer-s3", "unphone"
+          "heltec-v3", "heltec-v4", "heltec-wireless-tracker", "heltec-wireless-tracker-v2",
+          "heltec-wsl-v3", "tbeam-s3-core", "t-deck", "t-deck-pro", "t-watch-s3", "t-eth-elite",
+          "seeed-xiao-s3", "station-g2", "station-g3", "tlora-t3s3-v1", "tlora-pager",
+          "m5stack-cores3", "picomputer-s3", "unphone"
         ],
         "esp32": [
           "tbeam", "tlora-v2-1-1_6", "tlora-v2-1-1_8", "rak11200", "station-g1", "nano-g1",

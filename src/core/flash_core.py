@@ -1483,7 +1483,7 @@ class BlueJammerBw16Profile(FirmwareProfile):
 _MESHTASTIC_API = "https://api.github.com/repos/meshtastic/firmware/releases/latest"
 
 _MESHTASTIC_CHIP_MAP: Dict[str, str] = {
-    "heltec-v3": "esp32s3", "heltec-v2": "esp32", "heltec-wsl-v3": "esp32s3",
+    "heltec-v3": "esp32s3", "heltec-v4": "esp32s3", "heltec-v2": "esp32", "heltec-wsl-v3": "esp32s3",
     "t-beam": "esp32", "t-beam-s3": "esp32s3",
     "t-deck": "esp32s3", "t-watch-s3": "esp32s3",
     "t-lora-v2": "esp32", "t-lora-v2-1-1.6": "esp32",
@@ -1526,9 +1526,10 @@ _MESHTASTIC_CHIP_ZIP = re.compile(r"^firmware-(esp32|esp32s2|esp32s3|esp32c3|esp
 # real 2.7.15 bundle; covers the owned fleet (Heltec V3) + popular boards. Not exhaustive.
 _MESHTASTIC_BOARDS: Dict[str, List[str]] = {
     "esp32s3": [
-        "heltec-v3", "heltec-wireless-tracker", "heltec-wsl-v3", "tbeam-s3-core",
-        "t-deck", "t-deck-pro", "t-watch-s3", "t-eth-elite", "seeed-xiao-s3", "station-g2",
-        "station-g3", "tlora-t3s3-v1", "tlora-pager", "m5stack-cores3", "picomputer-s3", "unphone",
+        "heltec-v3", "heltec-v4", "heltec-wireless-tracker", "heltec-wireless-tracker-v2",
+        "heltec-wsl-v3", "tbeam-s3-core", "t-deck", "t-deck-pro", "t-watch-s3", "t-eth-elite",
+        "seeed-xiao-s3", "station-g2", "station-g3", "tlora-t3s3-v1", "tlora-pager",
+        "m5stack-cores3", "picomputer-s3", "unphone",
     ],
     # tbeam0_7 / heltec-v1 / heltec-v2_0 / heltec-v2_1 pruned 2026-07-10: verified ABSENT from the
     # 2.7.26 manifest, so they were advertised-but-unflashable (download_and_extract "no member").

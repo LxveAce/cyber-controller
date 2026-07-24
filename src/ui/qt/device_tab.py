@@ -48,6 +48,7 @@ from src.protocols import (
     resolve_protocol_name,
 )
 from src.ui.qt.arm_lamp import arm_lamp_render
+from src.ui.qt.meshtastic_panel import MeshtasticPanel
 from src.ui.qt.theme import colors as C
 
 log = logging.getLogger(__name__)
@@ -440,6 +441,15 @@ class DeviceTab(QWidget):
         right_layout.addWidget(self._bj_panel)
         self._bj_load_map_from_settings()
 
+        # Meshtastic (stream device) control panel — shown only when a Meshtastic device is the active
+        # firmware. It has no text command channel, so it replaces the inert terminal grid with a live
+        # node/channel/message surface driven by the device's own StreamAPI backend (reached through the
+        # connection; decoded state arrives on the shared bus under mesh.* topics).
+        _mesh_bus = getattr(self._pool, "bus", None) if self._pool is not None else None
+        self._mesh_panel = MeshtasticPanel(self._dm, bus=_mesh_bus)
+        self._mesh_panel.setVisible(False)
+        right_layout.addWidget(self._mesh_panel)
+
         self._term_label = QLabel("Serial Terminal")
         self._term_label.setObjectName("card_title")
         self._term_label.setWordWrap(True)
@@ -657,17 +667,19 @@ class DeviceTab(QWidget):
             # falls back to open_connection's hardcoded 115200, so a device whose serial monitor runs at a
             # non-default baud (e.g. 9600 or 230400) connects at the wrong speed and produces garbled TX/RX.
             baud = load_settings().get("serial", {}).get("default_baud", 115200)
-            conn = self._dm.open_connection(port, baud=baud, owner="devices_tab")
-            self._active_conn = conn
-            # Persist the chosen firmware onto the Device so the ActionResolver + BroadcastEngine resolve
-            # the SAME protocol the ingestor parses with (both key off Device.firmware, which scan_ports
-            # never sets — without this the resolver returns zero actions and broadcast/STOP-ALL no-op).
+            # Persist the chosen firmware onto the Device BEFORE opening. Two reasons: the ActionResolver +
+            # BroadcastEngine resolve the SAME protocol the ingestor parses with (both key off
+            # Device.firmware, which scan_ports never sets); AND the cross-comm hub's connection-opened hook
+            # reads Device.firmware at open — setting it first means a stream device (Meshtastic) gets its
+            # protobuf backend attached immediately, instead of the panel sitting inert until a reconnect.
             dev = self._dm.get_device(port)
             if dev is not None:
                 try:
                     dev.firmware = self._selected_protocol().protocol_name
                 except Exception:
                     pass
+            conn = self._dm.open_connection(port, baud=baud, owner="devices_tab")
+            self._active_conn = conn
             # Carry the SOURCE port through the signal so line handling (esp. the DMS auto-auth reply)
             # targets the device that emitted the line, and keep a handle so disconnect can remove
             # exactly this callback (a co-owned conn survives close_connection, so a left-behind
@@ -972,6 +984,22 @@ class DeviceTab(QWidget):
         self._btn_send.setEnabled(False if is_bj else self._btn_disconnect.isEnabled())
         self._apply_line_ending()
         self._update_capabilities()
+        self._update_mesh_panel()
+
+    def _update_mesh_panel(self) -> None:
+        """Show the Meshtastic panel only when a Meshtastic (stream) device is the active firmware. A stream
+        device has no text command channel, so — like the BlueJammer case — the terminal Send affordances are
+        inert; the panel's own send-text box is the real send path."""
+        try:
+            is_mesh = self._selected_protocol().protocol_name == "meshtastic"
+        except Exception:  # noqa: BLE001
+            is_mesh = False
+        self._mesh_panel.setVisible(is_mesh)
+        if is_mesh:
+            self._mesh_panel.set_port(getattr(self, "_active_port", "") or "")
+            self._cmd_input.setEnabled(False)
+            self._cmd_palette.setEnabled(False)
+            self._btn_send.setEnabled(False)
 
     def _update_capabilities(self) -> None:
         """Show the active node's capability tokens (its 'node' role) as a chip line. Prefers a

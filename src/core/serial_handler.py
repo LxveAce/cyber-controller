@@ -54,6 +54,7 @@ class SerialConnection:
         timeout: float = 1.0,
         encoding: str = "utf-8",
         line_ending: str = "\n",
+        raw: bool = False,
     ) -> None:
         self.port = port
         self.baud = baud
@@ -62,6 +63,12 @@ class SerialConnection:
         # Per-firmware command terminator (default LF; Flipper needs CR). Settable after construction —
         # the UI applies the selected firmware's BaseProtocol.line_ending to the live connection.
         self.line_ending = line_ending
+        # Raw byte mode: when True the reader thread hands each raw read straight to `on_bytes` subscribers
+        # and does NOT run the incremental UTF-8 line decoder (which would corrupt binary protobuf and split
+        # a framed stream on stray \n/\r bytes). A Meshtastic StreamAPI connection sets this so its
+        # length-delimited protobuf frames arrive intact; every text-CLI firmware leaves it False. Settable
+        # live (the reader checks it each iteration) so a backend can enable it right after connect.
+        self.raw = raw
 
         self._serial: serial.Serial | None = None
         self._state = ConnectionState.DISCONNECTED
@@ -74,6 +81,7 @@ class SerialConnection:
 
         # Callback lists
         self._line_callbacks: list[Callable[[str], None]] = []
+        self._byte_callbacks: list[Callable[[bytes], None]] = []
         self._state_callbacks: list[Callable[[ConnectionState], None]] = []
         self._error_callbacks: list[Callable[[Exception], None]] = []
 
@@ -103,6 +111,22 @@ class SerialConnection:
         """
         try:
             self._line_callbacks.remove(cb)
+        except ValueError:
+            pass
+
+    def on_bytes(self, cb: Callable[[bytes], None]) -> None:
+        """Register a callback fired with each RAW byte chunk (only when :attr:`raw` is True).
+
+        The binary counterpart of :meth:`on_line`, for framed/stream protocols (Meshtastic protobuf) whose
+        bytes must not pass through the text line decoder. The subscriber (e.g. a MeshtasticBackend feeding a
+        StreamFramer) owns reassembly/framing; this just hands over exactly what ``serial.read`` returned."""
+        self._byte_callbacks.append(cb)
+
+    def remove_byte_callback(self, cb: Callable[[bytes], None]) -> None:
+        """Remove a previously-registered byte callback (idempotent — no error if absent), so a stream
+        backend can fully detach on disconnect instead of leaking a dead callback."""
+        try:
+            self._byte_callbacks.remove(cb)
         except ValueError:
             pass
 
@@ -322,10 +346,14 @@ class SerialConnection:
             try:
                 if not self._serial or not self._serial.is_open:
                     break
-                raw = self._serial.read(self._serial.in_waiting or 1)
-                if not raw:
+                chunk = self._serial.read(self._serial.in_waiting or 1)
+                if not chunk:
                     continue
-                buf += decoder.decode(raw)
+                if self.raw:
+                    # Binary/stream mode: hand the bytes over verbatim, no text decode, no line split.
+                    self._emit_bytes(chunk)
+                    continue
+                buf += decoder.decode(chunk)
                 # Frame on ANY line terminator — LF, CRLF, or CR-only. A CR-only firmware (e.g. Flipper,
                 # whose line_ending is "\r") never sends "\n", so splitting on "\n" alone would never frame
                 # a line and `buf` would grow unbounded. Splitting on runs of \r/\n handles all three; the
@@ -375,6 +403,14 @@ class SerialConnection:
                 cb(line)
             except Exception:
                 log.exception("Line callback error")
+
+    def _emit_bytes(self, data: bytes) -> None:
+        # Snapshot the list: a subscriber attaching/detaching mid-fan-out must not skip or stale-fire.
+        for cb in list(self._byte_callbacks):
+            try:
+                cb(data)
+            except Exception:
+                log.exception("Byte callback error")
 
     def _emit_error(self, exc: Exception) -> None:
         for cb in list(self._error_callbacks):

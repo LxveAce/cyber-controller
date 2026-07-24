@@ -347,3 +347,45 @@ def test_emit_line_snapshot_allows_detach_during_emit() -> None:
     seen.clear()
     conn._emit_line("y")
     assert seen == [("a", "y")]
+
+
+# ── raw byte mode (Meshtastic StreamAPI transport) ──────────────────────
+
+
+def test_reader_loop_raw_mode_emits_raw_bytes_not_lines() -> None:
+    # In raw mode the reader hands each read straight to on_bytes and NEVER runs the line decoder — so
+    # binary protobuf (which contains stray \n/\r bytes and invalid UTF-8) survives intact and no phantom
+    # lines are emitted.
+    conn = SerialConnection("X", raw=True)
+    got = bytearray()
+    lines: list[str] = []
+    done = threading.Event()
+    chunks = [b"\x94\xc3\x00\x02\x08\x01", b"\nplain\r\ntext\n\xff\xfe"]
+    total = sum(len(c) for c in chunks)
+
+    def on_b(b: bytes) -> None:
+        got.extend(b)
+        if len(got) >= total:
+            done.set()
+
+    conn.on_bytes(on_b)
+    conn.on_line(lines.append)
+    conn._serial = _ScriptedSerial(list(chunks))
+    th = _run_reader(conn)
+    assert done.wait(2.0), "raw bytes not emitted"
+    conn._stop_event.set()
+    th.join(timeout=2.0)
+    assert bytes(got) == b"".join(chunks)  # exact bytes, in order, undecoded
+    assert lines == []  # raw mode bypasses the line decoder entirely
+
+
+def test_on_bytes_register_and_remove_is_idempotent() -> None:
+    conn = SerialConnection("X")
+
+    def cb(_b: bytes) -> None:
+        pass
+
+    conn.on_bytes(cb)
+    conn.remove_byte_callback(cb)
+    conn.remove_byte_callback(cb)  # removing an absent callback is a no-op, not an error
+    assert conn._byte_callbacks == []
