@@ -172,12 +172,20 @@ def detect_cyd(
     *,
     flash_probe: bool = True,
     read_secs: float = 6.0,
+    read_retries: int = 2,
     progress=None,
 ) -> CydResult:
     """Flash the probe (unless already present) and return what panel is on ``port``.
 
-    ``progress`` is an optional ``callable(str)`` for UI status lines. This OVERWRITES the board's
-    firmware with the probe — callers should warn the user and re-flash real firmware afterward.
+    ``progress`` is an optional ``callable(str)`` for UI status lines. With ``flash_probe=True`` this
+    OVERWRITES the board's firmware with the probe (callers should warn + re-flash real firmware after);
+    ``flash_probe=False`` is the **non-destructive** path — just re-read a board that already has the
+    probe, never touching its flash.
+
+    A single read can miss the report (we connected late, the reset pulse raced setup(), the board hadn't
+    reprinted yet) — which is indistinguishable from a blank board. So when the first read comes back
+    ``responded=False`` we **re-READ up to ``read_retries`` more times (never re-flash)** before giving up,
+    so a real CYD isn't misreported as unresponsive on a timing fluke.
     """
     if flash_probe:
         if progress:
@@ -185,8 +193,13 @@ def detect_cyd(
         _flash_probe(port)
     if progress:
         progress("Reading panel identity…")
-    raw = _read_report(port, read_secs)
-    result = parse_report(raw)
+    result = parse_report(_read_report(port, read_secs))
+    attempts = max(0, int(read_retries))
+    while not result.responded and attempts > 0:
+        attempts -= 1
+        if progress:
+            progress("No report yet — re-reading (no reflash)…")
+        result = parse_report(_read_report(port, read_secs))  # READ only — never re-flashes
     if progress:
         progress(result.summary)
     return result

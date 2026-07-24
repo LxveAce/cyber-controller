@@ -4,6 +4,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+- **CYD panel detection no longer gives up after one missed read.** A single read of the detection probe's report
+  can miss it (connected a beat late, the reset pulse raced the sketch's `setup()`, the board hadn't reprinted yet) —
+  which looked identical to a blank/unsupported board. Detection now **re-reads the report a couple more times
+  (never re-flashing) before concluding**, so a real CYD isn't misreported as unresponsive on a timing fluke. The
+  re-read path is non-destructive.
 - **Multi-board wardrive now flags a silent radio instead of hiding it.** During a multi-device wardrive, a
   board that opened fine but has produced no data for 20 s is now marked "silent" in the status view (with the
   seconds since its last line) — so a dead, mis-flashed, or idle radio reads as an honest warning, not as a

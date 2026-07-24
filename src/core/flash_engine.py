@@ -1300,8 +1300,10 @@ class FlashEngine:
             with self._lock:
                 self._status = FlashStatus.FLASHING
             try:
-                result = _detect_cyd(port, flash_probe=flash_probe,
-                                     read_secs=read_secs, progress=progress)
+                # read_retries uses cyd_detect.detect_cyd's default (non-destructive re-read on a
+                # missed first report); not surfaced on the engine API to keep it minimal.
+                result = _detect_cyd(port, flash_probe=flash_probe, read_secs=read_secs,
+                                     progress=progress)
             except Exception:
                 # A probe failure (serial open, esptool non-zero exit, read timeout) must record
                 # ERROR, not DONE. The old bare `finally` stamped DONE unconditionally, so a surface

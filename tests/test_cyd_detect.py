@@ -106,3 +106,47 @@ def test_real_report_marks_responded():
 def test_probe_binary_is_bundled():
     assert PROBE_BIN.is_file(), f"probe image missing at {PROBE_BIN}"
     assert PROBE_BIN.stat().st_size > 100_000  # merged esp32 image, ~340 KB
+
+
+# ── detect_cyd non-destructive read-retry (detect-audit P1 #5) ────────────────
+
+def _valid_report():
+    # Two complete probe blocks — what _read_report collects (it waits for 2 END markers).
+    return _block("yes", "high", "ST7789", "resistive", "cyd_2432S028", 1, 2100) * 2
+
+
+def test_detect_cyd_rereads_a_missed_report_without_reflashing(monkeypatch):
+    # The first read misses the report (late connect / reset race) — indistinguishable from a blank
+    # board. A non-destructive re-READ recovers it; the board is NOT reflashed a second time.
+    reads = ["", _valid_report()]                       # silent, then a real report
+    flashes = []
+    monkeypatch.setattr(cyd_detect, "_flash_probe", lambda port, *a, **k: flashes.append(port))
+    monkeypatch.setattr(cyd_detect, "_read_report", lambda port, secs=6.0: reads.pop(0))
+    r = cyd_detect.detect_cyd("COM_FAKE", read_retries=2)
+    assert r.responded                                  # recovered — not misreported as blank
+    assert flashes == ["COM_FAKE"]                      # flashed ONCE; the retry did NOT reflash
+    assert reads == []                                  # used exactly 2 reads (initial + 1 retry)
+
+
+def test_detect_cyd_gives_up_after_retries_when_truly_silent(monkeypatch):
+    calls = {"reads": 0}
+
+    def _silent(port, secs=6.0):
+        calls["reads"] += 1
+        return ""
+
+    monkeypatch.setattr(cyd_detect, "_flash_probe", lambda *a, **k: None)
+    monkeypatch.setattr(cyd_detect, "_read_report", _silent)
+    r = cyd_detect.detect_cyd("COM_FAKE", read_retries=2)
+    assert not r.responded
+    assert calls["reads"] == 3                           # 1 initial + 2 retries, then stop
+
+
+def test_detect_cyd_flash_probe_false_is_non_destructive(monkeypatch):
+    # The UI's "retry read" affordance: flash_probe=False must NEVER touch the board's flash.
+    flashed = []
+    monkeypatch.setattr(cyd_detect, "_flash_probe", lambda *a, **k: flashed.append(1))
+    monkeypatch.setattr(cyd_detect, "_read_report", lambda port, secs=6.0: _valid_report())
+    r = cyd_detect.detect_cyd("COM_FAKE", flash_probe=False)
+    assert r.responded
+    assert flashed == []                                 # read-only — no reflash
