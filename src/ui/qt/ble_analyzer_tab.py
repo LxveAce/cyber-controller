@@ -428,9 +428,10 @@ try:
                     "" if d.rssi is None else str(d.rssi),   # SignalBarsDelegate reads the RSSI int
                     d.display_name(),
                     d.addr,
-                    # OUI vendor from the MAC, else the SIG company name from the advert's mfg data — most BLE
-                    # devices randomize their MAC (no OUI vendor), but still advertise a company id.
-                    d.vendor or d.company_name or "",
+                    # OUI vendor from the MAC, else the SIG company name from the advert's mfg data, else the
+                    # GAP appearance class — most BLE devices randomize their MAC (no OUI vendor); a nameless
+                    # one with neither company nor OUI still often advertises what it IS (e.g. Heart Rate Sensor).
+                    d.vendor or d.company_name or d.appearance_name or "",
                     "⚑" if d.tracker else "",
                     str(d.hits),
                     "now" if age < 1 else f"{int(age)}s",

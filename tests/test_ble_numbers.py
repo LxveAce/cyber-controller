@@ -1,9 +1,15 @@
-"""Tests for the BLE company-id -> vendor resolver (src/core/ble_numbers.py) + its analyzer wiring."""
+"""Tests for the BLE number->name resolvers (src/core/ble_numbers.py) + their analyzer wiring."""
 
 from __future__ import annotations
 
 from src.core.ble_analyzer import BleAnalyzerModel
-from src.core.ble_numbers import lookup_company, normalize_company
+from src.core.ble_numbers import (
+    lookup_appearance,
+    lookup_company,
+    normalize_company,
+    normalize_uuid,
+    resolve_uuid,
+)
 
 
 def test_lookup_known_companies_decimal():
@@ -58,3 +64,73 @@ def test_analyzer_unknown_company_keeps_raw_no_fabricated_name():
     dev = m.observe({"addr": "aa:bb:cc:dd:ee:01", "company": "notanumber"}, now=1.0)
     assert dev.company == "notanumber"
     assert dev.company_name == ""
+
+
+# ── appearance ───────────────────────────────────────────────────────────────
+def test_lookup_appearance_exact_and_category():
+    assert lookup_appearance(962) == "Mouse"            # 0x03C2 exact value
+    assert lookup_appearance("0x03C1") == "Keyboard"    # hex form
+    assert lookup_appearance(833) == "Heart Rate Belt"  # 0x0341 exact subcategory value
+    assert lookup_appearance(832) == "Heart Rate Sensor"  # 0x0340 -> category 13, no exact value
+    assert lookup_appearance(64) == "Phone"             # category 1, subcategory 0
+    assert lookup_appearance("64") == "Phone"           # decimal string (the LxveOS convention)
+
+
+def test_lookup_appearance_unknown_and_zero_return_empty():
+    assert lookup_appearance(0) == ""            # category 0 "Unknown" -> not labeled
+    assert lookup_appearance(None) == ""
+    assert lookup_appearance("notanumber") == ""
+    assert lookup_appearance(70000) == ""        # beyond 16-bit
+    assert lookup_appearance(True) == ""         # bool guard
+    assert lookup_appearance(0x1FC0) == ""       # category 127 is unassigned -> no fabricated name
+
+
+# ── service / member UUIDs ───────────────────────────────────────────────────
+def test_resolve_uuid_16bit_forms():
+    assert resolve_uuid("180D") == "Heart Rate"
+    assert resolve_uuid(0x180F) == "Battery"
+    assert resolve_uuid("0x180a") == "Device Information"
+    assert resolve_uuid("FEED") == "Tile"          # member (vendor) service UUID
+    assert resolve_uuid("fe2c") == "Google Fast Pair"
+
+
+def test_resolve_uuid_base_128bit_alias():
+    # a full 128-bit UUID on the Bluetooth base carries a 16-bit alias in bytes 3-4
+    assert resolve_uuid("0000180d-0000-1000-8000-00805f9b34fb") == "Heart Rate"
+    assert normalize_uuid("0000180F-0000-1000-8000-00805F9B34FB") == "180F"
+
+
+def test_resolve_uuid_unknown_and_nonbase_return_empty():
+    assert resolve_uuid("1234") == ""     # a well-formed but unassigned 16-bit UUID
+    assert resolve_uuid(None) == ""
+    assert resolve_uuid("notauuid") == ""
+    # a proprietary 128-bit UUID NOT on the Bluetooth base has no 16-bit alias -> never guessed
+    assert normalize_uuid("6e400001-b5a3-f393-e0a9-e50e24dcca9e") is None
+    assert resolve_uuid("6e400001-b5a3-f393-e0a9-e50e24dcca9e") == ""
+
+
+# ── appearance analyzer wiring ───────────────────────────────────────────────
+def test_analyzer_resolves_appearance():
+    m = BleAnalyzerModel()
+    dev = m.observe({"addr": "aa:bb:cc:dd:ee:02", "appr": 962, "rssi": -60}, now=1.0)
+    assert dev is not None
+    assert dev.appearance == 962
+    assert dev.appearance_name == "Mouse"
+    d = dev.to_dict()
+    assert d["appearance"] == 962 and d["appearance_name"] == "Mouse"
+
+
+def test_analyzer_appearance_name_is_sticky_across_readvert():
+    m = BleAnalyzerModel()
+    m.observe({"addr": "aa:bb:cc:dd:ee:03", "appr": 833, "rssi": -55}, now=1.0)
+    # a later plain re-advert with no appr must not blank the classification
+    dev = m.observe({"addr": "aa:bb:cc:dd:ee:03", "rssi": -57}, now=2.0)
+    assert dev.appearance_name == "Heart Rate Belt"
+
+
+def test_analyzer_unknown_appearance_keeps_raw_no_fabricated_name():
+    m = BleAnalyzerModel()
+    # appearance 0 ("Unknown") -> raw value kept, name stays empty (never fabricated)
+    dev = m.observe({"addr": "aa:bb:cc:dd:ee:04", "appr": 0}, now=1.0)
+    assert dev.appearance == 0
+    assert dev.appearance_name == ""

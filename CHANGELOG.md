@@ -10,6 +10,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   via a longest-prefix match, so a device in a sub-assigned block resolves to its real vendor instead of the
   block administrator. (Both vendor tables now also ship correctly in the packaged build — they previously
   only worked when running from source.)
+- **BLE scans now say what a device IS, not just who made it.** A nameless advertiser that carries a GAP
+  "appearance" now shows its class in the Vendor column (e.g. "Heart Rate Sensor", "Mouse", "Keyboard") when
+  it has no MAC-OUI or company name — so a randomized-MAC fitness strap or peripheral is still identifiable.
+  Added a service/member-UUID name resolver too (180D → "Heart Rate", FEED → "Tile"), ready for callers that
+  carry a raw UUID. Unknown values are never given a fabricated name.
 - **New: Meshtastic is a real integration, not just a flasher.** Connect a Meshtastic node over USB and CC now
   speaks its protobuf StreamAPI directly: it reads the mesh — your node list (names, hardware model, SNR,
   battery), your channels, and incoming text messages — and lets you send a text on any channel from a

@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
 
-from src.core.ble_numbers import lookup_company
+from src.core.ble_numbers import lookup_appearance, lookup_company
 
 # ── bounds (a BLE-advert flood must not grow the model without limit) ──
 _MAX_DEVICES = 4096      # stalest device is evicted when a new address arrives at the cap
@@ -99,6 +99,8 @@ class BleDevice:
     vendor: str = ""
     company: str = ""          # raw company/manufacturer id when a firmware sends one (LxveOS ble)
     company_name: str = ""     # the id resolved to a Bluetooth-SIG vendor name (e.g. 76 -> "Apple, Inc.")
+    appearance: Optional[int] = None  # raw GAP appearance value when advertised (LxveOS ble appr=)
+    appearance_name: str = ""  # the appearance resolved to a name (e.g. 962 -> "Mouse")
     addr_type: str = ""        # "public" / "random" when reported
     tracker: bool = False
     rssi: Optional[int] = None
@@ -137,6 +139,8 @@ class BleDevice:
             "vendor": self.vendor,
             "company": self.company,
             "company_name": self.company_name,
+            "appearance": self.appearance,
+            "appearance_name": self.appearance_name,
             "addr_type": self.addr_type,
             "tracker": self.tracker,
             "rssi": self.rssi,
@@ -200,6 +204,14 @@ class BleAnalyzerModel:
             resolved = lookup_company(dev.company)
             if resolved:
                 dev.company_name = resolved
+        appr = _as_int(data.get("appr"))
+        if appr is not None:
+            # Keep the raw GAP appearance + its resolved name; only set the name when known, so a later
+            # no-appearance re-advert never blanks a device we already classified.
+            dev.appearance = appr
+            resolved_appr = lookup_appearance(appr)
+            if resolved_appr:
+                dev.appearance_name = resolved_appr
         if _truthy(data.get("tracker")):
             dev.tracker = True  # sticky: a tracker verdict isn't un-flagged by a later plain hit
 
