@@ -4,6 +4,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+
+## [2.0.0-beta] — prerelease (pending publish)
+
+_Version cut from `src/version.py` (`2.0.0-beta`) and reflected across all sites; publishing the GitHub prerelease is a
+separate owner-gated step. Everything below ships in 2.0.0-beta._
+
 - **CYD panel detection no longer gives up after one missed read.** A single read of the detection probe's report
   can miss it (connected a beat late, the reset pulse raced the sketch's `setup()`, the board hadn't reprinted yet) —
   which looked identical to a blank/unsupported board. Detection now **re-reads the report a couple more times
