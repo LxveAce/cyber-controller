@@ -19,8 +19,8 @@ Key facts baked in (verified against the v1.12.1 release):
         FlipperZeroMultiBoardS3/    S3 bootloader+partitions + the shared boot_app0.bin
         FlipperZeroDevBoard/        S2 bootloader+partitions
   * Flash offsets: partitions 0x8000, boot_app0 0xE000, app 0x10000 always.
-    bootloader 0x1000 on classic ESP32 / S2, 0x0 on S3 / most C-series / H2,
-    and 0x2000 on the ESP32-C5 (see _BOOTLOADER_OFFSET / _bootloader_offset below).
+    bootloader 0x1000 on classic ESP32 / S2, 0x0 on S3 / most C-series (incl. C61) / H2,
+    and 0x2000 on the ESP32-C5 / P4 / H4 (see _BOOTLOADER_OFFSET / _bootloader_offset below).
 
 Suicide-bundle note (flash_suicide / read_bundle_manifest): this module only FLASHES a
 bundle that the Suicide-Marauder repo's provisioner already built (bundle.json + .bins). It
@@ -133,22 +133,23 @@ Line = Callable[[str], None]
 IMAGE_MERGED = "merged-single-bin"      # one .bin holds bootloader+partitions+app, flash at its offset
 IMAGE_MULTI = "multi-file-offsets"      # app .bin only; needs separate bootloader/partitions/boot_app0
 
-# bootloader sits at 0x0 on S3 and the RISC-V parts, 0x1000 on classic ESP32 / S2
-_BOOTLOADER_0 = {"esp32s3", "esp32c2", "esp32c3", "esp32c6", "esp32c5", "esp32h2"}
+# bootloader sits at 0x0 on S3 and the RISC-V parts (incl. C61), 0x1000 on classic ESP32 / S2
+_BOOTLOADER_0 = {"esp32s3", "esp32c2", "esp32c3", "esp32c6", "esp32c61", "esp32h2"}
 
-# Per-chip bootloader flash offset override. The ESP32-C5 ROM expects the second-stage
+# Per-chip bootloader flash offset override. The ESP32-C5 / P4 / H4 ROMs expect the second-stage
 # bootloader at 0x2000 — NOT 0x0 (S3 / most RISC-V parts) and NOT 0x1000 (classic ESP32 / S2).
-# Flashing a C5 bootloader at 0x0 produces a board that never boots. `_bootloader_offset`
-# consults this map first, then falls back to the _BOOTLOADER_0 (0x0 vs 0x1000) rule, so the
-# C5 fix lives in exactly one place and every profile's support_files() routes through it.
-_BOOTLOADER_OFFSET = {"esp32c5": "0x2000"}
+# Flashing one of these at 0x0 produces a board that never boots. `_bootloader_offset` consults
+# this map first, then falls back to the _BOOTLOADER_0 (0x0 vs 0x1000) rule, so the fix lives in
+# exactly one place and every profile's support_files() routes through it. (C5/P4/H4 offsets +
+# the golden test are ported from universal-flasher's verified table — sweep #13, 2026-07-24.)
+_BOOTLOADER_OFFSET = {"esp32c5": "0x2000", "esp32p4": "0x2000", "esp32h4": "0x2000"}
 
 
 def _bootloader_offset(chip: str) -> str:
     """Return the second-stage bootloader flash offset for a chip family.
 
-    Order: explicit per-chip override (C5 -> 0x2000), then the _BOOTLOADER_0 rule
-    (0x0 for S3 / most C-series / H2, 0x1000 for classic ESP32 / S2)."""
+    Order: explicit per-chip override (C5 / P4 / H4 -> 0x2000), then the _BOOTLOADER_0 rule
+    (0x0 for S3 / most C-series incl. C61 / H2, 0x1000 for classic ESP32 / S2)."""
     if chip in _BOOTLOADER_OFFSET:
         return _BOOTLOADER_OFFSET[chip]
     return "0x0" if chip in _BOOTLOADER_0 else "0x1000"

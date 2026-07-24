@@ -65,7 +65,12 @@ def test_rescued_boards_no_longer_default_to_classic_esp32(monkeypatch):
 
 
 def test_supported_chip_families():
-    # esp32c3/c5/c6 bootloader @0x0; esp32s2 uses classic 0x1000 — all are recognized esptool chips in CC.
-    for c in ("esp32c3", "esp32c5", "esp32c6"):
+    # esp32c3/c6 bootloader @0x0; esp32c5 @0x2000 (NOT 0x0 — the C5 gotcha, fixed 2026-07-24);
+    # esp32s2 uses classic 0x1000 — all are recognized esptool chips in CC, resolving to the right offset.
+    for c in ("esp32c3", "esp32c6"):
         assert c in flash_core._BOOTLOADER_0
+        assert flash_core._bootloader_offset(c) == "0x0"
+    assert "esp32c5" not in flash_core._BOOTLOADER_0        # C5 is a 0x2000 chip, not a 0x0 chip
+    assert flash_core._bootloader_offset("esp32c5") == "0x2000"
     assert "esp32s2" not in flash_core._BOOTLOADER_0
+    assert flash_core._bootloader_offset("esp32s2") == "0x1000"

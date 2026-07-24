@@ -4,6 +4,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
+- **Correct bootloader flash offsets for ESP32-P4 / H4 / C61.** The per-chip bootloader-offset table only
+  special-cased the C5, so the P4 and H4 fell through to the classic 0x1000 default (they need 0x2000, the same
+  gotcha as the C5) and the C61 fell to 0x1000 (it needs 0x0). Corrected to match esptool, with a golden-offset
+  regression test covering all 11 chip families. Latent-only today (no shipping profile targets those chips), but
+  the table is now right for custom-flash / auto-detect. (Real-silicon flash validation stays separately gated.)
 - **Better device vendor names.** BLE advertisers now resolve their manufacturer company id to a name
   (e.g. Apple, Google, Samsung) — useful because most BLE devices randomize their MAC, so the usual MAC-OUI
   lookup is blank. And MAC-vendor lookup now understands IEEE's 28-bit (MA-M) and 36-bit (MA-S) sub-blocks
