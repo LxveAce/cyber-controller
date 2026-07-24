@@ -110,3 +110,21 @@ def layout_profile(
         ref_width=ref_width,
         ref_height=ref_height,
     )
+
+
+# ── Per-screen layout decisions (pure; the widgets apply them) ──────────────────────────────────
+# Wave-3 rebuild: keep each screen's "how do I arrange for this profile" decision here as pure data,
+# so it's unit-testable without a live Qt widget. The widget only maps the decision to Qt calls.
+@dataclass(frozen=True)
+class FlashLayout:
+    """How the Flash tab arranges its top row (port · profile · actions) for a given profile."""
+
+    stack_top_row: bool   # True = stack the three cards vertically (compact); else a horizontal row
+    collapse_chrome: bool  # dense chrome (compact) — collapse toolbars / trim non-essential status
+
+
+def flash_layout(profile: LayoutProfile) -> FlashLayout:
+    """Decide the Flash tab's top-row arrangement from a :class:`LayoutProfile`. Depends only on the
+    SIZE axis (a cramped canvas stacks; anything roomier keeps the row). Depth (Simple/Pro) is the
+    user's separate choice and is NOT touched here."""
+    return FlashLayout(stack_top_row=profile.is_compact, collapse_chrome=profile.dense_chrome)

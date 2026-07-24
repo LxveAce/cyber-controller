@@ -14,6 +14,7 @@ from src.ui.qt.layout_profile import (
     COMPACT_MAX,
     REGULAR_MAX,
     LayoutProfile,
+    flash_layout,
     layout_profile,
 )
 
@@ -122,3 +123,24 @@ def test_resolver_is_deterministic():
 
 def test_returns_layout_profile_type():
     assert isinstance(layout_profile(800, 600), LayoutProfile)
+
+
+# ── flash_layout (Flash-tab top-row decision — Wave-3 first wire) ──
+def test_flash_layout_stacks_on_compact():
+    fl = flash_layout(layout_profile(480, 800))  # compact
+    assert fl.stack_top_row is True
+    assert fl.collapse_chrome is True
+
+
+def test_flash_layout_is_a_row_on_regular_and_expanded():
+    for w in (800, 1600):  # regular, expanded
+        fl = flash_layout(layout_profile(w, 700))
+        assert fl.stack_top_row is False
+        assert fl.collapse_chrome is False
+
+
+def test_flash_layout_is_size_driven_not_touch():
+    # A touch surface that is still roomy keeps the row — depth/density is a separate axis.
+    assert flash_layout(layout_profile(1600, 900, touch=True)).stack_top_row is False
+    # A compact touch surface stacks (because it's compact, not because it's touch).
+    assert flash_layout(layout_profile(400, 800, touch=True)).stack_top_row is True

@@ -8,6 +8,7 @@ from pathlib import Path
 from PyQt5.QtCore import Qt, QThread, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QFont
 from PyQt5.QtWidgets import (
+    QBoxLayout,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -36,6 +37,7 @@ from src.core.flash_engine import (
 )
 from src.core.resources import resource_path
 from src.models.device import BoardType
+from src.ui.qt.layout_profile import flash_layout, layout_profile
 
 # Chips we can trust from USB enumeration ALONE (no port probe). Only these native-USB
 # sub-variants are unambiguous; the plain ESP32 bucket collapses classic ESP32 / S2 /
@@ -306,6 +308,7 @@ class FlashTab(QWidget):
         self._loaded_variants: list = []
         self._profiles: dict[str, Path] = {}  # display name -> path
         self._profile_objs: dict[str, FirmwareProfile] = {}  # display name -> loaded profile
+        self._last_flash_size: str | None = None  # last layout_profile().size, for resize debounce
 
         self._build_ui()
         self._refresh_ports()
@@ -315,6 +318,27 @@ class FlashTab(QWidget):
         self._reload_variants()
         # Re-hint firmware compatibility whenever the selected port changes.
         self._port_combo.currentIndexChanged.connect(self._recolor_profiles)
+
+    # ── Adaptive layout (Wave-3) ─────────────────────────────────────
+    # Reflow the top row to match the window: a horizontal port·profile·actions row on a roomy
+    # canvas, stacked vertically when it's cramped. The DECISION lives in the pure `flash_layout`
+    # resolver (unit-tested without Qt); here we only translate it to a QBoxLayout direction. This
+    # is size-driven only — it never touches the user's Simple/Pro depth choice.
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_for_size()
+
+    def _relayout_for_size(self) -> None:
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if profile.size == self._last_flash_size:  # debounce: reflow only on a size-class change
+            return
+        self._last_flash_size = profile.size
+        self._apply_flash_layout(flash_layout(profile))
+
+    def _apply_flash_layout(self, layout) -> None:
+        direction = QBoxLayout.TopToBottom if layout.stack_top_row else QBoxLayout.LeftToRight
+        self._top_row.setDirection(direction)
 
     # ── Layout ───────────────────────────────────────────────────────
 
@@ -422,6 +446,9 @@ class FlashTab(QWidget):
         for _b in (self._btn_flash, self._btn_backup, self._btn_erase):
             _b.setMinimumWidth(120)
         top.addLayout(btn_col)
+        # Wave-3 adaptive layout: keep a handle on the top row so resizeEvent can reflow it
+        # (horizontal row on a roomy canvas → stacked on a compact one) via QBoxLayout.setDirection.
+        self._top_row = top
         root.addLayout(top)
 
         # ── Dead Man's Switch card ───────────────────────────────────
