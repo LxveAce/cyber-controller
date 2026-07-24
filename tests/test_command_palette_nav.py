@@ -77,7 +77,8 @@ def _run_palette_command(win, label: str) -> None:
 
 # (palette label, surface attr, sub-tab attr) — the four sub-views A5 #18 added a route for.
 NAV_CASES = [
-    ("Control Device", "_operate_surface", "_operate_console"),
+    # QA-1: Control Device lands on the merged Operate screen (broadcast + console), not a bare tab.
+    ("Control Device", "_operate_surface", "_operate_action"),
     ("Manage Nodes", "_connect_surface", "_nodes_tab"),
     ("Crack Lab", "_network_surface", "_crack_lab_tab"),
     ("BLE Analyzer", "_network_surface", "_ble_analyzer"),

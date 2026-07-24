@@ -586,13 +586,22 @@ class CyberControllerWindow(QMainWindow):
         from src.ui.qt.wifi_analyzer_tab import WifiAnalyzerTab
         self._wifi_analyzer = WifiAnalyzerTab() if WifiAnalyzerTab is not None else None
 
+        # QA-1 (decision #9, reverses the 07-21 Option-B split): merge Broadcast (fan-out) + Console
+        # (single-device) into ONE Operate screen — a vertical splitter with the fan-out verb bar on
+        # top and the single-device console below, instead of two separate "All Devices"/"Control"
+        # sub-tabs. Both are the SAME re-parented instances, so every self._broadcast_bar /
+        # _operate_console reference (dual-depth fan-out, palette, tests) keeps working. Safety is
+        # untouched — the console still gates offensive verbs behind its SAFE/ARMED two-factor arm.
+        self._operate_action = QSplitter(Qt.Vertical)
+        self._operate_action.addWidget(self._broadcast_bar)
+        self._operate_action.addWidget(self._operate_console)
+        self._operate_action.setStretchFactor(0, 0)
+        self._operate_action.setStretchFactor(1, 1)
+
         # Operate — the live action loop.
         self._operate_surface = QTabWidget()
         self._operate_surface.addTab(self._targets_tab, label_icon("Targets"), "Targets")
-        # QA-1 Option B: Broadcast is now the pure fan-out ("All Devices"); Console is the
-        # single-device deep control ("Control"). One clear job each — no overlapping command grids.
-        self._operate_surface.addTab(self._broadcast_bar, label_icon("All Devices"), "All Devices")
-        self._operate_surface.addTab(self._operate_console, label_icon("Control"), "Control")
+        self._operate_surface.addTab(self._operate_action, label_icon("Control"), "Control")
         self._operate_surface.addTab(self._macro_tab, label_icon("Macros"), "Macros")
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
@@ -1649,9 +1658,11 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("Manage Nodes", lambda: self._show_subtab(self._connect_surface, self._nodes_tab))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)
         # Operate surface sub-views: focus the surface, then the sub-tab (re-parented under _operate_surface).
-        self._palette.add_command("Control Device", lambda: self._show_subtab(self._operate_surface, self._operate_console))
+        # QA-1: Broadcast + Console are one merged Operate screen (self._operate_action), so both
+        # the single-device and fan-out palette entries land on it.
+        self._palette.add_command("Control Device", lambda: self._show_subtab(self._operate_surface, self._operate_action))
         self._palette.add_command("View Targets", lambda: self._show_subtab(self._operate_surface, self._targets_tab))
-        self._palette.add_command("Broadcast Actions", lambda: self._show_subtab(self._operate_surface, self._broadcast_bar))
+        self._palette.add_command("Broadcast Actions", lambda: self._show_subtab(self._operate_surface, self._operate_action))
         self._palette.add_command("View Macros", lambda: self._show_subtab(self._operate_surface, self._macro_tab))
         self._palette.add_command("Wardrive", lambda: self._show_subtab(self._survey_surface, self._wardrive_tab))
         # Network surface sub-views: focus the surface, then the sub-tab (re-parented under _network_surface).

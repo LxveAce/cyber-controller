@@ -119,21 +119,24 @@ def test_connect_surface_subtabs(qapp, isolated_settings):
 
 
 def test_operate_surface_subtabs(qapp, isolated_settings):
-    # WS-6 A: Operate is the live action loop. QA-1 Option B renamed Broadcast->"All Devices" (pure
-    # fan-out) and Console->"Control" (single-device deep control). The re-parented widgets are the
-    # SAME objects the window exposes on named attrs.
+    # QA-1 (decision #9): Broadcast (fan-out) + Console (single-device) merge into one "Control"
+    # Operate screen (a vertical splitter of both re-parented widgets) — Operate = Targets/Control/
+    # Macros. The widgets stay the SAME objects the window exposes on named attrs.
     win = _make_window()
     surface = win._operate_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Targets", "All Devices", "Control", "Macros"]
+    assert titles == ["Targets", "Control", "Macros"]
     assert surface.widget(0) is win._targets_tab, "Targets sub-tab must be the TargetsTab object"
-    assert surface.widget(1) is win._broadcast_bar, "All Devices must be the BroadcastBar object"
-    assert surface.widget(2) is win._operate_console, "Control must be the OperateTab object"
-    assert surface.widget(3) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
+    assert surface.widget(1) is win._operate_action, "Control must be the merged Operate splitter"
+    assert surface.widget(2) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
+    # The merged Control screen holds BOTH the fan-out bar and the single-device console.
+    merged = {win._operate_action.widget(i) for i in range(win._operate_action.count())}
+    assert win._broadcast_bar in merged, "fan-out BroadcastBar must live in the merged screen"
+    assert win._operate_console in merged, "single-device console must live in the merged screen"
     # None of the sub-views are direct top-level tabs anymore.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Targets", "All Devices", "Control", "Macros"):
-        assert gone not in toplevel, f"{gone!r} should be an Operate sub-tab, not top-level"
+    for gone in ("Targets", "Control", "Macros", "All Devices"):
+        assert gone not in toplevel, f"{gone!r} should be inside Operate, not top-level"
     assert "Operate" in toplevel
 
 
