@@ -23,6 +23,9 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass, field
 
+from src.protocols.meshtastic_ref import hardware_model_name as hw_model_name
+from src.protocols.meshtastic_ref import portnum_name
+
 # ── Wire types (protobuf) ────────────────────────────────────────────────────
 WT_VARINT = 0
 WT_I64 = 1
@@ -34,23 +37,8 @@ BROADCAST_NUM = 0xFFFFFFFF
 TEXT_MESSAGE_APP = 1  # portnums.proto PortNum.TEXT_MESSAGE_APP
 NODELESS_WANT_CONFIG_ID = 69420  # sending this id tells the node to skip other nodes' NodeInfos
 
-# A few common hardware models (mesh.proto HardwareModel) — surfaced for display only; unknown -> "hw#N".
-_HW_MODELS = {
-    43: "HELTEC_V3",
-    110: "HELTEC_V4",
-    9: "HELTEC_V2_1",
-    4: "HELTEC_V1",
-    31: "HELTEC_WSL_V3",
-    39: "HELTEC_WIRELESS_TRACKER",
-    71: "RAK4631",
-    77: "T_DECK",
-}
-
-
-def hw_model_name(n: int | None) -> str:
-    if n is None:
-        return ""
-    return _HW_MODELS.get(n, f"hw#{n}")
+# HardwareModel + PortNum names come from meshtastic_ref (the full, snapshot-verified enums) — imported above
+# as hw_model_name / portnum_name. (An earlier hand-typed 8-entry model map had 6 wrong values.)
 
 
 # ── Low-level wire reader ────────────────────────────────────────────────────
@@ -268,6 +256,11 @@ class FromRadioResult:
     config_complete_id: int | None = None
     portnum: int | None = None
     raw_fields: dict = field(default_factory=dict)
+
+    @property
+    def portnum_label(self) -> str:
+        """The PortNum as a name (e.g. 3 -> 'POSITION_APP'), or '' when there is no portnum."""
+        return portnum_name(self.portnum)
 
 
 def node_id_str(num: int) -> str:
