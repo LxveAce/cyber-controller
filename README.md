@@ -181,7 +181,7 @@ Cyber Controller drives real RF and flashing hardware, so it's hardened to match
 | Project | What |
 |---------|------|
 | [headless-marauder-gui](https://github.com/LxveAce/headless-marauder-gui) | Standalone Marauder controller + flasher (4 UIs) |
-| [universal-flasher](https://github.com/LxveAce/universal-flasher) | Multi-firmware flasher + device manager |
+| [LxveFlasher](https://github.com/LxveAce/universal-flasher) | Multi-firmware flasher + device manager |
 | [deadmans-switch](https://github.com/LxveAce/deadmans-switch) | Anti-forensic firmware provisioner |
 | [cybercontroller.org](https://cybercontroller.org) | Flagship site — demo, firmware library, downloads |
 | [esp32marauder.com](https://esp32marauder.com) | ESP32 security-tools hub |
