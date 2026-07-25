@@ -12,7 +12,7 @@ import types
 
 from src.core.handshake import DEFAULT_PROBE_COMMANDS, detect_firmware, learn_vocabulary
 from src.protocols import get_protocol, resolve_protocol_name
-from src.protocols.lxveos import LxveOSProtocol, _decode_caps
+from src.protocols.lxveos import _EVENT_MAP, LxveOSProtocol, _decode_caps
 
 # verbatim COM23 captures
 _STATUS = (
@@ -452,3 +452,36 @@ def test_learn_vocabulary_confirms_lxveos_commands_from_help():
     dev = types.SimpleNamespace(firmware="lxveos", driver_type="text-cli")
     vocab = learn_vocabulary(_HELP_REPLY, dev)
     assert {"info", "status", "caps", "sysinfo", "reboot"} <= vocab
+
+
+# Event types the LxveOS firmware emits over the LXVEOS/1 bridge. Audited 2026-07-25 from the firmware
+# source: components/lxveos_evt `lxveos_evt_begin(buf, cap, "<type>")` call sites (ap/sta/probe/sniff/
+# ble/alert/done/snapshot) + components/lxveos_cli/src/lxveos_cli.c `printf("LXVEOS/1 <type> ...")`
+# (status/bridge/hs/arm). The firmware's own evt unit-test type "x" is excluded. This is the CC-side
+# twin of the firmware's emit surface — the guard below fails if the firmware grows a type the parser
+# forgets to map (which would silently fall through to a generic `info`, the class of GhostESP gaps).
+_FIRMWARE_EMITTED_TYPES = frozenset({
+    "ap", "sta", "probe", "sniff", "ble", "alert", "done", "snapshot", "status", "bridge", "hs", "arm",
+})
+
+
+def test_parser_maps_every_firmware_emitted_event_type():
+    # Every type the firmware emits must resolve to a TYPED CC event, never the forward-compat `info`.
+    proto = LxveOSProtocol()
+    for etype in sorted(_FIRMWARE_EMITTED_TYPES):
+        ev = proto.parse_line(f"LXVEOS/1 {etype}")
+        assert ev is not None, f"LXVEOS/1 {etype!r} produced no event"
+        assert ev.event_type != "info", (
+            f"LXVEOS/1 {etype!r} falls through to a generic `info` event — map it in _EVENT_MAP "
+            f"(or special-case it), or a real firmware event is being silently untyped."
+        )
+        assert "lxveos_event" not in (ev.data or {}), (
+            f"LXVEOS/1 {etype!r} hit the forward-compat unknown-type path instead of a real mapping."
+        )
+
+
+def test_event_map_covers_the_firmware_types_at_the_map_level():
+    # `status` is special-cased in _parse_event (-> device_info); every other emitted type is in _EVENT_MAP.
+    mapped = set(_EVENT_MAP) | {"status"}
+    missing = _FIRMWARE_EMITTED_TYPES - mapped
+    assert not missing, f"firmware-emitted LXVEOS/1 types with no parser mapping: {sorted(missing)}"
