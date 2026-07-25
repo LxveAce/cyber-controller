@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Responsive tile grid + OPERATE HOME domain grid (adaptive GUI rebuild).** New `ResponsiveTileGrid`
+  widget lays tiles into a `QGridLayout` whose column count tracks the window — a real 1/2/3-column
+  reflow driven by the pure `layout_profile().columns` resolver (not a row/stack direction flip). The
+  new `DomainGrid` uses it for the brief's OPERATE HOME domain axis (Wi-Fi / BLE / RF-Sub-GHz / 2.4 GHz
+  / NFC / GPS-Wardrive / Tools / Settings), emitting `domain_selected(key)`. Tests assert the CLAIM —
+  the actual grid column count and each tile's (row, col) cell at compact / regular / expanded widths.
 - **Honest 3-tier Wi-Fi security lock in the analyzer table.** The Encryption column now colors each
   network by a factual security grade instead of only flagging open ones — `security_grade()` (pure,
   in `wifi_analyzer.py`): open → red, WEP / WPS / WPA1 → yellow (broken or deprecated; a broken
