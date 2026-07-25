@@ -81,8 +81,9 @@ class MeshtasticPanel(QWidget):
         root.addWidget(self._status)
 
         # Node table
-        self._nodes = QTableWidget(0, 5)
-        self._nodes.setHorizontalHeaderLabels(["Node", "Name", "HW", "SNR", "Batt"])
+        self._nodes = QTableWidget(0, 7)
+        self._nodes.setHorizontalHeaderLabels(
+            ["Node", "Name", "HW", "Role", "SNR", "Batt", "Location"])
         self._nodes.verticalHeader().setVisible(False)
         self._nodes.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._nodes.setSelectionMode(QAbstractItemView.NoSelection)
@@ -201,9 +202,12 @@ class MeshtasticPanel(QWidget):
             name = (n.long_name or "").strip() + (" (this node)" if n.is_local else "")
             snr = "" if n.snr is None else f"{n.snr:.1f}"
             batt = "" if n.battery is None else f"{n.battery}%"
-            for col, val in enumerate((n.node_id, name, n.hw_model_name, snr, batt)):
+            # Location: the node's GPS fix if present, else an honest "—" (never a fake 0,0).
+            loc = f"{n.latitude:.5f}, {n.longitude:.5f}" if n.has_position else "—"
+            fields = (n.node_id, name, n.hw_model_name, n.role_label, snr, batt, loc)
+            for col, val in enumerate(fields):
                 item = QTableWidgetItem(str(val))
-                if col in (3, 4):
+                if col in (4, 5):  # SNR + Batt right-align (numeric)
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self._nodes.setItem(row, col, item)
 

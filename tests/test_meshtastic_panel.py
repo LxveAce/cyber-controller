@@ -105,6 +105,34 @@ def test_nodes_populate_from_stream(qapp):
     assert panel._send_btn.isEnabled()
 
 
+def test_node_role_and_location_columns(qapp):
+    # The node table surfaces the decoded role + GPS location; a node with no fix shows "—".
+    panel, backend, _, _ = _make()
+    user = (
+        mp.field_bytes(1, b"!1ba746ac") + mp.field_bytes(2, b"Router") + mp.field_bytes(3, b"RTR")
+        + mp.field_varint(5, 110) + mp.field_varint(7, 2)          # hw=110, role=2 (ROUTER)
+    )
+    pos = mp.field_fixed32(1, -338568000) + mp.field_fixed32(2, 1512153000) + mp.field_varint(3, 25)
+    ni = mp.field_varint(1, 0x1BA746AC) + mp.field_bytes(2, user) + mp.field_bytes(3, pos)
+    backend.feed_bytes(
+        _framed_my_info(0x043AE298)
+        + _framed_node_info(0x043AE298, "Local", "LCL", 43, 0.0)   # local node: no fix -> "—"
+        + StreamFramer.frame(mp.field_bytes(4, ni))
+    )
+    hdr = [panel._nodes.horizontalHeaderItem(c).text() for c in range(panel._nodes.columnCount())]
+    role_col, loc_col = hdr.index("Role"), hdr.index("Location")
+
+    def _row(node_id):
+        return next(r for r in range(panel._nodes.rowCount())
+                    if panel._nodes.item(r, 0).text() == node_id)
+
+    rtr = _row("!1ba746ac")
+    assert panel._nodes.item(rtr, role_col).text() == "ROUTER"
+    assert panel._nodes.item(rtr, loc_col).text() == "-33.85680, 151.21530"
+    # the local node reported no GPS fix -> honest dash, never a fabricated 0,0
+    assert panel._nodes.item(_row("!043ae298"), loc_col).text() == "—"
+
+
 def test_channels_populate_active_only(qapp):
     panel, backend, _, _ = _make()
     backend.feed_bytes(_framed_channel(0, "LongFast", 1) + _framed_channel(1, "", 0))

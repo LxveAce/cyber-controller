@@ -124,6 +124,60 @@ def test_decode_node_info_v4_hw_model():
     assert res.node.hw_model_name == "HELTEC_V4"
 
 
+def _fake_user_role(node_id: str, long_name: str, short_name: str,
+                    hw_model: int, role: int) -> bytes:
+    return _fake_user(node_id, long_name, short_name, hw_model) + mp.field_varint(7, role)
+
+
+def _fake_position(lat_i: int, lon_i: int, altitude: int) -> bytes:
+    # Position: latitude_i=1(sfixed32), longitude_i=2(sfixed32), altitude=3(int32 varint).
+    return (
+        mp.field_fixed32(1, lat_i)  # field_fixed32 masks to 32 bits; a negative deg passes fine
+        + mp.field_fixed32(2, lon_i)
+        + mp.field_varint(3, altitude)  # encode_varint two's-complements a negative altitude
+    )
+
+
+def _fake_nodeinfo_pos(num: int, user: bytes, position: "bytes | None") -> bytes:
+    out = mp.field_varint(1, num) + mp.field_bytes(2, user)
+    if position is not None:
+        out += mp.field_bytes(3, position)  # NodeInfo.position = field 3
+    out += mp.field_bytes(4, struct.pack("<f", 6.75)) + mp.field_bytes(6, mp.field_varint(1, 88))
+    return out
+
+
+def test_decode_node_info_role_and_position():
+    # NodeInfo now recovers the node's role (User.role) + GPS position (Position lat/lon/alt) — both
+    # were dropped before. A southern/eastern coord proves the sfixed32 lat/lon decodes SIGNED.
+    user = _fake_user_role("!deadbeef", "Router One", "R1", 43, 2)   # role 2 = ROUTER
+    pos = _fake_position(-338568000, 1512153000, 25)                 # -33.8568, 151.2153, 25 m
+    n = mp.decode_fromradio(mp.field_bytes(4, _fake_nodeinfo_pos(0xDEADBEEF, user, pos))).node
+    assert n.role == 2 and n.role_label == "ROUTER"
+    assert n.has_position is True
+    assert abs(n.latitude - (-33.8568)) < 1e-6
+    assert abs(n.longitude - 151.2153) < 1e-6
+    assert n.altitude == 25
+    assert n.long_name == "Router One" and n.battery == 88   # prior fields still decode
+
+
+def test_decode_node_info_no_position_is_honest_none():
+    # A node with no GPS fix omits Position — decode leaves lat/lon None (never a fake 0,0), reports
+    # has_position False, and an unreported role labels as "" (not a wrong guess).
+    user = _fake_user("!1ba746ac", "No GPS", "NG", 110)   # no role, no position
+    n = mp.decode_fromradio(mp.field_bytes(4, _fake_nodeinfo_pos(0x1BA746AC, user, None))).node
+    assert n.latitude is None and n.longitude is None and n.altitude is None
+    assert n.has_position is False
+    assert n.role is None and n.role_label == ""
+
+
+def test_decode_node_info_negative_altitude():
+    # Below-sea-level altitude (int32 varint) round-trips signed (e.g. a Dead-Sea node ~ -240 m).
+    user = _fake_user_role("!cafe", "Deep", "DP", 43, 5)   # role 5 = TRACKER
+    pos = _fake_position(313000000, 353000000, -240)
+    n = mp.decode_fromradio(mp.field_bytes(4, _fake_nodeinfo_pos(0xCAFE, user, pos))).node
+    assert n.altitude == -240 and n.role_label == "TRACKER"
+
+
 def test_decode_channel():
     settings = mp.field_bytes(3, b"LongFast")  # ChannelSettings.name = field 3
     channel = mp.field_varint(1, 0) + mp.field_bytes(2, settings) + mp.field_varint(3, 1)  # role PRIMARY

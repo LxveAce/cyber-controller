@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Meshtastic NodeInfo now decodes each node's role + GPS position.** The `FromRadio` NodeInfo decoder
+  previously dropped `User.role` (field 7) and the `Position` sub-message; it now recovers the node's role
+  (CLIENT / ROUTER / REPEATER / TRACKER / … via a new `role_name` enum helper) and its GPS fix — latitude
+  and longitude (from the signed `sfixed32` `latitude_i`/`longitude_i`, degrees) plus altitude (metres). A
+  node with no fix leaves lat/lon `None` and reports `has_position == False` (never a fabricated `0, 0`), and
+  an unreported role labels as `""` (never a wrong guess). The live Meshtastic panel's node table gains
+  **Role** and **Location** columns. RX/awareness-only — decode and display of a locally-connected node's
+  own StreamAPI state; CC authors no mesh frame. Golden-vector tested (signed coords, negative altitude,
+  role names, honest no-fix).
 - **RF/Sub-GHz domain view — a fourth real domain on the shared frame.** New `SubGhzSignal` object
   model (a frozen dataclass for a decoded OOK capture: protocol/code/address/data/bits + optional
   rssi/frequency/first-seen, with hex accessors) + a `signal_from_ev1527(decoded, **meta)` helper that

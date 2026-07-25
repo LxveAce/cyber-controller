@@ -14,6 +14,7 @@ from src.protocols.meshtastic_ref import (
     modem_preset_name,
     portnum_name,
     region_name,
+    role_name,
 )
 
 
@@ -79,3 +80,13 @@ def test_region_and_preset_unknown_and_none():
     assert modem_preset_name(99) == "preset#99"
     assert region_name(None) == ""
     assert modem_preset_name(None) == ""
+
+
+def test_device_role_names():
+    # snapshot from config.proto DeviceConfig.Role; values fixed by protobuf contract
+    assert role_name(0) == "CLIENT"       # the default role — meaningful, not blank
+    assert role_name(2) == "ROUTER"
+    assert role_name(4) == "REPEATER"
+    assert role_name(5) == "TRACKER"
+    assert role_name(999) == "role#999"   # unknown -> visible marker, never a fabricated name
+    assert role_name(None) == ""          # unreported -> blank, never a wrong guess

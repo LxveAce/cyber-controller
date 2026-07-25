@@ -108,3 +108,19 @@ def modem_preset_name(code: int | None) -> str:
     if code is None:
         return ""
     return MODEM_PRESETS.get(code, f"preset#{code}")
+
+
+# User.role (config.proto DeviceConfig.Role) — the node's role in the mesh. 0 = CLIENT (default).
+# ROUTER_CLIENT (3) is deprecated upstream but kept so a node still reporting it labels right.
+DEVICE_ROLES: dict[int, str] = {
+    0: "CLIENT", 1: "CLIENT_MUTE", 2: "ROUTER", 3: "ROUTER_CLIENT", 4: "REPEATER", 5: "TRACKER",
+    6: "SENSOR", 7: "TAK", 8: "CLIENT_HIDDEN", 9: "LOST_AND_FOUND",
+    10: "TAK_TRACKER", 11: "ROUTER_LATE",
+}
+
+
+def role_name(code: int | None) -> str:
+    """Human name for a device Role (e.g. 2 -> 'ROUTER'), or ``"role#N"`` if not in the snapshot."""
+    if code is None:
+        return ""
+    return DEVICE_ROLES.get(code, f"role#{code}")

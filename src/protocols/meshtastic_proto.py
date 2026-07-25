@@ -24,7 +24,7 @@ import struct
 from dataclasses import dataclass, field
 
 from src.protocols.meshtastic_ref import hardware_model_name as hw_model_name
-from src.protocols.meshtastic_ref import modem_preset_name, portnum_name, region_name
+from src.protocols.meshtastic_ref import modem_preset_name, portnum_name, region_name, role_name
 
 # ── Wire types (protobuf) ────────────────────────────────────────────────────
 WT_VARINT = 0
@@ -166,6 +166,17 @@ def as_i32(b) -> int | None:
     return None
 
 
+def as_sfixed32(b) -> int | None:
+    """Interpret an I32-wire field's 4 raw bytes as a little-endian SIGNED int32 — the sfixed32
+    encoding Meshtastic uses for Position.latitude_i / longitude_i (degrees x 1e7, so a southern or
+    western coordinate is negative). Falls through to the varint path so an int stays signed."""
+    if isinstance(b, (bytes, bytearray)) and len(b) == 4:
+        return struct.unpack("<i", bytes(b))[0]
+    if isinstance(b, int):
+        return as_i32(b)
+    return None
+
+
 # ── Low-level wire writer ────────────────────────────────────────────────────
 
 
@@ -211,14 +222,28 @@ class MeshNode:
     long_name: str = ""
     short_name: str = ""
     hw_model: int | None = None
+    role: int | None = None      # User.role enum: 0 CLIENT, 2 ROUTER, 4 REPEATER, 5 TRACKER, ...
     snr: float | None = None
     last_heard: int | None = None
     battery: int | None = None
+    latitude: float | None = None   # decimal degrees, from Position.latitude_i / 1e7
+    longitude: float | None = None  # decimal degrees, from Position.longitude_i / 1e7
+    altitude: int | None = None     # metres, from Position.altitude
     is_local: bool = False
 
     @property
     def hw_model_name(self) -> str:
         return hw_model_name(self.hw_model)
+
+    @property
+    def role_label(self) -> str:
+        """The node's role as a name (e.g. 2 -> 'ROUTER'), or '' when the node didn't report one."""
+        return role_name(self.role)
+
+    @property
+    def has_position(self) -> bool:
+        """True when this NodeInfo carried a GPS fix (both lat and lon present)."""
+        return self.latitude is not None and self.longitude is not None
 
 
 @dataclass
@@ -351,6 +376,19 @@ def _decode_nodeinfo(data) -> MeshNode:
         node.long_name = as_str(_first(uf, 2))
         node.short_name = as_str(_first(uf, 3))
         node.hw_model = _first(uf, 5)
+        node.role = _first(uf, 7)  # User.role enum: CLIENT / ROUTER / REPEATER / TRACKER / ...
+    position = _first(f, 3)
+    if isinstance(position, bytes):
+        pf = parse(position)
+        # Position: latitude_i=1(sfixed32, deg*1e7), longitude_i=2(sfixed32), altitude=3(int32, m).
+        # Absent lat/lon (a node with no GPS fix) leaves latitude/longitude None, not a fake (0, 0).
+        lat_i = as_sfixed32(_first(pf, 1))
+        lon_i = as_sfixed32(_first(pf, 2))
+        if lat_i is not None:
+            node.latitude = lat_i / 1e7
+        if lon_i is not None:
+            node.longitude = lon_i / 1e7
+        node.altitude = as_i32(_first(pf, 3))
     node.snr = as_float(_first(f, 4))
     node.last_heard = as_u32(_first(f, 5))
     metrics = _first(f, 6)
