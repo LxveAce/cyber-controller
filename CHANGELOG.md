@@ -6,6 +6,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Wi-Fi domain three-panel master/detail view.** New `WifiDomainView` composes the object table
+  (center) with a left posture panel and a right `APDetailPanel`. The posture split is a real
+  boundary: PASSIVE (Scan) is the default and ACTIVE (Attack) is never one tap — requesting it emits
+  `active_authorization_requested` for the host's safety confirm (posture only flips on `confirm_active`),
+  strengthening the consent model, not weakening it. Responsive: three panels on a roomy canvas, the
+  right detail collapses when cramped and reveals on selection. The `APDetailPanel` shows a selected
+  AP's OUI-resolved vendor and its honest security grade. Tests assert the boundary, the collapse/reveal,
+  and the resolved detail.
 - **Vendor column in the Wi-Fi analyzer table.** Each access point now shows its manufacturer,
   resolved from the scanned BSSID through the bundled IEEE OUI table (`oui.lookup_vendor`) — real
   registry data, blank for a randomized/locally-administered MAC (never a fabricated vendor). Part of
