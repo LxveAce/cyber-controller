@@ -5,6 +5,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Added
+- **Adaptive GUI rebuild (Wave 3) — the Devices tab now reflows with the window.** The device
+  list / detail split (a horizontal `QSplitter`) turns vertical on a cramped canvas (phone-sized or
+  a tiny floating window) and stays side-by-side on a roomy one, so the cyberdeck UI adapts from a
+  ~480p touch panel to a 4K desktop. The decision is the pure, Qt-free `device_layout(profile)`
+  resolver (unit-tested headless); the widget only maps it to `QSplitter.setOrientation`. Size-driven
+  only — it never touches the user's Simple/Pro depth choice. Mirrors the Flash tab's Wave-3 wiring.
+
 ## [2.0.0-beta] — prerelease
 
 _Version cut from `src/version.py` (`2.0.0-beta`). Everything below ships in 2.0.0-beta._

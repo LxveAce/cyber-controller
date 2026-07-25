@@ -14,6 +14,7 @@ from src.ui.qt.layout_profile import (
     COMPACT_MAX,
     REGULAR_MAX,
     LayoutProfile,
+    device_layout,
     flash_layout,
     layout_profile,
 )
@@ -144,3 +145,24 @@ def test_flash_layout_is_size_driven_not_touch():
     assert flash_layout(layout_profile(1600, 900, touch=True)).stack_top_row is False
     # A compact touch surface stacks (because it's compact, not because it's touch).
     assert flash_layout(layout_profile(400, 800, touch=True)).stack_top_row is True
+
+
+# ── device_layout (Devices-tab list/detail split decision — Wave-3 second wire) ──
+def test_device_layout_stacks_on_compact():
+    dl = device_layout(layout_profile(480, 800))  # compact
+    assert dl.stack_panels is True
+    assert dl.collapse_chrome is True
+
+
+def test_device_layout_is_side_by_side_on_regular_and_expanded():
+    for w in (800, 1600):  # regular, expanded
+        dl = device_layout(layout_profile(w, 700))
+        assert dl.stack_panels is False
+        assert dl.collapse_chrome is False
+
+
+def test_device_layout_is_size_driven_not_touch():
+    # A roomy touch surface stays side-by-side — depth/density is a separate axis from size.
+    assert device_layout(layout_profile(1600, 900, touch=True)).stack_panels is False
+    # A compact touch surface stacks (because it's compact, not because it's touch).
+    assert device_layout(layout_profile(400, 800, touch=True)).stack_panels is True

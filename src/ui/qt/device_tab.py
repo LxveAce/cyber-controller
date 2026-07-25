@@ -48,6 +48,7 @@ from src.protocols import (
     resolve_protocol_name,
 )
 from src.ui.qt.arm_lamp import arm_lamp_render
+from src.ui.qt.layout_profile import device_layout, layout_profile
 from src.ui.qt.meshtastic_panel import MeshtasticPanel
 from src.ui.qt.theme import colors as C
 
@@ -205,6 +206,7 @@ class DeviceTab(QWidget):
         # main window overrides this after both are built (it renders that RX itself, so we must not
         # double-echo). Defaults to "no" so a standalone Devices tab still echoes its returns to the bus.
         self._pterm_owns_port = lambda port: False
+        self._last_device_size: str | None = None  # last layout_profile().size, for resize debounce
 
         self._build_ui()
         self._refresh_devices()
@@ -216,12 +218,33 @@ class DeviceTab(QWidget):
         # The 3s device-list poll runs only while the tab is visible (showEvent starts it — fires at
         # launch for the default tab too — and hideEvent stops it). Serial I/O is independent of this.
 
+    # ── Adaptive layout (Wave-3) ─────────────────────────────────────
+    # Reflow the device list / detail split to match the window: side-by-side on a roomy canvas,
+    # stacked (list above detail) when it's cramped. The DECISION lives in the pure `device_layout`
+    # resolver (unit-tested without Qt); here we only translate it to the splitter orientation. This
+    # is size-driven only — it never touches the user's Simple/Pro depth (same as the Flash tab).
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_for_size()
+
+    def _relayout_for_size(self) -> None:
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if profile.size == self._last_device_size:  # debounce: reflow only on a size-class change
+            return
+        self._last_device_size = profile.size
+        self._apply_device_layout(device_layout(profile))
+
+    def _apply_device_layout(self, layout) -> None:
+        self._splitter.setOrientation(Qt.Vertical if layout.stack_panels else Qt.Horizontal)
+
     # ── Layout ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         splitter = QSplitter(Qt.Horizontal)
+        self._splitter = splitter  # kept for the Wave-3 adaptive relayout (orientation flip)
 
         # ── Left: device list (in scroll area) ──────────────────────
         left_scroll = QScrollArea()

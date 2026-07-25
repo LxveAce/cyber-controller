@@ -128,3 +128,19 @@ def flash_layout(profile: LayoutProfile) -> FlashLayout:
     SIZE axis (a cramped canvas stacks; anything roomier keeps the row). Depth (Simple/Pro) is the
     user's separate choice and is NOT touched here."""
     return FlashLayout(stack_top_row=profile.is_compact, collapse_chrome=profile.dense_chrome)
+
+
+@dataclass(frozen=True)
+class DeviceLayout:
+    """How the Devices tab arranges its device-list / detail split for a given profile."""
+
+    stack_panels: bool     # True = stack the list above the detail (compact); else side-by-side
+    collapse_chrome: bool  # dense chrome (compact) — collapse toolbars / trim non-essential status
+
+
+def device_layout(profile: LayoutProfile) -> DeviceLayout:
+    """Decide the Devices tab's split orientation from a :class:`LayoutProfile`. Size-driven only: a
+    cramped canvas stacks the device list above the detail panel (the horizontal splitter turns
+    vertical); anything roomier keeps them side by side. Depth (Simple/Pro) is the user's separate
+    choice and is NOT touched here."""
+    return DeviceLayout(stack_panels=profile.is_compact, collapse_chrome=profile.dense_chrome)
