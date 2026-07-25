@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **GPS-Wardrive domain view — a third real domain on the shared frame.** New `GpsDomainView`
+  (a thin `DomainDetailView` subclass, like WiFi/BLE) + `GpsDetailPanel` showing a selected
+  `WardriveObservation`: its network (SSID, BSSID, OUI vendor, honest security grade, channel, RSSI)
+  AND its location (lat/lon, altitude, GPS-fix state). `OperateHome` now routes the GPS-Wardrive tile
+  to it (replacing the placeholder). Passive, awareness-only — lawful/owner-authorized wardrive data,
+  transmits nothing. Tests assert the frame reuse (same posture boundary + reflow), the network +
+  location fields (incl. honest "—"/"No fix" for unknown values), and the routing.
 - **OPERATE HOME embedded in the app shell.** The dual-axis rebuild (`OperateHome` — the domain-grid →
   per-domain three-panel view) is now a real top-level tab in the main window, alongside the existing
   tabs (additive — nothing reparented or disrupted). A new `build_operate_home()` factory gives the

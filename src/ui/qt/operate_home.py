@@ -21,6 +21,7 @@ from PyQt5.QtWidgets import (
 
 from src.ui.qt.ble_domain import BleDomainView
 from src.ui.qt.domain_grid import DomainGrid
+from src.ui.qt.gps_domain import GpsDomainView
 from src.ui.qt.wifi_domain import WifiDomainView
 
 
@@ -43,6 +44,7 @@ class OperateHome(QWidget):
 
     def __init__(self, wifi_center: "Optional[QWidget]" = None,
                  ble_center: "Optional[QWidget]" = None,
+                 gps_center: "Optional[QWidget]" = None,
                  parent: "Optional[QWidget]" = None) -> None:
         super().__init__(parent)
         self._current: Optional[str] = None
@@ -59,6 +61,8 @@ class OperateHome(QWidget):
                 view: QWidget = WifiDomainView(center=wifi_center or QWidget())
             elif key == "ble":
                 view = BleDomainView(center=ble_center or QWidget())
+            elif key == "gps":
+                view = GpsDomainView(center=gps_center or QWidget())
             else:
                 view = _placeholder(titles.get(key, key))
             self._views[key] = view
