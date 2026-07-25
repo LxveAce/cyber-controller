@@ -6,7 +6,7 @@ decoder recovers exactly those. Plus rejections: wrong company / type / length /
 """
 from __future__ import annotations
 
-from src.core.ble_beacon import IBeacon, parse_ibeacon
+from src.core.ble_beacon import IBeacon, parse_eddystone, parse_ibeacon
 
 # Known iBeacon fields (the well-documented Apple AirLocate sample UUID).
 _UUID = "e2c56db5-dffb-48d2-b060-d0f5a71096e0"
@@ -62,3 +62,46 @@ def test_accepts_bytearray_and_ignores_trailing_bytes():
     b = bytearray(_ibeacon_bytes()) + b"\xff\xee"   # some scanners append extra AD bytes
     got = parse_ibeacon(b)
     assert got is not None and got.uuid == _UUID and got.major == _MAJOR
+
+
+# ── Eddystone (Google) golden vectors — UID / URL / TLM, built independently from known fields ──
+def test_parse_eddystone_uid():
+    ns = bytes(range(1, 11))      # namespace: 01..0a (10 bytes)
+    inst = bytes(range(11, 17))   # instance: 0b..10 (6 bytes)
+    got = parse_eddystone(bytes([0x00, 0xEC]) + ns + inst)   # 0xEC = -20 signed
+    assert got == {"frame": "uid", "tx_power": -20, "namespace": ns.hex(), "instance": inst.hex()}
+
+
+def test_parse_eddystone_url_scheme_prefix_and_expansion():
+    # scheme 0x01 -> "https://www.", "example", 0x00 -> ".com/"  => https://www.example.com/
+    got = parse_eddystone(bytes([0x10, 0xEE, 0x01]) + b"example" + bytes([0x00]))
+    assert got == {"frame": "url", "tx_power": -18, "url": "https://www.example.com/"}
+    # scheme 0x02 -> "http://", "google", 0x07 -> ".com" (suffix, no slash)
+    got2 = parse_eddystone(bytes([0x10, 0xEE, 0x02]) + b"google" + bytes([0x07]))
+    assert got2["url"] == "http://google.com"
+
+
+def test_parse_eddystone_tlm_fixed_point_and_counts():
+    b = (bytes([0x20, 0x00])
+         + (3300).to_bytes(2, "big")        # vbatt mV
+         + (25 * 256).to_bytes(2, "big")    # 25.0 C in 8.8 fixed point
+         + (1000).to_bytes(4, "big")        # adv count
+         + (36000).to_bytes(4, "big"))      # sec count (0.1s units) -> 3600.0 s
+    assert parse_eddystone(b) == {"frame": "tlm", "version": 0, "vbatt_mv": 3300,
+                                  "temperature_c": 25.0, "adv_count": 1000, "uptime_s": 3600.0}
+    # negative temperature proves the 8.8 value is signed
+    nb = (bytes([0x20, 0x00]) + (0).to_bytes(2, "big")
+          + int(-5.5 * 256).to_bytes(2, "big", signed=True)
+          + (0).to_bytes(4, "big") + (0).to_bytes(4, "big"))
+    assert parse_eddystone(nb)["temperature_c"] == -5.5
+
+
+def test_eddystone_rejects_unknown_short_and_bad_url():
+    assert parse_eddystone(bytes([0x99, 0x00])) is None                 # unknown frame type
+    assert parse_eddystone(bytes([0x00, 0xEC]) + b"\x01" * 5) is None   # UID too short (< 18)
+    assert parse_eddystone(bytes([0x10])) is None                       # URL too short (< 3)
+    assert parse_eddystone(bytes([0x20, 0x00])) is None                 # TLM too short (< 14)
+    assert parse_eddystone(b"") is None
+    assert parse_eddystone(None) is None                                # type: ignore[arg-type]
+    assert parse_eddystone(bytes([0x10, 0xEE, 0x04]) + b"x") is None    # reserved URL scheme 0x04
+    assert parse_eddystone(bytes([0x10, 0xEE, 0x00, 0x0e])) is None     # reserved expansion 0x0e

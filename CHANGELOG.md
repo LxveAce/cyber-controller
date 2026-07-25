@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Eddystone decoder (RX-only).** New pure `ble_beacon.parse_eddystone(service_data)` decodes Google
+  Eddystone 0xFEAA service data — the UID frame (namespace + instance + measured power), the URL frame
+  (scheme prefix + expansion-code decoding into the full URL), and the TLM frame (battery mV,
+  8.8 fixed-point temperature, advertising count, uptime). Returns `None` for an unknown frame, a
+  reserved URL byte, or a short buffer — never a fabricated beacon. Decode only. Golden-vector tests
+  per frame type (a real `https://www.example.com/` URL exercising a scheme + expansion) + rejections.
 - **iBeacon decoder (RX-only).** New pure `ble_beacon.parse_ibeacon(mfg_data)` decodes the Apple
   iBeacon manufacturer-specific data (`4C 00 | 02 15 | uuid[16] | major[2 BE] | minor[2 BE] |
   power[1]`) into its proximity UUID, major, minor, and measured power — returning `None` for any

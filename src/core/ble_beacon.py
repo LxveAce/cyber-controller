@@ -1,11 +1,13 @@
-"""BLE beacon manufacturer-data decoders — RX-ONLY (decode received advertisements, never transmit).
+"""BLE beacon advertisement decoders — RX-ONLY (decode received advertisements, never transmit).
 
-``parse_ibeacon`` decodes the Apple iBeacon manufacturer-specific data payload (a public de-facto
-format) into its proximity UUID, major, minor, and measured-power fields. It is a pure function over
-bytes — no Qt, no I/O, no device access — so it unit-tests headless against golden vectors, and it
-never authors or advertises a beacon frame (decode only).
+* ``parse_ibeacon`` decodes the Apple iBeacon manufacturer-specific data (proximity UUID / major /
+  minor / measured power).
+* ``parse_eddystone`` decodes Google Eddystone service data (0xFEAA) — the UID, URL, and TLM frame
+  types.
 
-Eddystone (#28) will join this module; the SubGHz EV1527 (#37) is a separate radio.
+All are pure functions over bytes — no Qt, no I/O, no device access — so they unit-test headless
+against golden vectors, and they never author or advertise a frame (decode only). The SubGHz EV1527
+(#37) is a separate radio, decoded elsewhere.
 """
 from __future__ import annotations
 
@@ -55,3 +57,80 @@ def parse_ibeacon(mfg_data: bytes) -> "IBeacon | None":
         minor=int.from_bytes(b[22:24], "big"),
         tx_power=int.from_bytes(b[24:25], "big", signed=True),
     )
+
+
+# ── Eddystone (Google) — BLE service data for UUID 0xFEAA; frame type is the first byte ──────────
+_EDDYSTONE_UID = 0x00
+_EDDYSTONE_URL = 0x10
+_EDDYSTONE_TLM = 0x20
+
+# URL scheme prefixes (Eddystone-URL spec, byte after tx_power).
+_URL_SCHEMES = ("http://www.", "https://www.", "http://", "https://")
+# URL expansion codes 0x00–0x0d; bytes 0x0e–0x20 and 0x7f–0xff are reserved (rejected).
+_URL_EXPANSIONS = (
+    ".com/", ".org/", ".edu/", ".net/", ".info/", ".biz/", ".gov/",
+    ".com", ".org", ".edu", ".net", ".info", ".biz", ".gov",
+)
+
+
+def parse_eddystone(service_data: bytes) -> "dict | None":
+    """Decode a Google Eddystone advertisement from its 0xFEAA service-data payload. Dispatches on
+    the frame-type byte: UID (0x00), URL (0x10), TLM (0x20). Returns ``None`` for an unknown frame,
+    a reserved URL byte, or a short buffer — a non-Eddystone advert is never fabricated. RX only.
+    """
+    if not isinstance(service_data, (bytes, bytearray)) or len(service_data) < 1:
+        return None
+    b = bytes(service_data)
+    frame = b[0]
+    if frame == _EDDYSTONE_UID:
+        return _parse_eddystone_uid(b)
+    if frame == _EDDYSTONE_URL:
+        return _parse_eddystone_url(b)
+    if frame == _EDDYSTONE_TLM:
+        return _parse_eddystone_tlm(b)
+    return None
+
+
+def _parse_eddystone_uid(b: bytes) -> "dict | None":
+    # 0x00 | tx_power[1 signed] | namespace[10] | instance[6] (+ 2 RFU, optional)
+    if len(b) < 18:
+        return None
+    return {
+        "frame": "uid",
+        "tx_power": int.from_bytes(b[1:2], "big", signed=True),
+        "namespace": b[2:12].hex(),
+        "instance": b[12:18].hex(),
+    }
+
+
+def _parse_eddystone_url(b: bytes) -> "dict | None":
+    # 0x10 | tx_power[1 signed] | scheme[1] | encoded_url[...]
+    if len(b) < 3 or b[2] >= len(_URL_SCHEMES):
+        return None
+    url = _URL_SCHEMES[b[2]]
+    for byte in b[3:]:
+        if byte < len(_URL_EXPANSIONS):
+            url += _URL_EXPANSIONS[byte]
+        elif 0x20 <= byte <= 0x7e:  # printable ASCII, used verbatim
+            url += chr(byte)
+        else:
+            return None  # reserved byte — not a valid encoded URL
+    return {
+        "frame": "url",
+        "tx_power": int.from_bytes(b[1:2], "big", signed=True),
+        "url": url,
+    }
+
+
+def _parse_eddystone_tlm(b: bytes) -> "dict | None":
+    # 0x20 | version[1] | vbatt[2 BE mV] | temp[2 BE 8.8] | adv_cnt[4 BE] | sec_cnt[4 BE, 0.1s]
+    if len(b) < 14:
+        return None
+    return {
+        "frame": "tlm",
+        "version": b[1],
+        "vbatt_mv": int.from_bytes(b[2:4], "big"),
+        "temperature_c": int.from_bytes(b[4:6], "big", signed=True) / 256.0,
+        "adv_count": int.from_bytes(b[6:10], "big"),
+        "uptime_s": int.from_bytes(b[10:14], "big") / 10.0,
+    }
