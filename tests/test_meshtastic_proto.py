@@ -198,6 +198,25 @@ def test_decode_node_info_hops_and_mqtt_are_honest_defaults_when_absent():
     assert n.via_mqtt is False and n.hops_away is None
 
 
+def test_decode_node_info_device_metrics_full():
+    # DeviceMetrics carries more than battery: voltage/channel_utilization/air_util_tx (floats) +
+    # uptime_seconds (uint32) — all were dropped before.
+    dm = (mp.field_varint(1, 85) + mp.field_bytes(2, struct.pack("<f", 4.1))
+          + mp.field_bytes(3, struct.pack("<f", 12.5)) + mp.field_bytes(4, struct.pack("<f", 3.2))
+          + mp.field_varint(5, 86400))
+    n = mp.decode_fromradio(mp.field_bytes(4, mp.field_varint(1, 0xAAAA) + mp.field_bytes(6, dm))).node
+    assert n.battery == 85
+    assert abs(n.voltage - 4.1) < 1e-5
+    assert abs(n.channel_util - 12.5) < 1e-4
+    assert abs(n.air_util_tx - 3.2) < 1e-5
+    assert n.uptime == 86400
+
+
+def test_decode_node_info_device_metrics_absent_are_none():
+    n = mp.decode_fromradio(mp.field_bytes(4, mp.field_varint(1, 0xBBBB))).node
+    assert n.voltage is None and n.channel_util is None and n.air_util_tx is None and n.uptime is None
+
+
 def test_decode_channel():
     settings = mp.field_bytes(3, b"LongFast")  # ChannelSettings.name = field 3
     channel = mp.field_varint(1, 0) + mp.field_bytes(2, settings) + mp.field_varint(3, 1)  # role PRIMARY

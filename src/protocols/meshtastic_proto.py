@@ -225,7 +225,11 @@ class MeshNode:
     role: int | None = None      # User.role enum: 0 CLIENT, 2 ROUTER, 4 REPEATER, 5 TRACKER, ...
     snr: float | None = None
     last_heard: int | None = None
-    battery: int | None = None
+    battery: int | None = None      # DeviceMetrics.battery_level: 0-100 %, or 101 = externally powered
+    voltage: float | None = None    # DeviceMetrics.voltage (volts)
+    channel_util: float | None = None  # DeviceMetrics.channel_utilization (% airtime the channel is busy)
+    air_util_tx: float | None = None   # DeviceMetrics.air_util_tx (% airtime this node spent transmitting)
+    uptime: int | None = None       # DeviceMetrics.uptime_seconds
     latitude: float | None = None   # decimal degrees, from Position.latitude_i / 1e7
     longitude: float | None = None  # decimal degrees, from Position.longitude_i / 1e7
     altitude: int | None = None     # metres, from Position.altitude
@@ -398,8 +402,13 @@ def _decode_nodeinfo(data) -> MeshNode:
     metrics = _first(f, 6)
     if isinstance(metrics, bytes):
         mf = parse(metrics)
-        # DeviceMetrics: battery_level=1(uint32), voltage=2(float), ...
+        # DeviceMetrics: battery_level=1(uint32), voltage=2(float), channel_utilization=3(float),
+        # air_util_tx=4(float), uptime_seconds=5(uint32).
         node.battery = as_u32(_first(mf, 1))
+        node.voltage = as_float(_first(mf, 2))
+        node.channel_util = as_float(_first(mf, 3))
+        node.air_util_tx = as_float(_first(mf, 4))
+        node.uptime = as_u32(_first(mf, 5))
     return node
 
 

@@ -201,7 +201,16 @@ class MeshtasticPanel(QWidget):
         for row, n in enumerate(nodes):
             name = (n.long_name or "").strip() + (" (this node)" if n.is_local else "")
             snr = "" if n.snr is None else f"{n.snr:.1f}"
-            batt = "" if n.battery is None else f"{n.battery}%"
+            # Power: a real 1-100% battery; "ext" for Meshtastic's 101 = externally/USB powered; else fall
+            # back to the raw voltage (a node that reports volts but no usable %); else blank.
+            if n.battery is not None and 0 < n.battery <= 100:
+                batt = f"{n.battery}%"
+            elif n.battery is not None and n.battery > 100:
+                batt = "ext"
+            elif n.voltage is not None:
+                batt = f"{n.voltage:.2f}V"
+            else:
+                batt = ""
             # Location: the node's GPS fix if present, else an honest "—" (never a fake 0,0).
             loc = f"{n.latitude:.5f}, {n.longitude:.5f}" if n.has_position else "—"
             # Hops: "☁" for a node heard over the internet (MQTT), else the RF hop distance

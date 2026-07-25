@@ -158,6 +158,41 @@ def test_node_hops_column(qapp):
     assert panel._nodes.item(_row("!043ae298"), hcol).text() == "—"       # direct, none reported
 
 
+def test_node_battery_column_percent_ext_and_voltage(qapp):
+    # Batt shows a real %, "ext" for Meshtastic's 101 = externally-powered sentinel, or a voltage fallback.
+    panel, backend, _, _ = _make()
+
+    def _dm(battery=None, voltage=None):
+        out = b""
+        if battery is not None:
+            out += mp.field_varint(1, battery)
+        if voltage is not None:
+            out += mp.field_bytes(2, struct.pack("<f", voltage))
+        return out
+
+    def _node(num, dm):
+        u = mp.field_bytes(1, ("!%08x" % num).encode()) + mp.field_varint(5, 43)
+        ni = mp.field_varint(1, num) + mp.field_bytes(2, u) + mp.field_bytes(6, dm)
+        return StreamFramer.frame(mp.field_bytes(4, ni))
+
+    backend.feed_bytes(
+        _framed_my_info(0x043AE298)
+        + _node(0x00000085, _dm(battery=85))       # 85%
+        + _node(0x00000101, _dm(battery=101))      # ext (USB / mains powered)
+        + _node(0x00000410, _dm(voltage=4.1))      # 4.10V fallback (volts but no usable %)
+    )
+    hdr = [panel._nodes.horizontalHeaderItem(c).text() for c in range(panel._nodes.columnCount())]
+    bcol = hdr.index("Batt")
+
+    def _row(node_id):
+        return next(r for r in range(panel._nodes.rowCount())
+                    if panel._nodes.item(r, 0).text() == node_id)
+
+    assert panel._nodes.item(_row("!00000085"), bcol).text() == "85%"
+    assert panel._nodes.item(_row("!00000101"), bcol).text() == "ext"
+    assert panel._nodes.item(_row("!00000410"), bcol).text() == "4.10V"
+
+
 def test_channels_populate_active_only(qapp):
     panel, backend, _, _ = _make()
     backend.feed_bytes(_framed_channel(0, "LongFast", 1) + _framed_channel(1, "", 0))

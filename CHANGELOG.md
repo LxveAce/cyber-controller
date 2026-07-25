@@ -51,9 +51,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   topology distance, 0 = heard directly, N = relayed over N hops) and `via_mqtt` (field 8 — whether the
   node was heard over an MQTT gateway / the internet rather than RF). The live Meshtastic panel's node
   table gains **Role**, **Location**, and **Hops** columns (Hops shows the hop count, or "☁" for an
-  MQTT-heard node, or "—"). RX/awareness-only — decode and display of a locally-connected node's own
-  StreamAPI state; CC authors no mesh frame. Golden-vector tested (signed coords, negative altitude,
-  role names, hops/via-mqtt, honest defaults).
+  MQTT-heard node, or "—"). The `DeviceMetrics` decode is completed too — beyond battery level it now
+  recovers voltage, channel utilization, air-util-tx, and uptime; the node table's **Batt** cell shows a
+  real 1-100 %, "ext" for Meshtastic's `101` externally-powered sentinel (instead of a bogus "101%"), or a
+  voltage fallback for a node that reports volts but no usable %. RX/awareness-only — decode and display of
+  a locally-connected node's own StreamAPI state; CC authors no mesh frame. Golden-vector tested (signed
+  coords, negative altitude, role names, hops/via-mqtt, device metrics, power display, honest defaults).
 - **RF/Sub-GHz domain view — a fourth real domain on the shared frame.** New `SubGhzSignal` object
   model (a frozen dataclass for a decoded OOK capture: protocol/code/address/data/bits + optional
   rssi/frequency/first-seen, with hex accessors) + a `signal_from_ev1527(decoded, **meta)` helper that
