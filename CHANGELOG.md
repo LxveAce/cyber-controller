@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **iBeacon decoder (RX-only).** New pure `ble_beacon.parse_ibeacon(mfg_data)` decodes the Apple
+  iBeacon manufacturer-specific data (`4C 00 | 02 15 | uuid[16] | major[2 BE] | minor[2 BE] |
+  power[1]`) into its proximity UUID, major, minor, and measured power — returning `None` for any
+  non-iBeacon (wrong company id / type / length / short buffer), never a fabricated beacon. Decode
+  only: it never authors or advertises a frame. Golden-vector tests (the Apple AirLocate sample UUID,
+  big-endian major/minor, signed power) + rejection cases. Ready for a firmware that surfaces raw
+  advertisement data; the current BLE pipeline consumes structured fields.
 - **Shared domain frame proven general — BLE reuses the WiFi three-panel view.** Extracted the
   three-panel master/detail frame (posture boundary · object table · detail · responsive reflow) into
   a generic `DomainDetailView`; `WifiDomainView` is now a thin specialization of it, and the new
