@@ -74,6 +74,14 @@ def test_selecting_gps_routes_to_the_gps_domain(qapp):
     assert isinstance(h._stack.currentWidget(), GpsDomainView)
 
 
+def test_selecting_subghz_routes_to_the_subghz_domain(qapp):
+    from src.ui.qt.subghz_domain import SubGhzDomainView
+    h = OperateHome()
+    h._grid.domain_selected.emit("subghz")
+    assert h.current_domain() == "subghz"
+    assert isinstance(h._stack.currentWidget(), SubGhzDomainView)
+
+
 # ── build_operate_home factory: the app-shell embed with FRESH analyzer centers (no reparenting) ──
 def test_build_operate_home_uses_fresh_live_centers(qapp):
     from src.ui.qt.ble_analyzer_tab import BleAnalyzerTab

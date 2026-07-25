@@ -6,6 +6,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **RF/Sub-GHz domain view — a fourth real domain on the shared frame.** New `SubGhzSignal` object
+  model (a frozen dataclass for a decoded OOK capture: protocol/code/address/data/bits + optional
+  rssi/frequency/first-seen, with hex accessors) + a `signal_from_ev1527(decoded, **meta)` helper that
+  builds one from the EV1527 decoder's output (`None` for an undecodable capture). New `SubGhzDomainView`
+  (a thin `DomainDetailView` subclass) + `SubGhzDetailPanel` showing a selected signal's protocol, code,
+  address, data, bits, and optional RSSI/frequency. `OperateHome` routes the RF/Sub-GHz tile to it.
+  RX/awareness-only — decode and display only; it never authors or transmits an OOK frame. Host-tested
+  (model fields + from-decoder helper) + offscreen widget tests (frame reuse, detail fields, routing).
 - **GPS-Wardrive domain view — a third real domain on the shared frame.** New `GpsDomainView`
   (a thin `DomainDetailView` subclass, like WiFi/BLE) + `GpsDetailPanel` showing a selected
   `WardriveObservation`: its network (SSID, BSSID, OUI vendor, honest security grade, channel, RSSI)

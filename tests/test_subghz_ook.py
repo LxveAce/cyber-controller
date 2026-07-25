@@ -6,7 +6,7 @@ jitter tolerance and rejections (no sync, too few pulses, ambiguous pulse, empty
 """
 from __future__ import annotations
 
-from src.core.subghz_ook import decode_ev1527
+from src.core.subghz_ook import decode_ev1527, signal_from_ev1527
 
 _CODE = 0xA5C3E1  # a 24-bit code with mixed bits (exercises both the 0 and 1 encodings)
 
@@ -73,3 +73,24 @@ def test_rejects_non_numeric_and_bool_pulses():
     p = _synth(_CODE, te=te)
     assert decode_ev1527(p[:2] + [True] + p[3:]) is None     # bool is not a real duration
     assert decode_ev1527(p[:2] + ["x"] + p[3:]) is None
+
+
+# ── SubGhzSignal object model (built from the decoder output + capture metadata) ──
+def test_signal_from_ev1527_carries_decoder_fields_and_metadata():
+    sig = signal_from_ev1527(decode_ev1527(_synth(_CODE, te=350)),
+                             rssi=-72, frequency_mhz=433.92, first_seen="t")
+    assert sig.protocol == "ev1527" and sig.bits == 24
+    assert sig.code == _CODE and sig.address == _CODE >> 4 and sig.data == _CODE & 0xF
+    assert sig.rssi == -72 and sig.frequency_mhz == 433.92 and sig.first_seen == "t"
+
+
+def test_subghz_signal_hex_formatting():
+    sig = signal_from_ev1527({"protocol": "ev1527", "bits": 24,
+                              "code": 0xA5C3E1, "address": 0xA5C3E, "data": 0x1})
+    assert sig.code_hex() == "0xA5C3E1"   # zero-padded to the bit width (24 bits -> 6 hex digits)
+    assert sig.address_hex() == "0xA5C3E" and sig.data_hex() == "0x1"
+
+
+def test_signal_from_ev1527_is_none_when_undecodable():
+    assert signal_from_ev1527(None) is None   # a non-EV1527 / undecodable capture -> no signal
+    assert signal_from_ev1527({}) is None

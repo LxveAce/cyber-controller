@@ -16,6 +16,8 @@ firmware/SDR-integration concern (flagged), not this pure decoder's job.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+
 _DATA_BITS = 24
 _DATA_PULSES = _DATA_BITS * 2  # each bit is a high+low pulse pair
 _SYNC_MIN_TE = 8               # sync low is ~31 Te; require clearly-long to count as a real sync
@@ -70,3 +72,48 @@ def decode_ev1527(pulses_us, te: "float | None" = None, tolerance: float = 0.35)
         code = (code << 1) | b
     return {"protocol": "ev1527", "bits": _DATA_BITS, "code": code,
             "address": code >> 4, "data": code & 0xF}
+
+
+@dataclass(frozen=True)
+class SubGhzSignal:
+    """A decoded Sub-GHz OOK signal (received, not transmitted) — the persistent object a SubGHz
+    domain / detail shows. Built from :func:`decode_ev1527`'s output plus optional capture metadata
+    (rssi / frequency / first-seen). RX/awareness-only: never authors or transmits an OOK frame."""
+
+    protocol: str
+    code: int
+    address: int
+    data: int
+    bits: int
+    rssi: "int | None" = None
+    frequency_mhz: "float | None" = None
+    first_seen: str = ""
+
+    def code_hex(self) -> str:
+        """The full code as zero-padded hex (e.g. a 24-bit code -> ``0xA5C3E1``)."""
+        return f"0x{self.code:0{max(1, (self.bits + 3) // 4)}X}"
+
+    def address_hex(self) -> str:
+        return f"0x{self.address:X}"
+
+    def data_hex(self) -> str:
+        return f"0x{self.data:X}"
+
+
+def signal_from_ev1527(decoded, *, rssi: "int | None" = None,
+                       frequency_mhz: "float | None" = None,
+                       first_seen: str = "") -> "SubGhzSignal | None":
+    """Build a :class:`SubGhzSignal` from :func:`decode_ev1527`'s dict + optional capture metadata.
+    Returns ``None`` when ``decoded`` is falsy — never a fabricated signal."""
+    if not decoded:
+        return None
+    return SubGhzSignal(
+        protocol=decoded["protocol"],
+        code=decoded["code"],
+        address=decoded["address"],
+        data=decoded["data"],
+        bits=decoded["bits"],
+        rssi=rssi,
+        frequency_mhz=frequency_mhz,
+        first_seen=first_seen,
+    )
