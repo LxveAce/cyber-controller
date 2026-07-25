@@ -347,6 +347,73 @@ def to_wigle_row(obs: ApObservation, fix: GpsFix, first_seen: str) -> str:
     ])
 
 
+@dataclass(frozen=True)
+class WardriveObservation:
+    """One access point heard at a GPS position during a wardrive — the persistent object a wardrive
+    session / GPS-domain detail shows, and the triple :func:`to_wigle_row` serializes. Combines the
+    AP metadata (:class:`ApObservation`) with the fix (:class:`GpsFix`) it was heard at, plus a
+    first-seen stamp. Passive/awareness-only: records broadcast metadata, transmits nothing."""
+
+    ap: ApObservation
+    fix: GpsFix
+    first_seen: str = ""
+
+    # Flat accessors so a table/detail reads the object directly (delegating to its two parts).
+    @property
+    def bssid(self) -> str:
+        return self.ap.bssid
+
+    @property
+    def ssid(self) -> str:
+        return self.ap.ssid
+
+    @property
+    def channel(self) -> int:
+        return self.ap.channel
+
+    @property
+    def rssi(self) -> int:
+        return self.ap.rssi
+
+    @property
+    def auth(self) -> str:
+        return self.ap.auth
+
+    @property
+    def kind(self) -> str:
+        return self.ap.kind
+
+    @property
+    def lat(self) -> float:
+        return self.fix.lat
+
+    @property
+    def lon(self) -> float:
+        return self.fix.lon
+
+    @property
+    def alt(self) -> float:
+        return self.fix.alt
+
+    @property
+    def has_fix(self) -> bool:
+        return self.fix.has_fix
+
+    def display_name(self) -> str:
+        """SSID for the row, or a placeholder for a hidden/broadcast-suppressed network."""
+        return self.ap.ssid if self.ap.ssid else "(hidden)"
+
+    def to_wigle_row(self) -> str:
+        """Serialize to a WiGLE CSV row — identical to the module :func:`to_wigle_row`."""
+        return to_wigle_row(self.ap, self.fix, self.first_seen)
+
+
+def observations_at(aps, fix: GpsFix, first_seen: str = "") -> "list[WardriveObservation]":
+    """Pair every AP heard at one GPS position into :class:`WardriveObservation` records — the
+    common wardrive case (a batch of APs observed at a single fix)."""
+    return [WardriveObservation(ap, fix, first_seen) for ap in aps]
+
+
 def _now() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime())
 

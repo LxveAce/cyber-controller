@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **`WardriveObservation` — a real GPS-wardrive object model.** A single frozen dataclass combining an
+  `ApObservation` with the `GpsFix` it was heard at (plus a first-seen timestamp) — the persistent
+  object a wardrive session / future GPS-domain detail shows, and the exact triple `to_wigle_row`
+  serializes. Flat accessors (ssid/bssid/channel/rssi/auth/kind/lat/lon/alt/has_fix) read the object
+  directly; its `to_wigle_row()` delegates to the module exporter so the model and the WiGLE CSV stay
+  one source of truth. Plus `observations_at(aps, fix)` to pair a batch of APs with one fix. Passive,
+  awareness-only. Host-tested (accessors, display name, WiGLE-row parity, pairing).
 - **EV1527 Sub-GHz OOK decoder (RX-only).** New pure `subghz_ook.decode_ev1527(pulses_us)` decodes the
   EV1527 / PT2262-style 433 MHz remote protocol from a captured pulse-width stream into its 24-bit code
   (a 20-bit chip-unique address + a 4-bit data nibble). It locates the sync gap, estimates the base

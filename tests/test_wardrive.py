@@ -337,3 +337,40 @@ def test_extract_ap_fields_leading_rssi_and_labelled_still_work():
     # a channel number must NOT be mistaken for a leading RSSI (no bare signed int before 'Ch')
     f3 = wd._extract_ap_fields("BSSID: aa:bb:cc:dd:ee:ff Ch: 11")
     assert "rssi" not in f3
+
+
+# ── WardriveObservation: the combined AP-at-a-location object (a real GPS-domain model) ──
+def test_wardrive_observation_flat_accessors_delegate():
+    ap = wd.ApObservation(bssid="aa:bb:cc:dd:ee:ff", ssid="LabNet", channel=6, rssi=-55,
+                          auth="[WPA2-PSK-CCMP][ESS]")
+    fix = wd.GpsFix(lat=48.1173, lon=11.5167, alt=545.4, has_fix=True)
+    obs = wd.WardriveObservation(ap, fix, first_seen="2026-07-25 12:00:00")
+    assert obs.bssid == "aa:bb:cc:dd:ee:ff" and obs.ssid == "LabNet"
+    assert obs.channel == 6 and obs.rssi == -55
+    assert obs.auth == "[WPA2-PSK-CCMP][ESS]" and obs.kind == "WIFI"
+    assert obs.lat == 48.1173 and obs.lon == 11.5167 and obs.alt == 545.4
+    assert obs.has_fix is True
+
+
+def test_wardrive_observation_display_name():
+    fix = wd.GpsFix(lat=0.0, lon=0.0)
+    named = wd.WardriveObservation(wd.ApObservation(bssid="a", ssid="Home"), fix)
+    hidden = wd.WardriveObservation(wd.ApObservation(bssid="b", ssid=""), fix)
+    assert named.display_name() == "Home"
+    assert hidden.display_name() == "(hidden)"
+
+
+def test_wardrive_observation_to_wigle_row_matches_module_function():
+    ap = wd.ApObservation(bssid="aa:bb:cc:dd:ee:ff", ssid="Net", channel=6, rssi=-40, auth="[ESS]")
+    fix = wd.GpsFix(lat=48.1173, lon=11.5167, alt=100.0, has_fix=True)
+    obs = wd.WardriveObservation(ap, fix, first_seen="2026-07-25 12:00:00")
+    # the model's serialization is identical to the module exporter — one source of truth
+    assert obs.to_wigle_row() == wd.to_wigle_row(ap, fix, "2026-07-25 12:00:00")
+
+
+def test_observations_at_pairs_every_ap_with_one_fix():
+    fix = wd.GpsFix(lat=1.0, lon=2.0, has_fix=True)
+    aps = [wd.ApObservation(bssid="a", ssid="One"), wd.ApObservation(bssid="b", ssid="Two")]
+    obs = wd.observations_at(aps, fix, first_seen="t")
+    assert [o.ssid for o in obs] == ["One", "Two"]
+    assert all(o.fix is fix and o.first_seen == "t" for o in obs)
