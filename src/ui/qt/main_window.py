@@ -482,8 +482,12 @@ class CyberControllerWindow(QMainWindow):
         self._build_tabs()
         # Apply the saved loadout (hide unused tabs) before choosing the default tab.
         self.apply_loadout(self._load_loadout(), persist=False)
-        # Default to the Connect surface / Devices sub-tab (the landing view) — most time is on device control.
-        self._show_subtab(self._connect_surface, self._device_tab)
+        # Land on the dual-axis Operate Home instrument — the primary surface post-rebuild. Fall
+        # back to the Connect/Devices surface only if Operate Home isn't mounted (hidden/popped).
+        if self._tabs.indexOf(self._operate_home) >= 0:
+            self._tabs.setCurrentWidget(self._operate_home)
+        else:
+            self._show_subtab(self._connect_surface, self._device_tab)
         self._refresh_sidebar_devices()
         self._build_command_palette()
 
@@ -694,8 +698,10 @@ class CyberControllerWindow(QMainWindow):
             # (Devices + Health + Nodes), Operate (Targets + Broadcast + Console + Macros), Survey (Wardrive +
             # Multi-Wardrive + Flock Map), Analyze (Graph + Cross-Comm + Crack Lab + BLE Analyzer). The Analyze
             # widget is still self._network_surface internally; only its label + loadout key changed.
-            ("Operate", self._operate_surface),
+            # Operate Home (the dual-axis domain grid) is the PRIMARY Operate surface post-rebuild,
+            # so it leads the flat Operate (Targets/Control/Macros) action group in the strip.
             ("Operate Home", self._operate_home),
+            ("Operate", self._operate_surface),
             ("Survey", self._survey_surface),
             ("Analyze", self._network_surface),
             ("Settings", self._settings_tab),

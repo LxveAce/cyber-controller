@@ -67,7 +67,7 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
 
 # Canonical tab order (matches main_window._tab_registry); used to re-insert tabs in order.
 TAB_ORDER = (
-    "Flash", "Connect", "Operate", "Operate Home", "Survey", "Analyze", "Settings",
+    "Flash", "Connect", "Operate Home", "Operate", "Survey", "Analyze", "Settings",
 )
 
 

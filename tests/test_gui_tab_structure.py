@@ -41,12 +41,13 @@ EXPECTED_TABS = [
     ("Flash", "_flash_surface"),
     # Connect surface: Devices/Health/Nodes sub-views. See test_connect_surface_subtabs.
     ("Connect", "_connect_surface"),
-    # WS-6 A (2026-07-21): Operate is the live action loop — Targets/Broadcast/Console/Macros. See
-    # test_operate_surface_subtabs.
-    ("Operate", "_operate_surface"),
-    # OPERATE HOME: the dual-axis shell rebuild (domain grid -> per-domain three-panel), embedded as
-    # a top-level tab alongside the flat surfaces. ALWAYS-core in the loadout. See the embed test.
+    # OPERATE HOME: the dual-axis shell rebuild (domain grid -> per-domain three-panel). PROMOTED to
+    # the PRIMARY Operate surface (2026-07-25 flat->dual-axis migration) — it now LEADS the flat
+    # Operate in the strip and is the default landing tab. See test_operate_home_is_primary.
     ("Operate Home", "_operate_home"),
+    # WS-6 A (2026-07-21): the legacy flat Operate action loop — Targets/Broadcast/Console/Macros.
+    # Still present (its tools become the ACTIVE posture later). See test_operate_surface_subtabs.
+    ("Operate", "_operate_surface"),
     # WS-6 A: Survey is the NEW GPS-tagged field-survey group — Wardrive/Multi-Wardrive/Flock Map. See
     # test_survey_surface_subtabs.
     ("Survey", "_survey_surface"),
@@ -83,11 +84,20 @@ def _make_window():
 
 
 def test_tab_count_is_7(qapp, isolated_settings):
-    # 7 top-level surfaces: Flash, Connect, Operate, Operate Home, Survey, Analyze, Settings.
-    # WS-6 A split the old 8-tab Operate; the rebuild then added Operate Home alongside — a reviewed
-    # structure change, which is exactly what this test gates.
+    # 7 top-level surfaces: Flash, Connect, Operate Home, Operate, Survey, Analyze, Settings.
+    # WS-6 A split the old 8-tab Operate; the rebuild added Operate Home, which the flat->dual-axis
+    # migration then PROMOTED ahead of the flat Operate — a reviewed structure change gated here.
     win = _make_window()
     assert win._tabs.count() == len(EXPECTED_TABS) == 7
+
+
+def test_operate_home_is_primary(qapp, isolated_settings):
+    # Flat->dual-axis migration (2026-07-25): the dual-axis Operate Home surface is the PRIMARY
+    # Operate entry — it LEADS the flat Operate in the strip, and the window lands on it by default.
+    win = _make_window()
+    titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
+    assert titles.index("Operate Home") < titles.index("Operate")   # leads the flat surface
+    assert win._tabs.currentWidget() is win._operate_home            # the default landing view
 
 
 def test_flash_surface_subtabs(qapp, isolated_settings):

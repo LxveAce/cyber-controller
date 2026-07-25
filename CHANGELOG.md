@@ -101,6 +101,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   resolver (unit-tested headless); the widget only maps it to `QSplitter.setOrientation`. Size-driven
   only — it never touches the user's Simple/Pro depth choice. Mirrors the Flash tab's Wave-3 wiring.
 
+### Changed
+- **Operate Home is now the primary Operate surface (flat→dual-axis migration, step 1).** The dual-axis
+  domain-grid instrument moves ahead of the legacy flat Operate (Targets/Control/Macros) in the tab strip,
+  and the window now lands on it by default instead of Connect/Devices. The flat Operate action tools stay
+  present (they become the ACTIVE posture in the dual-axis end-state); nothing was removed. Last-used tab
+  persistence is unchanged. The tab-structure gate was updated deliberately to record the new order + default.
+
 ## [2.0.0-beta] — prerelease
 
 _Version cut from `src/version.py` (`2.0.0-beta`). Everything below ships in 2.0.0-beta._
