@@ -103,6 +103,7 @@ class BleDevice:
     appearance_name: str = ""  # the appearance resolved to a name (e.g. 962 -> "Mouse")
     addr_type: str = ""        # "public" / "random" when reported
     tracker: bool = False
+    kind: str = ""             # device kind when a firmware names one (GhostESP "airtag"/"flipper")
     rssi: Optional[int] = None
     rssi_min: Optional[int] = None
     rssi_max: Optional[int] = None
@@ -143,6 +144,7 @@ class BleDevice:
             "appearance_name": self.appearance_name,
             "addr_type": self.addr_type,
             "tracker": self.tracker,
+            "kind": self.kind,
             "rssi": self.rssi,
             "rssi_min": self.rssi_min,
             "rssi_max": self.rssi_max,
@@ -212,8 +214,13 @@ class BleAnalyzerModel:
             resolved_appr = lookup_appearance(appr)
             if resolved_appr:
                 dev.appearance_name = resolved_appr
-        if _truthy(data.get("tracker")):
-            dev.tracker = True  # sticky: a tracker verdict isn't un-flagged by a later plain hit
+        kind = data.get("kind")
+        if isinstance(kind, str) and kind.strip():
+            dev.kind = kind.strip()  # e.g. GhostESP "airtag"/"flipper"; sticky like the name
+        if _truthy(data.get("tracker")) or dev.kind == "airtag":
+            # sticky: a tracker verdict isn't cleared by a later plain hit. An AirTag IS a tracker
+            # even when the firmware sent it as kind=airtag, not an explicit tracker flag.
+            dev.tracker = True
 
         if rssi is not None:
             dev.rssi = rssi

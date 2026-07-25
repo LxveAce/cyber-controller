@@ -69,6 +69,38 @@ def test_tracker_flag_is_sticky():
     assert m.get("11:22:33:44:55:66").tracker is True                             # not un-flagged
 
 
+def test_airtag_kind_flags_a_tracker():
+    # A GhostESP aerialscan hit carries kind=airtag (not an explicit tracker flag). An AirTag IS a
+    # tracking device, so it must count as a tracker for the "am I being tracked" rollup.
+    m = BleAnalyzerModel()
+    d = m.observe({"mac": "aa:bb:cc:dd:ee:f1", "rssi": -55, "kind": "airtag"}, now=1.0)
+    assert d.kind == "airtag" and d.tracker is True
+    assert m.summary(now=1.0)["trackers"] == 1
+
+
+def test_flipper_kind_is_carried_but_is_not_a_tracker():
+    # A Flipper Zero is a notable nearby device (kind carried for the UI) but it isn't tracking you,
+    # so it must not inflate the tracker count.
+    m = BleAnalyzerModel()
+    d = m.observe(
+        {"mac": "aa:bb:cc:dd:ee:f0", "rssi": -60, "kind": "flipper", "name": "Flipper"}, now=1.0)
+    assert d.kind == "flipper" and d.tracker is False
+    assert m.summary(now=1.0)["trackers"] == 0
+
+
+def test_ghostesp_airtag_detection_flags_a_tracker_end_to_end():
+    # Real GhostESP parser -> analyzer: an aerialscan record emits a ble_found with kind=airtag;
+    # the model folds it into a tracker-flagged device (closes the AirTag-detection loop).
+    from src.protocols.ghost_esp import GhostESPProtocol
+    proto = GhostESPProtocol()
+    lines = ["[0] AirTag Found (Total: 2)", "MAC: AA:BB:CC:DD:EE:F1,", "RSSI: -55 dBm (Near),"]
+    ev = next(e for ln in lines if (e := proto.parse_line(ln)) is not None)
+    assert ev.event_type == "ble_found" and ev.data.get("kind") == "airtag"
+    m = BleAnalyzerModel()
+    dev = m.observe(ev.data, now=1.0)
+    assert dev is not None and dev.tracker is True and dev.kind == "airtag"
+
+
 def test_lxveos_company_and_type_captured():
     m = BleAnalyzerModel()
     # LxveOS ble event: addr + numeric company id + address type
