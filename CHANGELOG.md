@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **OPERATE HOME screen + Wi-Fi domain panels stack on a compact canvas.** New `OperateHome` composes
+  the `DomainGrid` tiles with a `QStackedWidget`: tapping the Wi-Fi tile routes to the real three-panel
+  `WifiDomainView`, other domains show an honest "coming soon" placeholder, and a Home action returns
+  to the grid — a self-contained screen the app shell embeds without tab-structure coupling.
+  `WifiDomainView` now stacks its three panels vertically on a compact canvas (side-by-side when
+  roomy). Tests assert the routing, the home/return, and the stacked-vs-side-by-side arrangement.
 - **Wi-Fi domain three-panel master/detail view.** New `WifiDomainView` composes the object table
   (center) with a left posture panel and a right `APDetailPanel`. The posture split is a real
   boundary: PASSIVE (Scan) is the default and ACTIVE (Attack) is never one tap — requesting it emits

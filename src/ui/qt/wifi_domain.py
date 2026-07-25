@@ -17,6 +17,7 @@ from typing import Optional
 
 from PyQt5.QtCore import pyqtSignal
 from PyQt5.QtWidgets import (
+    QBoxLayout,
     QButtonGroup,
     QFormLayout,
     QFrame,
@@ -112,6 +113,7 @@ class WifiDomainView(QWidget):
         row.addWidget(self._left, 0)
         row.addWidget(self._center, 3)
         row.addWidget(self._detail, 2)
+        self._row = row
         self._relayout_for_size()
 
     def _build_posture_panel(self) -> QWidget:
@@ -189,6 +191,10 @@ class WifiDomainView(QWidget):
         on a cramped canvas with nothing selected it collapses."""
         return self._cols >= 3 or self._selected is not None
 
+    def is_stacked(self) -> bool:
+        """True on a compact canvas — the three panels stack vertically instead of side-by-side."""
+        return self._cols == 1
+
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_for_size()
@@ -199,3 +205,6 @@ class WifiDomainView(QWidget):
 
     def _apply_layout(self) -> None:
         self._detail.setVisible(self.detail_visible())
+        # Stack the three panels vertically on a compact canvas; side-by-side otherwise.
+        _dir = QBoxLayout.TopToBottom if self.is_stacked() else QBoxLayout.LeftToRight
+        self._row.setDirection(_dir)

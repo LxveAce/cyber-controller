@@ -66,6 +66,21 @@ def test_detail_collapses_when_cramped_and_reveals_on_selection(qapp):
     assert v.detail_visible() is True                           # a selection reveals the detail
 
 
+def test_panels_stack_vertically_on_compact(qapp):
+    from PyQt5.QtWidgets import QBoxLayout
+    v = _view(qapp)
+    v.resize(1600, 900)
+    qapp.processEvents()
+    v._relayout_for_size()
+    assert v.is_stacked() is False
+    assert v._row.direction() == QBoxLayout.LeftToRight   # expanded: three panels side by side
+    v.resize(420, 900)
+    qapp.processEvents()
+    v._relayout_for_size()
+    assert v.is_stacked() is True
+    assert v._row.direction() == QBoxLayout.TopToBottom   # compact: panels stacked vertically
+
+
 def test_selection_populates_the_detail(qapp):
     v = _view(qapp)
     got = []
