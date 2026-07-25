@@ -92,6 +92,23 @@ _RE_HS_TRIGGER = re.compile(r"Handshake\s+found", re.IGNORECASE)
 _RE_HS_AP = re.compile(r"AP=\s*([\da-fA-F:]{17})", re.IGNORECASE)
 _RE_HS_PAIR = re.compile(r"Pair=\s*(\S+)", re.IGNORECASE)
 
+# BLE tracker scans — Flipper Zero (`blescan -f`, flipper_scan.c) + Apple AirTag (`aerialscan`,
+# airtag_scan.c). Both stream a short multi-line record closing on the "RSSI: N dBm" line;
+# grounded in the firmware glog + webui/parsers.js FLIPPER_*/AIRTAG_* patterns. e.g.
+#     [0] White Flipper Found:        [0] AirTag Found (Total: 3)
+#          MAC: AA:BB:CC:DD:EE:F0,          MAC: AA:BB:CC:DD:EE:F1,
+#          Name: Flipper Zynq,              RSSI: -55 dBm (Near),
+#          RSSI: -60 dBm
+# Both surface as ble_found (a Flipper/AirTag IS a BLE device) with a `kind` discriminator; a Flipper
+# carries its advertised name, an AirTag its total-seen count. RX/awareness-only.
+_RE_FLIPPER_START = re.compile(
+    r"^\[(\d+)\]\s*(White|Black|Transparent)?\s*Flipper\s+Found", re.IGNORECASE)
+_RE_AIRTAG_START = re.compile(
+    r"^\[(\d+)\]\s*AirTag\s+Found(?:\s*\(Total:\s*(\d+)\))?", re.IGNORECASE)
+_RE_TRK_MAC = re.compile(r"^MAC:\s*([\da-fA-F:]{17})", re.IGNORECASE)
+_RE_TRK_NAME = re.compile(r"^Name:\s*([^,\n]*)", re.IGNORECASE)
+_RE_TRK_RSSI = re.compile(r"^RSSI:\s*(-?\d+)\s*dBm", re.IGNORECASE)
+
 
 class GhostESPProtocol(BaseProtocol):
     """Parser and command formatter for GhostESP firmware."""
@@ -114,6 +131,11 @@ class GhostESPProtocol(BaseProtocol):
         # lines ("Handshake found!" / "AP=<bssid>" / "Pair=<x>/<y>"); we emit on the AP line and swallow
         # the Pair line. See _RE_HS_* below.
         self._handshake_stage: str | None = None
+        # In-progress BLE tracker-scan records (blescan -f / aerialscan). Flipper Zero prints a 4-line
+        # record, AirTag a 3-line one; both close on the "RSSI: N dBm" line -> a ble_found. See _RE_FLIPPER_*
+        # / _RE_AIRTAG_* / _RE_TRK_* below.
+        self._flipper_record: dict | None = None
+        self._airtag_record: dict | None = None
 
     def reset_scan_index(self) -> None:
         """Reset the AP scan ordinals — call when the device's AP list is cleared
@@ -253,6 +275,42 @@ class GhostESPProtocol(BaseProtocol):
             self._handshake_stage = None
             if _RE_HS_PAIR.search(line):
                 return None  # swallow the Pair line that follows the emitted handshake
+
+        # BLE tracker scans (Flipper / AirTag) — multi-line records closing on "RSSI: N dBm"; both emit
+        # ble_found with a `kind` discriminator. Start lines are distinct ("[n] .. Flipper Found" /
+        # "[n] AirTag Found"); the MAC/Name/RSSI continuation lines are shared by whichever is active.
+        m = _RE_FLIPPER_START.match(line)
+        if m:
+            self._flipper_record = {"kind": "flipper", "index": int(m.group(1)),
+                                    "flipper_type": (m.group(2) or "Unknown").strip().title()}
+            return None
+        m = _RE_AIRTAG_START.match(line)
+        if m:
+            rec = {"kind": "airtag", "index": int(m.group(1))}
+            if m.group(2):
+                rec["total"] = int(m.group(2))
+            self._airtag_record = rec
+            return None
+        active = self._flipper_record if self._flipper_record is not None else self._airtag_record
+        if active is not None:
+            m = _RE_TRK_MAC.match(line)
+            if m:
+                active["mac"] = m.group(1)
+                return None
+            m = _RE_TRK_NAME.match(line)
+            if m:
+                active["name"] = m.group(1).strip().rstrip(",").strip()
+                return None
+            m = _RE_TRK_RSSI.match(line)
+            if m:
+                active["rssi"] = int(m.group(1))
+                if self._flipper_record is active:  # clear whichever record just closed
+                    self._flipper_record = None
+                else:
+                    self._airtag_record = None
+                if active.get("mac"):  # a record with no MAC is malformed — drop, don't emit empty
+                    return ParsedEvent(event_type="ble_found", data=active, raw=line)
+                return None
 
         # Probe request
         m = _RE_PROBE.search(line)

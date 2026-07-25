@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **GhostESP BLE tracker scans now parsed — Flipper Zero + Apple AirTag detection.** GhostESP has the
+  `blescan -f` / `aerialscan` / `listairtags` commands but the parser had no handler for their output,
+  so every detected Flipper or AirTag fell through to a generic `info` event and never reached the
+  target pool. Both multi-line records (a Flipper's `[n] <colour> Flipper Found:` / `MAC` / `Name` /
+  `RSSI`, an AirTag's `[n] AirTag Found (Total: n)` / `MAC` / `RSSI`) are now accumulated and surfaced
+  as `ble_found` with a `kind` discriminator (`"flipper"` / `"airtag"`) — a Flipper carries its
+  advertised name, an AirTag its total-seen count — flowing end-to-end into a BLE target. An AirTag's
+  absent name is left unset (never faked). RX/awareness-only; grounded in the firmware's own
+  `flipper_scan.c` / `airtag_scan.c` glog + `webui/parsers.js`; golden-vector tested.
 - **GhostESP handshake capture now parsed — `handshake_captured` parity with Marauder.** On a
   successful EAPOL capture GhostESP prints a three-line record (`Handshake found!` / `AP=<bssid>` /
   `Pair=<pairwise>/<group>`), which the parser had no handler for — all three lines fell through to
