@@ -1,8 +1,10 @@
 """Tkinter lightweight UI — reduced feature set for resource-constrained environments.
 
 Provides flash, device management, target viewing, health metrics, settings,
-macro recording, and cross-device communication without the topology graph,
-attack chain builder, or mission planner found in the full Qt interface.
+macro recording, and cross-device communication without the topology graph or
+attack chain builder found in the full Qt interface. (The mission planner/runner
+is a headless feature — neither UI hosts it; run it via `--mission` on the app,
+or `python -m src.core.mission_runner`.)
 """
 
 from __future__ import annotations
@@ -146,7 +148,8 @@ class TkLightApp:
     """Lightweight Tkinter interface for Cyber Controller.
 
     Seven tabs: Flash, Devices, Targets, Health, Settings, Macros, Cross-Comm.
-    No topology graph, attack chain builder, or mission planner.
+    No topology graph or attack chain builder (Qt-only). The mission planner/runner
+    is headless in both UIs — run it via `--mission` / `python -m src.core.mission_runner`.
     """
 
     def __init__(

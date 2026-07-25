@@ -118,6 +118,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--list-backups", nargs="?", const="", default=None, metavar="DIR", help="List firmware backups (.bin + .meta) in DIR, or the default backups folder if DIR is omitted, then exit.")
     parser.add_argument("--wardrive-summary", default=None, metavar="CSV", help="Print headline stats (networks, encryption mix, bands, channels, RSSI) for a WiGLE wardrive CSV, then exit.")
     parser.add_argument("--check-firmware-updates", action="store_true", help="Check GitHub for newer releases of your cached firmware (one call per cached profile), print any updates, then exit.")
+    parser.add_argument("--mission", default=None, metavar="FILE", help="Dry-run a mission JSON: print the ordered schedule + any SAFE/ARMED refusals, then exit (no device I/O). Send with: python -m src.core.mission_runner FILE --execute.")
     return parser.parse_args(argv)
 
 
@@ -270,6 +271,19 @@ def _acquire_instance_lock():
     return True
 
 
+def _run_mission_cli(path: str) -> int:
+    """Dry-run a mission JSON from the app entry point: load it, plan it, and print the ordered
+    schedule (what each step would send, any SAFE/ARMED refusals, the timeline). No device I/O —
+    delegates to `src.core.mission_runner`'s CLI in its safe dry-run default. Actually sending over
+    connected devices is `python -m src.core.mission_runner MISSION.json --execute`."""
+    from src.core.mission_runner import main as mission_main
+    try:
+        return mission_main([path])
+    except (OSError, ValueError) as exc:  # missing file / bad JSON / invalid mission
+        print(f"could not run mission {path!r}: {exc}")
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     # Frozen-build esptool dispatcher. In a PyInstaller build sys.executable is CyberController.exe, so
     # flash_core routes every esptool op back to this binary as `--_run-esptool <args>`. Run the BUNDLED
@@ -396,6 +410,8 @@ def main(argv: list[str] | None = None) -> int:
     if args.check_firmware_updates:
         from src.core.firmware_vault import check_updates_cli
         return check_updates_cli()
+    if args.mission:
+        return _run_mission_cli(args.mission)
 
     # Single-instance lock guards ONLY the interactive launch (GUI/TUI/web) — never the headless one-shot
     # CLI subcommands handled above. Those (--deadman-setup, --flash-os, --flash-tails, gate mutations, ...)
