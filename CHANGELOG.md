@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **GhostESP station (client) scan now parsed — `client_found` parity with Marauder.** The GhostESP
+  parser recognized APs, probes, BLE, GPS, etc. but had no handler for the `scansta` / `list -s`
+  station output, so every associated client GhostESP found fell through to a generic `info` event and
+  never reached the target pool. It now accumulates GhostESP-Revival's five-line station record
+  (`Station MAC` / `Station Vendor` / `Associated AP` / `AP BSSID` / `AP Vendor`, indexed and
+  non-indexed forms) and emits a `client_found` with the client MAC, vendor, associated-AP SSID/BSSID,
+  and the device's own index — flowing end-to-end into a CLIENT target. RX/parse-only. The format is
+  grounded in the firmware's own `station_scan.c` + `webui/parsers.js`; golden-vector tested (field
+  recovery, both forms, no cross-collision with the AP multi-line accumulator, end-to-end to a target).
 - **Meshtastic NodeInfo now decodes each node's role + GPS position.** The `FromRadio` NodeInfo decoder
   previously dropped `User.role` (field 7) and the `Position` sub-message; it now recovers the node's role
   (CLIENT / ROUTER / REPEATER / TRACKER / … via a new `role_name` enum helper) and its GPS fix — latitude

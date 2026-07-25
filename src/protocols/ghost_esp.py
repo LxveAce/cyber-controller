@@ -66,6 +66,24 @@ _RE_ERROR = re.compile(r"(?:ERR|Error):\s*(.*)", re.IGNORECASE)
 _RE_GPS = re.compile(r"GPS:\s*Lat=(-?\d+(?:\.\d+)?)\s+Lon=(-?\d+(?:\.\d+)?)", re.IGNORECASE)
 _RE_SD = re.compile(r"SD:\s*(.*)", re.IGNORECASE)
 
+# Station (client) scan — `scansta` / `list -s`. GhostESP-Revival streams each associated station as
+# FIVE consecutive lines (twin of the multi-line AP scan), grounded in the firmware's own
+# station_scan.c glog + webui/src/parsers.js — e.g.
+#     [0] Station MAC: AA:BB:CC:DD:EE:FF,
+#          Station Vendor: Apple,
+#          Associated AP: MyNet,
+#          AP BSSID: 11:22:33:44:55:66,
+#          AP Vendor: Netgear
+# (the non-indexed live form uses "Station:" / "STA Vendor:"). Only "Station MAC:" + a 17-char MAC
+# starts a record; accumulate + emit client_found on the closing "AP Vendor" line. Captures are
+# bounded ([^,\n], a MAC-length class) so a wedged device can't drive catastrophic backtracking.
+_RE_STA_START = re.compile(r"Station(?:\s*MAC)?:\s*([\da-fA-F:]{17})", re.IGNORECASE)
+_RE_STA_INDEX = re.compile(r"^\[(\d+)\]\s*Station\s*MAC:", re.IGNORECASE)
+_RE_STA_VENDOR = re.compile(r"(?:Station|STA)\s*Vendor:\s*([^,\n]*)", re.IGNORECASE)
+_RE_STA_AP_SSID = re.compile(r"Associated\s*AP:\s*([^,\n]*)", re.IGNORECASE)
+_RE_STA_AP_BSSID = re.compile(r"AP\s*BSSID:\s*([\da-fA-F:]{17})", re.IGNORECASE)
+_RE_STA_AP_VENDOR = re.compile(r"AP\s*Vendor:\s*([^,\n]*)", re.IGNORECASE)
+
 
 class GhostESPProtocol(BaseProtocol):
     """Parser and command formatter for GhostESP firmware."""
@@ -81,6 +99,9 @@ class GhostESPProtocol(BaseProtocol):
         # In-progress multi-line AP record (GhostESP-Revival streams SSID/BSSID/RSSI/Channel as
         # separate lines); filled across parse_line calls, emitted on the closing Channel line.
         self._ap_record: dict = {}
+        # In-progress multi-line STATION record (scansta/list -s streams each client across five
+        # lines); filled across calls, emitted on the closing "AP Vendor" line. See _RE_STA_* below.
+        self._sta_record: dict | None = None
 
     def reset_scan_index(self) -> None:
         """Reset the AP scan ordinals — call when the device's AP list is cleared
@@ -170,6 +191,36 @@ class GhostESPProtocol(BaseProtocol):
                     raw=line,
                 )
             return None
+
+        # Station (client) found — accumulate the five-line record; emit on the closing AP Vendor line.
+        # (Placed after the AP multi-line block: station lines never match the ^SSID/^BSSID/^RSSI/^Channel
+        # AP patterns, and "AP BSSID:" != "^BSSID:", so the two accumulators can't cross-consume.)
+        m = _RE_STA_START.search(line)
+        if m:
+            rec: dict = {"client_mac": m.group(1)}
+            mi = _RE_STA_INDEX.match(line)
+            if mi:
+                rec["index"] = int(mi.group(1))
+            self._sta_record = rec
+            return None
+        if self._sta_record is not None:
+            m = _RE_STA_VENDOR.search(line)
+            if m:
+                self._sta_record["vendor"] = m.group(1).strip().rstrip(",").strip()
+                return None
+            m = _RE_STA_AP_SSID.search(line)
+            if m:
+                self._sta_record["ap_ssid"] = m.group(1).strip().rstrip(",").strip()
+                return None
+            m = _RE_STA_AP_BSSID.search(line)
+            if m:
+                self._sta_record["ap_mac"] = m.group(1)
+                return None
+            m = _RE_STA_AP_VENDOR.search(line)
+            if m:
+                rec, self._sta_record = self._sta_record, None
+                rec["ap_vendor"] = m.group(1).strip().rstrip(",").strip()
+                return ParsedEvent(event_type="client_found", data=rec, raw=line)
 
         # Probe request
         m = _RE_PROBE.search(line)
