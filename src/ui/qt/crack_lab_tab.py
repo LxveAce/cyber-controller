@@ -728,6 +728,22 @@ class CrackLabTab(QWidget):
         capture = self._capture_edit.text().strip()
         wordlist = self._wordlist_combo.currentData() or ""
         backend = self._backend_combo.currentText()
+        # If this capture is already solved (e.g. reloaded from the persisted library), surface the
+        # stored key instead of re-running the dictionary. A re-run wastes compute, and a smaller
+        # wordlist could even report "not in wordlist" for a key we already hold — a false negative
+        # that contradicts the record's own "cracked" status.
+        if self._captures is not None and self._active_capture_key:
+            done = self._captures.get(self._active_capture_key)
+            if done is not None and done.crack_status == "cracked" and done.password:
+                who = done.ssid or done.bssid or "this network"
+                if QMessageBox.question(
+                        self, "Already cracked",
+                        f"{who} was already cracked — the recovered key is:\n\n{done.password}\n\n"
+                        "Run the dictionary attack again anyway?",
+                        QMessageBox.Yes | QMessageBox.No, QMessageBox.No) != QMessageBox.Yes:
+                    self._result_label.setText(
+                        f"✓ KEY (already recovered) for {who}: {done.password}")
+                    return
         if backend not in ("native", "hashcat", "aircrack"):
             QMessageBox.warning(self, "Crack Lab", "Choose a crack engine.")
             return

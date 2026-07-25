@@ -216,3 +216,34 @@ def test_double_click_inline_hashline_materializes_a_crackable_hc22000(qapp, mon
     with open(loaded, encoding="utf-8") as f:
         assert f.read().strip() == line   # the materialized file is the real, crackable hashline
     assert tab._active_capture_key == "pmkid:aa:bb:cc:dd:ee:ff"
+
+
+def test_run_on_already_cracked_capture_surfaces_key_without_re_running(qapp, monkeypatch):
+    # Now that cracked captures persist, hitting Run on a solved one must surface the STORED key —
+    # not re-run the dictionary (which, with a different wordlist, could falsely report "not in
+    # wordlist" for a key we already hold — a verify-never-fake contradiction).
+    hub = _hub_with_store()
+    hub.captures.add(_rec())                          # pcap_path set, uncracked
+    hub.captures.mark_cracked("eapol:aa:bb:cc:dd:ee:ff", "hunter2", detail="native")
+    tab = CrackLabTab(hub)
+    tab._on_capture_activated(0, 0)                   # load it -> sets _active_capture_key
+    assert tab._worker is None
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.No)  # "re-run? -> No"
+    tab._on_run()
+    assert "hunter2" in tab._result_label.text()      # the stored key surfaced
+    assert tab._worker is None                         # and no re-crack thread was started
+
+
+def test_run_on_uncracked_capture_does_not_short_circuit(qapp, monkeypatch):
+    # The guard must fire ONLY for a solved capture — an uncracked one proceeds to the normal flow
+    # (it hits validation of the absent fixture file, proving the guard didn't swallow the run).
+    hub = _hub_with_store()
+    hub.captures.add(_rec())                  # uncracked; pcap_path /sd/hs_01.pcapng (absent)
+    tab = CrackLabTab(hub)
+    tab._on_capture_activated(0, 0)
+    warned = []
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: warned.append(a))
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.Yes)
+    tab._on_run()
+    assert "already recovered" not in tab._result_label.text().lower()
+    assert warned                      # validation warned -> the run was NOT short-circuited

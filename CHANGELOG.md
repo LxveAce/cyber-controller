@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **An already-cracked capture surfaces its stored key instead of pointlessly re-cracking.** Now that the capture
+  library persists, a solved capture (with its recovered PSK) survives to the next session — so hitting Run on it
+  again would re-execute the whole dictionary attack. Worse, a *different* wordlist could report "not in wordlist
+  (dictionary exhausted)" for a key we already hold — a false negative directly contradicting the record's own
+  "cracked" status. The Crack Lab now checks the loaded capture first: if it's already cracked it shows the
+  recovered key and asks whether to re-run (default No), rather than silently re-cracking. Offscreen-GUI tested (a
+  solved capture surfaces its key with no worker started; an uncracked one still proceeds to the normal flow).
 - **The saved-captures library is now actually saved — captures and recovered PSKs survive across sessions.**
   The `CaptureStore` was purely in-memory: a captured handshake/PMKID and any cracked passphrase vanished when
   the app closed (only a user-initiated CSV/JSON *export* persisted anything). It now takes an opt-in
