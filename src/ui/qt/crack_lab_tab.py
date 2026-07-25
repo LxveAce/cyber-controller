@@ -588,6 +588,32 @@ class CrackLabTab(QWidget):
             self._capture_edit.setText(path)
             self._active_capture_key = rec.key
             self._bssid_edit.setText(rec.bssid)   # helps the aircrack backend target this AP
+        elif rec.hc22000_line:
+            # A COMPLETE inline hashcat-22000 line (e.g. LxveOS's `hs` PMKID artifact). Unlike a
+            # bare ESP32-DIV PMKID (no station MAC → uncrackable), this line is complete, so
+            # materialize it to a .hc22000 in the captures dir and load it. Only hashcat reads a
+            # .hc22000, so select it (and say so plainly if it isn't installed).
+            from src.core.install import captures_dir
+            stem = (rec.bssid.replace(":", "") or "capture").lower()
+            out = str(captures_dir() / f"cc_inline_{rec.capture_type}_{stem}.hc22000")
+            try:
+                cp.write_hc22000(rec.hc22000_line, out)
+            except (ValueError, OSError) as exc:
+                QMessageBox.information(
+                    self, "Inline hashline",
+                    f"Could not stage this capture's hashline to a file: {exc}")
+                return
+            self._capture_edit.setText(out)
+            self._active_capture_key = rec.key
+            self._bssid_edit.setText(rec.bssid)
+            hc_idx = self._backend_combo.findText("hashcat")
+            if hc_idx >= 0:
+                self._backend_combo.setCurrentIndex(hc_idx)
+            else:
+                QMessageBox.information(
+                    self, "hashcat needed",
+                    "Loaded this inline capture as a .hc22000. Only the hashcat engine can crack a "
+                    ".hc22000 — install it via 'Get tools', then Run.")
         elif rec.pmkid:
             # Inline ESP32-DIV PMKID (no file on disk yet). Staging it to a .hc22000 is a separate
             # slice; be honest rather than write a possibly-malformed hashline.

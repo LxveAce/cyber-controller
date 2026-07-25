@@ -16,6 +16,7 @@ from src.core.crack_pipeline import (  # noqa: E402
     HASHCAT_MODE_WPA,
     ToolStatus,
     available_backends,
+    bssid_from_hashline,
     build_aircrack_argv,
     build_convert_argv,
     build_hashcat_argv,
@@ -23,11 +24,15 @@ from src.core.crack_pipeline import (  # noqa: E402
     consent_prompt_text,
     count_extractable,
     detect_tools,
+    hashline_from_capture,
+    is_wpa_hashline,
     missing_tools_text,
     parse_aircrack_output,
     parse_hashcat_show,
     validate_capture,
+    validate_crack_input,
     validate_wordlist,
+    write_hc22000,
 )
 
 # A realistic hashcat-22000 PMKID line for ESSID "TestNet" (546573744e6574), AP aabbccddeeff.
@@ -304,3 +309,58 @@ def test_kill_proc_tree_is_safe_on_none_and_finished():
     proc = sp.Popen([sys.executable, "-c", "pass"], **cp._spawn_kwargs())
     proc.wait(timeout=10)
     cp.kill_proc_tree(proc)                  # already-exited child: no error
+
+
+# ── inline hashline -> crackable material (LxveOS hs / capture->crack e2e) ─────
+
+def test_is_wpa_hashline_accepts_valid_pmkid_and_eapol() -> None:
+    assert is_wpa_hashline(_HASHLINE)                          # PMKID (type 01)
+    assert is_wpa_hashline(_HASHLINE.replace("*01*", "*02*"))  # EAPOL (type 02)
+    assert is_wpa_hashline("  " + _HASHLINE + "  ")            # surrounding whitespace tolerated
+
+
+def test_is_wpa_hashline_rejects_malformed() -> None:
+    assert not is_wpa_hashline("")
+    assert not is_wpa_hashline("not a hashline")
+    # wrong protocol type (only 01/02 are PMKID/EAPOL)
+    assert not is_wpa_hashline("WPA*99*deadbeef*aabbccddeeff*112233445566*546573744e6574***")
+    # empty hash field
+    assert not is_wpa_hashline("WPA*01**aabbccddeeff*112233445566*546573744e6574***")
+    # malformed AP MAC / STA MAC (not 12 hex)
+    assert not is_wpa_hashline("WPA*01*2582a8*ZZ*112233445566*546573744e6574***")
+    assert not is_wpa_hashline("WPA*01*2582a8*aabbccddeeff*11*546573744e6574***")
+    # too few fields to be a real line
+    assert not is_wpa_hashline("WPA*01*2582a8281bf9d4308d6f5731d0e61c61*aabbccddeeff*112233445566")
+
+
+def test_bssid_from_hashline_colon_formats_the_ap_mac() -> None:
+    assert bssid_from_hashline(_HASHLINE) == "aa:bb:cc:dd:ee:ff"   # field 3, lowercased + coloned
+    assert bssid_from_hashline("garbage") == ""
+
+
+def test_hashline_from_capture_returns_the_inline_line_only() -> None:
+    from types import SimpleNamespace
+    assert hashline_from_capture(SimpleNamespace(hc22000_line=_HASHLINE)) == _HASHLINE
+    # a bare PMKID (no complete line) is deliberately NOT assembled — honest None, since a PMKID
+    # without the station MAC (the ESP32-DIV path) cannot form a valid, crackable line.
+    assert hashline_from_capture(SimpleNamespace(hc22000_line="", pmkid="deadbeefdeadbeef")) is None
+    assert hashline_from_capture(SimpleNamespace(hc22000_line="junk")) is None
+
+
+def test_write_hc22000_materializes_a_genuinely_crackable_file(tmp_path) -> None:
+    out = str(tmp_path / "inline.hc22000")
+    assert write_hc22000(_HASHLINE, out) == out
+    with open(out, encoding="utf-8") as f:
+        text = f.read()
+    # The real end-to-end claim (minus the GPL tool): the materialized file is a valid, crackable
+    # hashcat-22000 input — one extractable hash, and the hashcat engine accepts it.
+    assert count_extractable(text) == 1
+    assert validate_crack_input(out, "hashcat") == out
+
+
+def test_write_hc22000_refuses_a_bogus_line(tmp_path) -> None:
+    import os
+    out = str(tmp_path / "bad.hc22000")
+    with pytest.raises(ValueError):
+        write_hc22000("definitely not a hashline", out)
+    assert not os.path.exists(out)   # never writes a bogus 'crackable' file

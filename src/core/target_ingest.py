@@ -14,6 +14,7 @@ import logging
 from typing import Any, Callable
 
 from src.core import oui
+from src.core.crack_pipeline import bssid_from_hashline, is_wpa_hashline
 from src.models.capture import CaptureRecord
 from src.models.target import Target, TargetType
 
@@ -453,7 +454,19 @@ class TargetIngestor:
         raw = getattr(ev, "raw", "") or ""
 
         if et == "handshake_captured":
-            rec = CaptureRecord(bssid=str(d.get("bssid", "")).strip(), capture_type="eapol",
+            # LxveOS's `hs` op emits a COMPLETE hashcat-22000 line verbatim in data["line"] (the STA
+            # MAC baked in → a valid, directly-crackable line). Capture it so the Crack Lab can
+            # materialize + crack it with no file. Marauder/ESP32-DIV EAPOL events carry no `line`
+            # and keep the plain eapol record exactly as before (no regression).
+            line = str(d.get("line", "")).strip()
+            kind = str(d.get("kind", "")).strip().lower()
+            bssid = str(d.get("bssid", "")).strip()
+            valid_line = is_wpa_hashline(line)
+            if valid_line and not bssid:
+                bssid = bssid_from_hashline(line)   # the AP MAC lives inside the hashline (field 3)
+            rec = CaptureRecord(bssid=bssid,
+                                capture_type="pmkid" if kind == "pmkid" else "eapol",
+                                hc22000_line=line if valid_line else "",
                                 device_source=port, raw=raw)
             self._join_from_pool(rec)
             self._recent_capture[port] = rec.key

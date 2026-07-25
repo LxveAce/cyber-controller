@@ -45,7 +45,7 @@ import shutil
 import signal
 import subprocess
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 Line = Callable[[str], None]
 
@@ -345,6 +345,67 @@ def parse_aircrack_output(text: str) -> Optional[str]:
     an internal ``]`` or an edge space in the passphrase is preserved)."""
     m = _AIRCRACK_KEY_RE.search(text or "")
     return m.group("key") if m else None
+
+
+# -- inline hashline -> crackable material (pure) ---------------------
+
+def _is_mac_hex(s: str) -> bool:
+    """True if *s* is a bare 12-hex-char MAC (no separators), as it sits in a 22000 hashline."""
+    return len(s) == 12 and all(c in "0123456789abcdefABCDEF" for c in s)
+
+
+def is_wpa_hashline(text: str) -> bool:
+    """True if *text* is a single well-formed hashcat-22000 line —
+    ``WPA*<01|02>*<hash>*<ap>*<sta>*<essid_hex>*...`` (PMKID type 01 or EAPOL type 02).
+
+    This is the gate before materializing an inline hashline (e.g. the LxveOS ``hs`` artifact) to a
+    crackable ``.hc22000``: it rejects an empty/garbled line so a malformed artifact never becomes a
+    fake 'crackable' file. Structural only — it does not verify the hash is cryptographically valid
+    (only hashcat, given the passphrase, can)."""
+    parts = text.strip().split("*")
+    if len(parts) < 6 or parts[0] != "WPA" or parts[1] not in ("01", "02"):
+        return False
+    if not parts[2] or any(c not in "0123456789abcdefABCDEF" for c in parts[2]):
+        return False
+    if not _is_mac_hex(parts[3]) or not _is_mac_hex(parts[4]):
+        return False
+    essid = parts[5]  # ESSID hex-encoded; empty allowed (hidden net), else must be even-length hex
+    if essid and (len(essid) % 2 or any(c not in "0123456789abcdefABCDEF" for c in essid)):
+        return False
+    return True
+
+
+def bssid_from_hashline(text: str) -> str:
+    """The AP MAC (field 3) of a 22000 hashline as ``aa:bb:cc:dd:ee:ff`` (lowercase, coloned), or
+    ``""`` if malformed. Lets an inline hashline (which carries the BSSID inside it) seed a capture
+    record's BSSID for dedup + targeting when no separate ``bssid`` was reported alongside."""
+    if not is_wpa_hashline(text):
+        return ""
+    ap = text.strip().split("*")[3].lower()
+    return ":".join(ap[i:i + 2] for i in range(0, 12, 2))
+
+
+def hashline_from_capture(rec: Any) -> Optional[str]:
+    """The directly-crackable hashcat-22000 line a capture carries inline (``rec.hc22000_line``,
+    e.g. the LxveOS ``hs`` artifact), or ``None`` when it has none.
+
+    Deliberately does NOT assemble a line from ``rec.pmkid`` alone: a PMKID needs the station MAC to
+    crack (it is ``HMAC(PMK, "PMK Name"|AP|STA)``), so the inline-PMKID path lacking a STA MAC
+    (ESP32-DIV reports only bssid + pmkid) cannot form a valid line — fabricating one would be a
+    verify-never-fake violation (a 'crackable' file that can never match the real key)."""
+    line = (getattr(rec, "hc22000_line", "") or "").strip()
+    return line if is_wpa_hashline(line) else None
+
+
+def write_hc22000(hashline: str, out_path: str) -> str:
+    """Materialize a single inline 22000 *hashline* to a ``.hc22000`` file at *out_path* so hashcat
+    (which reads a file, not a string) can crack it. Validates the line first; returns *out_path*.
+    Raises ValueError on a malformed line (never writes a bogus 'crackable' file)."""
+    if not is_wpa_hashline(hashline):
+        raise ValueError("not a valid hashcat-22000 hashline; refusing to write a bogus .hc22000")
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write(hashline.strip() + "\n")
+    return out_path
 
 
 # -- consent copy (pure) ----------------------------------------------

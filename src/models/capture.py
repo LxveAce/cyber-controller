@@ -43,6 +43,9 @@ class CaptureRecord:
         last_seen: When last re-observed (UTC).
         times_seen: How many times this capture key has been observed.
         pmkid: Inline PMKID hex (the ESP32-DIV path — directly crackable, no file).
+        hc22000_line: A complete inline hashcat-22000 line (the LxveOS ``hs`` artifact). Unlike a
+            bare ``pmkid`` it already carries the station MAC, so it forms a valid, crackable line
+            with no file — materialize it via ``crack_pipeline.write_hc22000``.
         pcap_path: On-device SD path to the ``.pcap``/``.pcapng`` (or local once retrieved).
         hc22000_path: hashcat-22000 file path (only after a convert).
         hashes_extracted: Extractable hash count from the capture.
@@ -77,6 +80,7 @@ class CaptureRecord:
 
     # ── crackable material / files ───────────────────────────────────
     pmkid: str = ""
+    hc22000_line: str = ""   # complete inline hashcat-22000 line (LxveOS hs); crackable, no file
     pcap_path: str = ""                  # on-device SD path (or local once retrieved)
     hc22000_path: str = ""               # only after a convert
     hashes_extracted: int = 0
@@ -120,6 +124,8 @@ class CaptureRecord:
             self.gps_lon = other.gps_lon
         if other.pmkid:
             self.pmkid = other.pmkid
+        if other.hc22000_line:
+            self.hc22000_line = other.hc22000_line
         if other.pcap_path:
             self.pcap_path = other.pcap_path
         if other.hc22000_path:
@@ -149,6 +155,7 @@ class CaptureRecord:
             "last_seen": self.last_seen.isoformat(),
             "times_seen": self.times_seen,
             "pmkid": self.pmkid,
+            "hc22000_line": self.hc22000_line,
             "pcap_path": self.pcap_path,
             "hc22000_path": self.hc22000_path,
             "hashes_extracted": self.hashes_extracted,

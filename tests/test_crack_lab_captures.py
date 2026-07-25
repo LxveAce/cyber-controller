@@ -194,3 +194,25 @@ def test_capture_confirm_label_is_not_hardcoded_deauth():
     assert W._capture_trigger({"action": "Capture Handshake"}) == "Capture Handshake"
     assert W._capture_trigger({"action": "Evil Portal"}) == "Evil Portal"
     assert W._capture_trigger({}) == "action"
+
+
+def test_double_click_inline_hashline_materializes_a_crackable_hc22000(qapp, monkeypatch, tmp_path):
+    # A LxveOS-style capture carrying a COMPLETE inline 22000 line but NO file. Double-clicking it
+    # stages a real .hc22000 into the captures dir and loads it into the cracker (a hashcat input).
+    monkeypatch.setenv("CC_CAPTURES_DIR", str(tmp_path))
+    # hashcat isn't installed in CI → the branch shows an info popup; stub it so it can't block.
+    monkeypatch.setattr(QMessageBox, "information", lambda *a, **k: None)
+    line = "WPA*01*2582a8281bf9d4308d6f5731d0e61c61*aabbccddeeff*112233445566*546573744e6574***"
+    hub = _hub_with_store()
+    hub.captures.add(CaptureRecord(bssid="aa:bb:cc:dd:ee:ff", capture_type="pmkid",
+                                   ssid="TestNet", hc22000_line=line))
+    tab = CrackLabTab(hub)
+    assert tab._captures_table.rowCount() == 1
+
+    tab._on_capture_activated(0, 0)
+
+    loaded = tab._capture_edit.text()
+    assert loaded.endswith(".hc22000") and os.path.isfile(loaded)
+    with open(loaded, encoding="utf-8") as f:
+        assert f.read().strip() == line   # the materialized file is the real, crackable hashline
+    assert tab._active_capture_key == "pmkid:aa:bb:cc:dd:ee:ff"

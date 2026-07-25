@@ -6,6 +6,21 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Capture→crack, end-to-end for LxveOS PMKID/handshake captures — the inline hashline no longer dies at
+  the ingest bridge.** LxveOS's `hs` op emits a *complete* hashcat-22000 line (`WPA*01*<pmkid>*<ap>*<sta>*
+  <essid_hex>***`, station MAC baked in — directly crackable, no file) and the parser kept it verbatim
+  "for Crack Lab", but `target_ingest._event_to_capture` read only the BSSID and **dropped `data["line"]`**,
+  so the ready-to-crack material never reached the CaptureRecord. Now the ingest captures the line into a
+  new `CaptureRecord.hc22000_line`, lifts the AP MAC out of it (field 3) to seed the BSSID for dedup, and
+  types it `pmkid`/`eapol` from the event's `kind`. Crack Lab's Captures list gains the last link: a
+  double-click on such a capture **materializes the line to a real `.hc22000`** (via the new pure
+  `crack_pipeline.write_hc22000`) in the captures dir and loads it for the hashcat engine — no file pull
+  needed. A bare ESP32-DIV PMKID (BSSID + PMKID only, **no station MAC**) is still, honestly, *not*
+  assembled — a PMKID is `HMAC(PMK, "PMK Name"|AP|STA)` and fabricating a line without the STA MAC would be
+  an uncrackable, verify-never-fake artifact; that path keeps its existing "stage it yourself" message. New
+  pure helpers `is_wpa_hashline` / `bssid_from_hashline` / `hashline_from_capture` / `write_hc22000`,
+  golden-vector + ingest + offscreen-GUI tested (a materialized file is asserted to be a genuine, crackable
+  hashcat-22000 input). Dictionary-only (`-a 0`) invariant untouched; the GPL tools stay unbundled.
 - **Drone Remote-ID (ASTM F3411) detections now decoded — `core/remote_id.py`.** Cyber Controller flashes
   the `drone_mesh_mapper` profile (colonelpanichacks/drone-mesh-mapper), a receive-only WiFi Remote-ID
   detector, but had no parser for what it emits — so a nearby drone's broadcast (its id, its position, and

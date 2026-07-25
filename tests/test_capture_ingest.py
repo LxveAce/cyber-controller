@@ -182,3 +182,39 @@ def test_detach_clears_recent_capture_state():
     assert ing._recent_capture.get("COM7")          # armed
     ing.detach(conn)
     assert "COM7" not in ing._recent_capture
+
+
+def test_lxveos_hs_hashline_is_captured_as_crackable_material():
+    # LxveOS's `hs` op emits a COMPLETE hashcat-22000 line (STA MAC baked in) in data["line"], with
+    # kind=pmkid and NO separate bssid. Ingest keeps the line verbatim, lifts the AP MAC from it,
+    # and types it pmkid — so the Crack Lab can materialize + crack it with no file.
+    pool = TargetPool(EventBus())
+    store = CaptureStore()
+    ing = TargetIngestor(pool, captures=store)
+    line = "WPA*01*2582a8281bf9d4308d6f5731d0e61c61*aabbccddeeff*112233445566*546573744e6574***"
+    ev = ParsedEvent(event_type="handshake_captured",
+                     data={"kind": "pmkid", "line": line, "essid": "TestNet"}, raw="HS")
+    conn = _Conn("COM9")
+    ing.attach(conn, _Proto({"L": ev}))
+    conn.feed("L")
+
+    c = store.get("pmkid:aa:bb:cc:dd:ee:ff")   # bssid lifted from the hashline (field 3), coloned
+    assert c is not None
+    assert c.capture_type == "pmkid"
+    assert c.hc22000_line == line              # the complete line preserved verbatim for cracking
+    assert c.bssid == "aa:bb:cc:dd:ee:ff"
+
+
+def test_handshake_without_a_hashline_stays_a_plain_eapol_record():
+    # Marauder/ESP32-DIV emit handshake_captured with only a bssid (the pcap arrives separately). No
+    # `line` means no inline crackable material — the record is unchanged (regression guard).
+    pool = TargetPool(EventBus())
+    store = CaptureStore()
+    ing = TargetIngestor(pool, captures=store)
+    ev = ParsedEvent(event_type="handshake_captured", data={"bssid": "AA:BB:CC:DD:EE:FF"}, raw="HS")
+    conn = _Conn("COM7")
+    ing.attach(conn, _Proto({"L": ev}))
+    conn.feed("L")
+
+    c = store.get("eapol:aa:bb:cc:dd:ee:ff")
+    assert c is not None and c.capture_type == "eapol" and c.hc22000_line == ""
