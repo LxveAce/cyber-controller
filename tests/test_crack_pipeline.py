@@ -24,11 +24,13 @@ from src.core.crack_pipeline import (  # noqa: E402
     consent_prompt_text,
     count_extractable,
     detect_tools,
+    handshake_from_hashline,
     hashline_from_capture,
     is_wpa_hashline,
     missing_tools_text,
     parse_aircrack_output,
     parse_hashcat_show,
+    run_native,
     validate_capture,
     validate_crack_input,
     validate_wordlist,
@@ -252,12 +254,13 @@ def test_validate_crack_input_accepts_hc22000_for_hashcat(tmp_path):
     assert cp.validate_crack_input(str(hf), "hashcat") == str(hf)
 
 
-def test_validate_crack_input_rejects_hc22000_for_native_and_aircrack(tmp_path):
+def test_validate_crack_input_rejects_hc22000_for_aircrack(tmp_path):
+    # aircrack reads a raw .pcap, so a prebuilt .hc22000 isn't valid input for it. (native now cracks
+    # inline PMKID lines from a .hc22000 — see test_validate_crack_input_accepts_hc22000_for_native.)
     hf = tmp_path / "x.hc22000"
     hf.write_text("x\n", encoding="utf-8")
-    for backend in ("native", "aircrack"):
-        with pytest.raises(ValueError, match="hashcat engine"):
-            cp.validate_crack_input(str(hf), backend)
+    with pytest.raises(ValueError, match="aircrack reads a raw"):
+        cp.validate_crack_input(str(hf), "aircrack")
 
 
 def test_validate_crack_input_missing_hashfile_raises(tmp_path):
@@ -364,3 +367,82 @@ def test_write_hc22000_refuses_a_bogus_line(tmp_path) -> None:
     with pytest.raises(ValueError):
         write_hc22000("definitely not a hashline", out)
     assert not os.path.exists(out)   # never writes a bogus 'crackable' file
+
+
+# ── native crack of an inline PMKID hashline (no file, no external tool) ───────
+
+def test_handshake_from_hashline_parses_a_pmkid() -> None:
+    hs = handshake_from_hashline(_HASHLINE)
+    assert hs is not None
+    assert hs.kind == "pmkid"
+    assert hs.ap_mac == bytes.fromhex("aabbccddeeff")
+    assert hs.sta_mac == bytes.fromhex("112233445566")
+    assert hs.pmkid == bytes.fromhex("2582a8281bf9d4308d6f5731d0e61c61")
+    assert hs.essid == "TestNet"
+    assert hs.essid_bytes == b"TestNet"
+
+
+def test_handshake_from_hashline_rejects_eapol_and_malformed() -> None:
+    # EAPOL (type 02) is not reconstructable for the native MIC path from a raw 22000 line -> None.
+    assert handshake_from_hashline(_HASHLINE.replace("*01*", "*02*")) is None
+    assert handshake_from_hashline("garbage") is None
+    assert handshake_from_hashline("") is None
+    # a PMKID must be exactly 16 bytes (32 hex) — a short "pmkid" is not a real one.
+    assert handshake_from_hashline("WPA*01*dead*aabbccddeeff*112233445566*546573744e6574***") is None
+
+
+def test_run_native_cracks_an_inline_pmkid_hashline(tmp_path) -> None:
+    # The REAL end-to-end claim, no external tool: build a genuine PMKID for a known passphrase using
+    # native_crack's own primitives, stage it as a .hc22000, and assert run_native recovers the key.
+    from src.core import native_crack as nc
+    psk, essid = "password123", "TestNet"
+    ap, sta = bytes.fromhex("aabbccddeeff"), bytes.fromhex("112233445566")
+    real_pmkid = nc.compute_pmkid(nc.pmk(psk, essid), ap, sta)
+    line = f"WPA*01*{real_pmkid.hex()}*{ap.hex()}*{sta.hex()}*{essid.encode().hex()}***"
+    hc = tmp_path / "inline.hc22000"
+    hc.write_text(line + "\n")
+    wl = tmp_path / "wl.txt"
+    wl.write_text("wrongpass\npassword123\nsomethingelse\n")
+
+    res = run_native(str(hc), str(wl), lambda *_a: None)
+    assert res.cracked is True
+    assert res.password == psk
+    assert res.ssid == essid
+    assert res.hashes_extracted == 1
+
+
+def test_run_native_hashfile_honest_negative_when_key_absent(tmp_path) -> None:
+    from src.core import native_crack as nc
+    ap, sta = bytes.fromhex("aabbccddeeff"), bytes.fromhex("112233445566")
+    real_pmkid = nc.compute_pmkid(nc.pmk("thekey", "TestNet"), ap, sta)
+    line = f"WPA*01*{real_pmkid.hex()}*{ap.hex()}*{sta.hex()}*{'TestNet'.encode().hex()}***"
+    hc = tmp_path / "inline.hc22000"
+    hc.write_text(line + "\n")
+    wl = tmp_path / "wl.txt"
+    wl.write_text("nope\nwrong\n")   # the real key is NOT here
+    res = run_native(str(hc), str(wl), lambda *_a: None)
+    assert res.cracked is False
+    assert res.hashes_extracted == 1   # a real hash was tried; it's an honest "not in wordlist"
+
+
+def test_run_native_hashfile_eapol_only_is_honest(tmp_path) -> None:
+    # A .hc22000 with only a type-02 EAPOL line: the native inline path can't verify it, and must say
+    # so — NOT report a fake "nothing to crack" / exhaustion.
+    hc = tmp_path / "eapol.hc22000"
+    hc.write_text("WPA*02*2582a8281bf9d4308d6f5731d0e61c61*aabbccddeeff*112233445566*546573744e6574***\n")
+    wl = tmp_path / "wl.txt"
+    wl.write_text("password123\n")
+    lines: list[str] = []
+    res = run_native(str(hc), str(wl), lines.append)
+    assert res.cracked is False
+    assert res.hashes_extracted == 1
+    assert "hashcat" in res.detail.lower()   # honestly routed to the right engine
+
+
+def test_validate_crack_input_accepts_hc22000_for_native(tmp_path) -> None:
+    hc = tmp_path / "x.hc22000"
+    hc.write_text(_HASHLINE + "\n")
+    assert validate_crack_input(str(hc), "native") == str(hc)   # native handles inline PMKID now
+    assert validate_crack_input(str(hc), "hashcat") == str(hc)
+    with pytest.raises(ValueError):
+        validate_crack_input(str(hc), "aircrack")   # aircrack still needs a raw capture

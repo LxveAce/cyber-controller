@@ -166,9 +166,30 @@ def run_native(capture: str, wordlist: str, on_line: Line,
     checks each candidate passphrase against them in pure Python. Same honest posture as the rest:
     dictionary-only, verify-never-fake. Raises ValueError on bad input."""
     from src.core import native_crack, wpa_capture
-    validate_capture(capture)
     validate_wordlist(wordlist)
-    handshakes = wpa_capture.parse_capture(capture)
+    if os.path.splitext(capture)[1].lower() == HASHFILE_EXT:
+        # A prebuilt/materialized .hc22000 (e.g. an inline LxveOS PMKID the Crack Lab staged). Parse
+        # each line to a Handshake so the native engine can crack it with no external tool. PMKID lines
+        # are supported; a type-02 EAPOL line is surfaced honestly as hashcat-only (nothing faked).
+        if not os.path.isfile(capture):
+            raise ValueError(f"hashfile not found: {capture!r}")
+        handshakes, total = [], 0
+        with open(capture, "r", encoding="utf-8", errors="replace") as f:
+            for ln in f:
+                if ln.strip().startswith("WPA*"):
+                    total += 1
+                    hs = handshake_from_hashline(ln)
+                    if hs is not None:
+                        handshakes.append(hs)
+        if total and not handshakes:
+            on_line("[native] this .hc22000 holds only EAPOL/unsupported hashes — the native engine "
+                    "cracks inline PMKID lines; use the hashcat engine for these")
+            return CrackResult(cracked=False, hashes_extracted=total,
+                               detail="native engine cracks inline PMKID lines only; "
+                                      "use hashcat for the EAPOL hashes in this file")
+    else:
+        validate_capture(capture)
+        handshakes = wpa_capture.parse_capture(capture)
     if bssid:
         want = bssid.lower().replace(":", "").replace("-", "")
         filtered = [h for h in handshakes if h.ap_mac.hex() == want]
@@ -219,10 +240,11 @@ def validate_crack_input(path: str, backend: str) -> str:
     if not isinstance(path, str) or not path:
         raise ValueError("no capture file given")
     if os.path.splitext(path)[1].lower() == HASHFILE_EXT:
-        if backend != "hashcat":
+        if backend not in ("hashcat", "native"):
             raise ValueError(
-                "a prebuilt .hc22000 hashfile can only be cracked with the hashcat engine — "
-                "select 'hashcat' as the engine (native/aircrack read a raw .pcap capture instead).")
+                "a prebuilt .hc22000 hashfile can be cracked with the hashcat or native engine — "
+                "select 'hashcat' or 'native' (aircrack reads a raw .pcap capture instead). The "
+                "native engine handles inline PMKID lines; use hashcat for EAPOL hashes.")
         if not os.path.isfile(path):
             raise ValueError(f"hashfile not found: {path!r}")
         return path
@@ -395,6 +417,32 @@ def hashline_from_capture(rec: Any) -> Optional[str]:
     verify-never-fake violation (a 'crackable' file that can never match the real key)."""
     line = (getattr(rec, "hc22000_line", "") or "").strip()
     return line if is_wpa_hashline(line) else None
+
+
+def handshake_from_hashline(text: str) -> Optional[Any]:
+    """Parse a single hashcat-22000 PMKID line into a :class:`native_crack.Handshake` the built-in
+    native cracker can verify — so an inline PMKID (e.g. LxveOS's ``hs``) is crackable with no capture
+    file and no external tool.
+
+    Returns ``None`` for a malformed line, a non-32-hex PMKID, or a type-02 EAPOL line: the native
+    inline path is PMKID-only, since a raw 22000 EAPOL line does not carry the separated nonce /
+    EAPOL-frame material the native MIC path needs — use the hashcat engine for those."""
+    if not is_wpa_hashline(text):
+        return None
+    parts = text.strip().split("*")
+    if parts[1] != "01" or len(parts[2]) != 32:   # PMKID type only; a PMKID is exactly 16 bytes
+        return None
+    from src.core.native_crack import Handshake
+    try:
+        essid_bytes = bytes.fromhex(parts[5]) if parts[5] else b""
+        return Handshake(kind="pmkid",
+                         essid=essid_bytes.decode("utf-8", "replace"),
+                         ap_mac=bytes.fromhex(parts[3]),
+                         sta_mac=bytes.fromhex(parts[4]),
+                         essid_bytes=essid_bytes,
+                         pmkid=bytes.fromhex(parts[2]))
+    except ValueError:
+        return None
 
 
 def write_hc22000(hashline: str, out_path: str) -> str:

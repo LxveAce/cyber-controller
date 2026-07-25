@@ -6,6 +6,18 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The built-in native cracker can now crack an inline PMKID — no capture file, no external tool.** The prior
+  change captured the LxveOS `hs` PMKID hashline into the CaptureRecord and materialized it to a `.hc22000`, but
+  that `.hc22000` only fed *hashcat* (a GPL tool that may not be installed), while CC's always-available native
+  cracker read a raw `.pcap` only — so the most-accessible capture (an inline PMKID, no file) couldn't use the
+  most-accessible engine. Now `run_native` also accepts a `.hc22000`: a new pure `handshake_from_hashline` parses
+  each `WPA*01*<pmkid>*<ap>*<sta>*<essid_hex>***` line into a `native_crack.Handshake`, `validate_crack_input`
+  accepts `.hc22000` for the native engine, and the Crack Lab's inline-capture double-click no longer forces
+  hashcat. Honest scoping: a type-02 EAPOL line is **not** reconstructable for the native MIC path from a raw
+  22000 line (it lacks the separated nonce / EAPOL-frame material), so `handshake_from_hashline` returns None for
+  it and `run_native` reports a plain "use the hashcat engine for these" — never a fake exhaustion. Verified with
+  a **real native crack** (a genuine PMKID computed for a known passphrase is recovered from a wordlist with no
+  external tool), plus parser + honest-negative + validation tests. Dictionary-only (`-a 0`) invariant untouched.
 - **Capture→crack, end-to-end for LxveOS PMKID/handshake captures — the inline hashline no longer dies at
   the ingest bridge.** LxveOS's `hs` op emits a *complete* hashcat-22000 line (`WPA*01*<pmkid>*<ap>*<sta>*
   <essid_hex>***`, station MAC baked in — directly crackable, no file) and the parser kept it verbatim
