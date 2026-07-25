@@ -6,6 +6,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **OPERATE HOME embedded in the app shell.** The dual-axis rebuild (`OperateHome` — the domain-grid →
+  per-domain three-panel view) is now a real top-level tab in the main window, alongside the existing
+  tabs (additive — nothing reparented or disrupted). A new `build_operate_home()` factory gives the
+  shell its OWN fresh WiFi/BLE analyzer centers, fed from the same read-only ingestor tap as the
+  existing analyzers, so the new UI shows live data without double-opening a board. Verified by a
+  smoke test that constructs the window and asserts the OPERATE HOME tab is present, the existing tabs
+  are intact, the fresh centers are used (not the parented instances), routing works, and the tap
+  feeds the fresh center.
 - **`WardriveObservation` — a real GPS-wardrive object model.** A single frozen dataclass combining an
   `ApObservation` with the `GpsFix` it was heard at (plus a first-seen timestamp) — the persistent
   object a wardrive session / future GPS-domain detail shows, and the exact triple `to_wigle_row`

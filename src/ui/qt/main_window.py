@@ -605,6 +605,15 @@ class CyberControllerWindow(QMainWindow):
         self._operate_surface.addTab(self._macro_tab, label_icon("Macros"), "Macros")
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
+        # OPERATE HOME (dual-axis shell rebuild) — the brief's domain-grid -> per-domain three-panel
+        # view, embedded alongside the flat tabs. Its WiFi/BLE domain views use FRESH analyzer
+        # centers (build_operate_home) so nothing here is reparented; the fresh centers are fed from
+        # the same ingestor tap as the existing analyzers (see _wire_wifi/_ble_analyzer). Awareness
+        # only — the fresh centers transmit nothing.
+        from src.ui.qt.operate_home import build_operate_home
+        self._operate_home, self._oh_wifi, self._oh_ble = build_operate_home()
+        self._tabs.addTab(self._operate_home, label_icon("Operate"), "Operate Home")
+
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its MAC/SSID/channel
         # into the Macro tab's variable fields, so a discovery in one surface is reusable in another.
         self._targets_tab.fill_macro_requested.connect(self._on_use_target_as_macro)
@@ -686,6 +695,7 @@ class CyberControllerWindow(QMainWindow):
             # Multi-Wardrive + Flock Map), Analyze (Graph + Cross-Comm + Crack Lab + BLE Analyzer). The Analyze
             # widget is still self._network_surface internally; only its label + loadout key changed.
             ("Operate", self._operate_surface),
+            ("Operate Home", self._operate_home),
             ("Survey", self._survey_surface),
             ("Analyze", self._network_surface),
             ("Settings", self._settings_tab),
@@ -1322,6 +1332,11 @@ class CyberControllerWindow(QMainWindow):
 
         self._ble_event_signal = _BleEventSignal()
         self._ble_event_signal.ble_event.connect(analyzer.on_ble_event)
+        # Also feed the Operate Home BLE domain's fresh center from the same fan-out (additive; the
+        # tap is read-only, so both views update without double-opening a board).
+        _oh_ble = getattr(self, "_oh_ble", None)
+        if _oh_ble is not None:
+            self._ble_event_signal.ble_event.connect(_oh_ble.on_ble_event)
 
         def _observer(ev, port):
             # Serial-thread callback: keep only BLE adverts; emit queues onto the GUI thread.
@@ -1350,6 +1365,10 @@ class CyberControllerWindow(QMainWindow):
 
         self._wifi_event_signal = _WifiEventSignal()
         self._wifi_event_signal.wifi_event.connect(analyzer.on_wifi_event)
+        # Also feed the Operate Home Wi-Fi domain's fresh center from the same fan-out (additive).
+        _oh_wifi = getattr(self, "_oh_wifi", None)
+        if _oh_wifi is not None:
+            self._wifi_event_signal.wifi_event.connect(_oh_wifi.on_wifi_event)
 
         # The Wi-Fi discovery + capture events the AP view folds in
         # (mirrors _event_to_target / _event_to_capture).

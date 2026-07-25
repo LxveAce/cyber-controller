@@ -44,6 +44,9 @@ EXPECTED_TABS = [
     # WS-6 A (2026-07-21): Operate is the live action loop — Targets/Broadcast/Console/Macros. See
     # test_operate_surface_subtabs.
     ("Operate", "_operate_surface"),
+    # OPERATE HOME: the dual-axis shell rebuild (domain grid -> per-domain three-panel), embedded as
+    # a top-level tab alongside the flat surfaces. ALWAYS-core in the loadout. See the embed test.
+    ("Operate Home", "_operate_home"),
     # WS-6 A: Survey is the NEW GPS-tagged field-survey group — Wardrive/Multi-Wardrive/Flock Map. See
     # test_survey_surface_subtabs.
     ("Survey", "_survey_surface"),
@@ -79,12 +82,12 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_tab_count_is_6(qapp, isolated_settings):
-    # 6 top-level surfaces after WS-6 A: Flash, Connect, Operate, Survey, Analyze, Settings. (The old 8-tab
-    # Operate was split — the survey/map trio moved to a new Survey surface, and Crack Lab + BLE Analyzer to
-    # Analyze [the renamed Network surface].)
+def test_tab_count_is_7(qapp, isolated_settings):
+    # 7 top-level surfaces: Flash, Connect, Operate, Operate Home, Survey, Analyze, Settings.
+    # WS-6 A split the old 8-tab Operate; the rebuild then added Operate Home alongside — a reviewed
+    # structure change, which is exactly what this test gates.
     win = _make_window()
-    assert win._tabs.count() == len(EXPECTED_TABS) == 6
+    assert win._tabs.count() == len(EXPECTED_TABS) == 7
 
 
 def test_flash_surface_subtabs(qapp, isolated_settings):

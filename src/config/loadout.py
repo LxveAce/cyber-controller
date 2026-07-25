@@ -49,6 +49,8 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
     # shown. (Per-sub-tab loadout gating — e.g. hiding Targets/Broadcast/Wardrive inside Operate for a
     # non-wifi/non-gps loadout — is a tracked follow-up; today loadout hides/shows at surface granularity.)
     "Operate": ALWAYS,
+    # Operate Home: the dual-axis shell rebuild (domain grid -> per-domain views). ALWAYS-core.
+    "Operate Home": ALWAYS,
     # WS-6 A: "Survey" is the GPS-tagged field-survey group (Wardrive + Multi-Wardrive + Flock Map). Kept
     # ALWAYS (fail-open): Wardrive was always visible as part of the old Operate, and Flock Map loads a saved
     # map with no hardware, so hiding the surface could remove reachable functionality.
@@ -65,7 +67,7 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
 
 # Canonical tab order (matches main_window._tab_registry); used to re-insert tabs in order.
 TAB_ORDER = (
-    "Flash", "Connect", "Operate", "Survey", "Analyze", "Settings",
+    "Flash", "Connect", "Operate", "Operate Home", "Survey", "Analyze", "Settings",
 )
 
 

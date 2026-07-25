@@ -15,7 +15,7 @@ pytest.importorskip("PyQt5.QtWidgets")
 from PyQt5.QtWidgets import QApplication  # noqa: E402
 
 from src.ui.qt.ble_domain import BleDomainView  # noqa: E402
-from src.ui.qt.operate_home import OperateHome  # noqa: E402
+from src.ui.qt.operate_home import OperateHome, build_operate_home  # noqa: E402
 from src.ui.qt.wifi_domain import WifiDomainView  # noqa: E402
 
 
@@ -64,3 +64,33 @@ def test_selecting_ble_routes_to_the_ble_domain(qapp):
     h._grid.domain_selected.emit("ble")
     assert h.current_domain() == "ble"
     assert isinstance(h._stack.currentWidget(), BleDomainView)
+
+
+# ── build_operate_home factory: the app-shell embed with FRESH analyzer centers (no reparenting) ──
+def test_build_operate_home_uses_fresh_live_centers(qapp):
+    from src.ui.qt.ble_analyzer_tab import BleAnalyzerTab
+    from src.ui.qt.wifi_analyzer_tab import WifiAnalyzerTab
+    home, wifi_center, ble_center = build_operate_home()
+    assert isinstance(home, OperateHome)
+    assert isinstance(wifi_center, WifiAnalyzerTab) and isinstance(ble_center, BleAnalyzerTab)
+    # the WiFi/BLE domain views use THESE fresh centers (not the shell's parented analyzers)
+    assert home.domain_view("wifi")._center is wifi_center
+    assert home.domain_view("ble")._center is ble_center
+
+
+def test_build_operate_home_center_is_live_when_fed(qapp):
+    # feeding the fresh WiFi center an event (as the shared tap would) fills its table — a live view
+    home, wifi_center, _ble = build_operate_home()
+    wifi_center.set_clock(lambda: 1000.0)
+    wifi_center.on_wifi_event("COM4", "ap_found",
+                              {"bssid": "aa:bb:cc:dd:ee:01", "ssid": "Net", "rssi": -50,
+                               "encryption": "WPA2"})
+    wifi_center._refresh()
+    assert wifi_center._table.rowCount() >= 1
+
+
+def test_build_operate_home_routes_to_domains(qapp):
+    home, _wifi, _ble = build_operate_home()
+    home._grid.domain_selected.emit("ble")
+    assert home.current_domain() == "ble"
+    assert isinstance(home._stack.currentWidget(), BleDomainView)
