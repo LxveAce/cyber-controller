@@ -335,6 +335,12 @@ def test_alert_events_from_all_six_detectors():
     assert d["kind"] == "watch" and d["mac"] == "de:ad:be:ef:00:01" and d["rssi"] == -42 and d["band"] == "wifi"
     d = p.parse_line("LXVEOS/1 alert kind=watch mac=11:22:33:44:55:66 rssi=-70 band=ble").data
     assert d["kind"] == "watch" and d["band"] == "ble" and d["rssi"] == -70
+    # pwnagotchi -> count + handshakes both typed int (EVENT-PROTOCOL.md kind=pwnagotchi)
+    d = p.parse_line("LXVEOS/1 alert kind=pwnagotchi count=3 handshakes=12").data
+    assert d["kind"] == "pwnagotchi" and d["count"] == 3 and d["handshakes"] == 12
+    # flock -> count + likely both typed int (EVENT-PROTOCOL.md kind=flock)
+    d = p.parse_line("LXVEOS/1 alert kind=flock count=4 likely=2").data
+    assert d["kind"] == "flock" and d["count"] == 4 and d["likely"] == 2
 
 
 def test_snapshot_airspace_summary_event():

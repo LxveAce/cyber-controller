@@ -13,7 +13,7 @@ using the ``LXVEOS/<v>`` framing (see the firmware ``docs/EVENT-PROTOCOL.md`` +
 2. Event lines — emitted by the recon/defense/capture/arm ops when the operator (or CC) runs ``bridge on``:
 
        LXVEOS/1 ap bssid=de:ad:be:ef:00:01 ssid=4d794e6574 ch=6 rssi=-42 auth=wpa2
-       LXVEOS/1 hs kind=pmkid bssid=de:ad:be:ef:00:01 essid=4e6574
+       LXVEOS/1 hs kind=pmkid line=WPA*01*<pmkid>*<ap>*<sta>*<essid_hex>***
        LXVEOS/1 arm state=pending token=123456789 window=30
 
 Free-text / arbitrary-byte fields (SSIDs, BLE names) are HEX-encoded on the wire so a space in an SSID
@@ -76,14 +76,18 @@ _EVENT_MAP: dict[str, tuple[str, "frozenset[str]", "frozenset[str]"]] = {
     "probe":    ("probe_request",      frozenset({"rssi", "seen"}),                  frozenset({"ssid"})),
     "sniff":    ("wifi_sniff",         frozenset({"total", "mgmt", "data", "ctrl", "misc", "dwells"}), frozenset()),
     "ble":      ("ble_found",          frozenset({"rssi", "appr", "company", "fp", "tracker"}), frozenset({"name"})),
-    "hs":       ("handshake_captured", frozenset(),                                  frozenset({"essid"})),
+    # `hs` emits only `kind` + `line` (the hashcat-22000 artifact); the ESSID is hex-encoded inside
+    # `line` (field 5) and lifted out below — no separate `essid=` field on the wire, so no hex_fields.
+    "hs":       ("handshake_captured", frozenset(),                                  frozenset()),
     "pcap":     ("pcap_saved",         frozenset({"bytes"}),                         frozenset()),
     "arm":      ("arm_state",          frozenset({"token", "window", "idle"}),       frozenset()),
-    # `tracker/flock/meta/flipper/skimmer` are the kind=surveil sweep subcounts (one uint tally per
-    # category) — typed here so they arrive as ints, not strings.
+    # `tracker/flock/meta/flipper/skimmer` are the kind=surveil sweep subcounts; `handshakes` is the
+    # kind=pwnagotchi tally and `likely` the kind=flock subset — all typed int here (not str), per
+    # docs/EVENT-PROTOCOL.md alert kind-specific fields.
     "alert":    ("alert",              frozenset({"count", "bssids", "rate", "deauth", "disassoc",
                                                    "open", "enc", "grade", "wps", "uniq", "rssi",
-                                                   "tracker", "flock", "meta", "flipper", "skimmer"}),
+                                                   "tracker", "flock", "meta", "flipper", "skimmer",
+                                                   "handshakes", "likely"}),
                                         frozenset({"ssid", "name"})),
     "bridge":   ("bridge_state",       frozenset(),                                  frozenset()),
     "done":     ("batch_done",         frozenset({"n"}),                             frozenset()),
