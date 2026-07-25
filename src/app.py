@@ -117,6 +117,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--verify-backup", default=None, metavar="PATH", help="Re-hash a firmware backup .bin against its .meta sidecar and report whether it's intact, then exit.")
     parser.add_argument("--list-backups", nargs="?", const="", default=None, metavar="DIR", help="List firmware backups (.bin + .meta) in DIR, or the default backups folder if DIR is omitted, then exit.")
     parser.add_argument("--wardrive-summary", default=None, metavar="CSV", help="Print headline stats (networks, encryption mix, bands, channels, RSSI) for a WiGLE wardrive CSV, then exit.")
+    parser.add_argument("--wardrive-plan", default=None, metavar="CSV", help="Print a channel-coverage plan (per-channel network yield, the coverage curve, and the top-N busiest-channel assignment) for a WiGLE wardrive CSV, then exit.")
+    parser.add_argument("--wardrive-plan-nodes", type=int, default=3, metavar="N", help="How many simultaneous radios/nodes --wardrive-plan should assign to the busiest channels (default 3).")
     parser.add_argument("--check-firmware-updates", action="store_true", help="Check GitHub for newer releases of your cached firmware (one call per cached profile), print any updates, then exit.")
     parser.add_argument("--mission", default=None, metavar="FILE", help="Dry-run a mission JSON: print the ordered schedule + any SAFE/ARMED refusals, then exit (no device I/O). Send with: python -m src.core.mission_runner FILE --execute.")
     return parser.parse_args(argv)
@@ -407,6 +409,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.wardrive_summary:
         from src.core.wardrive import wardrive_summary_cli
         return wardrive_summary_cli(args.wardrive_summary)
+    if args.wardrive_plan:
+        from src.core.wardrive_planner import wardrive_plan_cli
+        return wardrive_plan_cli(args.wardrive_plan, args.wardrive_plan_nodes)
     if args.check_firmware_updates:
         from src.core.firmware_vault import check_updates_cli
         return check_updates_cli()
