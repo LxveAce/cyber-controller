@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **EV1527 Sub-GHz OOK decoder (RX-only).** New pure `subghz_ook.decode_ev1527(pulses_us)` decodes the
+  EV1527 / PT2262-style 433 MHz remote protocol from a captured pulse-width stream into its 24-bit code
+  (a 20-bit chip-unique address + a 4-bit data nibble). It locates the sync gap, estimates the base
+  period Te from the short-pulse band, and classifies each pulse short/long within tolerance —
+  returning `None` for no sync, too few pulses, or an out-of-tolerance pulse (never a fabricated code).
+  Decode only: it never builds or transmits an OOK frame. Golden-vector tests synthesize a stream from
+  a known code across several Te values + jitter, and cover the rejections.
 - **Eddystone decoder (RX-only).** New pure `ble_beacon.parse_eddystone(service_data)` decodes Google
   Eddystone 0xFEAA service data — the UID frame (namespace + instance + measured power), the URL frame
   (scheme prefix + expansion-code decoding into the full URL), and the TLM frame (battery mV,
