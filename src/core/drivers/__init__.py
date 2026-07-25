@@ -53,7 +53,8 @@ class TextCliDriver(Driver):
 
 
 class StreamDriver(Driver):
-    """Binary/framed stream (e.g. Meshtastic protobuf StreamAPI) — no text command channel yet."""
+    """Binary/framed stream (e.g. Meshtastic protobuf StreamAPI) — no text command channel by design
+    (the firmware speaks protobuf, not a text CLI)."""
 
     driver_type = "stream"
 
@@ -66,18 +67,20 @@ class StreamDriver(Driver):
     def deliver_raw(self, conn, payload: bytes) -> bool:
         """Wrap a protobuf *payload* in a Meshtastic Stream-API frame and put it on the wire.
 
-        The framing is real + tested (`StreamFramer`). The live serial write is NOT wired yet: it needs a
-        BINARY write path on SerialConnection (`SerialConnection.write` is text-only — it appends a line
-        terminator and rejects control bytes, which would corrupt a protobuf frame). So this frames the
-        bytes and, if the connection exposes a raw `write_bytes`, sends them; otherwise it raises to say the
-        binary transport (and the meshtastic protobuf layer above it) is still to come. Honest boundary."""
+        The framing is real + tested (`StreamFramer`) and the binary transport is wired:
+        :meth:`SerialConnection.write_bytes` puts the exact frame bytes on the wire verbatim.
+        `SerialConnection.write` is text-only — it appends a line terminator and rejects control bytes
+        (a command-injection guard) which would corrupt a protobuf frame — so a stream frame must NOT go
+        through it. If the connection exposes no raw `write_bytes` (a bare test double or a non-serial
+        transport), this raises rather than silently dropping the frame. Live TX against real radios stays
+        bench-gated."""
         from src.protocols.stream_framer import StreamFramer
         framed = StreamFramer.frame(payload)
         writer = getattr(conn, "write_bytes", None)
         if writer is None:
             raise NotImplementedError(
-                "stream raw serial transport not wired yet — framing is ready, but sending needs a binary "
-                "write path on SerialConnection + the Meshtastic protobuf layer (semantic decode)."
+                "stream raw serial transport unavailable — this connection exposes no binary `write_bytes` "
+                "path (SerialConnection provides one; a bare/non-serial transport does not)."
             )
         writer(framed)
         return True
