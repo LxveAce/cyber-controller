@@ -14,6 +14,8 @@ ingest branch (slice 2), the Captures table + export (slices 3-4) and the crack 
 
 from __future__ import annotations
 
+import json
+import os
 import threading
 
 from src.core.cross_comm import EventBus
@@ -23,10 +25,16 @@ from src.models.capture import CaptureRecord
 class CaptureStore:
     """Thread-safe shared store of captured handshakes/PMKIDs (mirrors :class:`TargetPool`)."""
 
-    def __init__(self, bus: EventBus | None = None) -> None:
+    def __init__(self, bus: EventBus | None = None, persist_path: str | None = None) -> None:
         self._captures: dict[str, CaptureRecord] = {}
         self._lock = threading.Lock()
         self.bus = bus or EventBus()
+        # Opt-in durability: given a path, the library survives across sessions — loaded on
+        # construction and rewritten atomically after every mutation. Left None (the default, and
+        # what every isolated in-memory test uses) it stays purely in RAM, no disk touched.
+        self._persist_path = persist_path or ""
+        if self._persist_path:
+            self._load()
 
     # ── Accessors ────────────────────────────────────────────────────
 
@@ -68,8 +76,10 @@ class CaptureStore:
         # subscriber that reads the store would deadlock the ingest thread (mirrors TargetPool.add).
         if updated_payload is not None:
             self.bus.publish("capture.updated", updated_payload)
+            self._autosave()
             return False
         self.bus.publish("capture.added", added_payload)
+        self._autosave()
         return True
 
     def attach_file(self, key: str, pcap_path: str = "", hc22000_path: str = "") -> bool:
@@ -89,6 +99,7 @@ class CaptureStore:
                 rec.hc22000_path = hc22000_path
             payload = rec.to_dict()
         self.bus.publish("capture.updated", payload)
+        self._autosave()
         return True
 
     def remove(self, key: str) -> CaptureRecord | None:
@@ -96,6 +107,7 @@ class CaptureStore:
             rec = self._captures.pop(key, None)
         if rec is not None:
             self.bus.publish("capture.removed", rec.to_dict())
+            self._autosave()
         return rec
 
     def clear(self) -> int:
@@ -104,6 +116,7 @@ class CaptureStore:
             n = len(self._captures)
             self._captures.clear()
         self.bus.publish("capture.cleared", {"count": n})
+        self._autosave()
         return n
 
     def mark_cracked(self, key: str, password: str, detail: str = "", wordlist: str = "") -> bool:
@@ -123,4 +136,44 @@ class CaptureStore:
                 rec.wordlist = wordlist
             payload = rec.to_dict()
         self.bus.publish("capture.cracked", payload)
+        self._autosave()
         return True
+
+    # ── Persistence (opt-in) ─────────────────────────────────────────
+
+    def _load(self) -> None:
+        """Best-effort load of the persisted capture library on construction. A missing or corrupt
+        file simply starts empty — a broken cache must never stop the app from capturing anew."""
+        try:
+            with open(self._persist_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, ValueError):
+            return
+        if not isinstance(data, list):
+            return
+        with self._lock:
+            for d in data:
+                try:
+                    rec = CaptureRecord.from_dict(d)
+                except (TypeError, ValueError, KeyError):
+                    continue   # skip a single malformed row, keep the rest
+                self._captures[rec.key] = rec
+
+    def _autosave(self) -> None:
+        """Rewrite the whole library to disk atomically (temp file + os.replace). No-op when
+        persistence is off. Best-effort: a write failure must never break a live capture, so it is
+        swallowed — the in-memory store stays authoritative for the session."""
+        if not self._persist_path:
+            return
+        with self._lock:
+            payload = [r.to_dict() for r in self._captures.values()]
+        tmp = self._persist_path + ".tmp"
+        try:
+            parent = os.path.dirname(self._persist_path)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, indent=2)
+            os.replace(tmp, self._persist_path)
+        except OSError:
+            pass

@@ -129,3 +129,52 @@ def test_attach_file_sets_path_without_bumping_times_seen():
 def test_attach_file_missing_key_returns_false():
     store = CaptureStore()
     assert store.attach_file("eapol:zz", pcap_path="/x") is False
+
+
+# ── persistence: the saved-captures library actually survives a session ───────
+
+def test_captures_persist_across_sessions(tmp_path):
+    # The library must be durable: a capture AND a recovered PSK survive an app restart.
+    path = str(tmp_path / "captures.json")
+    s1 = CaptureStore(EventBus(), persist_path=path)
+    s1.add(CaptureRecord(bssid="AA:BB:CC:DD:EE:FF", capture_type="pmkid", ssid="HomeNet",
+                         pmkid="cafebabe"))
+    s1.mark_cracked("pmkid:aa:bb:cc:dd:ee:ff", "hunter2", detail="native")
+
+    # A brand-new store over the SAME file == the next app session.
+    s2 = CaptureStore(EventBus(), persist_path=path)
+    assert s2.count == 1
+    rec = s2.get("pmkid:aa:bb:cc:dd:ee:ff")
+    assert rec is not None
+    assert rec.ssid == "HomeNet" and rec.pmkid == "cafebabe"
+    assert rec.crack_status == "cracked" and rec.password == "hunter2"   # the PSK survived
+
+
+def test_remove_and_clear_are_persisted(tmp_path):
+    # A removed / cleared capture must not resurrect next session.
+    path = str(tmp_path / "captures.json")
+    s1 = CaptureStore(EventBus(), persist_path=path)
+    s1.add(CaptureRecord(bssid="11:22:33:44:55:66", capture_type="pmkid"))
+    s1.add(CaptureRecord(bssid="AA:BB:CC:DD:EE:FF", capture_type="eapol"))
+    s1.remove("pmkid:11:22:33:44:55:66")
+    assert CaptureStore(EventBus(), persist_path=path).count == 1   # only the eapol row remains
+
+    s1.clear()
+    assert CaptureStore(EventBus(), persist_path=path).count == 0   # cleared on disk too
+
+
+def test_no_persist_path_means_no_disk(tmp_path):
+    # The default (no persist_path) is a pure in-memory store — tests rely on this isolation.
+    s = CaptureStore(EventBus())
+    s.add(CaptureRecord(bssid="AA:BB:CC:DD:EE:FF", capture_type="pmkid"))
+    assert list(tmp_path.iterdir()) == []   # nothing written anywhere
+
+
+def test_corrupt_persist_file_starts_empty(tmp_path):
+    # A corrupt cache must never crash startup — just start fresh (and the next save heals it).
+    path = tmp_path / "captures.json"
+    path.write_text("{ not valid json ]", encoding="utf-8")
+    s = CaptureStore(EventBus(), persist_path=str(path))
+    assert s.count == 0
+    s.add(CaptureRecord(bssid="AA:BB:CC:DD:EE:FF", capture_type="pmkid"))
+    assert CaptureStore(EventBus(), persist_path=str(path)).count == 1   # healed

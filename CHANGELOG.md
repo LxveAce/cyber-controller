@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The saved-captures library is now actually saved — captures and recovered PSKs survive across sessions.**
+  The `CaptureStore` was purely in-memory: a captured handshake/PMKID and any cracked passphrase vanished when
+  the app closed (only a user-initiated CSV/JSON *export* persisted anything). It now takes an opt-in
+  `persist_path`: on construction it loads the library from disk, and after every mutation it rewrites the file
+  atomically (temp + `os.replace`). The hub wires this to `captures_dir()/captures.json` in the real app; headless
+  tests construct the store/hub without a path and stay purely in-memory (no disk, no cross-test pollution). A
+  missing or corrupt cache starts empty rather than crashing, and self-heals on the next save. Verified with a
+  real disk round-trip: a capture plus a `mark_cracked` PSK written by one store are read back by a fresh store
+  over the same file; remove/clear are persisted too.
 - **The built-in native cracker can now crack an inline PMKID — no capture file, no external tool.** The prior
   change captured the LxveOS `hs` PMKID hashline into the CaptureRecord and materialized it to a `.hc22000`, but
   that `.hc22000` only fed *hashcat* (a GPL tool that may not be installed), while CC's always-available native

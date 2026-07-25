@@ -178,7 +178,12 @@ class CyberControllerWindow(QMainWindow):
         # (Router feeds off target.added and dispatches via hub.send_to_port; ingestor feeds the shared pool,
         # so a scan on device A -> target.added -> a command on device B. DeviceTab attaches the ingestor
         # per-connection. Broadcast fans one verb out to every connected device. ActionResolver is optional.)
-        self._hub = CrossCommHub(self._dm, self._bus, self._pool)
+        # Persist the capture library to the canonical captures dir so a captured handshake / PMKID
+        # (and any recovered PSK) survives across app sessions — loaded on next launch, autosaved on
+        # every change. Only the real app opts in; headless tests construct the hub without a path.
+        from src.core.install import captures_dir
+        self._hub = CrossCommHub(self._dm, self._bus, self._pool,
+                                 captures_persist_path=str(captures_dir() / "captures.json"))
         self._router = self._hub.router
         self._ingestor = self._hub.ingestor
         self._broadcast = self._hub.broadcast

@@ -51,6 +51,7 @@ class CrossCommHub:
         device_manager: DeviceManager,
         bus: EventBus | None = None,
         pool: TargetPool | None = None,
+        captures_persist_path: str | None = None,
     ) -> None:
         self.dm = device_manager
         self.bus = bus or EventBus()
@@ -59,7 +60,7 @@ class CrossCommHub:
         # The shared capture log — captured WPA handshakes / PMKIDs, keyed like the pool and on
         # the same bus (capture.* mirroring target.*). The ingestor auto-registers a capture
         # whenever a device reports one; the Crack Lab's Captures list rides capture.added live.
-        self.captures = CaptureStore(self.bus)
+        self.captures = CaptureStore(self.bus, persist_path=captures_persist_path)
 
         # Capture-confirm correlator (punch-list #2, slice 5): a bus-only observer that ties a fired
         # deauth (action.executed with a target BSSID + chain_events) to the handshake it produces
