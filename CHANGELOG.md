@@ -5,18 +5,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
-### Added
+## [2.0.0-beta] — prerelease
+
+_Version cut from `src/version.py` (`2.0.0-beta`). Everything below ships in 2.0.0-beta._
+
 - **Offline wardrive channel-coverage planner (`--wardrive-plan`).** Point it at a WiGLE CSV and it reports the
   distinct-network yield per Wi-Fi channel, the coverage curve (how few channels cover most networks), and — for
   running several radios at once — which busiest channels to assign them to. The channel set is derived entirely
   from the capture's own data (no hardcoded {1, 6, 11} prior), so 5 GHz-heavy or region-specific drives plan
   correctly. Read-only, transmits nothing; pure + unit-tested (`src/core/wardrive_planner.py`).
-
-## [2.0.0-beta] — prerelease (pending publish)
-
-_Version cut from `src/version.py` (`2.0.0-beta`) and reflected across all sites; publishing the GitHub prerelease is a
-separate owner-gated step. Everything below ships in 2.0.0-beta._
-
 - **CYD panel detection no longer gives up after one missed read.** A single read of the detection probe's report
   can miss it (connected a beat late, the reset pulse raced the sketch's `setup()`, the board hadn't reprinted yet) —
   which looked identical to a blank/unsupported board. Detection now **re-reads the report a couple more times
