@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Honest 3-tier Wi-Fi security lock in the analyzer table.** The Encryption column now colors each
+  network by a factual security grade instead of only flagging open ones — `security_grade()` (pure,
+  in `wifi_analyzer.py`): open → red, WEP / WPS / WPA1 → yellow (broken or deprecated; a broken
+  co-factor downgrades the whole network), WPA2 / WPA3 → green, and an unreported label stays
+  uncolored (we never imply a verdict we don't have). Part of the WiFi domain-detail rebuild (design
+  brief); host-tested (each cipher → grade) + an offscreen widget test asserting the per-row cell color.
 - **Adaptive GUI rebuild (Wave 3) — the Devices tab now reflows with the window.** The device
   list / detail split (a horizontal `QSplitter`) turns vertical on a cramped canvas (phone-sized or
   a tiny floating window) and stays side-by-side on a roomy one, so the cyberdeck UI adapts from a

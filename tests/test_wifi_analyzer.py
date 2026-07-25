@@ -22,6 +22,7 @@ from src.core.wifi_analyzer import (
     normalize_bssid,
     rssi_bars,
     rssi_quality,
+    security_grade,
 )
 
 
@@ -61,6 +62,35 @@ def test_is_open_only_when_explicit():
     assert is_open("open") and is_open("OPEN") and is_open("none")
     assert not is_open("")            # unknown is NOT open (no fabricated verdict)
     assert not is_open("wpa2")
+
+
+# ── security_grade: the 3-tier honesty color-lock (open=red / weak=yellow / strong=green) ──
+def test_security_grade_open_networks_are_red():
+    for tok in ("open", "OPEN", "none", "opn", "-"):
+        assert security_grade(tok) == "open"
+
+
+def test_security_grade_broken_ciphers_are_weak():
+    assert security_grade("WEP") == "weak"
+    assert security_grade("wep") == "weak"
+    # WPS anywhere downgrades even a WPA2 network (PIN attack), and WPA1/TKIP is deprecated.
+    assert security_grade("WPA2+WPS") == "weak"
+    assert security_grade("WPA") == "weak"
+    assert security_grade("WPA-TKIP") == "weak"
+
+
+def test_security_grade_modern_wpa_is_strong():
+    for tok in ("WPA2", "WPA2-PSK", "wpa2", "WPA2/WPA3", "WPA3", "WPA3-SAE", "sae", "RSN",
+                "WPA2-Enterprise"):
+        assert security_grade(tok) == "strong", tok
+
+
+def test_security_grade_unknown_is_never_guessed():
+    # Empty / unreported / unrecognized -> "unknown"; we never fabricate a grade (mirrors is_open).
+    assert security_grade("") == "unknown"
+    assert security_grade("   ") == "unknown"
+    assert security_grade("???") == "unknown"
+    assert security_grade(None) == "unknown"  # type: ignore[arg-type]
 
 
 # ── ingest + aggregation ──

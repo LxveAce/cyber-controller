@@ -18,7 +18,7 @@ from __future__ import annotations
 import time
 from typing import List, Optional, Tuple
 
-from src.core.wifi_analyzer import WifiAnalyzerModel
+from src.core.wifi_analyzer import WifiAnalyzerModel, security_grade
 
 # ── pure pixel mapping (Qt-free, unit-testable) ──
 # The channel view always shows 2.4 GHz channels 1-14 as a stable, recognizable axis;
@@ -114,8 +114,19 @@ try:
     _AXIS_TEXT = QColor("#6e7681")
     _BAR_EMPTY = QColor("#21262d")
     _ROGUE = QColor("#f85149")
-    _OPEN = QColor("#f0883e")
     _CAPTURE = QColor("#3fb950")
+    # Encryption security grade -> honest lock color (open=red / weak=yellow / strong=green). An
+    # unknown/unreported grade gets no color (default) — we never imply a verdict we don't have.
+    _ENC_COLORS = {
+        "open": QColor("#f85149"),    # red — no encryption
+        "weak": QColor("#f0883e"),    # yellow/orange — WEP / WPS / WPA1 (broken or deprecated)
+        "strong": QColor("#3fb950"),  # green — WPA2 / WPA3
+    }
+    _ENC_TIPS = {
+        "open": "Open — no encryption.",
+        "weak": "Weak — WEP / WPS / WPA1 (broken or deprecated).",
+        "strong": "Strong — WPA2 / WPA3.",
+    }
 
     class _ChannelGraph(QWidget):
         """A per-channel AP-occupancy bar graph (the 2.4 GHz channel view): one bar per channel, its
@@ -353,8 +364,13 @@ try:
                     if col == 1 and ap.rogue:
                         item.setForeground(_ROGUE)
                         item.setToolTip("Flagged as a rogue / evil-twin AP by the firmware.")
-                    elif col == 4 and ap.is_open():
-                        item.setForeground(_OPEN)  # open networks are the notable insecure ones
+                    elif col == 4:
+                        # Honest lock: open=red, weak(WEP/WPS/WPA1)=yellow, WPA2/3=green.
+                        _grade = security_grade(ap.encryption)
+                        _enc_color = _ENC_COLORS.get(_grade)
+                        if _enc_color is not None:
+                            item.setForeground(_enc_color)
+                            item.setToolTip(_ENC_TIPS[_grade])
                     elif col == 6 and ap.has_capture():
                         item.setForeground(_CAPTURE)
                         item.setToolTip("PMKID captured" if ap.pmkid and not ap.handshake

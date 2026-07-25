@@ -122,6 +122,36 @@ def is_open(enc: str) -> bool:
     return isinstance(enc, str) and enc.strip().lower() in _OPEN_TOKENS
 
 
+def security_grade(enc: str) -> str:
+    """Classify a Wi-Fi encryption/auth label into a 3-tier security grade for the honest
+    color-lock the domain table renders (``open`` → red, ``weak`` → yellow, ``strong`` → green),
+    or ``unknown`` when the firmware never reported it.
+
+    Factual, not fabricated — the grades reflect the real state of each cipher:
+
+    * ``open``    — no encryption (the ``_OPEN_TOKENS``: open / none / opn / -).
+    * ``weak``    — WEP (a broken cipher), WPS (an exploitable setup that downgrades any WPA level),
+                    or bare WPA1/TKIP-era (deprecated).
+    * ``strong``  — WPA2, WPA3, SAE (WPA3 auth), or RSN.
+    * ``unknown`` — empty or an unrecognized label; we never guess a grade (mirrors ``is_open``:
+                    "we don't know" is honest, a fabricated grade is not).
+
+    Matching is substring/token based (labels vary: "WPA2-PSK", "WPA2/WPA3", "WEP") and a broken
+    co-factor in the label (WEP/WPS) downgrades the whole network, so it is checked first."""
+    if not isinstance(enc, str) or not enc.strip():
+        return "unknown"
+    e = enc.strip().lower()
+    if e in _OPEN_TOKENS:
+        return "open"
+    if "wep" in e or "wps" in e:  # broken cipher / exploitable setup — weak regardless of WPA level
+        return "weak"
+    if "wpa3" in e or "sae" in e or "wpa2" in e or "rsn" in e:
+        return "strong"
+    if "wpa" in e:  # WPA1 / TKIP-era — deprecated
+        return "weak"
+    return "unknown"
+
+
 def rssi_bars(rssi: Optional[int]) -> int:
     """Map an RSSI to 0-4 signal bars (0 = unknown/missing). Pure so graph, table, and header agree;
     thresholds mirror SignalBarsDelegate."""

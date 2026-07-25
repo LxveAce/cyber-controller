@@ -70,6 +70,31 @@ def test_widget_ingests_events_and_fills_table(qapp):
     assert "1 handshake" in tab._header.text()
 
 
+def test_encryption_cell_shows_the_3tier_security_color(qapp):
+    """The Enc column (col 4) renders the honest security lock: open=red, WEP/WPS/WPA1=yellow,
+    WPA2/WPA3=green. Asserts the actual cell color per row (the CLAIM), not just that it ran."""
+    from src.ui.qt.wifi_analyzer_tab import _ENC_COLORS
+    clock = [3000.0]
+    tab = _make_tab(clock)
+    # Observed AT `now` so rows are fresh (not stale-dimmed, which would override the enc color).
+    tab.on_wifi_event("COM4", "ap_found",
+                      {"bssid": "aa:bb:cc:dd:ee:01", "ssid": "OpenNet", "rssi": -50,
+                       "auth": "open"})
+    tab.on_wifi_event("COM4", "ap_found",
+                      {"bssid": "aa:bb:cc:dd:ee:02", "ssid": "WepNet", "rssi": -60,
+                       "encryption": "WEP"})
+    tab.on_wifi_event("COM4", "ap_found",
+                      {"bssid": "aa:bb:cc:dd:ee:03", "ssid": "SafeNet", "rssi": -70,
+                       "encryption": "WPA2"})
+    tab._refresh()
+    # Map each row's Enc cell (col 4) color by its SSID (col 1) — robust to the RSSI sort order.
+    seen = {tab._table.item(r, 1).text(): tab._table.item(r, 4).foreground().color().name()
+            for r in range(tab._table.rowCount())}
+    assert seen["OpenNet"] == _ENC_COLORS["open"].name()
+    assert seen["WepNet"] == _ENC_COLORS["weak"].name()
+    assert seen["SafeNet"] == _ENC_COLORS["strong"].name()
+
+
 def test_stat_grid_mirrors_the_summary(qapp):
     clock = [2000.0]
     tab = _make_tab(clock)
