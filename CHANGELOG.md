@@ -6,6 +6,19 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Drone Remote-ID (ASTM F3411) detections now decoded — `core/remote_id.py`.** Cyber Controller flashes
+  the `drone_mesh_mapper` profile (colonelpanichacks/drone-mesh-mapper), a receive-only WiFi Remote-ID
+  detector, but had no parser for what it emits — so a nearby drone's broadcast (its id, its position, and
+  the **operator's** position) never became structured data. A new pure decoder reads both firmware output
+  paths: the authoritative USB-Serial JSON detection (drone MAC / RSSI / drone lat-long-alt / pilot lat-long
+  / ASTM Basic ID, with the firmware's `{"heartbeat":…}` keepalive rejected) and the degraded
+  Meshtastic-relay text (`Drone: <mac> RSSI:<n> <maps-url>` / `Pilot: <maps-url>`). Coordinates are
+  preserved verbatim (`0.0` = not broadcast, per the firmware's own convention) with `has_drone_location`
+  / `has_pilot_location` mirroring its non-zero guard. RX/decode-only — a drone's own broadcast is decoded,
+  a Remote-ID frame is never authored. **Grounded byte-for-byte in the firmware's `snprintf` format strings
+  (`remoteid-mesh/src/main.cpp`), unverified against live silicon.** Golden-vector tested (12 cases: full
+  detection, heartbeat/non-JSON/malformed/no-mac rejection, unset-coordinate semantics, default fallbacks,
+  both mesh lines). A tested primitive awaiting the Tracker & Drone Watch UI/target wiring.
 - **GhostESP AP scans now capture the AP's encryption (+ band/PMF/vendor).** GhostESP-Revival prints a
   per-AP `Security:` / `PMF:` / `Band:` / `Vendor:` line *after* the `Channel:` line, but the multi-line
   AP parser emitted its `ap_found` on the Channel line and cleared the record — so the AP's encryption
