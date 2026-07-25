@@ -26,13 +26,25 @@ _RE_AP = re.compile(
 #     BSSID: B4:BF:E9:11:19:AD,
 #     RSSI: -23,
 #     Channel: 1,
-# (note "Channel:" not "CH:"). We accumulate the fields and emit one ap_found on the closing
-# Channel line. The device's own ``[idx]`` is its ``select -a <idx>`` position, carried through.
-# Verified on real silicon (COM4, GhostESP flashed via CC) — the old single-line pattern got 0 APs.
+# (note "Channel:" not "CH:"). We accumulate the fields and emit one ap_found — DEFERRED past
+# Channel (see below) so the trailing Security/Band/Vendor lines land too. The device's own
+# ``[idx]`` is its ``select -a <idx>`` position, carried through. The SSID/BSSID/RSSI/Channel
+# layout was verified on real silicon (COM4) — the old single-line pattern got 0 APs.
 _RE_AP_ML_SSID = re.compile(r"^\[(\d+)\]\s*SSID:\s*(.*?),?\s*$")
 _RE_AP_ML_BSSID = re.compile(r"^BSSID:\s*([\da-fA-F:]{17}),?\s*$")
 _RE_AP_ML_RSSI = re.compile(r"^RSSI:\s*(-?\d+),?\s*$")
 _RE_AP_ML_CH = re.compile(r"^Channel:\s*(\d+),?\s*$")
+# GhostESP-Revival prints per-AP Security / PMF / Band / Vendor lines AFTER the Channel line
+# (ap_scan.c glog order: [n] SSID / BSSID / RSSI / Channel, then optional Band / Security / PMF /
+# Vendor). So the AP record emits on a DEFERRED basis — flushed on the next `[n] SSID`, the next
+# non-AP line, or flush(); NOT on Channel — to also capture the encryption. GROUNDED IN FIRMWARE
+# SOURCE, UNVERIFIED AGAINST HARDWARE: Security/PMF/Band are C5/C6-only in the firmware's main path,
+# so the AP-encryption field ships honest-labeled until a real GhostESP scan confirms it (final HIL
+# validation is owner/hardware-gated).
+_RE_AP_ML_SECURITY = re.compile(r"^Security:\s*(\S+)", re.IGNORECASE)
+_RE_AP_ML_PMF = re.compile(r"^PMF:\s*(\S+)", re.IGNORECASE)
+_RE_AP_ML_BAND = re.compile(r"^Band:\s*(.+?),?\s*$", re.IGNORECASE)
+_RE_AP_ML_VENDOR = re.compile(r"^Vendor:\s*(.+?)\s*$")
 
 _RE_PROBE = re.compile(
     r"Probe\s+from\s+([\da-fA-F:]{17})\s+for\s+['\"](.+?)['\"]",
@@ -121,8 +133,9 @@ class GhostESPProtocol(BaseProtocol):
         # (gated on `select -a {index}`) is dropped by the resolver and never offered.
         self._ap_index = 0
         self._ap_indices: dict[str, int] = {}
-        # In-progress multi-line AP record (GhostESP-Revival streams SSID/BSSID/RSSI/Channel as
-        # separate lines); filled across parse_line calls, emitted on the closing Channel line.
+        # In-progress multi-line AP record (GhostESP-Revival streams SSID/BSSID/RSSI/Channel + optional
+        # Security/Band/PMF/Vendor as separate lines); filled across calls, DEFERRED-emitted on the next
+        # `[n] SSID` / the next non-AP line / flush(). Complete = has bssid + channel.
         self._ap_record: dict = {}
         # In-progress multi-line STATION record (scansta/list -s streams each client across five
         # lines); filled across calls, emitted on the closing "AP Vendor" line. See _RE_STA_* below.
@@ -153,6 +166,67 @@ class GhostESPProtocol(BaseProtocol):
         self._ap_index += 1
         return idx
 
+    def _fill_ap_record(self, line: str) -> bool:
+        """Add a BSSID/RSSI/Channel/Security/PMF/Band/Vendor continuation line to the open AP record.
+        Returns True if *line* was a continuation (and was captured), False otherwise."""
+        rec = self._ap_record
+        m = _RE_AP_ML_BSSID.match(line)
+        if m:
+            rec["bssid"] = m.group(1)
+            return True
+        m = _RE_AP_ML_RSSI.match(line)
+        if m:
+            rec["rssi"] = int(m.group(1))
+            return True
+        m = _RE_AP_ML_CH.match(line)
+        if m:
+            rec["channel"] = int(m.group(1))   # completes the required fields; does NOT emit here
+            rec["_raw"] = line
+            return True
+        m = _RE_AP_ML_SECURITY.match(line)
+        if m:
+            rec["encryption"] = m.group(1).strip().rstrip(",")  # trailing AP-encryption field (HW-unverified)
+            return True
+        m = _RE_AP_ML_PMF.match(line)
+        if m:
+            rec["pmf"] = m.group(1).strip().rstrip(",")
+            return True
+        m = _RE_AP_ML_BAND.match(line)
+        if m:
+            rec["band"] = m.group(1).strip().rstrip(",").strip()
+            return True
+        m = _RE_AP_ML_VENDOR.match(line)
+        if m:
+            rec["vendor"] = m.group(1).strip()
+            return True
+        return False
+
+    def _flush_ap(self) -> "ParsedEvent | None":
+        """Emit the accumulated AP record (or None if incomplete), clearing it. Same emit CONTENT as the
+        old emit-on-Channel path — ssid/bssid/rssi/channel/index are byte-identical — plus the optional
+        trailing encryption/band/pmf/vendor when the firmware reported them."""
+        rec, self._ap_record = self._ap_record, {}
+        if not rec.get("bssid") or "channel" not in rec:
+            return None   # never had a BSSID (or never reached Channel) — drop, as the old path did
+        data: dict = {
+            "ssid": rec.get("ssid", ""),
+            "bssid": rec["bssid"],
+            "channel": rec["channel"],
+            "rssi": rec.get("rssi", 0),
+            # rec["index"] is the device's own [idx] (always present); only fall back to the mutating
+            # _assign_ap_index if the device somehow gave none (GHOSTESP-MLINE-INDEX-0713).
+            "index": rec["index"] if "index" in rec else self._assign_ap_index(rec["bssid"]),
+        }
+        for key in ("encryption", "pmf", "band", "vendor"):
+            if key in rec:
+                data[key] = rec[key]
+        return ParsedEvent(event_type="ap_found", data=data, raw=rec.get("_raw", ""))
+
+    def flush(self) -> "ParsedEvent | None":
+        """Emit any AP record still being accumulated (end-of-stream / idle). The deferred AP path emits
+        on the next `[n] SSID` or the next non-AP line; this flushes the LAST AP when nothing follows."""
+        return self._flush_ap()
+
     @property
     def protocol_name(self) -> str:
         return "ghost-esp"
@@ -182,50 +256,29 @@ class GhostESPProtocol(BaseProtocol):
                 raw=line,
             )
 
-        # Multi-line AP record (GhostESP-Revival). Fields arrive on separate lines; accumulate and
-        # emit one ap_found when the closing Channel line lands. Intermediate lines return None
-        # (else they fall through to a bogus `info`/`status` event).
+        # Multi-line AP record (GhostESP-Revival) — DEFERRED emit (see _RE_AP_ML_SECURITY above). GhostESP
+        # prints Security/PMF/Band/Vendor AFTER the Channel line, so the record is flushed on the next
+        # `[n] SSID`, the next non-AP line, or flush() — NOT on Channel. The ap_found CONTENT for the
+        # existing fields is unchanged; only WHEN it emits defers, to also capture the trailing fields.
         m = _RE_AP_ML_SSID.match(line)
         if m:
-            self._ap_record = {"index": int(m.group(1)), "ssid": m.group(2).strip()}
+            flushed = self._flush_ap()     # emit the previous AP (if complete) before starting this one
+            self._ap_record = {"index": int(m.group(1)), "ssid": m.group(2).strip(), "_raw": line}
+            return flushed
+        if self._ap_record and self._fill_ap_record(line):
             return None
-        m = _RE_AP_ML_BSSID.match(line)
-        if m:
-            if self._ap_record:
-                self._ap_record["bssid"] = m.group(1)
-            return None
-        m = _RE_AP_ML_RSSI.match(line)
-        if m:
-            if self._ap_record:
-                self._ap_record["rssi"] = int(m.group(1))
-            return None
-        m = _RE_AP_ML_CH.match(line)
-        if m:
-            rec, self._ap_record = self._ap_record, {}
-            if rec.get("bssid"):
-                return ParsedEvent(
-                    event_type="ap_found",
-                    data={
-                        "ssid": rec.get("ssid", ""),
-                        "bssid": rec["bssid"],
-                        "channel": int(m.group(1)),
-                        "rssi": rec.get("rssi", 0),
-                        # Conditional, NOT dict.get(k, default): a get() default is evaluated
-                        # EAGERLY, so _assign_ap_index (which mutates _ap_indices/_ap_index) would
-                        # fire on every multi-line AP even though rec["index"] — the device's own
-                        # [idx] — is always present here (the record only exists because a
-                        # "[i] SSID:" line created it). Eager firing corrupted the ordinal state
-                        # (GHOSTESP-MLINE-INDEX-0713). Only fall back to _assign_ap_index if the
-                        # device somehow gave no index.
-                        "index": (
-                            rec["index"] if "index" in rec
-                            else self._assign_ap_index(rec["bssid"])
-                        ),
-                    },
-                    raw=line,
-                )
-            return None
+        # Not an AP-continuation line: flush any pending complete AP; the flushed AP supersedes this line's
+        # terminal event (the line's own record-start side-effects in _parse_after_ap still run). In
+        # practice the first line after the last AP is a low-value scan terminator/prompt, so nothing
+        # useful is lost.
+        flushed = self._flush_ap() if self._ap_record else None
+        body = self._parse_after_ap(line)
+        return flushed if flushed is not None else body
 
+    def _parse_after_ap(self, line: str) -> "ParsedEvent | None":
+        """Handlers for everything that is NOT the multi-line AP record — station / handshake / tracker /
+        probe / deauth / … and the info fallthrough. Split out so a deferred AP flush (in parse_line) can
+        supersede this line's terminal event while its own record-start side-effects still run."""
         # Station (client) found — accumulate the five-line record; emit on the closing AP Vendor line.
         # (Placed after the AP multi-line block: station lines never match the ^SSID/^BSSID/^RSSI/^Channel
         # AP patterns, and "AP BSSID:" != "^BSSID:", so the two accumulators can't cross-consume.)

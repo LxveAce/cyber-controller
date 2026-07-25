@@ -43,6 +43,11 @@ def _parse_all(text: str):
         ev = proto.parse_line(line.strip())
         if ev is not None:
             events.append(ev)
+    # Deferred-emit AP path: each AP flushes on the NEXT `[n] SSID` (or next non-AP line); the LAST
+    # AP has nothing after it in a bare capture, so flush() at end-of-stream emits it.
+    final = proto.flush()
+    if final is not None:
+        events.append(final)
     return events
 
 
@@ -64,22 +69,27 @@ def test_multiline_fields_are_parsed_correctly() -> None:
     assert aps[3].data["index"] == 3
 
 
-def test_intermediate_lines_return_none() -> None:
-    # BSSID / RSSI / Channel-without-a-record must not fall through to a bogus info/status event.
+def test_intermediate_lines_return_none_and_channel_defers() -> None:
+    # Every line returns None — including Channel, which used to emit but now DEFERS so the trailing
+    # Security/Band/Vendor lines can land. The AP emits on flush() (or the next SSID).
     proto = GhostESPProtocol()
     assert proto.parse_line("[0] SSID: Net,") is None
     assert proto.parse_line("BSSID: AA:BB:CC:DD:EE:FF,") is None
     assert proto.parse_line("RSSI: -30,") is None
-    ev = proto.parse_line("Channel: 6,")  # closing line emits the record
+    assert proto.parse_line("Channel: 6,") is None   # deferred — Channel no longer emits itself
+    ev = proto.flush()                               # end-of-stream flush emits the record
     assert ev is not None and ev.event_type == "ap_found"
+    assert ev.data["bssid"] == "AA:BB:CC:DD:EE:FF"
 
 
 def test_record_without_bssid_does_not_emit() -> None:
-    # A malformed block missing the BSSID line must be dropped, not emitted with an empty MAC.
+    # A malformed block missing the BSSID line must be dropped, not emitted empty — even at flush()
+    # (the deferred path's end-of-stream drain).
     proto = GhostESPProtocol()
     proto.parse_line("[0] SSID: Broken,")
     proto.parse_line("RSSI: -40,")
     assert proto.parse_line("Channel: 3,") is None
+    assert proto.flush() is None
 
 
 def test_device_indexed_multiline_does_not_touch_the_ordinal_state() -> None:
@@ -90,7 +100,8 @@ def test_device_indexed_multiline_does_not_touch_the_ordinal_state() -> None:
     proto.parse_line("[5] SSID: DeviceIndexed,")
     proto.parse_line("BSSID: B4:BF:E9:11:19:AD,")
     proto.parse_line("RSSI: -30,")
-    ev = proto.parse_line("Channel: 6,")
+    assert proto.parse_line("Channel: 6,") is None   # deferred
+    ev = proto.flush()
     assert ev is not None and ev.data["index"] == 5  # the device's own [idx], carried through
     assert proto._ap_index == 0, "fallback ordinal counter must not advance for device-indexed APs"
     assert proto._ap_indices == {}, "no bssid->ordinal pollution when the device gave an index"
@@ -103,3 +114,50 @@ def test_multiline_target_resolves_end_to_end() -> None:
     assert t is not None
     assert t.mac == "B4:BF:E9:11:19:AD"
     assert t.extra.get("index") == 0
+
+
+def test_plain_ap_content_is_unchanged_no_trailing_fields() -> None:
+    # GUARDRAIL 1 (no regression): the plain-ESP32 path (SSID/BSSID/RSSI/Channel, no trailing fields)
+    # emits the SAME ap_found CONTENT it always did — only the emit TIMING deferred. Two APs -> two
+    # events; the second flushes via flush().
+    proto = GhostESPProtocol()
+    evs = []
+    for ln in ["[0] SSID: A,", "BSSID: 11:11:11:11:11:11,", "RSSI: -20,", "Channel: 1,",
+               "[1] SSID: B,", "BSSID: 22:22:22:22:22:22,", "RSSI: -30,", "Channel: 6,"]:
+        e = proto.parse_line(ln)
+        if e:
+            evs.append(e)
+    e = proto.flush()
+    if e:
+        evs.append(e)
+    assert [x.event_type for x in evs] == ["ap_found", "ap_found"]
+    assert evs[0].data == {"ssid": "A", "bssid": "11:11:11:11:11:11", "channel": 1, "rssi": -20, "index": 0}
+    assert evs[1].data == {"ssid": "B", "bssid": "22:22:22:22:22:22", "channel": 6, "rssi": -30, "index": 1}
+    assert "encryption" not in evs[0].data   # no trailing fields -> no extra keys (content byte-identical)
+
+
+def test_ap_security_and_trailing_fields_captured() -> None:
+    # GhostESP-Revival prints Security/PMF/Band/Vendor AFTER the Channel line (ap_scan.c glog). The
+    # deferred accumulator now captures them onto the ap_found. GROUNDED IN FIRMWARE SOURCE, UNVERIFIED
+    # AGAINST HARDWARE (Security is C5/C6-only in the main path; final HIL is owner/hardware-gated).
+    proto = GhostESPProtocol()
+    for ln in ["[0] SSID: SecureNet,", "BSSID: B4:BF:E9:11:19:AD,", "RSSI: -40,", "Channel: 6,",
+               "Band: 2.4GHz,", "Security: WPA2", "PMF: Optional", "Vendor: Espressif"]:
+        assert proto.parse_line(ln) is None   # every line deferred / captured, none leaks a bogus info
+    ev = proto.flush()
+    assert ev is not None and ev.event_type == "ap_found"
+    d = ev.data
+    assert d["bssid"] == "B4:BF:E9:11:19:AD" and d["channel"] == 6 and d["rssi"] == -40  # unchanged
+    assert d["encryption"] == "WPA2"   # the whole point: the AP encryption now reaches ap_found
+    assert d["band"] == "2.4GHz" and d["pmf"] == "Optional" and d["vendor"] == "Espressif"
+
+
+def test_ap_security_feeds_the_wifi_analyzer_grade() -> None:
+    # end-to-end: the encryption on the ap_found feeds the WiFi analyzer's security_grade (WPA2 -> strong),
+    # which is the whole reason to capture it.
+    from src.core.wifi_analyzer import security_grade
+    proto = GhostESPProtocol()
+    for ln in ["[0] SSID: Sec,", "BSSID: AA:AA:AA:AA:AA:AA,", "RSSI: -50,", "Channel: 1,", "Security: WPA2"]:
+        proto.parse_line(ln)
+    ev = proto.flush()
+    assert security_grade(ev.data["encryption"]) == "strong"

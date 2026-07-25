@@ -6,6 +6,17 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **GhostESP AP scans now capture the AP's encryption (+ band/PMF/vendor).** GhostESP-Revival prints a
+  per-AP `Security:` / `PMF:` / `Band:` / `Vendor:` line *after* the `Channel:` line, but the multi-line
+  AP parser emitted its `ap_found` on the Channel line and cleared the record — so the AP's encryption
+  (open / WPA2 / WPA3 — the core of a Wi-Fi audit) was dropped. The accumulator now emits on a **deferred**
+  basis (flushed on the next `[n] SSID`, the next non-AP line, or a new `flush()` at end-of-stream) so it
+  captures the trailing fields; `encryption` flows into the ap_found and feeds the WiFi analyzer's
+  security grade. The existing ap_found content (ssid/bssid/rssi/channel/index) is byte-for-byte unchanged
+  — only *when* it emits deferred. RX/parse-only. **Grounded in the firmware's own `ap_scan.c`, unverified
+  against hardware** (Security/PMF/Band are ESP32-C5/C6-only in the firmware's main path; a real GhostESP
+  scan is the final confirmation, HIL owner/hardware-gated). Golden-vector tested (content unchanged for
+  the plain path, encryption/band/pmf/vendor capture, the flush of the last AP, end-to-end security grade).
 - **BLE analyzer now flags a detected AirTag as a tracker (and carries the device kind).** The BLE
   analyzer's tracker rollup ("Trackers" count + the ⚑ row flag) previously only reacted to an explicit
   `tracker` field from the firmware — so a GhostESP `aerialscan` AirTag hit (which reports `kind=airtag`,
