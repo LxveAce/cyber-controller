@@ -18,6 +18,7 @@ from __future__ import annotations
 import time
 from typing import List, Optional, Tuple
 
+from src.core.oui import lookup_vendor
 from src.core.wifi_analyzer import WifiAnalyzerModel, security_grade
 
 # ── pure pixel mapping (Qt-free, unit-testable) ──
@@ -198,7 +199,7 @@ try:
         event_type, data) folds one event in. Passive —
         it has no scan control and transmits nothing."""
 
-        _COLS = ("Signal", "SSID", "BSSID", "Ch", "Enc", "Clients", "HS")
+        _COLS = ("Signal", "SSID", "BSSID", "Vendor", "Ch", "Enc", "Clients", "HS")
         _ACTIVE_WINDOW_S = 10.0   # a Wi-Fi event within this many seconds = actively feeding
 
         def __init__(self, parent: "Optional[QWidget]" = None) -> None:
@@ -354,6 +355,7 @@ try:
                     "" if ap.rssi is None else str(ap.rssi),   # SignalBarsDelegate reads the RSSI
                     ap.display_ssid(),
                     ap.bssid,
+                    lookup_vendor(ap.bssid),   # OUI vendor ("" if randomized/unknown)
                     "" if ap.channel is None else str(ap.channel),
                     ap.enc_label(),
                     str(ap.client_count()),
@@ -364,14 +366,14 @@ try:
                     if col == 1 and ap.rogue:
                         item.setForeground(_ROGUE)
                         item.setToolTip("Flagged as a rogue / evil-twin AP by the firmware.")
-                    elif col == 4:
+                    elif col == 5:
                         # Honest lock: open=red, weak(WEP/WPS/WPA1)=yellow, WPA2/3=green.
                         _grade = security_grade(ap.encryption)
                         _enc_color = _ENC_COLORS.get(_grade)
                         if _enc_color is not None:
                             item.setForeground(_enc_color)
                             item.setToolTip(_ENC_TIPS[_grade])
-                    elif col == 6 and ap.has_capture():
+                    elif col == 7 and ap.has_capture():
                         item.setForeground(_CAPTURE)
                         item.setToolTip("PMKID captured" if ap.pmkid and not ap.handshake
                                         else "WPA handshake captured")

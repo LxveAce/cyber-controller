@@ -88,11 +88,32 @@ def test_encryption_cell_shows_the_3tier_security_color(qapp):
                        "encryption": "WPA2"})
     tab._refresh()
     # Map each row's Enc cell (col 4) color by its SSID (col 1) — robust to the RSSI sort order.
-    seen = {tab._table.item(r, 1).text(): tab._table.item(r, 4).foreground().color().name()
+    seen = {tab._table.item(r, 1).text(): tab._table.item(r, 5).foreground().color().name()
             for r in range(tab._table.rowCount())}
     assert seen["OpenNet"] == _ENC_COLORS["open"].name()
     assert seen["WepNet"] == _ENC_COLORS["weak"].name()
     assert seen["SafeNet"] == _ENC_COLORS["strong"].name()
+
+
+def test_vendor_column_shows_the_resolved_oui_vendor(qapp):
+    """The Vendor column (col 3) shows the OUI-resolved manufacturer for a scanned BSSID — real data
+    from the bundled IEEE table, not a fabricated label."""
+    from src.core.oui import lookup_vendor
+    clock = [4000.0]
+    tab = _make_tab(clock)
+    bssid = "00:00:01:aa:bb:cc"   # OUI 00:00:01 is a real registered prefix in the bundled table
+    tab.on_wifi_event("COM4", "ap_found",
+                      {"bssid": bssid, "ssid": "Net", "rssi": -55, "encryption": "WPA2"})
+    tab._refresh()
+    vendor = lookup_vendor(bssid)
+    assert vendor, "expected the bundled OUI table to resolve 00:00:01 to a real vendor"
+    # Find the AP's row by BSSID (col 2); assert the Vendor cell (col 3) shows the resolved name.
+    matched = False
+    for r in range(tab._table.rowCount()):
+        if tab._table.item(r, 2).text() == bssid:
+            assert tab._table.item(r, 3).text() == vendor
+            matched = True
+    assert matched
 
 
 def test_stat_grid_mirrors_the_summary(qapp):

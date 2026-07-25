@@ -6,6 +6,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Vendor column in the Wi-Fi analyzer table.** Each access point now shows its manufacturer,
+  resolved from the scanned BSSID through the bundled IEEE OUI table (`oui.lookup_vendor`) — real
+  registry data, blank for a randomized/locally-administered MAC (never a fabricated vendor). Part of
+  finishing the WiFi domain-detail table (design brief); the column sits after BSSID, tested against a
+  known OUI prefix.
 - **Responsive tile grid + OPERATE HOME domain grid (adaptive GUI rebuild).** New `ResponsiveTileGrid`
   widget lays tiles into a `QGridLayout` whose column count tracks the window — a real 1/2/3-column
   reflow driven by the pure `layout_profile().columns` resolver (not a row/stack direction flip). The
