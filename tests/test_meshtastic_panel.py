@@ -133,6 +133,31 @@ def test_node_role_and_location_columns(qapp):
     assert panel._nodes.item(_row("!043ae298"), loc_col).text() == "—"
 
 
+def test_node_hops_column(qapp):
+    # The Hops column shows the RF hop distance, "☁" for a node heard over MQTT (internet), or "—".
+    panel, backend, _, _ = _make()
+    user_h = mp.field_bytes(1, b"!abcd0003") + mp.field_bytes(2, b"Relay") + mp.field_varint(5, 43)
+    ni_hop = mp.field_varint(1, 0xABCD0003) + mp.field_bytes(2, user_h) + mp.field_varint(9, 3)
+    user_m = mp.field_bytes(1, b"!abcd0002") + mp.field_bytes(2, b"Cloud") + mp.field_varint(5, 43)
+    ni_mqtt = mp.field_varint(1, 0xABCD0002) + mp.field_bytes(2, user_m) + mp.field_varint(8, 1)
+    backend.feed_bytes(
+        _framed_my_info(0x043AE298)
+        + _framed_node_info(0x043AE298, "Local", "LCL", 43, 0.0)   # local: no hops -> "—"
+        + StreamFramer.frame(mp.field_bytes(4, ni_hop))
+        + StreamFramer.frame(mp.field_bytes(4, ni_mqtt))
+    )
+    hdr = [panel._nodes.horizontalHeaderItem(c).text() for c in range(panel._nodes.columnCount())]
+    hcol = hdr.index("Hops")
+
+    def _row(node_id):
+        return next(r for r in range(panel._nodes.rowCount())
+                    if panel._nodes.item(r, 0).text() == node_id)
+
+    assert panel._nodes.item(_row("!abcd0003"), hcol).text() == "3"       # relayed 3 hops
+    assert panel._nodes.item(_row("!abcd0002"), hcol).text() == "☁"       # heard over MQTT
+    assert panel._nodes.item(_row("!043ae298"), hcol).text() == "—"       # direct, none reported
+
+
 def test_channels_populate_active_only(qapp):
     panel, backend, _, _ = _make()
     backend.feed_bytes(_framed_channel(0, "LongFast", 1) + _framed_channel(1, "", 0))

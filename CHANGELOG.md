@@ -47,10 +47,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   (CLIENT / ROUTER / REPEATER / TRACKER / … via a new `role_name` enum helper) and its GPS fix — latitude
   and longitude (from the signed `sfixed32` `latitude_i`/`longitude_i`, degrees) plus altitude (metres). A
   node with no fix leaves lat/lon `None` and reports `has_position == False` (never a fabricated `0, 0`), and
-  an unreported role labels as `""` (never a wrong guess). The live Meshtastic panel's node table gains
-  **Role** and **Location** columns. RX/awareness-only — decode and display of a locally-connected node's
-  own StreamAPI state; CC authors no mesh frame. Golden-vector tested (signed coords, negative altitude,
-  role names, honest no-fix).
+  an unreported role labels as `""` (never a wrong guess). It also recovers `hops_away` (field 9 — mesh
+  topology distance, 0 = heard directly, N = relayed over N hops) and `via_mqtt` (field 8 — whether the
+  node was heard over an MQTT gateway / the internet rather than RF). The live Meshtastic panel's node
+  table gains **Role**, **Location**, and **Hops** columns (Hops shows the hop count, or "☁" for an
+  MQTT-heard node, or "—"). RX/awareness-only — decode and display of a locally-connected node's own
+  StreamAPI state; CC authors no mesh frame. Golden-vector tested (signed coords, negative altitude,
+  role names, hops/via-mqtt, honest defaults).
 - **RF/Sub-GHz domain view — a fourth real domain on the shared frame.** New `SubGhzSignal` object
   model (a frozen dataclass for a decoded OOK capture: protocol/code/address/data/bits + optional
   rssi/frequency/first-seen, with hex accessors) + a `signal_from_ev1527(decoded, **meta)` helper that

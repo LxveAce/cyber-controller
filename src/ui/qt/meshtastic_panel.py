@@ -81,9 +81,9 @@ class MeshtasticPanel(QWidget):
         root.addWidget(self._status)
 
         # Node table
-        self._nodes = QTableWidget(0, 7)
+        self._nodes = QTableWidget(0, 8)
         self._nodes.setHorizontalHeaderLabels(
-            ["Node", "Name", "HW", "Role", "SNR", "Batt", "Location"])
+            ["Node", "Name", "HW", "Role", "SNR", "Batt", "Hops", "Location"])
         self._nodes.verticalHeader().setVisible(False)
         self._nodes.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._nodes.setSelectionMode(QAbstractItemView.NoSelection)
@@ -204,10 +204,18 @@ class MeshtasticPanel(QWidget):
             batt = "" if n.battery is None else f"{n.battery}%"
             # Location: the node's GPS fix if present, else an honest "—" (never a fake 0,0).
             loc = f"{n.latitude:.5f}, {n.longitude:.5f}" if n.has_position else "—"
-            fields = (n.node_id, name, n.hw_model_name, n.role_label, snr, batt, loc)
+            # Hops: "☁" for a node heard over the internet (MQTT), else the RF hop distance
+            # (0 = direct), else "—" when the node didn't report one.
+            if n.via_mqtt:
+                hops = "☁"
+            elif n.hops_away is not None:
+                hops = str(n.hops_away)
+            else:
+                hops = "—"
+            fields = (n.node_id, name, n.hw_model_name, n.role_label, snr, batt, hops, loc)
             for col, val in enumerate(fields):
                 item = QTableWidgetItem(str(val))
-                if col in (4, 5):  # SNR + Batt right-align (numeric)
+                if col in (4, 5, 6):  # SNR + Batt + Hops right-align (numeric)
                     item.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self._nodes.setItem(row, col, item)
 

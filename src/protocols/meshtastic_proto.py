@@ -229,6 +229,8 @@ class MeshNode:
     latitude: float | None = None   # decimal degrees, from Position.latitude_i / 1e7
     longitude: float | None = None  # decimal degrees, from Position.longitude_i / 1e7
     altitude: int | None = None     # metres, from Position.altitude
+    hops_away: int | None = None    # topology distance: 0 = heard directly, N = relayed over N hops
+    via_mqtt: bool = False          # True when heard via an MQTT gateway (internet) rather than over RF
     is_local: bool = False
 
     @property
@@ -391,6 +393,8 @@ def _decode_nodeinfo(data) -> MeshNode:
         node.altitude = as_i32(_first(pf, 3))
     node.snr = as_float(_first(f, 4))
     node.last_heard = as_u32(_first(f, 5))
+    node.via_mqtt = bool(_first(f, 8))     # NodeInfo.via_mqtt=8: heard via an MQTT gateway, not over RF
+    node.hops_away = as_u32(_first(f, 9))  # NodeInfo.hops_away=9: 0 = direct, N = relayed over N hops
     metrics = _first(f, 6)
     if isinstance(metrics, bytes):
         mf = parse(metrics)

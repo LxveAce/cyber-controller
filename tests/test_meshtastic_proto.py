@@ -178,6 +178,26 @@ def test_decode_node_info_negative_altitude():
     assert n.altitude == -240 and n.role_label == "TRACKER"
 
 
+def test_decode_node_info_hops_away_and_via_mqtt():
+    # NodeInfo also carries topology/provenance: hops_away=9 (0 direct, N relayed) + via_mqtt=8 (heard
+    # over the internet, not RF). Both were previously dropped.
+    user = _fake_user("!abcd1234", "Relayed", "RLY", 43)
+    ni = (mp.field_varint(1, 0xABCD1234) + mp.field_bytes(2, user)
+          + mp.field_varint(8, 1) + mp.field_varint(9, 3))
+    n = mp.decode_fromradio(mp.field_bytes(4, ni)).node
+    assert n.hops_away == 3 and n.via_mqtt is True
+    assert n.long_name == "Relayed"   # existing fields still decode alongside
+
+
+def test_decode_node_info_hops_and_mqtt_are_honest_defaults_when_absent():
+    # A node heard directly over RF omits both: via_mqtt defaults False (proto3), hops_away stays None
+    # (optional, absent) — never a fabricated 0.
+    user = _fake_user("!11223344", "Direct", "DIR", 43)
+    ni = mp.field_varint(1, 0x11223344) + mp.field_bytes(2, user)
+    n = mp.decode_fromradio(mp.field_bytes(4, ni)).node
+    assert n.via_mqtt is False and n.hops_away is None
+
+
 def test_decode_channel():
     settings = mp.field_bytes(3, b"LongFast")  # ChannelSettings.name = field 3
     channel = mp.field_varint(1, 0) + mp.field_bytes(2, settings) + mp.field_varint(3, 1)  # role PRIMARY
