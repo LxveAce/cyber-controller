@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from src.ui.qt.ble_domain import BleDomainView
 from src.ui.qt.domain_grid import DomainGrid
 from src.ui.qt.wifi_domain import WifiDomainView
 
@@ -41,6 +42,7 @@ class OperateHome(QWidget):
     home_shown = pyqtSignal()       # returned to the grid
 
     def __init__(self, wifi_center: "Optional[QWidget]" = None,
+                 ble_center: "Optional[QWidget]" = None,
                  parent: "Optional[QWidget]" = None) -> None:
         super().__init__(parent)
         self._current: Optional[str] = None
@@ -48,12 +50,17 @@ class OperateHome(QWidget):
         self._stack = QStackedWidget()
         self._stack.addWidget(self._grid)  # index 0 = home
 
-        # One screen per domain: Wi-Fi is the real three-panel; the rest are honest placeholders.
+        # One screen per domain: Wi-Fi and BLE reuse the SAME three-panel frame (proving it is
+        # general); the remaining domains are honest placeholders until their screens land.
         self._views: dict[str, QWidget] = {}
         titles = {k: t for k, _i, t, _d in _domain_titles()}
         for key in self._grid.domain_keys():
-            view = WifiDomainView(center=wifi_center or QWidget()) if key == "wifi" \
-                else _placeholder(titles.get(key, key))
+            if key == "wifi":
+                view: QWidget = WifiDomainView(center=wifi_center or QWidget())
+            elif key == "ble":
+                view = BleDomainView(center=ble_center or QWidget())
+            else:
+                view = _placeholder(titles.get(key, key))
             self._views[key] = view
             self._stack.addWidget(view)
         self._grid.domain_selected.connect(self.show_domain)

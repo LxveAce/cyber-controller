@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("PyQt5.QtWidgets")
 from PyQt5.QtWidgets import QApplication  # noqa: E402
 
+from src.ui.qt.ble_domain import BleDomainView  # noqa: E402
 from src.ui.qt.operate_home import OperateHome  # noqa: E402
 from src.ui.qt.wifi_domain import WifiDomainView  # noqa: E402
 
@@ -52,6 +53,14 @@ def test_every_domain_has_a_screen(qapp):
     h = OperateHome()
     for key in h._grid.domain_keys():
         assert h.domain_view(key) is not None
-    # Wi-Fi is the real domain view; the others are present placeholders (distinct widgets).
+    # Wi-Fi and BLE are real domain views on the shared frame; the rest are placeholders.
     assert isinstance(h.domain_view("wifi"), WifiDomainView)
+    assert isinstance(h.domain_view("ble"), BleDomainView)
     assert not isinstance(h.domain_view("nfc"), WifiDomainView)
+
+
+def test_selecting_ble_routes_to_the_ble_domain(qapp):
+    h = OperateHome()
+    h._grid.domain_selected.emit("ble")
+    assert h.current_domain() == "ble"
+    assert isinstance(h._stack.currentWidget(), BleDomainView)

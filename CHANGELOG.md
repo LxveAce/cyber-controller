@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Shared domain frame proven general — BLE reuses the WiFi three-panel view.** Extracted the
+  three-panel master/detail frame (posture boundary · object table · detail · responsive reflow) into
+  a generic `DomainDetailView`; `WifiDomainView` is now a thin specialization of it, and the new
+  `BleDomainView` reuses the exact same frame with a `BleDetailPanel` (BLE device name, address,
+  resolved vendor + GAP appearance, and an honest tracker flag). `OperateHome` routes both the Wi-Fi
+  and BLE tiles to real domain views on the shared frame. Tests assert the reuse (BLE gets the same
+  posture boundary + reflow) and the BLE detail fields — the dual-axis frame is general, not one-off.
 - **OPERATE HOME screen + Wi-Fi domain panels stack on a compact canvas.** New `OperateHome` composes
   the `DomainGrid` tiles with a `QStackedWidget`: tapping the Wi-Fi tile routes to the real three-panel
   `WifiDomainView`, other domains show an honest "coming soon" placeholder, and a Home action returns
