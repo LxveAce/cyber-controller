@@ -30,6 +30,10 @@ _DEFAULT_TTL = 30.0      # seconds since last_seen after which a device is consi
 # > -50 = 4 bars, > -65 = 3, > -75 = 2, else 1. A missing reading is 0 bars.
 _BAR_THRESHOLDS = ((-50, 4), (-65, 3), (-75, 2))
 
+# Friendly labels for a firmware-reported device kind (GhostESP airtag/flipper), the fallback row
+# name when the advert carries no name — so a nameless AirTag/Flipper reads as what it is.
+_KIND_LABELS = {"airtag": "AirTag", "flipper": "Flipper"}
+
 
 def _as_int(value: object) -> Optional[int]:
     """Coerce an event field to int, or None if unusable. None (not 0) keeps a missing RSSI distinct
@@ -113,8 +117,13 @@ class BleDevice:
     samples: List[Tuple[float, int]] = field(default_factory=list)
 
     def display_name(self) -> str:
-        """Name for the row, or a placeholder when the advert is nameless (most are)."""
-        return self.name if self.name else "(unknown)"
+        """Name for the row: the advertised name, else the firmware-classified kind (e.g. AirTag /
+        Flipper), else a placeholder — most adverts are nameless."""
+        if self.name:
+            return self.name
+        if self.kind:
+            return _KIND_LABELS.get(self.kind, self.kind.title())
+        return "(unknown)"
 
     def age(self, now: float) -> float:
         """Seconds since this device was last heard (>= 0)."""

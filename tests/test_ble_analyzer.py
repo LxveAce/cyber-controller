@@ -88,6 +88,21 @@ def test_flipper_kind_is_carried_but_is_not_a_tracker():
     assert m.summary(now=1.0)["trackers"] == 0
 
 
+def test_display_name_falls_back_to_the_kind_when_nameless():
+    # A GhostESP AirTag advertises no name, so the row reads "(unknown)"; the kind is far more
+    # useful. A device that DOES advertise a name keeps it (the name wins over the kind).
+    m = BleAnalyzerModel()
+    m.observe({"mac": "aa:bb:cc:dd:ee:f1", "rssi": -55, "kind": "airtag"}, now=1.0)
+    assert m.get("aa:bb:cc:dd:ee:f1").display_name() == "AirTag"
+    m.observe({"mac": "aa:bb:cc:dd:ee:f2", "rssi": -60, "kind": "flipper"}, now=1.0)
+    assert m.get("aa:bb:cc:dd:ee:f2").display_name() == "Flipper"
+    m.observe(
+        {"mac": "aa:bb:cc:dd:ee:f3", "rssi": -50, "kind": "flipper", "name": "My Flipper"}, now=1.0)
+    assert m.get("aa:bb:cc:dd:ee:f3").display_name() == "My Flipper"   # advertised name wins
+    m.observe({"mac": "aa:bb:cc:dd:ee:f4", "rssi": -70}, now=1.0)      # no name, no kind
+    assert m.get("aa:bb:cc:dd:ee:f4").display_name() == "(unknown)"
+
+
 def test_ghostesp_airtag_detection_flags_a_tracker_end_to_end():
     # Real GhostESP parser -> analyzer: an aerialscan record emits a ble_found with kind=airtag;
     # the model folds it into a tracker-flagged device (closes the AirTag-detection loop).

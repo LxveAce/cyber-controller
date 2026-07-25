@@ -12,8 +12,9 @@ All notable changes to Cyber Controller are documented here. This project adhere
   not a tracker flag) wasn't counted, even though the tab's own copy promises it "flags AirTags / Find My".
   The model now recognizes `kind=airtag` as a tracker and carries the `kind` (airtag/flipper) onto each
   BLE device, so a GhostESP-detected AirTag shows in the tracker count/flag end-to-end. A Flipper's kind
-  is carried too but does not count as a tracker (it isn't tracking you). Host-tested, incl. the full
-  GhostESP-parser → analyzer chain.
+  is carried too but does not count as a tracker (it isn't tracking you). A nameless device now falls back
+  to its kind for the row name (an AirTag/Flipper reads as "AirTag"/"Flipper" instead of "(unknown)").
+  Host-tested, incl. the full GhostESP-parser → analyzer chain.
 - **GhostESP BLE tracker scans now parsed — Flipper Zero + Apple AirTag detection.** GhostESP has the
   `blescan -f` / `aerialscan` / `listairtags` commands but the parser had no handler for their output,
   so every detected Flipper or AirTag fell through to a generic `info` event and never reached the
