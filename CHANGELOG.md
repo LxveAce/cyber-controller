@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **GhostESP handshake capture now parsed — `handshake_captured` parity with Marauder.** On a
+  successful EAPOL capture GhostESP prints a three-line record (`Handshake found!` / `AP=<bssid>` /
+  `Pair=<pairwise>/<group>`), which the parser had no handler for — all three lines fell through to
+  the generic `info` event, so the crackable-material capture never reached the shared CaptureStore.
+  A small stage machine now emits `handshake_captured` (with the AP BSSID) on the `AP=` line and
+  swallows the trailing `Pair=` line, flowing end-to-end into an EAPOL `CaptureRecord`. RX/parse-only;
+  the format is grounded in the firmware's own `callbacks.c` glog + `webui/parsers.js` handshake
+  patterns; golden-vector tested (single emit, no `info` pollution, no stray-`AP=` false positive,
+  clean abandon on a truncated record, end-to-end to a capture record).
 - **GhostESP station (client) scan now parsed — `client_found` parity with Marauder.** The GhostESP
   parser recognized APs, probes, BLE, GPS, etc. but had no handler for the `scansta` / `list -s`
   station output, so every associated client GhostESP found fell through to a generic `info` event and

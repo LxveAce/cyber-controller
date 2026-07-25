@@ -84,6 +84,14 @@ _RE_STA_AP_SSID = re.compile(r"Associated\s*AP:\s*([^,\n]*)", re.IGNORECASE)
 _RE_STA_AP_BSSID = re.compile(r"AP\s*BSSID:\s*([\da-fA-F:]{17})", re.IGNORECASE)
 _RE_STA_AP_VENDOR = re.compile(r"AP\s*Vendor:\s*([^,\n]*)", re.IGNORECASE)
 
+# Handshake capture — GhostESP's `main/core/callbacks.c` prints a three-line record on a successful
+# EAPOL capture: GhostESP prints "Handshake found!\nAP=<bssid>\nPair=<pairwise>/<group>", matched by
+# the firmware's own webui parser (/Handshake found/i + /AP=([0-9A-Fa-f:]{17})/i + /Pair=(\S+)/i).
+# Without a handler all three lines became bogus `info`. Emit handshake_captured (Marauder parity).
+_RE_HS_TRIGGER = re.compile(r"Handshake\s+found", re.IGNORECASE)
+_RE_HS_AP = re.compile(r"AP=\s*([\da-fA-F:]{17})", re.IGNORECASE)
+_RE_HS_PAIR = re.compile(r"Pair=\s*(\S+)", re.IGNORECASE)
+
 
 class GhostESPProtocol(BaseProtocol):
     """Parser and command formatter for GhostESP firmware."""
@@ -102,6 +110,10 @@ class GhostESPProtocol(BaseProtocol):
         # In-progress multi-line STATION record (scansta/list -s streams each client across five
         # lines); filled across calls, emitted on the closing "AP Vendor" line. See _RE_STA_* below.
         self._sta_record: dict | None = None
+        # Handshake-capture stage machine (None -> "ap" -> "pair"). GhostESP prints the capture as three
+        # lines ("Handshake found!" / "AP=<bssid>" / "Pair=<x>/<y>"); we emit on the AP line and swallow
+        # the Pair line. See _RE_HS_* below.
+        self._handshake_stage: str | None = None
 
     def reset_scan_index(self) -> None:
         """Reset the AP scan ordinals — call when the device's AP list is cleared
@@ -221,6 +233,26 @@ class GhostESPProtocol(BaseProtocol):
                 rec, self._sta_record = self._sta_record, None
                 rec["ap_vendor"] = m.group(1).strip().rstrip(",").strip()
                 return ParsedEvent(event_type="client_found", data=rec, raw=line)
+
+        # Handshake captured (WPA/EAPOL) — three-line record; emit on the AP line, swallow the Pair line
+        # so none of the three fall through to a bogus `info`. (See _RE_HS_* / callbacks.c above.)
+        if _RE_HS_TRIGGER.search(line):
+            self._handshake_stage = "ap"
+            return None
+        if self._handshake_stage == "ap":
+            m = _RE_HS_AP.search(line)
+            if m:
+                self._handshake_stage = "pair"
+                return ParsedEvent(
+                    event_type="handshake_captured",
+                    data={"ap_mac": m.group(1), "bssid": m.group(1)},
+                    raw=line,
+                )
+            self._handshake_stage = None  # unexpected line after the trigger — abandon, handle normally
+        elif self._handshake_stage == "pair":
+            self._handshake_stage = None
+            if _RE_HS_PAIR.search(line):
+                return None  # swallow the Pair line that follows the emitted handshake
 
         # Probe request
         m = _RE_PROBE.search(line)
