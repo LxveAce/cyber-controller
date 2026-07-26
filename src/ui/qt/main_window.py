@@ -700,6 +700,9 @@ class CyberControllerWindow(QMainWindow):
             self._app_shell.add_destination(_key, _label)
         self._app_shell.destination_selected.connect(self._on_shell_nav)
         self._app_shell_binder = PageLayoutBinder(self._app_shell, self._hub)
+        # Keep the sidebar in step with the tab strip (mode/loadout hides some surfaces).
+        self._tabs.currentChanged.connect(self._sync_shell_nav)
+        self._sync_shell_nav()
 
     # ── Interface mode (dual-depth Simple / Pro) ────────────────────
 
@@ -736,6 +739,22 @@ class CyberControllerWindow(QMainWindow):
         surface = self._shell_surfaces.get(key)
         if surface is not None and self._tabs.indexOf(surface) >= 0:
             self._tabs.setCurrentWidget(surface)
+
+    def _sync_shell_nav(self, *_args) -> None:
+        """Keep the app-shell sidebar in step with the tabs: show only destinations whose surface
+        is in the tab strip (loadout/mode hides some), and highlight the current one. Wired
+        to currentChanged + called after apply_loadout, so the sidebar never lists a hidden tool."""
+        shell = getattr(self, "_app_shell", None)
+        if shell is None:
+            return
+        cur = self._tabs.currentWidget()
+        cur_key = None
+        for key, surface in self._shell_surfaces.items():
+            shell.set_destination_visible(key, self._tabs.indexOf(surface) >= 0)
+            if surface is cur:
+                cur_key = key
+        if cur_key is not None:
+            shell.highlight_destination(cur_key)
 
     # ── Loadout (which firmwares/hardware → which tabs are shown) ─────
     def _show_subtab(self, surface, widget) -> None:
@@ -793,6 +812,7 @@ class CyberControllerWindow(QMainWindow):
         elif self._tabs.indexOf(self._connect_surface) >= 0:
             self._tabs.setCurrentWidget(self._connect_surface)
         self._loadout = L.normalize(lo)
+        self._sync_shell_nav()   # the visible tab set changed -> mirror it in the shell sidebar
         if persist:
             try:
                 from src.config.settings import load_settings, save_settings

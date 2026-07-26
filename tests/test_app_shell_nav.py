@@ -89,3 +89,23 @@ def test_shell_nav_selects_the_surface_in_the_tabs(win):
 def test_tab_bar_still_visible_this_slice(win):
     # slice A keeps the tab-bar (hiding it is slice C) — nothing is lost, both navs work
     assert win._tabs.tabBar().isVisibleTo(win._tabs) or not win._tabs.tabBar().isHidden()
+
+
+def test_shell_sidebar_mirrors_the_visible_tab_set(win):
+    # After a loadout change, each shell destination is visible IFF its surface is in the tabs,
+    # so the sidebar never lists a mode-hidden tool. Robust to whatever the loadout hides.
+    from src.config.loadout import default_loadout
+    win.apply_loadout(default_loadout(), persist=False)
+    for key, surface in win._shell_surfaces.items():
+        present = win._tabs.indexOf(surface) >= 0
+        dest = win._app_shell._destinations[key]
+        assert (not dest.isHidden()) == present, f"{key} sidebar visibility != tab presence"
+
+
+def test_shell_sidebar_highlights_the_current_tab(win):
+    # Switching via the tab-bar updates the sidebar highlight (currentChanged -> _sync_shell_nav).
+    win._tabs.setCurrentWidget(win._connect_surface)
+    assert win._app_shell._destinations["connect"].isChecked()
+    win._tabs.setCurrentWidget(win._settings_tab)
+    assert win._app_shell._destinations["settings"].isChecked()
+    assert not win._app_shell._destinations["connect"].isChecked()   # only one active

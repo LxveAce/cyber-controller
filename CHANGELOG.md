@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The app-shell sidebar now tracks the mode system + the current tab (GUI rebuild, Wave-10 Phase C, slice B').**
+  The shell's top-level nav sidebar previously listed all seven surfaces regardless of the interface mode; now it
+  mirrors the tab strip — a destination is shown only when its surface is actually present (the pro/simple loadout
+  hides some), and the destination for the current tab is highlighted (wired to `_tabs.currentChanged` + refreshed
+  after every `apply_loadout`). So the sidebar never offers a mode-hidden tool, and switching via the tab-bar keeps
+  the sidebar in sync — a prerequisite for hiding the tab-bar (making the sidebar the sole nav) in the next slice.
+  New `PageLayout.highlight_destination` (check without emitting) / `set_destination_visible`. Parity-tested.
 - **The app now opens inside the shared shell (GUI rebuild, Wave-10 Phase C, slice A) — the real template-break
   begins.** A top-level `PageLayout` app-shell now wraps the whole top area (device-sidebar + tab widget) in the main
   window's splitter, so the global chrome — the persistent status bar (live device count + `ARMED`/`ARMING`), the

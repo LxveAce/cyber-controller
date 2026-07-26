@@ -169,6 +169,20 @@ class PageLayout(QWidget):
             d.setChecked(k == key)
         self.destination_selected.emit(key)
 
+    def highlight_destination(self, key: str) -> None:
+        """Check *key* + uncheck the rest WITHOUT emitting — for reflecting an external nav change
+        (e.g. the host switched surface via another control) with no re-navigation feedback loop."""
+        if key not in self._destinations:
+            return
+        for k, d in self._destinations.items():
+            d.setChecked(k == key)
+
+    def set_destination_visible(self, key: str, visible: bool) -> None:
+        """Show/hide a destination — so a nav rail can mirror which surfaces are available."""
+        dest = self._destinations.get(key)
+        if dest is not None:
+            dest.setVisible(visible)
+
     def set_badge(self, key: str, count: int) -> None:
         """Set a destination's live count badge (hidden at 0)."""
         dest = self._destinations.get(key)
