@@ -6,6 +6,17 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The Operate Home landing gained a session state-line + metric strip (GUI rebuild, Wave-10 Phase C, slice E).**
+  The dual-axis home now opens with a header ABOVE the domain grid: a one-line state-line ("N devices connected" /
+  a connect prompt) plus a compact metric strip — devices / targets / captures / ARMED — sourced from the SAME hub the
+  app-shell binder reads, so it invents nothing. Chosen as enrich-the-landing (not a new surface): Operate Home stays
+  the landing, the header shows only on the grid and hides inside a domain screen (giving the domain view full height),
+  and the two-level IA is unchanged. Counts stay live — targets/captures refresh on their bus events (like the shell
+  badges), the device count + ARMED state refresh with the existing device-list poll (no new timer). ARMED reuses the
+  binder's safety colour (red), ARMING amber. New `OperateHome.set_summary()` + `main_window._refresh_home_summary()`
+  (mirrors the binder's grounded `pool`/`captures`/`dm` reads). 4 parity tests (header shows on the grid / hides in a
+  domain, the metric text incl. singular/plural + ARMED, a real target added to the pool is reflected after a refresh,
+  and a `target.added` bus event refreshes it live).
 - **The app-shell omnibar is fused with the command palette (GUI rebuild, Wave-10 Phase C, Phase D polish).** The
   design brief's omnibar was "command input fused with fuzzy search", but its `omnibar_submitted` signal wasn't wired
   to anything. Now submitting the omnibar opens the command palette pre-filtered to the typed text (top fuzzy match

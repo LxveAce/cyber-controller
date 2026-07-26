@@ -23,7 +23,54 @@ from src.ui.qt.ble_domain import BleDomainView
 from src.ui.qt.domain_grid import DomainGrid
 from src.ui.qt.gps_domain import GpsDomainView
 from src.ui.qt.subghz_domain import SubGhzDomainView
+from src.ui.qt.theme import colors as C
 from src.ui.qt.wifi_domain import WifiDomainView
+
+
+class _HomeSummary(QWidget):
+    """The Operate Home landing header (slice E): a one-line session state-line + a compact metric
+    strip (devices / targets / captures / armed). Dumb display — a host pushes real hub counts via
+    ``set_summary``; this widget invents nothing. Shown only on the grid landing (the header the
+    domain grid lives under), hidden inside a domain screen."""
+
+    def __init__(self, parent: "Optional[QWidget]" = None) -> None:
+        super().__init__(parent)
+        self._state = QLabel("")
+        self._state.setObjectName("home_state_line")
+        self._metrics: dict[str, QLabel] = {}
+        row = QHBoxLayout(self)
+        row.setContentsMargins(10, 6, 10, 6)
+        row.addWidget(self._state)
+        row.addStretch(1)
+        for key in ("devices", "targets", "captures", "armed"):
+            lbl = QLabel("")
+            lbl.setObjectName(f"home_metric_{key}")
+            self._metrics[key] = lbl
+            row.addWidget(lbl)
+        self.set_summary(0, 0, 0, "")
+
+    def set_summary(self, devices: int, targets: int, captures: int, armed: str) -> None:
+        """Update the state-line + metric chips from real counts (a host pushes these)."""
+        d, t, c = max(0, int(devices)), max(0, int(targets)), max(0, int(captures))
+        self._metrics["devices"].setText(f"{d} device" + ("" if d == 1 else "s"))
+        self._metrics["targets"].setText(f"{t} target" + ("" if t == 1 else "s"))
+        self._metrics["captures"].setText(f"{c} capture" + ("" if c == 1 else "s"))
+        state = (armed or "").strip().lower()
+        armed_lbl = self._metrics["armed"]
+        if state == "armed":
+            armed_lbl.setText("ARMED")
+            armed_lbl.setStyleSheet(f"color:{C.ERROR}; font-weight:bold;")
+        elif state in ("pending", "arming"):
+            armed_lbl.setText("ARMING")
+            armed_lbl.setStyleSheet(f"color:{C.WARNING}; font-weight:bold;")
+        else:
+            armed_lbl.setText("")
+            armed_lbl.setStyleSheet("")
+        # State-line: a plain factual readout (not hero copy) — connect prompt or the device tally.
+        if d == 0:
+            self._state.setText("No device connected — connect a board to begin")
+        else:
+            self._state.setText(f"{d} device" + ("" if d == 1 else "s") + " connected")
 
 
 def _placeholder(title: str) -> QWidget:
@@ -79,16 +126,26 @@ class OperateHome(QWidget):
         bar.addWidget(self._btn_home)
         bar.addStretch(1)
 
+        # Slice E: the landing header (state-line + metric strip). Shown on the grid landing, hidden
+        # inside a domain screen (the inverse of _btn_home). A host feeds it real hub counts.
+        self._summary = _HomeSummary()
+
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
+        outer.addWidget(self._summary)
         outer.addLayout(bar)
         outer.addWidget(self._stack)
         self.show_home()
 
+    def set_summary(self, devices: int, targets: int, captures: int, armed: str) -> None:
+        """Push real hub counts into the landing summary (host-driven; OperateHome invents none)."""
+        self._summary.set_summary(devices, targets, captures, armed)
+
     def show_home(self) -> None:
         self._current = None
         self._stack.setCurrentWidget(self._grid)
-        self._btn_home.setVisible(False)  # nothing to go back from on the grid itself
+        self._btn_home.setVisible(False)   # nothing to go back from on the grid itself
+        self._summary.setVisible(True)     # the landing header belongs to the grid view
         self.home_shown.emit()
 
     def show_domain(self, key: str) -> None:
@@ -98,6 +155,7 @@ class OperateHome(QWidget):
         self._current = key
         self._stack.setCurrentWidget(view)
         self._btn_home.setVisible(True)
+        self._summary.setVisible(False)    # give the domain screen the full height
         self.domain_shown.emit(key)
 
     def current_domain(self) -> "Optional[str]":

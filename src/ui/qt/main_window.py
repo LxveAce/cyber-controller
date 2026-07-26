@@ -509,6 +509,12 @@ class CyberControllerWindow(QMainWindow):
         # pre-filtered to the typed text (top match selected); the operator confirms with Enter, so
         # nothing runs straight off a keystroke (some commands are consequential).
         self._app_shell.omnibar_submitted.connect(self._on_omnibar_submitted)
+        # Slice E: keep the Operate Home landing summary live. Target/capture counts refresh on
+        # their bus events (like the shell badges); the device count refreshes with the sidebar.
+        for _evt in ("target.added", "target.updated", "target.removed", "target.cleared",
+                     "capture.added", "capture.removed", "capture.cleared", "capture.cracked"):
+            self._bus.subscribe(_evt, self._refresh_home_summary)
+        self._refresh_home_summary()
 
         # Apply the persisted interface mode to every tab now that they exist (no persist write-back).
         self._apply_ui_mode(self._load_ui_mode(), persist=False)
@@ -739,6 +745,24 @@ class CyberControllerWindow(QMainWindow):
     def _on_omnibar_submitted(self, text: str) -> None:
         """Hand the app-shell omnibar text to the command palette as a pre-filled fuzzy query."""
         self._palette.open_palette_with(text)
+
+    def _refresh_home_summary(self, *_args) -> None:
+        """Push live hub counts into the Operate Home landing summary (slice E). Mirrors the
+        binder's grounded reads (pool / captures / dm), so the metric strip shows the same truth.
+        Wired to target/capture bus events + the device refresh; a no-op before OperateHome up."""
+        home = getattr(self, "_operate_home", None)
+        if home is None or not hasattr(home, "set_summary"):
+            return
+        hub = self._hub
+        pool = getattr(hub, "pool", None)
+        caps = getattr(hub, "captures", None)
+        dm = getattr(hub, "dm", None)
+        targets = int(getattr(pool, "count", 0) or 0) if pool is not None else 0
+        captures = int(getattr(caps, "count", 0) or 0) if caps is not None else 0
+        devs = list(dm.list_connected()) if dm is not None and hasattr(dm, "list_connected") else []
+        states = [getattr(d, "arm_state", "") for d in devs]
+        armed = "armed" if "armed" in states else ("pending" if "pending" in states else "")
+        home.set_summary(len(devs), targets, captures, armed)
 
     def _sync_shell_nav(self, *_args) -> None:
         """Keep the app-shell sidebar in step with the tabs: show only destinations whose surface
@@ -1670,6 +1694,10 @@ class CyberControllerWindow(QMainWindow):
         # Also refresh persistent terminal device checklist
         if hasattr(self, '_pterm_device_list'):
             self._pterm_refresh_ports()
+
+        # Slice E: the Operate Home landing summary shares this refresh point, so its device count +
+        # ARMED state stay live on the same cadence as the sidebar (poll + connect/disconnect).
+        self._refresh_home_summary()
 
     def _on_sidebar_device_selected(self, current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
         if current is None:
