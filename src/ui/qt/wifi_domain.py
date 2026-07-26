@@ -8,11 +8,12 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt5.QtWidgets import QFormLayout, QFrame, QLabel, QVBoxLayout, QWidget
+from PyQt5.QtWidgets import QFormLayout, QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget
 
 from src.core.oui import lookup_vendor
 from src.core.wifi_analyzer import security_grade
 from src.ui.qt.domain_view import DomainDetailView
+from src.ui.qt.identicon_pixmap import identicon_pixmap
 from src.ui.qt.theme import colors as C
 
 _GRADE_COLOR = {"open": C.ERROR, "weak": C.WARNING, "strong": C.SUCCESS}
@@ -33,9 +34,16 @@ class APDetailPanel(QFrame):
         self.setObjectName("ap_detail")
         self._ap = None
         v = QVBoxLayout(self)
+        # Title row: the object's persistent identicon (card identity, GUI rebuild) + its name. The
+        # same BSSID shows the same little face here as in its table row and archive.
+        title_row = QHBoxLayout()
+        self._identicon = QLabel()
+        self._identicon.setFixedSize(28, 28)
+        title_row.addWidget(self._identicon)
         self._title = QLabel("No access point selected")
         self._title.setStyleSheet(f"color:{C.TEXT_PRIMARY}; font-weight:bold; font-size:12pt;")
-        v.addWidget(self._title)
+        title_row.addWidget(self._title, 1)
+        v.addLayout(title_row)
         form = QFormLayout()
         v.addLayout(form)
         v.addStretch(1)
@@ -49,6 +57,10 @@ class APDetailPanel(QFrame):
     def set_object(self, ap) -> None:
         self._ap = ap
         self._title.setText(ap.display_ssid())
+        if ap.bssid:
+            self._identicon.setPixmap(identicon_pixmap(ap.bssid))
+        else:
+            self._identicon.clear()   # a BSSID-less AP has no stable identity → no face
         self._rows["BSSID"].setText(ap.bssid or "—")
         self._rows["Vendor"].setText(lookup_vendor(ap.bssid) or "—")
         grade = security_grade(ap.encryption)
@@ -63,6 +75,7 @@ class APDetailPanel(QFrame):
 
     def clear(self) -> None:
         self._ap = None
+        self._identicon.clear()
         self._title.setText("No access point selected")
         for lbl in self._rows.values():
             lbl.setText("—")

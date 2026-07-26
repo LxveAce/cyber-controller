@@ -104,3 +104,23 @@ def test_ap_detail_panel_shows_resolved_and_graded_fields(qapp):
     assert "Weak" in panel._rows["Security"].text()
     panel.clear()
     assert panel.ap is None and panel._rows["Vendor"].text() == "—"
+
+
+def test_ap_detail_shows_the_persistent_identicon(qapp):
+    # Card identity (GUI rebuild): a selected AP shows a non-null identicon keyed on its BSSID; a
+    # BSSID-less AP shows none (no stable identity, no fabricated face). The face is deterministic.
+    from src.ui.qt.identicon_pixmap import identicon_pixmap
+    panel = APDetailPanel()
+    ap = _ap(bssid="00:00:01:aa:bb:cc")
+    panel.set_object(ap)
+    pm = panel._identicon.pixmap()
+    assert pm is not None and not pm.isNull()
+    # Deterministic: the panel's face matches the pure render for the same BSSID.
+    assert pm.toImage() == identicon_pixmap("00:00:01:aa:bb:cc").toImage()
+
+    panel.set_object(_ap(bssid=""))
+    assert panel._identicon.pixmap() is None or panel._identicon.pixmap().isNull()
+
+    panel.set_object(ap)
+    panel.clear()
+    assert panel._identicon.pixmap() is None or panel._identicon.pixmap().isNull()

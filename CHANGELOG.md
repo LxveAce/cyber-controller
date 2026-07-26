@@ -6,6 +6,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Card identity (GUI rebuild, Wave-10 Phase A): a deterministic per-device identicon.** The rebuild's design
+  brief calls for a Meshtastic-style avatar per MAC/node reused across an object's table row, detail panel, and
+  archive so the same discovered thing has ONE recognisable face everywhere. New pure core `core/identicon.py`
+  maps a key (MAC / BSSID / node id) to a symmetric cell grid + a legible accent colour — deterministic and
+  notation-insensitive (`AA:BB:..` and `aabb..` are the same device → the same face), fully headless-tested. A
+  thin `ui/qt/identicon_pixmap.py` renders it to a QPixmap, wired into the Wi-Fi domain detail panel as the first
+  visible integration (a BSSID-less AP shows no fabricated face). Reusable across every domain; the remaining
+  panels + table-row placement follow the card-identity design audit.
 - **Drone Remote-ID detections now reach a live model — the shipped decoder is no longer a dead end.** The pure
   `remote_id.py` decoder (ASTM F3411, shipped earlier) had ZERO production consumers: a flashed drone-detector
   board fell through to `GenericProtocol`, so its Remote-ID serial output was never decoded end-to-end. Now a
