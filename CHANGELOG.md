@@ -6,6 +6,17 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The Operate Home tab holds OperateHome directly — nested frame reconciled (GUI rebuild, Wave-10 Phase C,
+  slice D).** Slices 1–2 wrapped OperateHome in a per-tab `PageLayout` (`_home_frame`) to prove the frame + chrome
+  worked in the app; slice A then made the single app-shell wrap the whole top area, so that per-tab frame's global
+  chrome (status bar / posture / omnibar) + its duplicate domain-nav rail became redundant. Slice D removes the
+  wrapper: the tab now holds the real `OperateHome`, and OperateHome's OWN domain grid (⇄ its domain-screen stack +
+  the "← Domains" back button) stays as the Operate content nav — the radio axis of the two-level IA (shell sidebar =
+  surfaces; grid = radios). Dropped `_home_frame` + `_home_binder` + the now-orphan `_on_home_nav`; repointed the
+  loadout tuple, the default-landing view, and the tab-structure references to `_operate_home`. Parity-tested (the
+  Operate Home tab IS OperateHome, no stray frame/binder, global chrome lives once on the app-shell, the domain grid
+  still navigates). Per Atlas's ruled order (fold → reconcile → hide-tab-bar); the tab-bar-hide slice now lands on a
+  clean single-sidebar + single-chrome state.
 - **The device-sidebar folded into the one app-shell sidebar (GUI rebuild, Wave-10 Phase C, slice B).** The top
   area previously had two left columns — the app-shell's nav sidebar AND the old device-sidebar (device list + scan)
   beside the tabs. The device-sidebar is now a child of the single app-shell sidebar (below the nav destinations), so

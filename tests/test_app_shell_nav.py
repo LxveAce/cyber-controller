@@ -83,7 +83,7 @@ def test_shell_nav_selects_the_surface_in_the_tabs(win):
     win._app_shell.select_destination("analyze")
     assert win._tabs.currentWidget() is win._network_surface
     win._app_shell.select_destination("operate-home")
-    assert win._tabs.currentWidget() is win._home_frame
+    assert win._tabs.currentWidget() is win._operate_home
 
 
 def test_tab_bar_still_visible_this_slice(win):

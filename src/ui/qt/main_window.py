@@ -498,8 +498,8 @@ class CyberControllerWindow(QMainWindow):
         self.apply_loadout(self._load_loadout(), persist=False)
         # Land on the dual-axis Operate Home instrument — the primary surface post-rebuild. Fall
         # back to the Connect/Devices surface only if Operate Home isn't mounted (hidden/popped).
-        if self._tabs.indexOf(self._home_frame) >= 0:
-            self._tabs.setCurrentWidget(self._home_frame)
+        if self._tabs.indexOf(self._operate_home) >= 0:
+            self._tabs.setCurrentWidget(self._operate_home)
         else:
             self._show_subtab(self._connect_surface, self._device_tab)
         self._refresh_sidebar_devices()
@@ -630,24 +630,13 @@ class CyberControllerWindow(QMainWindow):
         # only — the fresh centers transmit nothing.
         from src.ui.qt.operate_home import build_operate_home
         self._operate_home, self._oh_wifi, self._oh_ble = build_operate_home()
-        # Wave-10 Phase C (slice 1): wrap the primary dual-axis home in the shared PageLayout so
-        # the global status bar (live device truth), posture toggle + omnibar frame it. Additive:
-        # _operate_home stays the real OperateHome (its API + routing are used elsewhere); the FRAME
-        # (_home_frame) is what goes in the tab. Only the Operate Home tab's backing widget changes.
-        from src.ui.qt.domain_grid import _DOMAINS
-        from src.ui.qt.page_layout import PageLayout
-        from src.ui.qt.page_layout_binder import PageLayoutBinder
-        self._home_frame = PageLayout()
-        # Persistent nav rail: Home (the domain grid) + one destination per radio/domain, so the
-        # sidebar drives the same domains as the grid but stays visible inside a domain screen.
-        self._home_frame.add_destination("home", "Home", "⌂")
-        for _k, _icon, _title, _desc in _DOMAINS:
-            self._home_frame.add_destination(_k, _title, _icon)
-        self._home_frame.destination_selected.connect(self._on_home_nav)
-        self._home_frame.select_destination("home")
-        self._home_frame.set_content(self._operate_home)
-        self._home_binder = PageLayoutBinder(self._home_frame, self._hub)
-        self._tabs.addTab(self._home_frame, label_icon("Operate"), "Operate Home")
+        # Wave-10 Phase C (slice D): the Operate Home tab holds the OperateHome directly. The global
+        # chrome (status bar / posture / omnibar) is owned once by the app-shell (_app_shell) that
+        # wraps the whole top area, so the old per-tab PageLayout wrapper (_home_frame) + its binder
+        # + its duplicate domain-nav rail were redundant and are gone. OperateHome's OWN domain grid
+        # (⇄ its domain-screen stack + the "← Domains" back button) stays as the Operate content nav
+        # — the radio axis of the two-level IA (shell sidebar = surfaces; grid = radios).
+        self._tabs.addTab(self._operate_home, label_icon("Operate"), "Operate Home")
 
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its MAC/SSID/channel
         # into the Macro tab's variable fields, so a discovery in one surface is reusable in another.
@@ -729,14 +718,6 @@ class CyberControllerWindow(QMainWindow):
             pass
         return recommended_ui_mode(avail_h, explicit)
 
-    def _on_home_nav(self, key: str) -> None:
-        """Framed Operate Home sidebar nav: 'home' opens the domain grid, a domain key opens that
-        domain screen (show_domain no-ops on an unknown key, so this can never crash)."""
-        if key == "home":
-            self._operate_home.show_home()
-        else:
-            self._operate_home.show_domain(key)
-
     def _on_shell_nav(self, key: str) -> None:
         """App-shell sidebar nav: select the top-level surface for this destination in the tabs
         (dual with the tab-bar this slice). Unknown/hidden surface -> no-op, never crashes."""
@@ -778,7 +759,7 @@ class CyberControllerWindow(QMainWindow):
             # widget is still self._network_surface internally; only its label + loadout key changed.
             # Operate Home (the dual-axis domain grid) is the PRIMARY Operate surface post-rebuild,
             # so it leads the flat Operate (Targets/Control/Macros) action group in the strip.
-            ("Operate Home", self._home_frame),
+            ("Operate Home", self._operate_home),
             ("Operate", self._operate_surface),
             ("Survey", self._survey_surface),
             ("Analyze", self._network_surface),
