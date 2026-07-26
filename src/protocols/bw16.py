@@ -185,20 +185,20 @@ class BW16Protocol(BaseProtocol):
                 # Placeholder embedded in the name so the device-tab arg-entry prompts for the index
                 # and sends "AT+DEAUTHIDX=<value>"; a bare "AT+DEAUTHIDX" would be sent value-less.
                 "AT+DEAUTHIDX=<idx>",
-                "Attack",
+                "Offensive",
                 "Deauth the network at scan index n",
                 "idx",
                 danger="lab-only",
             ),
             CommandInfo(
                 "AT+DEAUTHIDX=ALL",
-                "Attack",
+                "Offensive",
                 "Deauth all scanned networks",
                 danger="lab-only",
             ),
             CommandInfo(
                 "AT+BEACONRANDOM=<count>",
-                "Attack",
+                "Offensive",
                 "Beacon spam n random SSIDs",
                 "count",
                 danger="lab-only",
