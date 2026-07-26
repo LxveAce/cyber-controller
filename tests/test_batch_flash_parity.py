@@ -1,10 +1,12 @@
-"""batch.BatchFlasher / FlashEngine flash-path parity (dedupe the drifting hand-copies).
+"""BatchFlasher delegates to the ONE flash path (FlashEngine) — no hand-maintained copy.
 
-The status pass found BatchFlasher._flash_one was a hand-maintained parallel copy of
-FlashEngine._flash_esptool, self-labeled "parity with FlashEngine" and drifting. Both flash paths
-now share flash_core.download_variant_image (the zip-vs-raw choice), and batch resolves the write
-offset the SAME way FlashEngine does — variant.get("offset") or <core>.app_offset(chip) — instead of
-silently ignoring a variant's explicit offset. These tests lock that shared behavior.
+Atlas's (b) ruling: `BatchFlasher._flash_one` now routes through `FlashEngine.flash` /
+`_flash_esptool`, so erase + variant + extra_args + `strip_reserved_extra_args` + offset + the tails
+all come from the single proven path, and a batch flash is byte-identical to a single flash of the
+same profile. These tests assert the delegation + that the brick-adjacent `extra_args` (and core_id)
+ride through UNTOUCHED, mocking `FlashEngine.flash` so no esptool/network runs. The per-firmware
+flash semantics (erase-fail, sha256, zip extraction) are covered at their own level —
+`test_flash_engine_*` + `test_flash_core` + `test_download_variant_image_zip_and_raw` below.
 """
 from __future__ import annotations
 
@@ -32,59 +34,69 @@ def test_download_variant_image_zip_and_raw(monkeypatch):
     zp = flash_core.download_variant_image(
         {"url": "z", "name": "board.bin", "zip_member": "merged.bin", "zip_name": "bundle.zip"},
         "/c", lambda _s: None)
-    # zip_name (the archive filename) is preferred over name; the member is passed through
     assert zp == "/x.bin" and calls["zip"] == ("z", "bundle.zip", "merged.bin")
 
 
-class _RecProfile:
-    """A flash_core-style profile that records the flash_assets call so a test can check it."""
-    def __init__(self, variant):
-        self._variant = variant
-        self.flash_kwargs: dict = {}
+def _spy_engine(monkeypatch, ok=True):
+    """Stub `FirmwareProfile.from_file` -> a fixed engine profile (with extra_args, to prove it
+    rides through) and `FlashEngine.flash` -> a spy recording (port, profile), returning *ok*.
+    Returns (calls, profile)."""
+    from src.core.flash_engine import FirmwareProfile, FlashEngine
+    prof = FirmwareProfile(id="marauder", core_id="marauder", chip="esp32",
+                           extra_args=["--after", "no_reset"], flash_mode="app")
+    monkeypatch.setattr(FirmwareProfile, "from_file", classmethod(lambda cls, path: prof))
+    calls = []
 
-    def app_offset(self, _chip):
-        return "0x10000"
+    def fake_flash(self, port, profile, progress=None):
+        calls.append((port, profile))
+        if progress:
+            progress(100, "flash complete")
+        return ok
 
-    def latest_release(self):
-        return ("tag", [self._variant])
-
-    def default_variant(self, assets, _chip):
-        return assets[0]
-
-    def support_files(self, _chip, _cache, _cap):
-        return None
-
-    def flash_assets(self, port, chip, app_path, cap, **kw):
-        self.flash_kwargs = kw
-        return 0
+    monkeypatch.setattr(FlashEngine, "flash", fake_flash)
+    return calls, prof
 
 
-def _run_batch(monkeypatch, tmp_path, variant):
+def test_batch_delegates_to_the_one_flash_path(monkeypatch):
     from src.core import batch as batch_mod
-    from src.core import flash_core
-    prof = _RecProfile(variant)
-    monkeypatch.setattr(flash_core, "get_profile", lambda _pid: prof)
-    monkeypatch.setattr(flash_core, "cache_dir", lambda: str(tmp_path))
-    monkeypatch.setattr(flash_core, "_detect_chip", lambda _port, _cap: "esp32")
-    monkeypatch.setattr(flash_core, "download_variant_image",
-                        lambda _v, _c, _cap: str(tmp_path / "app.bin"))
+    calls, prof = _spy_engine(monkeypatch, ok=True)
     bf = batch_mod.BatchFlasher(on_line=lambda _s: None)
-    res = bf.flash_sequential([batch_mod.FlashJob(port="COM3", profile_id="x")])
-    return res, prof
+    res = bf.flash_sequential([batch_mod.FlashJob(port="COM3", profile_id="marauder")])
+    assert len(calls) == 1                              # routed through the ONE FlashEngine.flash
+    port, passed = calls[0]
+    assert port == "COM3" and passed is prof            # the engine profile, not a hand-built one
+    assert res[0].success is True and res[0].exit_code == 0
 
 
-def test_batch_honors_an_explicit_variant_offset(monkeypatch, tmp_path):
-    # Was drift: batch ignored a variant's "offset" and wrote to the core default. Now it passes it,
-    # exactly like FlashEngine (variant.get("offset") or core.app_offset(chip)).
-    variant = {"name": "app.bin", "url": "u", "offset": "0x1000"}
-    res, prof = _run_batch(monkeypatch, tmp_path, variant)
-    assert res[0].success
-    assert prof.flash_kwargs.get("app_offset") == "0x1000"   # the variant's offset, not the default
+def test_job_options_and_extra_args_flow_through(monkeypatch):
+    # erase/mode/variant ride onto the engine profile (as a single flash sets them from the UI); the
+    # brick-adjacent extra_args + core_id ride UNTOUCHED -> byte-identical to a single flash.
+    from src.core import batch as batch_mod
+    calls, _prof = _spy_engine(monkeypatch, ok=True)
+    bf = batch_mod.BatchFlasher(on_line=lambda _s: None)
+    bf.flash_sequential([batch_mod.FlashJob(port="COM3", profile_id="marauder",
+                                            erase_first=True, mode="full", variant_name="cyd")])
+    _, passed = calls[0]
+    assert passed.erase_first is True and passed.flash_mode == "full" and passed.variant == "cyd"
+    assert passed.extra_args == ["--after", "no_reset"]   # NOT stripped by batch (the old gap)
+    assert passed.core_id == "marauder"
 
 
-def test_batch_falls_back_to_the_core_offset_when_variant_has_none(monkeypatch, tmp_path):
-    # No explicit offset -> app_offset resolves to profile.app_offset(chip) (0x10000) — the same
-    # value FlashEngine's `variant.get("offset") or core.app_offset(chip)` yields.
-    res, prof = _run_batch(monkeypatch, tmp_path, {"name": "app.bin", "url": "u"})
-    assert res[0].success
-    assert prof.flash_kwargs.get("app_offset") == "0x10000"
+def test_a_flashengine_failure_fails_the_job(monkeypatch):
+    from src.core import batch as batch_mod
+    _spy_engine(monkeypatch, ok=False)
+    bf = batch_mod.BatchFlasher(on_line=lambda _s: None)
+    res = bf.flash_sequential([batch_mod.FlashJob(port="COM3", profile_id="marauder")])
+    assert res[0].success is False and res[0].exit_code == 1
+
+
+def test_a_load_error_fails_only_that_job(monkeypatch):
+    # A bad profile id / unreadable profile must fail that ONE job, not abort the batch.
+    from src.core import batch as batch_mod
+    from src.core.flash_engine import FirmwareProfile
+    def boom(cls, p):
+        raise FileNotFoundError("nope")
+    monkeypatch.setattr(FirmwareProfile, "from_file", classmethod(boom))
+    bf = batch_mod.BatchFlasher(on_line=lambda _s: None)
+    res = bf.flash_sequential([batch_mod.FlashJob(port="COM3", profile_id="does-not-exist")])
+    assert len(res) == 1 and res[0].success is False and res[0].error

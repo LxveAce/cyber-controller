@@ -58,15 +58,13 @@ class BatchFlasher:
         with self._lock:
             self._results.clear()
 
-        from src.core import flash_core as flasher
-
         for i, job in enumerate(jobs, 1):
             if self._cancelled:
                 self._on_line(f"[batch] Cancelled after {i-1}/{len(jobs)} devices")
                 break
 
             self._on_line(f"[batch] Flashing {i}/{len(jobs)}: {job.profile_id} → {job.port}")
-            result = self._flash_one(job, flasher)
+            result = self._flash_one(job)
             with self._lock:
                 self._results.append(result)
             if self._on_complete:
@@ -82,11 +80,9 @@ class BatchFlasher:
         with self._lock:
             self._results.clear()
 
-        from src.core import flash_core as flasher
-
         threads: List[threading.Thread] = []
         for job in jobs:
-            t = threading.Thread(target=self._flash_worker, args=(job, flasher), daemon=True)
+            t = threading.Thread(target=self._flash_worker, args=(job,), daemon=True)
             threads.append(t)
             t.start()
 
@@ -97,111 +93,55 @@ class BatchFlasher:
         self._on_line(f"[batch] Complete: {sum(1 for r in self._results if r.success)}/{len(self._results)} succeeded")
         return self._results
 
-    def _flash_worker(self, job: FlashJob, flasher_module):
-        result = self._flash_one(job, flasher_module)
+    def _flash_worker(self, job: FlashJob):
+        result = self._flash_one(job)
         with self._lock:
             self._results.append(result)
         if self._on_complete:
             self._on_complete(result)
 
-    def _flash_one(self, job: FlashJob, flasher_module) -> FlashResult:
+    def _flash_one(self, job: FlashJob) -> FlashResult:
+        """Flash one device by delegating to the SINGLE flash path — FlashEngine._flash_esptool.
+
+        BatchFlasher used to hand-maintain a parallel copy of that flow, and the copy drifted (it
+        once ignored a variant's offset, and never applied a profile's ``extra_args`` —
+        brick-adjacent, since extra_args strips a ``--flash_size`` injection that would re-open a
+        wrong-size bootloop). Routing through FlashEngine means erase + variant + extra_args + the
+        offset + the tails (offline-vault fallback, size warning, support_members, source-only
+        messages) come from the ONE proven path — a batch flash is byte-identical to a single one.
+        """
+        from src.core.flash_engine import FirmwareProfile, FlashEngine
+        from src.core.resources import resource_path
+
         log: List[str] = []
         start = time.monotonic()
 
-        def capture(line: str):
-            log.append(line)
-            self._on_line(f"[{job.port}] {line}")
+        def progress(_pct: int, msg: str) -> None:
+            log.append(msg)
+            self._on_line(f"[{job.port}] {msg}")
+
+        def done(success: bool, error: str = "") -> FlashResult:
+            return FlashResult(
+                port=job.port, profile_id=job.profile_id, success=success,
+                exit_code=0 if success else 1, error=error, log=log,
+                duration_ms=int((time.monotonic() - start) * 1000),
+            )
 
         try:
-            profile = flasher_module.get_profile(job.profile_id)
-
-            if job.erase_first:
-                # A requested wipe that fails or is skipped must FAIL the job — never continue
-                # silently. erase_first exists to clear residual NVS/SPIFFS/user data that a merged
-                # or app reflash does NOT overwrite, so flashing over a skipped/failed erase leaves
-                # stale data behind while the job would otherwise report a clean success. Mirror
-                # FlashEngine.erase: derive ok from the erase rc.
-                capture(f"[erase] Erasing flash on {job.port}...")
-                chip = flasher_module._detect_chip(job.port, capture)
-                if not chip:
-                    capture("[error] erase requested but chip not detected — refusing to reflash "
-                            "without the wipe")
-                    return FlashResult(
-                        port=job.port, profile_id=job.profile_id, success=False,
-                        error="erase skipped: chip not detected", log=log,
-                        duration_ms=int((time.monotonic() - start) * 1000),
-                    )
-                erase_rc = flasher_module.erase(job.port, chip, capture)
-                if erase_rc != 0:
-                    capture(f"[error] erase failed (exit {erase_rc}) — refusing to reflash over "
-                            "stale flash")
-                    return FlashResult(
-                        port=job.port, profile_id=job.profile_id, success=False,
-                        exit_code=erase_rc, error="erase failed", log=log,
-                        duration_ms=int((time.monotonic() - start) * 1000),
-                    )
-
-            tag, assets = profile.latest_release()
-            chip = flasher_module._detect_chip(job.port, capture)
-            if not chip:
-                return FlashResult(
-                    port=job.port, profile_id=job.profile_id, success=False,
-                    error="Could not detect chip", log=log,
-                    duration_ms=int((time.monotonic() - start) * 1000),
-                )
-
+            profile_path = resource_path("src", "config", "profiles") / f"{job.profile_id}.json"
+            profile = FirmwareProfile.from_file(profile_path)
+            # Per-job options ride on the engine profile FlashEngine consumes, as a single flash
+            # sets them from the UI toggles: erase/mode/variant. The profile's own baud, extra_args,
+            # core_id and tails govern the rest (so a stray FlashJob.baud can't diverge from a
+            # single flash — the profile's flash baud is authoritative on the one path).
+            profile.erase_first = job.erase_first
+            profile.flash_mode = job.mode
             if job.variant_name:
-                variant = next((a for a in assets if a["name"] == job.variant_name), None)
-            else:
-                variant = profile.default_variant(assets, chip)
-
-            if not variant:
-                return FlashResult(
-                    port=job.port, profile_id=job.profile_id, success=False,
-                    error=f"No variant found for chip {chip}", log=log,
-                    duration_ms=int((time.monotonic() - start) * 1000),
-                )
-
-            cache = flasher_module.cache_dir()
-            # Shared with FlashEngine._flash_esptool via flash_core.download_variant_image: a
-            # firmware that ships a per-board ZIP bundle (e.g. GhostESP) carries a "zip_member" —
-            # download the archive + EXTRACT the merged image (writing the raw .zip to 0x0 leaves a
-            # non-booting board while esptool returns 0). One helper, so the choice can't drift.
-            app_path = flasher_module.download_variant_image(variant, cache, capture)
-            # Pinned-firmware integrity gate (parity with FlashEngine._flash_esptool): reject a
-            # tampered / changed pinned app image (bluejammer-esp32, hydra32, …) BEFORE esptool writes
-            # it. Non-pinned profiles carry no "sha256" so this is a no-op; a mismatch raises
-            # ValueError, caught below -> FlashResult(success=False), aborting that job.
-            if variant.get("sha256"):
-                flasher_module.verify_sha256(app_path, variant["sha256"], capture)
-
-            support = None
-            if job.mode == "full":
-                support = profile.support_files(chip, cache, capture)
-
-            # Honor a variant's explicit write offset (parity with FlashEngine._flash_esptool, which
-            # passes variant.get("offset") or core.app_offset(chip)). Omitting it wrote an
-            # offset-carrying variant to the core default — a real drift; this only affects variants
-            # that declare an "offset" (flash_assets falls back to app_offset(chip) otherwise).
-            app_offset = variant.get("offset") or profile.app_offset(chip)
-            rc = profile.flash_assets(
-                job.port, chip, app_path, capture,
-                mode=job.mode, baud=job.baud, support=support, app_offset=app_offset,
-            )
-
-            elapsed = int((time.monotonic() - start) * 1000)
-            return FlashResult(
-                port=job.port, profile_id=job.profile_id,
-                success=(rc == 0), exit_code=rc,
-                duration_ms=elapsed, log=log,
-            )
-
-        except Exception as e:
-            elapsed = int((time.monotonic() - start) * 1000)
-            return FlashResult(
-                port=job.port, profile_id=job.profile_id, success=False,
-                error=str(e), log=log, duration_ms=elapsed,
-            )
+                profile.variant = job.variant_name
+            ok = FlashEngine().flash(job.port, profile, progress)
+            return done(bool(ok), "" if ok else "flash failed")
+        except Exception as e:  # noqa: BLE001 — a per-device failure must fail that job, not the batch
+            return done(False, str(e))
 
 
 def create_deck_flash_plan() -> List[FlashJob]:

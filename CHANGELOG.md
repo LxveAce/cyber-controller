@@ -38,6 +38,19 @@ All notable changes to Cyber Controller are documented here. This project adhere
   response (verified against overpass-api.de) — not a fabricated `arf.json` (that schema is a phantom). OSM data is
   ODbL-licensed (attribution required wherever shown/exported). 5 offline parser tests.
 
+### Changed
+- **Batch flash now delegates to the one flash path (FlashEngine) — the hand-maintained copy is gone.**
+  `BatchFlasher._flash_one` used to hand-maintain a parallel copy of `FlashEngine._flash_esptool` that had drifted.
+  It now loads the engine profile by id (`FirmwareProfile.from_file`), applies the job's erase/mode/variant onto it,
+  and flashes via `FlashEngine.flash` — so erase + variant + **extra_args** + `strip_reserved_extra_args` + the write
+  offset + the tails (offline-vault fallback, size-mismatch warning, support_members, source-only messages) all come
+  from the single proven path. A batch flash is now byte-identical to a single flash of the same profile. This closes
+  a brick-adjacent divergence: `extra_args` strips a `--flash_size` injection that would otherwise re-open a wrong-size
+  bootloop, and the batch copy never applied it. Parity tests assert the delegation + that `extra_args`/`core_id` ride
+  through untouched; the batch erase/pinning tests were re-scoped to the delegation (their per-firmware flash semantics
+  are covered once, at the `FlashEngine`/`flash_core` level). `BatchFlasher` remains as a thin multi-port orchestrator
+  over the one engine (its `flash_parallel` multi-board capability is preserved).
+
 ### Fixed
 - **Batch flash de-drift: BatchFlasher and FlashEngine now share the download step + honor a variant's offset.**
   `BatchFlasher._flash_one` was a hand-maintained parallel copy of `FlashEngine._flash_esptool` (self-labeled "parity
