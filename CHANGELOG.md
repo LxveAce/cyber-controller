@@ -5,6 +5,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Fixed
+- **The app-shell status bar's device count + ARMED no longer go stale (GUI rebuild, Wave-10 Phase C).** The shell's
+  device-truth status (link count + ARMED) was pushed only once, at binder construction — its target/capture badges
+  are live via bus events, but nothing re-ran the device push when a board connected or disconnected, so the
+  always-visible chrome kept showing the startup state. Added `PageLayoutBinder.refresh_devices()` (re-runs the device
+  push) and call it from `_refresh_sidebar_devices()` — the app's existing device-change refresh point (poll +
+  connect/disconnect), right next to the slice-E landing-summary refresh. 2 parity tests (refresh_devices re-pushes
+  status; the device refresh point invokes it). Found while wiring slice E's landing summary; flagged, then fixed.
+
 ### Added
 - **The Operate Home landing strip now shows the most recent capture (GUI rebuild, Wave-10 Phase C, slice E+).**
   Per Atlas's slice-E ruling, the landing strip should earn its place beyond the always-visible status bar with

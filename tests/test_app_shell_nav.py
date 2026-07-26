@@ -147,3 +147,22 @@ def test_device_sidebar_folded_into_the_app_shell(win):
     assert in_shell, "device-sidebar is not inside the app-shell"
     # the device list still exists + is reachable (behavior unchanged)
     assert win._sidebar_device_list is not None
+
+
+def test_binder_refresh_devices_repushes_device_status(win):
+    # The binder's device-truth push (link count + ARMED) must be re-runnable: refresh_devices()
+    # re-invokes it, so the shell chrome can be brought up to date after the device set changes.
+    pushed = []
+    win._app_shell_binder._push_device_status = lambda: pushed.append(1)
+    win._app_shell_binder.refresh_devices()
+    assert pushed, "refresh_devices() did not re-push device status"
+
+
+def test_device_refresh_repushes_the_app_shell_status(win):
+    # Fix: the app-shell device status was only pushed once at construction (bus badges are live,
+    # but device status wasn't). _refresh_sidebar_devices() — the device-change refresh point — must
+    # re-push it, so the always-visible count + ARMED don't go stale after a connect/disconnect.
+    calls = []
+    win._app_shell_binder.refresh_devices = lambda: calls.append(1)
+    win._refresh_sidebar_devices()
+    assert calls, "_refresh_sidebar_devices did not re-push the app-shell device status"

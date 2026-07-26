@@ -50,6 +50,12 @@ class PageLayoutBinder:
         self._layout.set_badge("captures", self._capture_count())
         self._push_device_status()
 
+    def refresh_devices(self) -> None:
+        """Re-push device-truth status (link count + ARMED). The target/capture badges are already
+        live via bus events, but device status only ran at construction — a host must call this when
+        the device set changes (connect/disconnect) so the shell's count + ARMED don't go stale."""
+        self._push_device_status()
+
     def _on_target_event(self, _topic: str, _payload: dict) -> None:
         self._layout.set_badge("targets", self._pool_count())
 

@@ -1707,6 +1707,12 @@ class CyberControllerWindow(QMainWindow):
         # Slice E: the Operate Home landing summary shares this refresh point, so its device count +
         # ARMED state stay live on the same cadence as the sidebar (poll + connect/disconnect).
         self._refresh_home_summary()
+        # Fix: the app-shell status bar's device count + ARMED were only pushed once at construction
+        # (its target/capture badges are live via bus events, but device status wasn't) — re-push it
+        # here so the always-visible chrome doesn't go stale after a connect/disconnect.
+        binder = getattr(self, "_app_shell_binder", None)
+        if binder is not None:
+            binder.refresh_devices()
 
     def _on_sidebar_device_selected(self, current: QListWidgetItem | None, _prev: QListWidgetItem | None) -> None:
         if current is None:
