@@ -71,17 +71,28 @@ def test_status_fields_set_and_hide(qapp):
     p.set_status("bogus", "x")          # unknown field is a safe no-op
 
 
-def test_posture_toggle_is_a_boundary_signal(qapp):
+def test_posture_escalation_is_a_boundary_not_a_one_click_flip(qapp):
+    # Security-relevant: escalating to Offense must NOT flip on one click. It emits a request;
+    # only the host's post-auth set_posture applies it (mirrors domain_view's active boundary).
     p = PageLayout()
-    seen = []
-    p.posture_changed.connect(seen.append)
-    p._on_posture_clicked()             # simulate the header toggle click
-    assert p.posture == POSTURE_OFFENSE and seen == [POSTURE_OFFENSE]
-    p._on_posture_clicked()
-    assert p.posture == POSTURE_RECON and seen == [POSTURE_OFFENSE, POSTURE_RECON]
-    # set_posture is idempotent (no duplicate emit for the same state)
-    p.set_posture(POSTURE_RECON)
-    assert seen == [POSTURE_OFFENSE, POSTURE_RECON]
+    requests, changes = [], []
+    p.posture_escalation_requested.connect(requests.append)
+    p.posture_changed.connect(changes.append)
+
+    p._on_posture_clicked()             # click to escalate
+    assert p.posture == POSTURE_RECON   # did NOT flip — still Recon
+    assert requests == [POSTURE_OFFENSE]  # emitted the authorization request
+    assert changes == []                # nothing actually changed yet
+
+    p.set_posture(POSTURE_OFFENSE)      # host authorised -> apply
+    assert p.posture == POSTURE_OFFENSE and changes == [POSTURE_OFFENSE]
+
+    p._on_posture_clicked()             # de-escalating to Recon is safe -> applies directly
+    assert p.posture == POSTURE_RECON and changes == [POSTURE_OFFENSE, POSTURE_RECON]
+    assert requests == [POSTURE_OFFENSE]  # no escalation request on a de-escalation
+
+    p.set_posture(POSTURE_RECON)        # idempotent (no duplicate emit for the same state)
+    assert changes == [POSTURE_OFFENSE, POSTURE_RECON]
 
 
 def test_sidebar_collapses(qapp):

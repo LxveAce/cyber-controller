@@ -10,7 +10,9 @@ All notable changes to Cyber Controller are documented here. This project adhere
   brief's biggest anti-template move: every view structurally identical, only the content differs. New reusable
   `ui/qt/page_layout.py` provides that frame — a collapsible left icon sidebar (destinations with live count-badge
   slots), a persistent top status bar (device-truth slots: link/battery/SD/GPS/task/ARMED), a header posture
-  toggle (Recon-Defense ↔ gated Offense, emitted as an authorization boundary the host confirms), an omnibar slot
+  toggle (Recon-Defense ↔ gated Offense — escalating to Offense is a real boundary: the click emits a
+  `posture_escalation_requested` signal and does NOT flip; only the host's post-auth `set_posture` applies it, so one
+  click can never silently arm Offense; de-escalating to Recon applies directly), an omnibar slot
   (command + fuzzy search), and a central content area. Signals (`destination_selected` / `posture_changed` /
   `omnibar_submitted`) let a host observe navigation without the frame knowing the app. Additive + standalone —
   main_window is untouched; wiring the badges/status/posture to the live hub is Phase B2/B3 and re-parenting the

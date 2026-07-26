@@ -66,7 +66,10 @@ class PageLayout(QWidget):
     """The shared shell frame: sidebar + status bar + posture toggle + omnibar + content."""
 
     destination_selected = pyqtSignal(str)  # a sidebar destination key was chosen
-    posture_changed = pyqtSignal(str)       # POSTURE_RECON | POSTURE_OFFENSE
+    posture_changed = pyqtSignal(str)       # posture ACTUALLY changed (after any auth) -> new value
+    # Escalating to Offense is a BOUNDARY: the click emits this REQUEST and does NOT flip. The host
+    # runs the authorization confirm/log, then calls set_posture(POSTURE_OFFENSE) to actually apply.
+    posture_escalation_requested = pyqtSignal(str)
     omnibar_submitted = pyqtSignal(str)     # the operator entered a command / search
 
     def __init__(self, parent: "Optional[QWidget]" = None) -> None:
@@ -214,11 +217,15 @@ class PageLayout(QWidget):
 
     # ── internals ────────────────────────────────────────────────────
     def _on_posture_clicked(self) -> None:
-        # Toggling is a BOUNDARY: the host authorises/logs the switch to Offense. We emit a REQUEST
-        # and let the host confirm; the button reflects the actual posture, not the raw click.
-        target = POSTURE_OFFENSE if self._posture == POSTURE_RECON else POSTURE_RECON
-        self._posture_btn.setChecked(self._posture == POSTURE_OFFENSE)  # revert visual until set
-        self.set_posture(target)
+        if self._posture == POSTURE_OFFENSE:
+            # De-escalating to Recon (dropping to passive) is always safe -> apply immediately.
+            self.set_posture(POSTURE_RECON)
+            return
+        # Escalating Recon -> Offense is a BOUNDARY: emit a REQUEST and DO NOT flip. The host runs
+        # the auth confirm/log, then calls set_posture(POSTURE_OFFENSE). Revert the checkable button
+        # to the still-current Recon state so one click can never silently arm Offense.
+        self._render_posture()
+        self.posture_escalation_requested.emit(POSTURE_OFFENSE)
 
     def _render_posture(self) -> None:
         offense = self._posture == POSTURE_OFFENSE
