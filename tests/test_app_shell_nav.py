@@ -166,3 +166,18 @@ def test_device_refresh_repushes_the_app_shell_status(win):
     win._app_shell_binder.refresh_devices = lambda: calls.append(1)
     win._refresh_sidebar_devices()
     assert calls, "_refresh_sidebar_devices did not re-push the app-shell device status"
+
+
+def test_armed_state_reaches_the_app_shell_end_to_end(win):
+    # End-to-end (Atlas's ask: connect/disconnect/arm updates it): a connected + ARMED device, then
+    # the device refresh -> the always-visible ARMED indicator reflects it (was stuck at the
+    # construction-time state before the fix). Disconnecting it clears the indicator.
+    from src.models.device import Device
+    dev = Device(port="COM15", firmware="marauder", connected=True)
+    dev.arm_state = "armed"
+    win._dm.add_device(dev)
+    win._refresh_sidebar_devices()
+    assert win._app_shell._status["armed"].text() == "ARMED"   # arm reaches the shell now
+    dev.connected = False
+    win._refresh_sidebar_devices()
+    assert win._app_shell._status["armed"].text() == ""        # cleared on disconnect
