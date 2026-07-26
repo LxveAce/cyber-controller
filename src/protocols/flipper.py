@@ -207,10 +207,16 @@ class FlipperProtocol(BaseProtocol):
             CommandInfo("subghz rx", "SubGHz", "Receive SubGHz signals"),
             CommandInfo("subghz tx", "Offensive", "Transmit SubGHz signal", danger="lab-only"),
             CommandInfo("subghz decode_raw", "SubGHz", "Decode raw SubGHz recording"),
+            # tx_from_file (subghz_cli.c:1157, usage:832): transmit a saved .sub; <path> required,
+            # <repeat> defaults 10, <device> defaults 0 (internal CC1101).
+            CommandInfo("subghz tx_from_file <file>", "Offensive",
+                        "Transmit a saved .sub file (opt: <repeat> <device 0|1>)", "file",
+                        danger="lab-only"),
             # ---- NFC ----
-            CommandInfo("nfc detect", "NFC", "Detect NFC tags"),
-            CommandInfo("nfc read", "NFC", "Read NFC tag data"),
-            CommandInfo("nfc emulate", "Offensive", "Emulate NFC tag", danger="lab-only"),
+            # flipper nfc opens an INTERACTIVE sub-REPL and discards same-line args, so a bare
+            # 'nfc <subcmd>' won't run as one line (nfc_cli.c:107). detect/read = phantoms; real
+            # subcmds: apdu/raw/emulate/mfu/scanner/dump/field. nfc emulate = real but REPL-only.
+            CommandInfo("nfc emulate", "Offensive", "Emulate an .nfc tag", danger="lab-only"),
             # ---- RFID ----
             CommandInfo("rfid read", "RFID", "Read 125kHz RFID"),
             CommandInfo("rfid emulate", "Offensive", "Emulate RFID tag", danger="lab-only"),
@@ -218,7 +224,7 @@ class FlipperProtocol(BaseProtocol):
             CommandInfo("ir rx", "IR", "Receive IR signal"),
             CommandInfo("ir tx", "Offensive", "Transmit IR signal", danger="lab-only"),
             # ---- Bluetooth ----
-            CommandInfo("bt info", "Bluetooth", "Bluetooth info"),
+            CommandInfo("bt hci_info", "Bluetooth", "HCI / adapter state (bt info was a no-op)"),
             # ---- GPIO ----
             CommandInfo("gpio set", "GPIO", "Set GPIO pin state"),
             CommandInfo("gpio read", "GPIO", "Read GPIO pin state"),
@@ -226,7 +232,10 @@ class FlipperProtocol(BaseProtocol):
             CommandInfo("storage list", "Storage", "List storage contents"),
             CommandInfo("storage read", "Storage", "Read file from storage"),
             # ---- Power ----
-            CommandInfo("power info", "Power", "Battery and power info"),
+            # Battery info is `info power`, NOT `power info` (a no-op); power_cli.c = off/reboot/
+            # reboot2dfu/5v/3v3 only.
+            CommandInfo("info power", "Power", "Battery / charge / voltage info"),
+            CommandInfo("power off", "Power", "Shut down the Flipper (drops the serial link)"),
             CommandInfo("power reboot", "Power", "Reboot Flipper"),
             CommandInfo("update", "Power", "Start firmware update"),
         ]
@@ -283,7 +292,7 @@ from src.core.broadcast import BroadcastVerb  # noqa: E402  (bottom import avoid
 
 BROADCAST_CAPABILITIES = {
     BroadcastVerb.SUBGHZ_SCAN: ((), "subghz rx"),
-    # No BLE_SCAN: stock Flipper "bt info" prints adapter info; it does NOT scan nearby BLE, so a
+    # No BLE_SCAN: Flipper "bt hci_info" prints adapter info; it does NOT scan nearby BLE, so a
     # BLE-Scan fan-out honestly SKIPS a Flipper instead of running a no-op (phantom removed).
     # No BLE_SPAM: stock Flipper CLI has no "bt spam" command (phantom removed).
 }
