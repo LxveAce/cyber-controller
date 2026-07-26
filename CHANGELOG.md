@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Shared PageLayout frame (GUI rebuild, Wave-10 Phase B1) — the one shell every screen inherits.** The design
+  brief's biggest anti-template move: every view structurally identical, only the content differs. New reusable
+  `ui/qt/page_layout.py` provides that frame — a collapsible left icon sidebar (destinations with live count-badge
+  slots), a persistent top status bar (device-truth slots: link/battery/SD/GPS/task/ARMED), a header posture
+  toggle (Recon-Defense ↔ gated Offense, emitted as an authorization boundary the host confirms), an omnibar slot
+  (command + fuzzy search), and a central content area. Signals (`destination_selected` / `posture_changed` /
+  `omnibar_submitted`) let a host observe navigation without the frame knowing the app. Additive + standalone —
+  main_window is untouched; wiring the badges/status/posture to the live hub is Phase B2/B3 and re-parenting the
+  app into it (parity-tested) is Phase C. 9 offscreen-Qt structural tests.
 - **Card identity (GUI rebuild, Wave-10 Phase A): a deterministic per-device identicon.** The rebuild's design
   brief calls for a Meshtastic-style avatar per MAC/node reused across an object's table row, detail panel, and
   archive so the same discovered thing has ONE recognisable face everywhere. New pure core `core/identicon.py`
