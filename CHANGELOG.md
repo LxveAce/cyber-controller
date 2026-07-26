@@ -6,6 +6,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **DeFlock/OSM ALPR import — the "Import from OSM" heatmap button (track complete).** The Flock heatmap tab now has
+  a user-initiated "Import from OSM" button that pulls crowdsourced ALPR camera locations for the current view from
+  OpenStreetMap. It runs the gated `fetch_alpr_geojson` on a worker thread (`_OsmImportWorker`, mirroring the existing
+  tile-fetch worker) so the network never blocks the UI, feeds the result through the same `set_geojson` path the map
+  already uses, and surfaces the ODbL attribution + camera count in the legend. It refuses a too-large view (a whole-
+  planet Overpass query) so the shared free API isn't abused — zoom to a real area first. New pure `world_px_inv`
+  (inverse web-mercator) reads the current view's bbox. Never auto-runs (only on the button click); the network is
+  injectable so tests never hit the live API. 4 added tests (world_px_inv round-trips; the button is present + wired;
+  the completion handler loads cameras + credits ODbL; the worker parses an injected Overpass response). This
+  completes the DeFlock/OSM ALPR awareness-map track (pure parser → gated fetch → UI).
 - **DeFlock/OSM ALPR import — the gated Overpass fetch (query-builder + cached runner).** Builds on the pure parser:
   `build_overpass_query(bbox)` produces the `[out:json]` OverpassQL node query for `man_made=surveillance` +
   `surveillance:type=ALPR` (grounded on the query verified working against overpass-api.de; bbox validated), and

@@ -20,6 +20,7 @@ from src.ui.qt.flock_heatmap_tab import (
     load_world_basemap,
     web_mercator,
     world_px,
+    world_px_inv,
     zoom_step,
 )
 
@@ -80,6 +81,15 @@ def test_world_px_shared_global_plane():
     assert world_px(10.0, 20.0, W)[0] < world_px(10.0, 60.0, W)[0]
     # default world scale is Earth's equatorial circumference in metres (scene units ~= metres)
     assert world_px(0.0, 0.0)[0] == pytest.approx(40_075_016.0 / 2)
+
+
+def test_world_px_inv_round_trips():
+    # the inverse the OSM-import view-bbox reads: world_px -> world_px_inv must recover (lat, lon).
+    W = 1000.0
+    for lat, lon in [(0.0, 0.0), (45.0, -73.0), (-33.9, 18.4), (51.5, -0.12), (33.45, -111.9)]:
+        x, y = world_px(lat, lon, W)
+        rlat, rlon = world_px_inv(x, y, W)
+        assert rlat == pytest.approx(lat, abs=1e-6) and rlon == pytest.approx(lon, abs=1e-6)
 
 
 def test_basemap_paths_projects_rings_into_world_plane():
@@ -899,3 +909,41 @@ def test_fix_status_text_shows_position_and_quality():
     assert _fh._fix_status_text(rmc, True) == "48.00000, 11.00000"
     assert _fh._fix_status_text(None, False) == "No Fix"   # no fix
     assert _fh._fix_status_text(f, False) == "No Fix"      # has=False overrides even a populated fix
+
+
+def test_import_osm_button_present_and_wired(qapp):
+    from PyQt5.QtWidgets import QPushButton
+    w = FlockHeatmapTab()
+    assert isinstance(w._btn_import_osm, QPushButton)
+    assert "OSM" in w._btn_import_osm.text()
+    assert callable(w._on_import_osm)
+
+
+def test_osm_import_completion_loads_cameras_and_credits_odbl(qapp):
+    w = FlockHeatmapTab()
+    gj = {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-111.9, 33.4]},
+         "properties": {"mac": "osm:1"}},
+        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-111.8, 33.5]},
+         "properties": {"mac": "osm:2"}},
+    ]}
+    w._on_osm_imported(gj)
+    assert w.camera_count == 2                              # loaded onto the map
+    txt = w._legend.text()
+    assert "OpenStreetMap" in txt and "ODbL" in txt        # ODbL attribution surfaced
+
+
+def test_osm_import_worker_parses_via_injected_fetcher(qapp):
+    import json
+    overpass = {"elements": [
+        {"type": "node", "id": 1, "lat": 33.4, "lon": -111.9,
+         "tags": {"man_made": "surveillance", "operator": "X"}},
+        {"type": "node", "id": 2, "lat": 33.5, "lon": -111.8,
+         "tags": {"man_made": "surveillance", "operator": "Y"}},
+    ]}
+    got = []
+    worker = _fh._OsmImportWorker((33.3, -112.0, 33.7, -111.7), None,
+                                  fetcher=lambda _url: json.dumps(overpass))
+    worker.imported.connect(lambda g: got.append(g))
+    worker.run()                                           # synchronous: no live network, no thread
+    assert got and len(got[0]["features"]) == 2            # parsed OSM nodes -> camera features

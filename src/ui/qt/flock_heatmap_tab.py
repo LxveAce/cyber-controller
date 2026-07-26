@@ -15,7 +15,7 @@ import json
 import math
 from typing import Any, List, Optional, Tuple
 
-from src.core import flock, map_tiles
+from src.core import flock, flock_osm, map_tiles
 
 # ── pure projection core (no Qt — unit-testable) ─────────────────────
 
@@ -132,12 +132,26 @@ _WORLD_PX = 40_075_016.0
 _GPS_LIVE_FILL = "#22d3ee"
 _GPS_STALE_FILL = "#6e7681"
 
+# Max view span (degrees) for a one-shot OSM import — refuses whole-planet queries so the shared
+# free Overpass API is never asked for the world; the user zooms to a real area first.
+_OSM_MAX_SPAN_DEG = 2.0
+
 
 def world_px(lat: float, lon: float, world: float = _WORLD_PX) -> Tuple[float, float]:
     """Project (lat, lon) into the shared global-mercator pixel plane [0, world]. Pure + Qt-free — the
     single projection both the camera layer and (Phase B) the world basemap are placed through."""
     x, y = web_mercator(lat, lon)
     return x * world, y * world
+
+
+def world_px_inv(px_x: float, px_y: float, world: float = _WORLD_PX) -> Tuple[float, float]:
+    """Inverse of :func:`world_px`: a shared-plane pixel (x, y) back to (lat, lon). Pure + Qt-free —
+    lets a caller read the geographic bbox of the current view for an OSM/Overpass query."""
+    x, y = px_x / world, px_y / world
+    lon = x * 360.0 - 180.0
+    s = math.tanh((0.5 - y) * 2.0 * math.pi)          # exact inverse of web_mercator's y
+    lat = math.degrees(math.asin(max(-1.0, min(1.0, s))))
+    return lat, lon
 
 
 def basemap_paths(geojson: Any, world: float = _WORLD_PX) -> "List[List[Tuple[float, float]]]":
@@ -510,6 +524,28 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                     self.tile.emit(x, y, z, data)
             self.done.emit()
 
+    class _OsmImportWorker(QThread):
+        """User-initiated OSM/Overpass ALPR import off the GUI thread (mirrors _TileFetchWorker).
+
+        Runs ONE gated Overpass query via flock_osm.fetch_alpr_geojson (cached/rate-limited there)
+        and emits the cameras GeoJSON; a network/parse error is reported, not raised."""
+        imported = pyqtSignal(dict)   # cameras GeoJSON
+        failed = pyqtSignal(str)
+
+        def __init__(self, bbox, cache_path, fetcher=None) -> None:
+            super().__init__()
+            self._bbox = bbox
+            self._cache_path = cache_path
+            self._fetcher = fetcher
+
+        def run(self) -> None:
+            try:
+                gj = flock_osm.fetch_alpr_geojson(
+                    self._bbox, self._cache_path, fetcher=self._fetcher)
+                self.imported.emit(gj)
+            except Exception as exc:  # noqa: BLE001 — a network/parse error must not crash the tab
+                self.failed.emit(str(exc))
+
     class FlockHeatmapTab(QWidget):
         """A heatmap of located ALPR cameras from a Flock scan's GeoJSON. Offscreen-renderable."""
 
@@ -522,12 +558,16 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._latest_gj: "Optional[dict]" = None
             self._visible = False
             self._unloaded = False   # True while the scene is freed for a backgrounded tab (see hideEvent)
+            self._osm_workers: "List[_OsmImportWorker]" = []   # retained so a run isn't GC'd
+            self._osm_fetcher = None   # None -> real network; tests inject a fake fetcher(url)->str
 
             root = QVBoxLayout(self)
             _note = QLabel(
-                "Cameras appear from a live scan or a loaded cameras.geojson, on a real street basemap. "
-                "The map stays offline by default; turn on “Online tiles” once, with internet, and pan your "
-                "area to cache the streets — after that it works offline. A bundled camera dataset is still coming.")
+                "Cameras appear from a live scan or a loaded cameras.geojson, on a real street "
+                "basemap. The map stays offline by default; turn on “Online tiles” once, with "
+                "internet, and pan your area to cache the streets — after that it works offline. "
+                "“Import from OSM” pulls crowdsourced ALPR locations for the view from OSM "
+                "(awareness-only; ODbL).")
             _note.setWordWrap(True)
             _note.setStyleSheet("color:#8b949e;padding:4px 2px;")
             root.addWidget(_note)
@@ -542,9 +582,15 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._btn_export.setToolTip("Save the cameras currently on the map as a spreadsheet-friendly CSV "
                                         "(lat, lon, MAC, SSID, RSSI, channel, first/last seen, count).")
             self._btn_export.clicked.connect(self._on_export_csv)
+            self._btn_import_osm = QPushButton("Import from OSM")
+            self._btn_import_osm.setToolTip(
+                "Import crowdsourced ALPR camera locations for the current view from OpenStreetMap "
+                "(DeFlock/Overpass). Awareness-only; © OpenStreetMap (ODbL). Zoom in first.")
+            self._btn_import_osm.clicked.connect(self._on_import_osm)
             file_row.addWidget(self._btn_load)
             file_row.addWidget(self._btn_folder)
             file_row.addWidget(self._btn_export)
+            file_row.addWidget(self._btn_import_osm)
             file_row.addStretch(1)
             root.addLayout(file_row)
 
@@ -1282,6 +1328,58 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             finally:
                 QApplication.restoreOverrideCursor()
                 self._btn_load.setEnabled(True)
+
+        # ── OSM/DeFlock import (user-initiated, off the GUI thread) ──
+        def _view_bbox(self) -> "Tuple[float, float, float, float]":
+            """The current view's geographic bbox as (south, west, north, east) — the visible scene
+            rect (world_px) inverse-projected. world_px y grows south, so top-left maps to NW."""
+            r = self._view.mapToScene(self._view.viewport().rect()).boundingRect()
+            n_lat, w_lon = world_px_inv(r.left(), r.top())       # top-left  -> north-west
+            s_lat, e_lon = world_px_inv(r.right(), r.bottom())   # bot-right -> south-east
+            clamp = lambda v, lo, hi: max(lo, min(hi, v))        # noqa: E731 — tiny local clamp
+            return (clamp(s_lat, -85.0, 85.0), clamp(w_lon, -180.0, 180.0),
+                    clamp(n_lat, -85.0, 85.0), clamp(e_lon, -180.0, 180.0))
+
+        def _osm_cache_path(self) -> str:
+            import os
+            return os.path.join(self._flock_data_dir(), "osm-alpr-cache.geojson")
+
+        def _on_import_osm(self) -> None:
+            """User-initiated: import ALPR cameras for the current view from OSM/Overpass, off the
+            GUI thread. Never auto-run. Refuses a too-large view so the shared free Overpass API
+            isn't asked for the whole planet — the cached fetch is otherwise rate-limit-friendly."""
+            s, w, n, e = self._view_bbox()
+            if (n - s) > _OSM_MAX_SPAN_DEG or (e - w) > _OSM_MAX_SPAN_DEG:
+                self._legend.setText("Zoom in to import OSM cameras — the view is too large.")
+                return
+            self._btn_import_osm.setEnabled(False)
+            self._legend.setText("Importing ALPR cameras from OpenStreetMap…")
+            worker = _OsmImportWorker(
+                (s, w, n, e), self._osm_cache_path(), fetcher=self._osm_fetcher)
+            self._osm_workers.append(worker)   # retain so a running QThread is never GC'd mid-run
+            worker.imported.connect(self._on_osm_imported)
+            worker.failed.connect(self._on_osm_failed)
+            worker.finished.connect(lambda w=worker: self._reap_osm_worker(w))
+            worker.start()
+
+        def _on_osm_imported(self, gj: dict) -> None:
+            count = len(gj.get("features", [])) if isinstance(gj, dict) else 0
+            self.set_geojson(gj)
+            self.reset_view()
+            self._legend.setText(
+                f"{count} ALPR camera(s) from OpenStreetMap · {flock_osm.ODBL_ATTRIBUTION}")
+            self._btn_import_osm.setEnabled(True)
+
+        def _on_osm_failed(self, msg: str) -> None:
+            self._legend.setText(f"OSM import failed: {msg}")
+            self._btn_import_osm.setEnabled(True)
+
+        def _reap_osm_worker(self, worker) -> None:
+            try:
+                self._osm_workers.remove(worker)
+            except ValueError:
+                pass
+            worker.deleteLater()
 
         def _open_data_folder(self) -> None:
             """Reveal the canonical Flock data folder in the OS file manager (best-effort)."""
