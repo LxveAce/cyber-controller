@@ -85,7 +85,11 @@ def test_switching_firmware_rebuilds(tk_root):
     v = _view(tk_root, firmware="marauder")
     assert v.shown_commands()
     v.set_firmware("bruce")
-    assert [c for c, _ in v.shown_commands()] == [qc.command for qc in quick_commands_for("bruce")]
+    # shown_commands is grouped_quick_commands flattened (grouped by category — what _shown is
+    # built from), NOT the flat quick_commands_for; they diverge now bruce's TX verbs are Offensive.
+    assert [c for c, _ in v.shown_commands()] == [
+        qc.command for _cat, cmds in grouped_quick_commands("bruce") for qc in cmds
+    ]
 
 
 def test_send_error_does_not_crash(tk_root):

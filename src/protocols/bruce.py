@@ -111,24 +111,24 @@ class BruceProtocol(BaseProtocol):
             # ---- IR ----
             CommandInfo("ir rx", "IR", "Receive (decode) an IR signal"),
             CommandInfo("ir rx raw", "IR", "Capture raw (unparsed) IR timing"),
-            CommandInfo("ir tx", "IR", "Transmit an IR signal", danger="lab-only"),
-            CommandInfo("ir tx_from_file <path>", "IR", "Replay a saved .ir capture", "path",
+            CommandInfo("ir tx", "Offensive", "Transmit an IR signal", danger="lab-only"),
+            CommandInfo("ir tx_from_file <path>", "Offensive", "Replay a saved .ir capture", "path",
                         danger="lab-only"),
             # ---- SubGHz ----
             CommandInfo("subghz rx", "SubGHz", "Receive (decode) SubGHz signals"),
             CommandInfo("subghz rx raw", "SubGHz", "Capture raw (unparsed) SubGHz samples"),
-            CommandInfo("subghz tx", "SubGHz", "Transmit a SubGHz signal", danger="lab-only"),
-            CommandInfo("subghz tx_from_file", "SubGHz", "Replay a saved SubGHz capture",
+            CommandInfo("subghz tx", "Offensive", "Transmit a SubGHz signal", danger="lab-only"),
+            CommandInfo("subghz tx_from_file", "Offensive", "Replay a saved SubGHz capture",
                         danger="lab-only"),
             # ---- BadUSB (HID injection) ----
-            CommandInfo("badusb run_from_file <script>", "BadUSB", "Run a BadUSB/Ducky script file",
+            CommandInfo("badusb run_from_file <script>", "Offensive", "Run a BadUSB/Ducky script",
                         "script", danger="lab-only"),
-            CommandInfo("badusb run_from_buffer", "BadUSB", "Run a Ducky/HID payload streamed over serial",
+            CommandInfo("badusb run_from_buffer", "Offensive", "Run a Ducky/HID payload (serial)",
                         danger="lab-only"),
             # ---- Scripting (JS interpreter — the bridge to radio/menu features) ----
-            CommandInfo("js run_from_file <path>", "Scripting", "Run an on-device JavaScript automation script",
+            CommandInfo("js run_from_file <path>", "Offensive", "Run an on-device JS script",
                         "path", danger="lab-only"),
-            CommandInfo("js run_from_buffer <size>", "Scripting", "Run a JS payload streamed over serial",
+            CommandInfo("js run_from_buffer <size>", "Offensive", "Run a JS payload over serial",
                         "size", danger="lab-only"),
             # ---- Storage (SD / LittleFS file management — passive) ----
             CommandInfo("storage list <path>", "Storage", "List files at a path", "path"),
