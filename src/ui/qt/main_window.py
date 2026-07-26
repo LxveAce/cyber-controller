@@ -458,7 +458,9 @@ class CyberControllerWindow(QMainWindow):
         self._scan_btn.clicked.connect(self._on_sidebar_scan)
         sidebar_layout.addWidget(self._scan_btn)
 
-        top_layout.addWidget(sidebar)
+        # Wave-10 Phase C slice B: the device-sidebar folds into the ONE app-shell sidebar (below
+        # the nav destinations, below), so the top area has a single sidebar, not two.
+        self._device_sidebar = sidebar
 
         # ── Tab widget (right side) ──────────────────────────────────
         # Detachable: any tab can pop out into its own resizable window and re-docks back in.
@@ -700,6 +702,8 @@ class CyberControllerWindow(QMainWindow):
             self._app_shell.add_destination(_key, _label)
         self._app_shell.destination_selected.connect(self._on_shell_nav)
         self._app_shell_binder = PageLayoutBinder(self._app_shell, self._hub)
+        # Slice B: fold the device panel into the one shell sidebar (below the nav destinations).
+        self._app_shell.add_sidebar_widget(self._device_sidebar)
         # Keep the sidebar in step with the tab strip (mode/loadout hides some surfaces).
         self._tabs.currentChanged.connect(self._sync_shell_nav)
         self._sync_shell_nav()

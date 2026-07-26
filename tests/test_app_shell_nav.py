@@ -109,3 +109,20 @@ def test_shell_sidebar_highlights_the_current_tab(win):
     win._tabs.setCurrentWidget(win._settings_tab)
     assert win._app_shell._destinations["settings"].isChecked()
     assert not win._app_shell._destinations["connect"].isChecked()   # only one active
+
+
+def test_device_sidebar_folded_into_the_app_shell(win):
+    # Slice B: the device-sidebar is now a child of the ONE app-shell (not a second column beside
+    # second column), so the top area is a single sidebar. The device list itself is unchanged.
+    from PyQt5.QtWidgets import QFrame
+    assert isinstance(win._device_sidebar, QFrame)
+    # it lives inside the app-shell (its ancestor chain includes the shell), not the bare top_widget
+    anc, in_shell = win._device_sidebar.parent(), False
+    while anc is not None:
+        if anc is win._app_shell:
+            in_shell = True
+            break
+        anc = anc.parent()
+    assert in_shell, "device-sidebar is not inside the app-shell"
+    # the device list still exists + is reachable (behavior unchanged)
+    assert win._sidebar_device_list is not None

@@ -183,6 +183,11 @@ class PageLayout(QWidget):
         if dest is not None:
             dest.setVisible(visible)
 
+    def add_sidebar_widget(self, widget: QWidget) -> None:
+        """Add an arbitrary widget to the sidebar below the destinations (e.g. a device/context
+        panel folded into the one shell sidebar). Inserted above the trailing stretch."""
+        self._sidebar_layout.insertWidget(self._sidebar_layout.count() - 1, widget)
+
     def set_badge(self, key: str, count: int) -> None:
         """Set a destination's live count badge (hidden at 0)."""
         dest = self._destinations.get(key)

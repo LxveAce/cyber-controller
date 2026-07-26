@@ -6,6 +6,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The device-sidebar folded into the one app-shell sidebar (GUI rebuild, Wave-10 Phase C, slice B).** The top
+  area previously had two left columns — the app-shell's nav sidebar AND the old device-sidebar (device list + scan)
+  beside the tabs. The device-sidebar is now a child of the single app-shell sidebar (below the nav destinations), so
+  there's one sidebar, not two — the clean single-sidebar state the tab-bar-hide slice needs to land on. Additive: the
+  device list, its refresh, and its selection→Devices-tab wiring are unchanged (only the frame's parent moved); new
+  `PageLayout.add_sidebar_widget`. Parity-tested (the device-sidebar is inside the app-shell, the device list still
+  works). Per Atlas's ruled order (B → reconcile → hide-tab-bar) and two-level IA (surfaces in the sidebar, radio
+  domains stay Operate content).
 - **The app-shell sidebar now tracks the mode system + the current tab (GUI rebuild, Wave-10 Phase C, slice B').**
   The shell's top-level nav sidebar previously listed all seven surfaces regardless of the interface mode; now it
   mirrors the tab strip — a destination is shown only when its surface is actually present (the pro/simple loadout
