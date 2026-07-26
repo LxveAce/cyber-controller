@@ -6,6 +6,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The app now opens inside the shared shell (GUI rebuild, Wave-10 Phase C, slice A) — the real template-break
+  begins.** A top-level `PageLayout` app-shell now wraps the whole top area (device-sidebar + tab widget) in the main
+  window's splitter, so the global chrome — the persistent status bar (live device count + `ARMED`/`ARMING`), the
+  gated posture toggle, and the omnibar — and a top-level nav **sidebar** frame the entire app, not just one tab. The
+  sidebar carries a destination per surface (Flash / Connect / Operate / Operate Home / Survey / Analyze / Settings)
+  wired to select that surface in the tabs; a `PageLayoutBinder` feeds the status bar + badges. Deliberately additive
+  and dual-nav: the `_tabs` widget and every tool are untouched **inside** the shell, and the tab-bar stays visible
+  this slice (hiding it — so the sidebar is the sole nav — is a later slice). Parity-tested (the shell is the splitter
+  top, all 7 tabs present + reachable via both the tab-bar AND the shell sidebar). Full suite green; the mode system,
+  tab detach, and splitter save/restore are unaffected.
 - **The framed home gained a persistent domain-nav sidebar (GUI rebuild, Wave-10 Phase C, slice 2).** The shared
   shell's sidebar around the Operate Home surface now carries a Home destination plus one per radio/domain (Wi-Fi,
   BLE, Sub-GHz, 2.4 GHz, NFC, GPS, …), wired to the inner `OperateHome` — so the domains are reachable from a

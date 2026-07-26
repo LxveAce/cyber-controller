@@ -465,7 +465,14 @@ class CyberControllerWindow(QMainWindow):
         self._tabs = DetachableTabWidget()
         top_layout.addWidget(self._tabs)
 
-        self._main_splitter.addWidget(top_widget)
+        # Wave-10 Phase C slice A: the app-shell frame wraps the whole top area (sidebar + tabs)
+        # so the global chrome (status bar / posture toggle / omnibar) and the top-level nav sidebar
+        # frame the app. Additive: top_widget + _tabs are untouched inside; the tab-bar stays
+        # this slice (dual nav); the sidebar nav + binder are wired after the surfaces are built.
+        from src.ui.qt.page_layout import PageLayout
+        self._app_shell = PageLayout()
+        self._app_shell.set_content(top_widget)
+        self._main_splitter.addWidget(self._app_shell)
 
         # ── Bottom half: persistent terminal ─────────────────────────
         self._build_persistent_terminal()
@@ -683,6 +690,17 @@ class CyberControllerWindow(QMainWindow):
         # How-To lives under the Help menu (see _on_howto), not the tab strip — keeps the top level at the
         # 6 working surfaces (Flash / Connect / Operate / Survey / Analyze / Settings) + Help.
 
+        # Wave-10 Phase C slice A: wire the app-shell sidebar as top-level nav now that the surfaces
+        # exist. Each destination selects its surface in _tabs (dual with the tab-bar this slice).
+        from src.ui.qt.page_layout_binder import PageLayoutBinder
+        self._shell_surfaces: dict[str, object] = {}
+        for _label, _surface in self._tab_registry():
+            _key = _label.lower().replace(" ", "-")
+            self._shell_surfaces[_key] = _surface
+            self._app_shell.add_destination(_key, _label)
+        self._app_shell.destination_selected.connect(self._on_shell_nav)
+        self._app_shell_binder = PageLayoutBinder(self._app_shell, self._hub)
+
     # ── Interface mode (dual-depth Simple / Pro) ────────────────────
 
     def _load_ui_mode(self) -> str:
@@ -711,6 +729,13 @@ class CyberControllerWindow(QMainWindow):
             self._operate_home.show_home()
         else:
             self._operate_home.show_domain(key)
+
+    def _on_shell_nav(self, key: str) -> None:
+        """App-shell sidebar nav: select the top-level surface for this destination in the tabs
+        (dual with the tab-bar this slice). Unknown/hidden surface -> no-op, never crashes."""
+        surface = self._shell_surfaces.get(key)
+        if surface is not None and self._tabs.indexOf(surface) >= 0:
+            self._tabs.setCurrentWidget(surface)
 
     # ── Loadout (which firmwares/hardware → which tabs are shown) ─────
     def _show_subtab(self, surface, widget) -> None:
