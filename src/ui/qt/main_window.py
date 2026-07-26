@@ -489,8 +489,8 @@ class CyberControllerWindow(QMainWindow):
         self.apply_loadout(self._load_loadout(), persist=False)
         # Land on the dual-axis Operate Home instrument — the primary surface post-rebuild. Fall
         # back to the Connect/Devices surface only if Operate Home isn't mounted (hidden/popped).
-        if self._tabs.indexOf(self._operate_home) >= 0:
-            self._tabs.setCurrentWidget(self._operate_home)
+        if self._tabs.indexOf(self._home_frame) >= 0:
+            self._tabs.setCurrentWidget(self._home_frame)
         else:
             self._show_subtab(self._connect_surface, self._device_tab)
         self._refresh_sidebar_devices()
@@ -621,7 +621,18 @@ class CyberControllerWindow(QMainWindow):
         # only — the fresh centers transmit nothing.
         from src.ui.qt.operate_home import build_operate_home
         self._operate_home, self._oh_wifi, self._oh_ble = build_operate_home()
-        self._tabs.addTab(self._operate_home, label_icon("Operate"), "Operate Home")
+        # Wave-10 Phase C (slice 1): wrap the primary dual-axis home in the shared PageLayout so
+        # the global status bar (live device truth), posture toggle + omnibar frame it. Additive:
+        # _operate_home stays the real OperateHome (its API + routing are used elsewhere); the FRAME
+        # (_home_frame) is what goes in the tab. Only the Operate Home tab's backing widget changes.
+        from src.ui.qt.page_layout import PageLayout
+        from src.ui.qt.page_layout_binder import PageLayoutBinder
+        self._home_frame = PageLayout()
+        self._home_frame.add_destination("home", "Home", "⌂")
+        self._home_frame.select_destination("home")
+        self._home_frame.set_content(self._operate_home)
+        self._home_binder = PageLayoutBinder(self._home_frame, self._hub)
+        self._tabs.addTab(self._home_frame, label_icon("Operate"), "Operate Home")
 
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its MAC/SSID/channel
         # into the Macro tab's variable fields, so a discovery in one surface is reusable in another.
@@ -705,7 +716,7 @@ class CyberControllerWindow(QMainWindow):
             # widget is still self._network_surface internally; only its label + loadout key changed.
             # Operate Home (the dual-axis domain grid) is the PRIMARY Operate surface post-rebuild,
             # so it leads the flat Operate (Targets/Control/Macros) action group in the strip.
-            ("Operate Home", self._operate_home),
+            ("Operate Home", self._home_frame),
             ("Operate", self._operate_surface),
             ("Survey", self._survey_surface),
             ("Analyze", self._network_surface),

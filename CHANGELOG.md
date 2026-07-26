@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The primary dual-axis home now lives inside the shared shell (GUI rebuild, Wave-10 Phase C, slice 1).** The
+  Operate Home tab — the dual-axis domain instrument — is now wrapped in the `PageLayout` frame with a live
+  `PageLayoutBinder`, so it carries the global chrome the whole rebuild rides on: the persistent status bar (live
+  device count + `ARMED`/`ARMING` truth), the gated posture toggle, and the omnibar. Deliberately additive and
+  minimal: only the Operate Home tab's backing widget changes (from the bare `OperateHome` to `PageLayout(OperateHome)`)
+  — every other tab, the pro/simple mode system, tab detach, and the command palette are untouched. A parity test
+  asserts all seven top-level tabs still construct, the tab is now a `PageLayout`, the inner `OperateHome` is
+  preserved inside it, and main_window's tab-index references still resolve. Full re-parenting of the remaining tabs
+  into the frame's sidebar is the next Phase-C slices.
 - **PageLayout frame is now wired to live data (GUI rebuild, Wave-10 Phase B2/B3).** New `ui/qt/page_layout_binder.py`
   (`PageLayoutBinder`) is a thin additive adapter over the existing CrossCommHub: it subscribes to the bus's
   `target.*` / `capture.*` events and pushes live counts into the frame's sidebar count-badges, reflects connected-

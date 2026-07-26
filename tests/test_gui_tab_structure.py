@@ -42,9 +42,10 @@ EXPECTED_TABS = [
     # Connect surface: Devices/Health/Nodes sub-views. See test_connect_surface_subtabs.
     ("Connect", "_connect_surface"),
     # OPERATE HOME: the dual-axis shell rebuild (domain grid -> per-domain three-panel). PROMOTED to
-    # the PRIMARY Operate surface (2026-07-25 flat->dual-axis migration) — it now LEADS the flat
-    # Operate in the strip and is the default landing tab. See test_operate_home_is_primary.
-    ("Operate Home", "_operate_home"),
+    # the PRIMARY Operate surface (2026-07-25 flat->dual-axis migration). Wave-10 Phase C wrapped it
+    # in the shared PageLayout shell, so the tab WIDGET is now _home_frame (the frame) and the inner
+    # OperateHome is _operate_home. See test_operate_home_is_primary + test_home_frame_wrap.
+    ("Operate Home", "_home_frame"),
     # WS-6 A (2026-07-21): the legacy flat Operate action loop — Targets/Broadcast/Console/Macros.
     # Still present (its tools become the ACTIVE posture later). See test_operate_surface_subtabs.
     ("Operate", "_operate_surface"),
@@ -97,7 +98,7 @@ def test_operate_home_is_primary(qapp, isolated_settings):
     win = _make_window()
     titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
     assert titles.index("Operate Home") < titles.index("Operate")   # leads the flat surface
-    assert win._tabs.currentWidget() is win._operate_home            # the default landing view
+    assert win._tabs.currentWidget() is win._home_frame             # the framed home is the landing view
 
 
 def test_flash_surface_subtabs(qapp, isolated_settings):
