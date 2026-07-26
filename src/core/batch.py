@@ -163,19 +163,11 @@ class BatchFlasher:
                 )
 
             cache = flasher_module.cache_dir()
-            # Parity with FlashEngine._flash_esptool: a firmware that ships a per-board ZIP bundle (e.g.
-            # GhostESP) carries a "zip_member" — download the archive and EXTRACT the flashable merged
-            # image. Writing the raw .zip to 0x0 (as the old unconditional download_to did) leaves a
-            # non-booting board while esptool returns 0, so the job is wrongly recorded as a success.
-            if variant.get("zip_member"):
-                app_path = flasher_module.download_and_extract(
-                    variant["url"], cache, variant.get("zip_name") or variant["name"],
-                    variant["zip_member"], capture,
-                )
-            else:
-                app_path = flasher_module.download_to(
-                    variant["url"], cache, variant["name"], capture
-                )
+            # Shared with FlashEngine._flash_esptool via flash_core.download_variant_image: a
+            # firmware that ships a per-board ZIP bundle (e.g. GhostESP) carries a "zip_member" —
+            # download the archive + EXTRACT the merged image (writing the raw .zip to 0x0 leaves a
+            # non-booting board while esptool returns 0). One helper, so the choice can't drift.
+            app_path = flasher_module.download_variant_image(variant, cache, capture)
             # Pinned-firmware integrity gate (parity with FlashEngine._flash_esptool): reject a
             # tampered / changed pinned app image (bluejammer-esp32, hydra32, …) BEFORE esptool writes
             # it. Non-pinned profiles carry no "sha256" so this is a no-op; a mismatch raises
@@ -187,9 +179,14 @@ class BatchFlasher:
             if job.mode == "full":
                 support = profile.support_files(chip, cache, capture)
 
+            # Honor a variant's explicit write offset (parity with FlashEngine._flash_esptool, which
+            # passes variant.get("offset") or core.app_offset(chip)). Omitting it wrote an
+            # offset-carrying variant to the core default — a real drift; this only affects variants
+            # that declare an "offset" (flash_assets falls back to app_offset(chip) otherwise).
+            app_offset = variant.get("offset") or profile.app_offset(chip)
             rc = profile.flash_assets(
                 job.port, chip, app_path, capture,
-                mode=job.mode, baud=job.baud, support=support,
+                mode=job.mode, baud=job.baud, support=support, app_offset=app_offset,
             )
 
             elapsed = int((time.monotonic() - start) * 1000)

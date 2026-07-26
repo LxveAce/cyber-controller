@@ -92,6 +92,9 @@ def test_batch_extracts_zip_member_instead_of_flashing_raw_zip(monkeypatch, tmp_
         def default_variant(self, assets, chip):
             return variant
 
+        def app_offset(self, chip):     # real flash_core profiles all expose this; batch reads it
+            return "0x0"
+
         def support_files(self, chip, cache, on_line):
             return None
 

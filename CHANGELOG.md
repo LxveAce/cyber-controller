@@ -39,6 +39,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   ODbL-licensed (attribution required wherever shown/exported). 5 offline parser tests.
 
 ### Fixed
+- **Batch flash de-drift: BatchFlasher and FlashEngine now share the download step + honor a variant's offset.**
+  `BatchFlasher._flash_one` was a hand-maintained parallel copy of `FlashEngine._flash_esptool` (self-labeled "parity
+  with FlashEngine") and had drifted. Both flash paths now call one shared `flash_core.download_variant_image` helper
+  for the zip-bundle-vs-raw download choice, so that decision can't diverge. And batch now passes
+  `app_offset=variant.get("offset") or profile.app_offset(chip)` — a real fix: a variant that declares a custom write
+  offset (e.g. a merged image at a non-default address) was previously flashed to the core default in batch mode while
+  FlashEngine honored it. New parity tests lock the shared download helper (zip vs raw) and that batch resolves the
+  write offset the same way FlashEngine does. (`extra_args` remains FlashEngine-only — it lives on the engine profile
+  the batch path doesn't carry — flagged as the residual for a future full unification of the orphaned batch path.)
 - **The app-shell status bar's device count + ARMED no longer go stale (GUI rebuild, Wave-10 Phase C).** The shell's
   device-truth status (link count + ARMED) was pushed only once, at binder construction — its target/capture badges
   are live via bus events, but nothing re-ran the device push when a board connected or disconnected, so the

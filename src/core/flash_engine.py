@@ -486,16 +486,13 @@ class FlashEngine:
 
         cache = flash_core.cache_dir()
         try:
-            # Firmwares that ship a per-board ZIP bundle (e.g. GhostESP) carry a
-            # "zip_member" — download the zip and extract the flashable merged image.
-            if variant.get("zip_member"):
-                # zip_name (when present) is the actual archive filename — shared across boards
-                # in a chip-wide bundle so the big download is cached/reused (Meshtastic).
-                app_path = flash_core.download_and_extract(
-                    variant["url"], cache, variant.get("zip_name") or variant["name"],
-                    variant["zip_member"], on_line)
-            else:
-                app_path = flash_core.download_to(variant["url"], cache, variant["name"], on_line)
+            # Firmwares that ship a per-board ZIP bundle (e.g. GhostESP) carry a "zip_member" — the
+            # zip is downloaded and the flashable merged image extracted; otherwise the raw asset is
+            # fetched. Shared with BatchFlasher._flash_one via flash_core.download_variant_image so
+            # the zip-vs-raw choice can't drift between the two flash paths. (zip_name, when set, is
+            # the actual archive filename — shared across boards in a chip-wide bundle so the big
+            # download is cached/reused, e.g. Meshtastic.)
+            app_path = flash_core.download_variant_image(variant, cache, on_line)
         except Exception as exc:
             # A DOWNLOAD/network failure legitimately falls back to the offline vault copy.
             fb = self._flash_offline_fallback(port, chip, profile, on_line, progress,

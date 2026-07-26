@@ -660,6 +660,19 @@ def verify_sha256(path: str, expected: str, on_line: Line) -> None:
     on_line(f"[verify] {os.path.basename(path)} sha256 OK")
 
 
+def download_variant_image(variant: dict, cache: str, on_line: Line) -> str:
+    """Download a release variant's flashable app image into *cache*; return the local path.
+
+    A firmware that ships a per-board ZIP bundle (a ``zip_member``) is downloaded and the merged
+    image EXTRACTED; otherwise the raw asset is fetched. Shared by FlashEngine._flash_esptool and
+    BatchFlasher._flash_one so the zip-vs-raw choice cannot drift between the two flash paths."""
+    if variant.get("zip_member"):
+        return download_and_extract(
+            variant["url"], cache, variant.get("zip_name") or variant["name"],
+            variant["zip_member"], on_line)
+    return download_to(variant["url"], cache, variant["name"], on_line)
+
+
 def cache_dir() -> str:
     d = os.path.join(tempfile.gettempdir(), "marauder_fw")
     os.makedirs(d, exist_ok=True)
