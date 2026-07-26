@@ -65,7 +65,6 @@ from src.ui.qt.theme import apply_theme
 from src.ui.qt.wardrive_tab import WardriveTab
 from src.ui.qt.icons import label_icon
 from src.ui.qt.widgets.cc_icon import create_cc_icon
-from src.ui.qt.widgets.cc_logo import CCLogo
 from src.ui.qt.widgets.command_palette import CommandPalette
 
 log = logging.getLogger(__name__)
@@ -392,23 +391,8 @@ class CyberControllerWindow(QMainWindow):
         sidebar.setMinimumWidth(160)
         sidebar.setMaximumWidth(280)
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setContentsMargins(0, 8, 0, 0)
         sidebar_layout.setSpacing(0)
-
-        # CC Logo (replaces plain text title)
-        logo = CCLogo()
-        logo_container = QHBoxLayout()
-        logo_container.setContentsMargins(10, 8, 10, 4)
-        logo_container.addStretch()
-        logo_container.addWidget(logo)
-        logo_container.addStretch()
-        sidebar_layout.addLayout(logo_container)
-
-        # Separator
-        sep = QFrame()
-        sep.setFixedHeight(1)
-        sep.setStyleSheet("background-color: #30363d;")
-        sidebar_layout.addWidget(sep)
 
         # Connection status indicator
         self._conn_status_label = QLabel("No device connected")
