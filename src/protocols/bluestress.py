@@ -104,7 +104,7 @@ class BlueStressProtocol(BaseProtocol):
             # ── Config (no carrier keyed; danger="") ─────────────────────────
             CommandInfo(
                 name="SET-ENGINE",
-                category="config",
+                category="Config",
                 description=(
                     "Select the active RF engine (e.g. base_nrf24 2.4 GHz vs coproc_proxy incl. "
                     "5 GHz via co-processor/SDR). Precondition for the whole config surface."
@@ -113,19 +113,19 @@ class BlueStressProtocol(BaseProtocol):
             ),
             CommandInfo(
                 name="SET-BAND",
-                category="config",
+                category="Config",
                 description="Set the operating band, single or dual (the real setter).",
                 args="<2g4|5g|2g4+5g|both>",
             ),
             CommandInfo(
                 name="SET-POWER",
-                category="config",
+                category="Config",
                 description="Set calibrated, ceiling-clamped output power by index or in dBm.",
                 args="<index | <n>dbm>",
             ),
             CommandInfo(
                 name="SET-SWEEP",
-                category="config",
+                category="Config",
                 description="Configure swept span/step/dwell for a band-occupancy survey.",
                 args="<span_khz> <step_khz> <dwell_ms>",
             ),
@@ -133,7 +133,7 @@ class BlueStressProtocol(BaseProtocol):
             # ── Safety attestation (no carrier keyed; danger="") ─────────────
             CommandInfo(
                 name="ATTEST",
-                category="safety",
+                category="Safety",
                 description=(
                     "Present the lab-license attestation token (first precondition of the "
                     "two-factor arm). ARM is refused 'not-attested' until this passes."
@@ -145,17 +145,17 @@ class BlueStressProtocol(BaseProtocol):
             # ARM/CONFIRM key no carrier (danger=""); START/CHAR emit RF (danger="illegal-tx").
             CommandInfo(
                 name="ARM",
-                category="operate",
+                category="Operate",
                 description="Open the arm window (factor 1 of the two-factor arm). No carrier is keyed.",
             ),
             CommandInfo(
                 name="CONFIRM",
-                category="operate",
+                category="Operate",
                 description="Factor 2 of the two-factor arm; transitions to ARMED. No carrier is keyed.",
             ),
             CommandInfo(
                 name="START",
-                category="operate",
+                category="Offensive",
                 description=(
                     "Key the carrier / begin emitting (ARMED-ONLY; refused 'not-armed' otherwise). "
                     "Illegal to operate on air (FCC 47 U.S.C. 333); authorized RF-shielded lab only."
@@ -164,7 +164,7 @@ class BlueStressProtocol(BaseProtocol):
             ),
             CommandInfo(
                 name="CHAR",
-                category="operate",
+                category="Offensive",
                 description=(
                     "Characterize mode: run a scripted sweep that TRANSMITS a known stimulus to "
                     "characterize RX/detector resilience (ARMED-ONLY). Emits RF; authorized "
@@ -177,7 +177,7 @@ class BlueStressProtocol(BaseProtocol):
             # ── Control: always-accepted cease (danger="") ───────────────────
             CommandInfo(
                 name="STOP",
-                category="control",
+                category="Control",
                 description=(
                     "Always-accepted cease: drop TX on the host and every co-proc/SDR chain, "
                     "return to idle (always reachable)."
@@ -187,7 +187,7 @@ class BlueStressProtocol(BaseProtocol):
             # ── Status / telemetry (read-only; danger="") ────────────────────
             CommandInfo(
                 name="TLM",
-                category="status",
+                category="Status",
                 description=(
                     "Live telemetry sample: state, band, center_khz, fwd/refl dBm, temperature, "
                     "cal status (measured/estimated)."
@@ -195,7 +195,7 @@ class BlueStressProtocol(BaseProtocol):
             ),
             CommandInfo(
                 name="LOG",
-                category="status",
+                category="Status",
                 description=(
                     "Query the append-only audit ring (records/dropped/newest); 'LOG PRIOR' "
                     "returns the persisted prior-session forensic snapshot that survives reboot."
@@ -206,18 +206,18 @@ class BlueStressProtocol(BaseProtocol):
             # ── Calibration (idle-only; no carrier keyed; danger="") ─────────
             CommandInfo(
                 name="CAL-SET",
-                category="calibration",
+                category="Calibration",
                 description="Stage one measured power-calibration point in RAM (idle-only).",
                 args="<index> <dbm>",
             ),
             CommandInfo(
                 name="CAL-COMMIT",
-                category="calibration",
+                category="Calibration",
                 description="Persist the staged calibration set to NVS, keyed by engine id (idle-only).",
             ),
             CommandInfo(
                 name="CAL-CLEAR",
-                category="calibration",
+                category="Calibration",
                 description="Wipe calibration (RAM + NVS) back to honest 'estimated' (idle-only).",
             ),
         ]
