@@ -1,7 +1,6 @@
 """Generate CC logo as QIcon for window/taskbar icon.
 
-Matches the sidebar CCLogo widget: two interlocking C arcs
-with glow layers and endpoint nodes.
+Two interlocking C arcs with glow layers and endpoint nodes.
 """
 
 import math
