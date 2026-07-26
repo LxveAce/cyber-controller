@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **PageLayout frame is now wired to live data (GUI rebuild, Wave-10 Phase B2/B3).** New `ui/qt/page_layout_binder.py`
+  (`PageLayoutBinder`) is a thin additive adapter over the existing CrossCommHub: it subscribes to the bus's
+  `target.*` / `capture.*` events and pushes live counts into the frame's sidebar count-badges, reflects connected-
+  device truth into the status bar (device count + an `ARMED`/`ARMING` indicator from a device's offensive-TX
+  arm_state), and completes the B1 posture boundary — a `posture_escalation_requested` from the frame is routed to a
+  host-supplied authorizer that **defaults to DENY**, so the shell can never arm global Offense unless the host
+  explicitly grants it. Reads the hub only, never mutates it; the frame stays app-agnostic and main_window is still
+  untouched (Phase C wires it in). Offscreen-tested with a fake hub (badges update on bus events, ARMED status,
+  deny-by-default + authorized-grant escalation, no-bus degradation).
 - **Shared PageLayout frame (GUI rebuild, Wave-10 Phase B1) — the one shell every screen inherits.** The design
   brief's biggest anti-template move: every view structurally identical, only the content differs. New reusable
   `ui/qt/page_layout.py` provides that frame — a collapsible left icon sidebar (destinations with live count-badge
