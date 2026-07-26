@@ -6,6 +6,19 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Drone Remote-ID detections now reach a live model — the shipped decoder is no longer a dead end.** The pure
+  `remote_id.py` decoder (ASTM F3411, shipped earlier) had ZERO production consumers: a flashed drone-detector
+  board fell through to `GenericProtocol`, so its Remote-ID serial output was never decoded end-to-end. Now a
+  `DroneMeshProtocol` (`src/protocols/drone_mesh.py`) parses the `drone_mesh_mapper` firmware output — both the
+  complete USB-Serial JSON detection and the degraded Meshtastic `Drone:`/`Pilot:` relay (a Pilot fix correlated
+  onto its Drone's MAC) — into `drone_found` events, and a pure `DroneWatchModel` (`src/core/drone_watch.py`) folds
+  them into bounded, TTL-aware, deduplicated sightings (keyed by ASTM Basic ID or MAC). Additive-only: the protocol
+  registers via the standard extension points and the profile's `protocol` field flips `null`→`drone-mesh`; the
+  shared Target/TargetType/target_ingest routing spine, AutoRouter, and safety.py are UNTOUCHED — a guard test
+  asserts a `drone_found` event returns None from `target_ingest._event_to_target` (a drone is never routed into
+  the pool, like the nrf24/iot terminal events). RX-only — decodes a drone's own broadcast, never authors a frame.
+  The public display name + a Tracker & Drone Watch tab are held for slice 2 (advertised parser count unchanged).
+  Grounded in firmware source, unverified against live silicon. 15 new tests incl. the routing-spine guard.
 - **An already-cracked capture surfaces its stored key instead of pointlessly re-cracking.** Now that the capture
   library persists, a solved capture (with its recovered PSK) survives to the next session — so hitting Run on it
   again would re-execute the whole dictionary attack. Worse, a *different* wordlist could report "not in wordlist

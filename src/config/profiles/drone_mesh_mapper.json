@@ -6,7 +6,7 @@
   "description": "colonelpanichacks/drone-mesh-mapper — passively captures WiFi Remote-ID (ASTM F3411) broadcasts from nearby drones and decodes them; node-mode relays detections over Meshtastic. Receive-only: no transmit, jam, or attack (README-confirmed). Blue-team counter-surveillance. MIT. Cyber Controller flashes the upstream image and adds no capability of its own.",
   "repo": "colonelpanichacks/drone-mesh-mapper",
   "backend": "esptool",
-  "protocol": null,
+  "protocol": "drone-mesh",
   "danger": "",
   "supports_suicide": false,
   "image_model": "merged-single-bin",

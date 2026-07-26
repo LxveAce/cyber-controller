@@ -27,6 +27,7 @@ from src.protocols.bluejammer import BlueJammerProtocol
 from src.protocols.bluestress import BlueStressProtocol
 from src.protocols.bruce import BruceProtocol
 from src.protocols.bw16 import BW16Protocol
+from src.protocols.drone_mesh import DroneMeshProtocol
 from src.protocols.esp32_div import Esp32DivProtocol
 from src.protocols.esp32_div_serial import Esp32DivSerialProtocol
 from src.protocols.esp_at import EspAtProtocol
@@ -92,6 +93,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "nrf-bluenullifier2": NrfBlueNullifier2Protocol,
     "bluestress": BlueStressProtocol,
     "flock-you": FlockYouProtocol,
+    "drone-mesh": DroneMeshProtocol,
     "esp_at": EspAtProtocol,
     # Fallbacks (both names map to the same passthrough class).
     "generic": GenericProtocol,
@@ -123,6 +125,11 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     "nrf-bluenullifier2": "nRF BlueNullifier 2 (lab-only)",
     "bluestress": "BlueStress (lab-only)",
     "flock-you": "Flock-You (ALPR detector)",
+    # NOTE: "drone-mesh" (the drone-mesh-mapper Remote-ID detector) is registered in PROTOCOLS
+    # above and works via identify()/get_protocol (so a connected detector's Remote-ID serial output
+    # parses into drone_found -> DroneWatchModel), but is intentionally NOT given a display name
+    # yet — slice 1 is the parser + model only; the display name + the tab land in slice 2, so the
+    # advertised parser/firmware count stays untouched. Same posture as esp32-div-serial.
     "esp_at": "ESP-AT (Espressif)",
     "generic": "Generic / Raw",
     "raw": "Generic / Raw",
@@ -266,6 +273,7 @@ _NAME_TO_MODULE: dict[str, str] = {
     "nrf-bluenullifier2": "src.protocols.nrf_bluenullifier",
     "bluestress": "src.protocols.bluestress",
     "flock-you": "src.protocols.flock_you",
+    "drone-mesh": "src.protocols.drone_mesh",
     "esp_at": "src.protocols.esp_at",
     "generic": "src.protocols",  # GenericProtocol lives in __init__
     "raw": "src.protocols",
@@ -308,6 +316,7 @@ __all__ = [
     "BlueStressProtocol",
     "NrfBlueNullifier2Protocol",
     "FlockYouProtocol",
+    "DroneMeshProtocol",
     "LxveOSProtocol",
     "LxveNodeProtocol",
     "EspAtProtocol",
