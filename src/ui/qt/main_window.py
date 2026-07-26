@@ -696,6 +696,12 @@ class CyberControllerWindow(QMainWindow):
         # Keep the sidebar in step with the tab strip (mode/loadout hides some surfaces).
         self._tabs.currentChanged.connect(self._sync_shell_nav)
         self._sync_shell_nav()
+        # Wave-10 Phase C (slice C): the app-shell sidebar is now the SOLE nav, so hide the flat tab
+        # strip — the veneer's last piece. The tabs still exist (setCurrentWidget drives them
+        # from the sidebar + palette); detach stays reachable via Ctrl+Shift+D + the "Detach Current
+        # Tab" palette command (the bar's double-click/context-menu paths go with the bar). Qt keeps
+        # a manual hide across addTab/removeTab (tabBarAutoHide off), so loadout won't un-hide it.
+        self._tabs.tabBar().hide()
 
     # ── Interface mode (dual-depth Simple / Pro) ────────────────────
 
@@ -1759,6 +1765,9 @@ class CyberControllerWindow(QMainWindow):
         if self._wifi_analyzer is not None:
             self._palette.add_command("Wi-Fi Analyzer", lambda: self._show_subtab(self._network_surface, self._wifi_analyzer))
         self._palette.add_command("Open Settings", lambda: self._tabs.setCurrentWidget(self._settings_tab))
+        # Slice C hides the tab-bar, so the bar's double-click/context-menu detach is gone — expose
+        # detach here (+ the Ctrl+Shift+D shortcut) so popping a surface out stays discoverable.
+        self._palette.add_command("Detach Current Tab", lambda: self._tabs.detach_current())
         self._palette.add_command("Dead Man's Switch Setup", self._on_suicide_setup)
         self._palette.add_command("Scan Ports", self._on_sidebar_scan)
         self._palette.add_command("Clear Terminal", self._on_clear_terminal)

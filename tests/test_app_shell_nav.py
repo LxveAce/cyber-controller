@@ -86,9 +86,30 @@ def test_shell_nav_selects_the_surface_in_the_tabs(win):
     assert win._tabs.currentWidget() is win._operate_home
 
 
-def test_tab_bar_still_visible_this_slice(win):
-    # slice A keeps the tab-bar (hiding it is slice C) — nothing is lost, both navs work
-    assert win._tabs.tabBar().isVisibleTo(win._tabs) or not win._tabs.tabBar().isHidden()
+def test_tab_bar_is_hidden_sidebar_is_sole_nav(win):
+    # Slice C: the flat tab strip is hidden — the app-shell sidebar is now the sole visible nav.
+    assert win._tabs.tabBar().isHidden()
+    # every surface is still reachable via the sidebar (setCurrentWidget drives the hidden tabs).
+    win._app_shell.select_destination("survey")
+    assert win._tabs.currentWidget() is win._survey_surface
+    win._app_shell.select_destination("flash")
+    assert win._tabs.currentWidget() is win._flash_surface
+
+
+def test_tab_bar_stays_hidden_after_a_loadout_change(win):
+    # apply_loadout removes+re-adds tabs; a manual tabBar().hide() must survive that (Qt keeps it
+    # since tabBarAutoHide is off) — else a mode/loadout switch would flash the strip back.
+    from src.config.loadout import default_loadout
+    win.apply_loadout(default_loadout(), persist=False)
+    assert win._tabs.tabBar().isHidden()
+
+
+def test_detach_stays_reachable_with_the_bar_hidden(win):
+    # The bar's double-click/context-menu detach is gone with the bar — detach must stay reachable
+    # via the command palette + the Ctrl+Shift+D shortcut + the API.
+    labels = [c.label for c in win._palette._commands]
+    assert "Detach Current Tab" in labels          # discoverable in the palette
+    assert callable(win._tabs.detach_current)       # the API the palette + shortcut call
 
 
 def test_shell_sidebar_mirrors_the_visible_tab_set(win):

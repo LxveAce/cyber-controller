@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The flat tab strip is hidden — the app-shell sidebar is the sole nav (GUI rebuild, Wave-10 Phase C, slice C).**
+  The visible template-break payoff: `_tabs.tabBar().hide()` removes the last piece of the old flat-tab veneer, so
+  the collapsible app-shell sidebar (surfaces) + OperateHome's domain grid (radios) are now the navigation. The tabs
+  still exist — the sidebar and command palette drive them via `setCurrentWidget`, and a loadout/mode change keeps the
+  bar hidden (Qt persists a manual hide with `tabBarAutoHide` off; parity-tested across an `apply_loadout` round-trip).
+  Detach loses its tab-bar affordances (double-click / context menu), so it stays reachable via the existing
+  `Ctrl+Shift+D` shortcut, the `detach_current()` API, and a NEW "Detach Current Tab" command in the palette. Lands on
+  the clean single-sidebar + single-chrome state slices B/D produced. Per Atlas's ruled order (fold → reconcile →
+  hide-tab-bar); this is the render-gate milestone — the aesthetic pass is the owner's call (surfaced, not auto-acted).
 - **The Operate Home tab holds OperateHome directly — nested frame reconciled (GUI rebuild, Wave-10 Phase C,
   slice D).** Slices 1–2 wrapped OperateHome in a per-tab `PageLayout` (`_home_frame`) to prove the frame + chrome
   worked in the app; slice A then made the single app-shell wrap the whole top area, so that per-tab frame's global
