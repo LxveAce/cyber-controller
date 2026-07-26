@@ -1371,7 +1371,9 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._btn_import_osm.setEnabled(True)
 
         def _on_osm_failed(self, msg: str) -> None:
-            self._legend.setText(f"OSM import failed: {msg}")
+            # An HONEST error, never a silent empty result: a failed fetch must NOT read as
+            # "0 cameras found". set_geojson is NOT called, so whatever is on the map stays.
+            self._legend.setText(f"Couldn't reach OpenStreetMap / Overpass — import failed. {msg}")
             self._btn_import_osm.setEnabled(True)
 
         def _reap_osm_worker(self, worker) -> None:

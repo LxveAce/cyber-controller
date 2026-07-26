@@ -947,3 +947,23 @@ def test_osm_import_worker_parses_via_injected_fetcher(qapp):
     worker.imported.connect(lambda g: got.append(g))
     worker.run()                                           # synchronous: no live network, no thread
     assert got and len(got[0]["features"]) == 2            # parsed OSM nodes -> camera features
+
+
+def test_osm_import_failure_is_honest_not_a_silent_empty(qapp):
+    # Atlas's guardrail: a failed/timed-out fetch must NOT read as "0 cameras found". The worker
+    # emits `failed` (not an empty geojson), and the handler shows an honest error WITHOUT wiping
+    # whatever cameras are already on the map.
+    def boom(_url):
+        raise OSError("no network")
+
+    w = FlockHeatmapTab()
+    w.set_session(_session_two_cameras())      # 2 real RF cameras already mapped
+    assert w.camera_count == 2
+    got = []
+    worker = _fh._OsmImportWorker((0.0, 0.0, 0.1, 0.1), None, fetcher=boom)
+    worker.failed.connect(lambda m: got.append(m))
+    worker.run()                               # synchronous — the fetch raises inside run()
+    assert got and "no network" in got[0]      # reported as a failure, not a silent empty result
+    w._on_osm_failed(got[0])
+    assert w.camera_count == 2                  # existing cameras NOT cleared by a failed import
+    assert "Overpass" in w._legend.text()       # an honest error is surfaced
