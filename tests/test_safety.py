@@ -396,7 +396,31 @@ def test_hardening_never_downgrades_any_real_command():
             old, new = _old(ci), classify(ci.name, ci)
             assert _SEVERITY.get(new, 0) >= _SEVERITY.get(old, 0), f"{pname}/{ci.name}: {old} -> {new} DOWNGRADE"
             changed += old != new
-    assert changed >= 4, "expected the known metadata-only escalations to still fire"
+    # Description-keyword escalation still fires on real commands (e.g. marauder's `sniffpwn`,
+    # "sniff-then-deauth"). The CATEGORY-escalation path no longer fires on any shipped command by
+    # design: the Offensive rollout gives every offensive verb an explicit danger= ("Offensive" is
+    # deliberately NOT in _OFFENSIVE_CATEGORIES — see test_offensive_category_danger), so category
+    # escalation is now a BACKSTOP for un-annotated commands, proven directly in
+    # test_metadata_escalation_mechanism_is_live.
+    assert changed >= 1, "description-keyword escalation must still fire on a real command"
+
+
+def test_metadata_escalation_mechanism_is_live():
+    """Backstop proof: the rollout moved real offensive commands to explicit danger=, but both
+    metadata-escalation paths must still fire for an un-annotated command — the safety net that
+    catches a future verb added to an offensive category (or with an attack-y description) without
+    a danger= label. A direct check, so it can't erode as more real commands become explicit."""
+    from src.core.safety import LAB_ONLY, _metadata_level
+    from src.protocols.base import CommandInfo
+
+    # Category path: an offensive-category verb with no danger + no name keyword still escalates.
+    cat = CommandInfo("frobnicate", "Attack", "does an unspecified thing")
+    assert _metadata_level(cat) == LAB_ONLY, "category escalation (_OFFENSIVE_CATEGORIES) went dead"
+    # Description path: an attack keyword in the description escalates a benignly-named verb.
+    desc = CommandInfo("frobnicate", "Misc", "runs a deauth flood against the AP")
+    assert _metadata_level(desc) == LAB_ONLY, "description-keyword escalation went dead"
+    # A genuinely neutral command is not escalated (guards against a match-everything regression).
+    assert _metadata_level(CommandInfo("ping", "System", "check liveness")) == safety.SAFE
 
 
 def test_real_cease_command_in_offensive_category_stays_safe():
