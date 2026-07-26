@@ -5,6 +5,19 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Added
+- **DeFlock/OSM ALPR camera import — pure Overpass parser (awareness map).** The Flock heatmap could only show
+  RF-detected cameras (Flock-You) or a locally-saved `cameras.geojson`; the long-noted "bundled camera dataset is
+  still coming" gap now has its grounded core. New `src/core/flock_osm.py`: `cameras_from_overpass()` maps an OSM
+  Overpass API JSON response (`man_made=surveillance` + `surveillance:type=ALPR` nodes) into the existing
+  `CameraDetection` records, and `geojson_from_overpass()` renders them as the same cameras-GeoJSON FeatureCollection
+  the heatmap's `load_geojson_file` already loads. It is **pure + offline** (takes a dict, no network — a gated fetch
+  is a separate later step) and **awareness-only**, exactly like the Flock-You detection path: DB entries carry no RF
+  data (rssi/channel/frequency = 0) and are tagged `detection_method="osm-overpass"` so an imported camera never poses
+  as a live RF hit; the OSM node id is the identity (`osm:<id>`, not a fake MAC). Grounded on a **real** Overpass
+  response (verified against overpass-api.de) — not a fabricated `arf.json` (that schema is a phantom). OSM data is
+  ODbL-licensed (attribution required wherever shown/exported). 5 offline parser tests.
+
 ### Fixed
 - **The app-shell status bar's device count + ARMED no longer go stale (GUI rebuild, Wave-10 Phase C).** The shell's
   device-truth status (link count + ARMED) was pushed only once, at binder construction — its target/capture badges
