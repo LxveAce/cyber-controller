@@ -37,10 +37,15 @@ class _HomeSummary(QWidget):
         super().__init__(parent)
         self._state = QLabel("")
         self._state.setObjectName("home_state_line")
+        # A grounded bit of session value the always-visible status bar does NOT show: the most
+        # recent capture (host pushes it from the real capture store; empty until one is logged).
+        self._last = QLabel("")
+        self._last.setObjectName("home_last_capture")
         self._metrics: dict[str, QLabel] = {}
         row = QHBoxLayout(self)
         row.setContentsMargins(10, 6, 10, 6)
         row.addWidget(self._state)
+        row.addWidget(self._last)
         row.addStretch(1)
         for key in ("devices", "targets", "captures", "armed"):
             lbl = QLabel("")
@@ -49,8 +54,10 @@ class _HomeSummary(QWidget):
             row.addWidget(lbl)
         self.set_summary(0, 0, 0, "")
 
-    def set_summary(self, devices: int, targets: int, captures: int, armed: str) -> None:
-        """Update the state-line + metric chips from real counts (a host pushes these)."""
+    def set_summary(self, devices: int, targets: int, captures: int, armed: str,
+                    last_capture: str = "") -> None:
+        """Update the state-line + metric chips from real counts (a host pushes these).
+        ``last_capture`` is the most-recent capture's label (grounded, may be empty)."""
         d, t, c = max(0, int(devices)), max(0, int(targets)), max(0, int(captures))
         self._metrics["devices"].setText(f"{d} device" + ("" if d == 1 else "s"))
         self._metrics["targets"].setText(f"{t} target" + ("" if t == 1 else "s"))
@@ -71,6 +78,8 @@ class _HomeSummary(QWidget):
             self._state.setText("No device connected — connect a board to begin")
         else:
             self._state.setText(f"{d} device" + ("" if d == 1 else "s") + " connected")
+        lc = (last_capture or "").strip()
+        self._last.setText(f"·  Last capture: {lc}" if lc else "")
 
 
 def _placeholder(title: str) -> QWidget:
@@ -137,9 +146,10 @@ class OperateHome(QWidget):
         outer.addWidget(self._stack)
         self.show_home()
 
-    def set_summary(self, devices: int, targets: int, captures: int, armed: str) -> None:
+    def set_summary(self, devices: int, targets: int, captures: int, armed: str,
+                    last_capture: str = "") -> None:
         """Push real hub counts into the landing summary (host-driven; OperateHome invents none)."""
-        self._summary.set_summary(devices, targets, captures, armed)
+        self._summary.set_summary(devices, targets, captures, armed, last_capture)
 
     def show_home(self) -> None:
         self._current = None

@@ -105,3 +105,23 @@ def test_target_bus_event_refreshes_the_summary(win):
     win._pool.add(_target())
     win._bus.publish("target.added", {})
     assert win._operate_home._summary._metrics["targets"].text() == "1 target"
+
+
+def test_last_capture_shows_the_most_recent_from_the_store(win):
+    # Grounded session value the status bar doesn't show: the strip surfaces the most recent capture
+    # from the real capture store (ssid + type), not a fabricated value.
+    from src.models.capture import CaptureRecord
+    win._hub.captures.add(
+        CaptureRecord(bssid="AA:BB:CC:DD:EE:FF", ssid="HomeNet", capture_type="eapol"))
+    win._refresh_home_summary()
+    text = win._operate_home._summary._last.text()
+    assert "HomeNet" in text and "eapol" in text
+
+
+def test_last_capture_is_optional_and_empty_by_default(win):
+    # No last capture -> the label is empty (the strip degrades cleanly, invents nothing).
+    m = win._operate_home._summary._last
+    win._operate_home.set_summary(1, 0, 0, "")
+    assert m.text() == ""
+    win._operate_home.set_summary(1, 0, 1, "", "HomeNet (eapol)")
+    assert "HomeNet (eapol)" in m.text()

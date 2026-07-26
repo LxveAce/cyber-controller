@@ -762,7 +762,16 @@ class CyberControllerWindow(QMainWindow):
         devs = list(dm.list_connected()) if dm is not None and hasattr(dm, "list_connected") else []
         states = [getattr(d, "arm_state", "") for d in devs]
         armed = "armed" if "armed" in states else ("pending" if "pending" in states else "")
-        home.set_summary(len(devs), targets, captures, armed)
+        # Grounded session value the status bar doesn't show: the most recent capture (insertion
+        # order, so all()[-1] is the last one logged). ssid may be empty -> fall back to the BSSID.
+        recent = caps.all() if caps is not None and hasattr(caps, "all") else []
+        last_capture = ""
+        if recent:
+            r = recent[-1]
+            name = getattr(r, "ssid", "") or getattr(r, "bssid", "") or "capture"
+            ctype = getattr(r, "capture_type", "")
+            last_capture = f"{name} ({ctype})" if ctype else name
+        home.set_summary(len(devs), targets, captures, armed, last_capture)
 
     def _sync_shell_nav(self, *_args) -> None:
         """Keep the app-shell sidebar in step with the tabs: show only destinations whose surface

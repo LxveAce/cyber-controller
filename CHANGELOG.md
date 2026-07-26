@@ -6,6 +6,17 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The Operate Home landing strip now shows the most recent capture (GUI rebuild, Wave-10 Phase C, slice E+).**
+  Per Atlas's slice-E ruling, the landing strip should earn its place beyond the always-visible status bar with
+  grounded session value the bar doesn't show. Added a "Last capture: SSID (type)" readout sourced from the real
+  capture store (`hub.captures.all()[-1]` — insertion order, so the most recent; SSID falls back to the BSSID when a
+  beacon hasn't resolved the ESSID yet). It stays empty until a capture is logged (invents nothing), refreshes on the
+  same bus/poll path as the rest of the strip, and is optional (`set_summary(..., last_capture="")`). Verified other
+  grounded ideas were NOT added because they lack a real source: there is no active-task/operation state and no stored
+  session start-time in the hub, so "active task" and "session duration" would be fabricated. 2 added parity tests
+  (a real `CaptureRecord` added to the store surfaces on the strip; the label is empty by default). nrf/nfc domains
+  remain honest "coming soon" placeholders — verified they have no grounded 2.4GHz/NFC object model yet (an nRF event
+  stream exists but does not ingest to targets; NFC is action-mapped only), so no screen was manufactured.
 - **The Operate Home landing gained a session state-line + metric strip (GUI rebuild, Wave-10 Phase C, slice E).**
   The dual-axis home now opens with a header ABOVE the domain grid: a one-line state-line ("N devices connected" /
   a connect prompt) plus a compact metric strip — devices / targets / captures / ARMED — sourced from the SAME hub the
