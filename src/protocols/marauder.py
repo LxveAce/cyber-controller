@@ -378,8 +378,8 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("ssid -a -n <name>", "SSID", "Add named SSID to list", "name"),
             CommandInfo("ssid -r <idx>", "SSID", "Remove SSID by index", "idx"),
             CommandInfo("ssid -a -g <count>", "SSID", "Generate random SSIDs", "count"),
-            CommandInfo("ssid -l", "SSID", "List SSIDs"),
-            CommandInfo("ssid -c", "SSID", "Clear SSID list"),
+            # (removed phantom `ssid -l` / `ssid -c`: SSID_CMD parses only -a/-g/-n/-r — both no-op,
+            #  verified vs ESP32Marauder CommandLine.cpp:1744-1780 @ v1.12.3)
             # ---- Channel ----
             CommandInfo("channel -s <ch>", "Channel", "Set Wi-Fi channel", "ch"),
             CommandInfo("channel", "Channel", "Show current channel"),
@@ -402,14 +402,16 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("blespam -t all", "Offensive", "BLE spam (all vendors)"),
             CommandInfo("stopscan", "BLE", "Stop BLE operation"),
             # ---- Karma ----
-            CommandInfo("karma", "Offensive", "Start Karma AP attack"),
-            CommandInfo("karma -s <ssid>", "Offensive", "Karma with specific SSID", "ssid"),
+            # Real form is `karma -p <index>` (HELP_KARMA_CMD:141); bare `karma` and `karma -s` both
+            # no-op — dispatch reads only -p (CommandLine.cpp:566-571 @ v1.12.3).
+            CommandInfo("karma -p <idx>", "Offensive", "Karma evil-twin AP (by index)", "idx"),
             # ---- Wardrive ----
+            # (removed phantom `wardrive -s`: fw stop-arg is commented out; stop via `stopscan`)
             CommandInfo("wardrive", "Wardrive", "Start wardriving (GPS required)"),
-            CommandInfo("wardrive -s", "Wardrive", "Stop wardriving"),
             # ---- Signal Strength ----
-            # Real Marauder verb is `foxhunt` (CommandLine.h SIGSTREN_CMD); `sigmon` was phantom.
-            CommandInfo("foxhunt", "Signal", "Signal-strength monitor / fox-hunt (-b/-w)"),
+            # Real verb is `sigmon` (h:67 SIGSTREN_CMD="sigmon"); `foxhunt` was the phantom
+            # (absent from v1.12.3); dispatch (cpp:540) parses no args.
+            CommandInfo("sigmon", "Signal", "Signal-strength monitor (RSSI of selected target)"),
             # ---- System / Misc ----
             CommandInfo("info", "System", "Show firmware info"),
             CommandInfo("help", "System", "Show help text"),
@@ -461,7 +463,7 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
         TargetAction("Monitor Channel", "sniffraw", "Raw-sniff all traffic on this AP's channel", ActionCategory.MONITOR, pre_commands=["channel -s {channel}"]),
         TargetAction("Probe Flood", "attack -t probe", "Flood probe requests for this SSID", ActionCategory.ATTACK),
         TargetAction("Rickroll Beacon", "attack -t rickroll", "Broadcast rickroll beacon spam", ActionCategory.ATTACK),
-        TargetAction("Karma Clone", "karma -s {ssid}", "Start evil-twin karma attack for this SSID", ActionCategory.ATTACK),
+        TargetAction("Karma Clone", "karma -p {index}", "Karma evil-twin on this AP by index", ActionCategory.ATTACK),
         TargetAction("Evil Portal", "evilportal -c start", "Spin up a captive-portal clone of this AP to harvest credentials", ActionCategory.ATTACK, pre_commands=["evilportal -c setap {index}"]),
         TargetAction("Wardrive Log", "wardrive", "Start wardrive logging (requires GPS)", ActionCategory.SCAN),
     ],

@@ -16,9 +16,10 @@ def test_marauder_tokens_corrected():
     assert "blescan" not in names and "bletrack" not in names
     # blespam token fixes
     assert any("sourapple" in n for n in names) and not any("blespam -t apple" == n for n in names)
-    # QA-6 #8/#9 (verified vs CommandLine.h): real signal verb is `foxhunt`, not `sigmon`; and there
-    # is no `deselect` verb (only `select`, plus `clearlist` to clear a selection).
-    assert "foxhunt" in names and "sigmon" not in names
+    # Real signal verb is `sigmon` (CommandLine.h:67 SIGSTREN_CMD="sigmon"); `foxhunt` is the
+    # phantom — absent from v1.12.3. (A prior QA-6 fix had this inverted; corrected 2026-07-26 by
+    # re-grounding vs the real source.) No `deselect` verb (only `select` + `clearlist`).
+    assert "sigmon" in names and "foxhunt" not in names
     assert not any(n.startswith("deselect") for n in names)
 
 
