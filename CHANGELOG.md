@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The app-shell omnibar is fused with the command palette (GUI rebuild, Wave-10 Phase C, Phase D polish).** The
+  design brief's omnibar was "command input fused with fuzzy search", but its `omnibar_submitted` signal wasn't wired
+  to anything. Now submitting the omnibar opens the command palette pre-filtered to the typed text (top fuzzy match
+  selected); the operator confirms with Enter. It deliberately does NOT auto-run the top match — some palette commands
+  are consequential (Quit, Dead Man's Switch), so a stray keystroke can never fire one straight from the omnibar; the
+  palette's confirmation step stays. New `CommandPalette.prime_query(query)` (pure: pre-fill + fuzzy-filter + select
+  top, returns the match count) and `open_palette_with(query)` (prime + show). Parity-tested (omnibar submit routes the
+  exact text into the palette; prime_query filters "connect" → "Connect to Device", empty shows all, no-match selects
+  nothing runnable) without ever blocking on the modal dialog.
 - **The flat tab strip is hidden — the app-shell sidebar is the sole nav (GUI rebuild, Wave-10 Phase C, slice C).**
   The visible template-break payoff: `_tabs.tabBar().hide()` removes the last piece of the old flat-tab veneer, so
   the collapsible app-shell sidebar (surfaces) + OperateHome's domain grid (radios) are now the navigation. The tabs

@@ -504,6 +504,11 @@ class CyberControllerWindow(QMainWindow):
             self._show_subtab(self._connect_surface, self._device_tab)
         self._refresh_sidebar_devices()
         self._build_command_palette()
+        # Wave-10 Phase C (Phase D polish): fuse the app-shell omnibar with the command palette —
+        # the brief's "command input + fuzzy search". Submitting the omnibar opens the palette
+        # pre-filtered to the typed text (top match selected); the operator confirms with Enter, so
+        # nothing runs straight off a keystroke (some commands are consequential).
+        self._app_shell.omnibar_submitted.connect(self._on_omnibar_submitted)
 
         # Apply the persisted interface mode to every tab now that they exist (no persist write-back).
         self._apply_ui_mode(self._load_ui_mode(), persist=False)
@@ -730,6 +735,10 @@ class CyberControllerWindow(QMainWindow):
         surface = self._shell_surfaces.get(key)
         if surface is not None and self._tabs.indexOf(surface) >= 0:
             self._tabs.setCurrentWidget(surface)
+
+    def _on_omnibar_submitted(self, text: str) -> None:
+        """Hand the app-shell omnibar text to the command palette as a pre-filled fuzzy query."""
+        self._palette.open_palette_with(text)
 
     def _sync_shell_nav(self, *_args) -> None:
         """Keep the app-shell sidebar in step with the tabs: show only destinations whose surface

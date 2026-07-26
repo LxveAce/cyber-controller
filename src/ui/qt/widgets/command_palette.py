@@ -153,6 +153,23 @@ class CommandPalette(QDialog):
         self._search.setFocus()
         self.exec_()
 
+    def prime_query(self, query: str) -> int:
+        """Pre-fill the search box with *query* and fuzzy-filter to it, selecting the top match.
+        Returns the match count. Split out from open_palette_with so a host (and tests) can prime
+        the filter without showing the modal dialog."""
+        q = query or ""
+        self._search.setText(q)
+        self._on_filter(q)
+        return self._list.count()
+
+    def open_palette_with(self, query: str) -> None:
+        """Open the palette pre-filtered by *query* (handed off from the shell omnibar). The top
+        match is selected; the operator confirms with Enter — nothing auto-runs, so a stray key
+        can never fire a consequential command straight from the omnibar."""
+        self.prime_query(query)
+        self._search.setFocus()
+        self.exec_()
+
     # ── Internal ────────────────────────────────────────────────────
 
     def _populate_list(self, commands: list[_Command]) -> None:
