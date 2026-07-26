@@ -205,18 +205,18 @@ class FlipperProtocol(BaseProtocol):
             CommandInfo("loader open <app>", "System", "Launch installed app by name", "app"),
             # ---- SubGHz ----
             CommandInfo("subghz rx", "SubGHz", "Receive SubGHz signals"),
-            CommandInfo("subghz tx", "SubGHz", "Transmit SubGHz signal", danger="lab-only"),
+            CommandInfo("subghz tx", "Offensive", "Transmit SubGHz signal", danger="lab-only"),
             CommandInfo("subghz decode_raw", "SubGHz", "Decode raw SubGHz recording"),
             # ---- NFC ----
             CommandInfo("nfc detect", "NFC", "Detect NFC tags"),
             CommandInfo("nfc read", "NFC", "Read NFC tag data"),
-            CommandInfo("nfc emulate", "NFC", "Emulate NFC tag", danger="lab-only"),
+            CommandInfo("nfc emulate", "Offensive", "Emulate NFC tag", danger="lab-only"),
             # ---- RFID ----
             CommandInfo("rfid read", "RFID", "Read 125kHz RFID"),
-            CommandInfo("rfid emulate", "RFID", "Emulate RFID tag", danger="lab-only"),
+            CommandInfo("rfid emulate", "Offensive", "Emulate RFID tag", danger="lab-only"),
             # ---- IR ----
             CommandInfo("ir rx", "IR", "Receive IR signal"),
-            CommandInfo("ir tx", "IR", "Transmit IR signal"),
+            CommandInfo("ir tx", "Offensive", "Transmit IR signal", danger="lab-only"),
             # ---- Bluetooth ----
             CommandInfo("bt info", "Bluetooth", "Bluetooth info"),
             # ---- GPIO ----

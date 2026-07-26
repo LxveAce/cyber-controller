@@ -29,6 +29,9 @@ def _ci(fw, name):
     ("bruce", "subghz tx"),
     ("bruce", "subghz tx_from_file"),
     ("flipper", "subghz tx"),
+    # flipper `ir tx` was danger="" (classified SAFE/ungated); the Offensive rollout gates it
+    # lab-only like Bruce. Regression: the category+safety coupling is a safety invariant.
+    ("flipper", "ir tx"),
 ])
 def test_rf_transmit_commands_are_gated(fw, name):
     ci = _ci(fw, name)
