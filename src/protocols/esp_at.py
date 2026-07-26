@@ -104,14 +104,14 @@ class EspAtProtocol(BaseProtocol):
             CommandInfo("AT+CWSAP?", "Wi-Fi", "Query the device's SoftAP config (SSID/channel/encryption)"),
             # SET form stands up a beaconing SoftAP (usable as a rogue / evil-twin AP) — active TX.
             CommandInfo("AT+CWSAP", "Offensive", "Configure/start the device's SoftAP (rogue AP)",
-                        danger="lab-only"),
+                        args='"<ssid>","<pwd>",<chl>,<ecn>', danger="lab-only"),
             # ---- BLE ----
             # BLE requires an init first, and only exists on BLE-capable chips/builds (AT+CMD confirms).
             CommandInfo("AT+BLEINIT", "BLE", "Initialize the BLE stack (required before BLE scan/advertise)"),
             CommandInfo("AT+BLESCAN", "BLE", "Passive BLE device scan"),
             # These two broadcast attacker-controlled BLE advertising frames — active TX.
             CommandInfo("AT+BLEADVDATA", "Offensive", "Set the BLE advertising payload",
-                        danger="lab-only"),
+                        args='"<hex adv data>"', danger="lab-only"),
             CommandInfo("AT+BLEADVSTART", "Offensive", "Start BLE advertising / broadcasting",
                         danger="lab-only"),
             # ---- Network (TCP-IP) ----
