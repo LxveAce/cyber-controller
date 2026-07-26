@@ -6,6 +6,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **DeFlock/OSM ALPR import — the gated Overpass fetch (query-builder + cached runner).** Builds on the pure parser:
+  `build_overpass_query(bbox)` produces the `[out:json]` OverpassQL node query for `man_made=surveillance` +
+  `surveillance:type=ALPR` (grounded on the query verified working against overpass-api.de; bbox validated), and
+  `fetch_alpr_geojson(bbox, cache_path)` is the USER-INITIATED runner that returns the cameras-GeoJSON. It honors the
+  guardrails: never auto-run (call only on an explicit user action); ONE query; an offline cache (default 24h) that IS
+  the rate-limit — a fresh cache is reused with no network call, so the shared free Overpass API is never hammered;
+  fixed https host (no SSRF surface); awareness-only (drives no device); and `ODBL_ATTRIBUTION` for the required OSM
+  ODbL credit. The network is injectable (`fetcher=`) so tests never hit the live API. 4 added tests (query has the
+  grounded tags + bbox order + limit; a bad bbox raises; the injected fetcher parses to GeoJSON with one query; a warm
+  cache serves without re-fetching). Remaining for this track: the heatmap "Import from OSM" button (UI wiring).
 - **DeFlock/OSM ALPR camera import — pure Overpass parser (awareness map).** The Flock heatmap could only show
   RF-detected cameras (Flock-You) or a locally-saved `cameras.geojson`; the long-noted "bundled camera dataset is
   still coming" gap now has its grounded core. New `src/core/flock_osm.py`: `cameras_from_overpass()` maps an OSM

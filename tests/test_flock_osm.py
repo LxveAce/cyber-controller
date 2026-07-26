@@ -7,8 +7,18 @@ network; the parser takes a dict and emits awareness-only CameraDetection record
 """
 from __future__ import annotations
 
+import json
+
+import pytest
+
 from src.core.flock import CameraDetection
-from src.core.flock_osm import OSM_DETECTION_METHOD, cameras_from_overpass, geojson_from_overpass
+from src.core.flock_osm import (
+    OSM_DETECTION_METHOD,
+    build_overpass_query,
+    cameras_from_overpass,
+    fetch_alpr_geojson,
+    geojson_from_overpass,
+)
 
 # Grounded on a real overpass-api.de response for man_made=surveillance + surveillance:type=ALPR.
 SAMPLE = {
@@ -68,3 +78,44 @@ def test_robust_to_empty_and_garbage_input():
     assert cameras_from_overpass({"elements": []}) == []
     assert cameras_from_overpass({"elements": [None, 7, "x", {}]}) == []
     assert geojson_from_overpass({})["features"] == []
+
+
+# ── gated fetch: query-builder + user-initiated cached runner (network mocked) ────────────────────
+
+_BBOX = (33.3, -112.2, 33.7, -111.8)   # (south, west, north, east)
+
+
+def test_build_overpass_query_has_the_grounded_tags_and_bbox():
+    q = build_overpass_query(_BBOX, limit=500, timeout=45)
+    assert q.startswith("[out:json][timeout:45];")
+    assert '"man_made"="surveillance"' in q and '"surveillance:type"="ALPR"' in q
+    assert "(33.3,-112.2,33.7,-111.8)" in q       # OverpassQL bbox order: S,W,N,E
+    assert q.endswith("out 500;")
+
+
+def test_build_overpass_query_rejects_a_bad_bbox():
+    with pytest.raises(ValueError):
+        build_overpass_query((90.0, 0.0, 10.0, 5.0))   # south > north
+
+
+def test_fetch_uses_the_injected_fetcher_and_parses_to_geojson(tmp_path):
+    seen = []
+
+    def fake(url):
+        seen.append(url)
+        return json.dumps(SAMPLE)
+
+    gj = fetch_alpr_geojson(_BBOX, str(tmp_path / "cams.geojson"), fetcher=fake)
+    assert gj["type"] == "FeatureCollection" and len(gj["features"]) == 2   # parsed to cameras
+    assert len(seen) == 1 and "man_made" in seen[0]   # one query, carrying the grounded tags
+
+
+def test_fetch_caches_and_does_not_hammer_the_api(tmp_path):
+    cache = str(tmp_path / "cams.geojson")
+    fetch_alpr_geojson(_BBOX, cache, fetcher=lambda _url: json.dumps(SAMPLE))   # warms the cache
+
+    def explode(_url):
+        raise AssertionError("must NOT re-fetch while the cache is fresh")
+
+    gj = fetch_alpr_geojson(_BBOX, cache, fetcher=explode)   # fresh cache -> no network
+    assert len(gj["features"]) == 2   # served from the offline cache

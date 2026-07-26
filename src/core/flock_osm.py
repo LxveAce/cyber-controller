@@ -15,10 +15,23 @@ DeFlock ALPR node carries ``man_made=surveillance`` + ``surveillance:type=ALPR``
 """
 from __future__ import annotations
 
+import json
+import os
+import time
+import urllib.parse
+import urllib.request
+
 from src.core.flock import CameraDetection
 
 #: detection_method stamped on OSM/Overpass-imported cameras — keeps them apart from RF detections.
 OSM_DETECTION_METHOD = "osm-overpass"
+
+#: Public Overpass API endpoint (fixed host — no user-controlled host, so no SSRF surface).
+OVERPASS_ENDPOINT = "https://overpass-api.de/api/interpreter"
+#: Descriptive User-Agent (Overpass asks callers to identify themselves).
+OVERPASS_UA = "cyber-controller flock-osm (awareness-only ALPR map; ODbL)"
+#: Attribution the UI must surface wherever OSM-sourced cameras are shown or exported.
+ODBL_ATTRIBUTION = "© OpenStreetMap contributors — ODbL (via the Overpass API)"
 
 
 def _is_num(v: object) -> bool:
@@ -64,3 +77,63 @@ def geojson_from_overpass(overpass: dict) -> dict:
         "type": "FeatureCollection",
         "features": [cam.to_feature() for cam in cameras_from_overpass(overpass)],
     }
+
+
+# ── gated fetch (query-builder + user-initiated cached runner) ───────────────────────────────────
+
+
+def build_overpass_query(bbox: "tuple[float, float, float, float]", *,
+                         limit: int = 2000, timeout: int = 60) -> str:
+    """Build an OverpassQL query for ALPR surveillance-camera nodes in *bbox*.
+
+    ``bbox`` = (south, west, north, east) decimal degrees (OverpassQL bbox order). Returns an
+    ``[out:json]`` node query for ``man_made=surveillance`` + ``surveillance:type=ALPR``, capped at
+    ``limit`` results. Grounded on the query verified working against overpass-api.de (2026-07-26).
+    """
+    s, w, n, e = (float(x) for x in bbox)
+    if not (-90.0 <= s <= n <= 90.0 and -180.0 <= w <= e <= 180.0):
+        raise ValueError(f"invalid bbox (need S<=N in [-90,90], W<=E in [-180,180]): {bbox}")
+    return (
+        f"[out:json][timeout:{max(1, int(timeout))}];"
+        f'node["man_made"="surveillance"]["surveillance:type"="ALPR"]'
+        f"({s},{w},{n},{e});"
+        f"out {max(1, int(limit))};"
+    )
+
+
+def _default_fetch(url: str, *, timeout: int = 90) -> str:
+    """The real Overpass GET (urllib + descriptive UA). GATED: reached only via a user-initiated
+    fetch when the cache is cold — never at import/startup. Fixed https host, so no SSRF surface."""
+    req = urllib.request.Request(url, headers={"User-Agent": OVERPASS_UA})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read().decode("utf-8", "replace")
+
+
+def _cache_fresh(path: str, max_age_secs: int) -> bool:
+    try:
+        return (time.time() - os.path.getmtime(path)) < max_age_secs
+    except OSError:
+        return False
+
+
+def fetch_alpr_geojson(bbox: "tuple[float, float, float, float]", cache_path: "str | None" = None,
+                       *, fetcher=None, max_age_secs: int = 86400) -> dict:
+    """USER-INITIATED import of ALPR camera locations for *bbox* → a cameras GeoJSON collection.
+
+    GATED — call ONLY on an explicit user action, NEVER auto-run. Respects the shared free Overpass
+    API: if *cache_path* holds a response younger than *max_age_secs* (default 24h) it is reused
+    with NO network call (the offline cache IS the rate-limit); else ONE query is fetched + cached
+    atomically. *fetcher(url)->str* overrides the network (tests inject it). Awareness-only, drives
+    no device; callers surface :data:`ODBL_ATTRIBUTION` wherever the cameras are shown or exported.
+    """
+    if cache_path and _cache_fresh(cache_path, max_age_secs):
+        with open(cache_path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    url = OVERPASS_ENDPOINT + "?data=" + urllib.parse.quote(build_overpass_query(bbox))
+    geojson = geojson_from_overpass(json.loads((fetcher or _default_fetch)(url)))
+    if cache_path:
+        tmp = cache_path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(geojson, fh)
+        os.replace(tmp, cache_path)
+    return geojson
