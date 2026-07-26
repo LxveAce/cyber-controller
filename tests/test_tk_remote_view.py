@@ -32,7 +32,9 @@ def _view(tk_root, firmware=None, sent=None, confirm=None, firmwares=None):
 def test_loads_quick_commands_matching_catalog(tk_root):
     v = _view(tk_root, firmware="marauder")
     shown = [c for c, _d in v.shown_commands()]
-    catalog = [qc.command for qc in quick_commands_for("marauder")]
+    # The view renders grouped_quick_commands (grouped by category, the same source _shown is built
+    # from), so compare against that flattened — not the flat quick_commands_for definition order.
+    catalog = [qc.command for _cat, cmds in grouped_quick_commands("marauder") for qc in cmds]
     assert shown == catalog and len(shown) > 0
 
 

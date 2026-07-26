@@ -347,23 +347,25 @@ class MarauderProtocol(BaseProtocol):
             # Marauder has no `deselect` verb (checked CommandLine.h); use `clearlist -a/-s` above.
             # The old `deselect -a/-s` entries were phantom (the device ignored them).
             # ---- Attack ----
-            CommandInfo("attack -t deauth", "Attack", "Deauthentication attack on selected"),
-            CommandInfo("attack -t deauth -c <ch>", "Attack", "Deauth on specific channel", "ch"),
-            CommandInfo("attack -t beacon -l", "Attack", "Beacon spam (AP list)"),
-            CommandInfo("attack -t beacon -r", "Attack", "Beacon spam (random SSIDs)"),
-            CommandInfo("attack -t beacon -a", "Attack", "Beacon spam (rickroll SSIDs)"),
-            CommandInfo("attack -t probe", "Attack", "Probe request flood"),
-            CommandInfo("attack -t rickroll", "Attack", "Rickroll beacon attack"),
-            CommandInfo("stopscan", "Attack", "Stop current attack"),
+            CommandInfo("attack -t deauth", "Offensive", "Deauthentication attack on selected"),
+            CommandInfo("attack -t deauth -c <ch>", "Offensive", "Deauth on a channel", "ch"),
+            CommandInfo("attack -t beacon -l", "Offensive", "Beacon spam (AP list)"),
+            CommandInfo("attack -t beacon -r", "Offensive", "Beacon spam (random SSIDs)"),
+            CommandInfo("attack -t beacon -a", "Offensive", "Beacon spam (rickroll SSIDs)"),
+            CommandInfo("attack -t probe", "Offensive", "Probe request flood"),
+            CommandInfo("attack -t rickroll", "Offensive", "Rickroll beacon attack"),
+            CommandInfo("stopscan", "Offensive", "Stop current attack"),
             # ---- Evil Portal ----
             # Real Marauder verbs (CommandLine.cpp EVIL_PORTAL_CMD: -c start [-w <html>] / sethtml /
-            # setap). A rogue captive-portal that harvests credentials from lured clients. The firmware
-            # stops it with stopscan ("Stop with stopscan"), so that's the cease button. reset/ack are
-            # firmware no-op stubs and sethtmlstr streams HTML over serial, so neither is a button here.
-            CommandInfo("evilportal -c start", "Evil Portal", "Start Evil Portal captive-portal attack", danger="lab-only"),
-            CommandInfo("evilportal -c setap <idx>", "Evil Portal", "Set the portal's target AP by index", "idx", danger="lab-only"),
-            CommandInfo("evilportal -c sethtml <file>", "Evil Portal", "Set the portal HTML file from the SD card", "file", danger="lab-only"),
-            CommandInfo("stopscan", "Evil Portal", "Stop the Evil Portal"),
+            # setap). A rogue captive-portal that harvests creds. stopscan (above) is the cease.
+            # reset/ack are firmware no-op stubs; sethtmlstr streams HTML over serial, so neither
+            # is a button here.
+            CommandInfo("evilportal -c start", "Offensive", "Start the captive-portal attack",
+                        danger="lab-only"),
+            CommandInfo("evilportal -c setap <idx>", "Offensive", "Set portal target AP by index",
+                        "idx", danger="lab-only"),
+            CommandInfo("evilportal -c sethtml <file>", "Offensive", "Set the portal HTML from SD",
+                        "file", danger="lab-only"),
             # ---- Sniffing ----
             CommandInfo("sniffbeacon", "Sniffing", "Sniff beacon frames"),
             CommandInfo("sniffdeauth", "Sniffing", "Sniff deauth frames"),
@@ -393,15 +395,15 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("sniffbt", "BLE", "Scan / sniff for BLE devices"),
             CommandInfo("sniffbt -t airtag", "BLE", "Sniff for AirTag / tracker beacons"),
             CommandInfo("sniffskim", "BLE", "BLE skimmer detection"),
-            CommandInfo("blespam -t sourapple", "BLE", "BLE spam (Apple / SourApple)"),
-            CommandInfo("blespam -t samsung", "BLE", "BLE spam (Samsung)"),
-            CommandInfo("blespam -t google", "BLE", "BLE spam (Google Fast Pair)"),
-            CommandInfo("blespam -t windows", "BLE", "BLE spam (Windows / Microsoft Swift Pair)"),
-            CommandInfo("blespam -t all", "BLE", "BLE spam (all vendors)"),
+            CommandInfo("blespam -t sourapple", "Offensive", "BLE spam (Apple / SourApple)"),
+            CommandInfo("blespam -t samsung", "Offensive", "BLE spam (Samsung)"),
+            CommandInfo("blespam -t google", "Offensive", "BLE spam (Google Fast Pair)"),
+            CommandInfo("blespam -t windows", "Offensive", "BLE spam (Windows Swift Pair)"),
+            CommandInfo("blespam -t all", "Offensive", "BLE spam (all vendors)"),
             CommandInfo("stopscan", "BLE", "Stop BLE operation"),
             # ---- Karma ----
-            CommandInfo("karma", "Karma", "Start Karma AP attack"),
-            CommandInfo("karma -s <ssid>", "Karma", "Karma with specific SSID", "ssid"),
+            CommandInfo("karma", "Offensive", "Start Karma AP attack"),
+            CommandInfo("karma -s <ssid>", "Offensive", "Karma with specific SSID", "ssid"),
             # ---- Wardrive ----
             CommandInfo("wardrive", "Wardrive", "Start wardriving (GPS required)"),
             CommandInfo("wardrive -s", "Wardrive", "Stop wardriving"),
