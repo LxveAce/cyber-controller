@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **The framed home gained a persistent domain-nav sidebar (GUI rebuild, Wave-10 Phase C, slice 2).** The shared
+  shell's sidebar around the Operate Home surface now carries a Home destination plus one per radio/domain (Wi-Fi,
+  BLE, Sub-GHz, 2.4 GHz, NFC, GPS, …), wired to the inner `OperateHome` — so the domains are reachable from a
+  persistent rail that stays visible inside a domain screen, not only from the grid you have to return to. Additive:
+  only the framed home's construction changes; the grid, every tab, and the mode system are untouched. Parity-tested
+  (the nav rail drives `show_domain`/`show_home`).
 - **The primary dual-axis home now lives inside the shared shell (GUI rebuild, Wave-10 Phase C, slice 1).** The
   Operate Home tab — the dual-axis domain instrument — is now wrapped in the `PageLayout` frame with a live
   `PageLayoutBinder`, so it carries the global chrome the whole rebuild rides on: the persistent status bar (live

@@ -85,3 +85,14 @@ def test_home_binder_wired_to_the_hub(win):
     # the binder exists and read the hub without error (the device-truth status slot is present)
     assert win._home_binder is not None
     assert "armed" in win._home_frame._status   # the status slot the binder drives exists
+
+
+def test_framed_home_sidebar_navigates_domains(win):
+    # The frame's sidebar carries Home + a destination per domain, wired to the inner OperateHome.
+    dests = win._home_frame._destinations
+    assert "home" in dests and "wifi" in dests and "ble" in dests   # the nav rail is populated
+    # selecting a domain destination drives the inner OperateHome to that domain screen
+    win._home_frame.select_destination("wifi")
+    assert win._operate_home.current_domain() == "wifi"
+    win._home_frame.select_destination("home")
+    assert win._operate_home.current_domain() is None               # back to the grid

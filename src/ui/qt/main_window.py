@@ -625,10 +625,16 @@ class CyberControllerWindow(QMainWindow):
         # the global status bar (live device truth), posture toggle + omnibar frame it. Additive:
         # _operate_home stays the real OperateHome (its API + routing are used elsewhere); the FRAME
         # (_home_frame) is what goes in the tab. Only the Operate Home tab's backing widget changes.
+        from src.ui.qt.domain_grid import _DOMAINS
         from src.ui.qt.page_layout import PageLayout
         from src.ui.qt.page_layout_binder import PageLayoutBinder
         self._home_frame = PageLayout()
+        # Persistent nav rail: Home (the domain grid) + one destination per radio/domain, so the
+        # sidebar drives the same domains as the grid but stays visible inside a domain screen.
         self._home_frame.add_destination("home", "Home", "⌂")
+        for _k, _icon, _title, _desc in _DOMAINS:
+            self._home_frame.add_destination(_k, _title, _icon)
+        self._home_frame.destination_selected.connect(self._on_home_nav)
         self._home_frame.select_destination("home")
         self._home_frame.set_content(self._operate_home)
         self._home_binder = PageLayoutBinder(self._home_frame, self._hub)
@@ -697,6 +703,14 @@ class CyberControllerWindow(QMainWindow):
         except Exception:  # noqa: BLE001
             pass
         return recommended_ui_mode(avail_h, explicit)
+
+    def _on_home_nav(self, key: str) -> None:
+        """Framed Operate Home sidebar nav: 'home' opens the domain grid, a domain key opens that
+        domain screen (show_domain no-ops on an unknown key, so this can never crash)."""
+        if key == "home":
+            self._operate_home.show_home()
+        else:
+            self._operate_home.show_domain(key)
 
     # ── Loadout (which firmwares/hardware → which tabs are shown) ─────
     def _show_subtab(self, surface, widget) -> None:
