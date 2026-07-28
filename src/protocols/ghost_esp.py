@@ -480,11 +480,16 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("listenprobes stop", "WiFi", "Stop the probe-request monitor"),
             CommandInfo("pineap", "WiFi", "Monitor for Wi-Fi Pineapple / rogue-AP beacons"),
             CommandInfo("pineap -s", "WiFi", "Stop the Pineapple monitor"),
-            # On-LAN recon (needs a prior connect)
+            # On-LAN recon (needs a prior connect); commandline.c @ Development-deki, all SAFE.
             CommandInfo("scanports", "WiFi", "Port-scan the joined LAN"),
             CommandInfo("scanarp", "WiFi", "ARP-sweep the joined LAN"),
             CommandInfo("scanlocal", "WiFi", "mDNS / host discovery on the joined LAN"),
             CommandInfo("scanssh", "WiFi", "Discover SSH hosts on the joined LAN"),
+            CommandInfo("netbiosscan", "WiFi", "NetBIOS name scan on the joined LAN"),
+            CommandInfo("httpbannerscan", "WiFi", "Grab HTTP banners on the joined LAN"),
+            CommandInfo("snmpprobe", "WiFi", "Probe for SNMP hosts on the joined LAN"),
+            CommandInfo("enumscan", "WiFi", "Enumerate services/hosts on the joined LAN"),
+            CommandInfo("congestion", "WiFi", "Channel-congestion analyzer"),
             # WiFi attacks
             CommandInfo("attack -d", "Offensive", "Deauthentication attack (needs a prior select -a)", danger="lab-only"),
             CommandInfo("attack -e", "Offensive", "EAPOL logoff (works where 802.11w PMF blocks classic deauth)", danger="lab-only"),
