@@ -490,6 +490,16 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("snmpprobe", "WiFi", "Probe for SNMP hosts on the joined LAN"),
             CommandInfo("enumscan", "WiFi", "Enumerate services/hosts on the joined LAN"),
             CommandInfo("congestion", "WiFi", "Channel-congestion analyzer"),
+            # More WiFi recon/status (commandline.c @ Development-deki, all SAFE reads).
+            CommandInfo("sweep", "WiFi", "Combined AP + station + BLE sweep, saved to SD"),
+            CommandInfo("wpa3check", "WiFi", "Check WPA3/PMF compliance of the selected AP"),
+            CommandInfo("trackap", "WiFi", "Track the selected AP by RSSI (needs select -a)"),
+            CommandInfo("tracksta", "WiFi", "Track the selected station by RSSI (needs select -s)"),
+            CommandInfo("wifistatus", "WiFi", "Show Wi-Fi STA status (SSID/RSSI/BSSID/channel)"),
+            CommandInfo("autoreconnect <on|off>", "WiFi", "Toggle Wi-Fi auto-reconnect", "on|off"),
+            # tplinktest actively toggles a Kasa smart-plug — no keyword, so explicit gate.
+            CommandInfo("tplinktest <on|off|loop>", "WiFi", "Toggle a TP-Link Kasa smart plug",
+                        "on|off|loop", danger="lab-only"),
             # Flock ALPR (surveillance-camera) detection — on-device GhostESP verbs (commandline.c
             # @ Development-deki), distinct from CC's OSM/DeFlock map import. All SAFE detection.
             CommandInfo("flockscan", "Flock", "Scan for Flock Safety ALPR cameras"),
