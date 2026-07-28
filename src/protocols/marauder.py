@@ -404,8 +404,15 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("settings -s <key> disable", "Settings", "Disable a setting by key", "key"),
             CommandInfo("reboot", "Settings", "Reboot the device"),
             CommandInfo("update -s", "Settings", "Update firmware from SD card"),
-            CommandInfo("gpsdata", "Settings", "Show GPS data"),
-            CommandInfo("nmea", "Settings", "Show raw NMEA data"),
+            # ---- GPS (all SAFE reads; CommandLine.h @ v1.12.3) ----
+            CommandInfo("gpsdata", "GPS", "Show GPS data"),
+            CommandInfo("nmea", "GPS", "Show raw NMEA data"),
+            # gps queries ONE field (distinct from gpsdata's full dump).
+            CommandInfo("gps -g <field>", "GPS",
+                        "Query one GPS field (fix/sat/lon/lat/alt/date/accuracy/text/nmea)",
+                        "field"),
+            CommandInfo("gpspoi -s", "GPS", "GPS POI marker: -s start / -m mark / -e end", "s|m|e"),
+            CommandInfo("wardrivepoi <label>", "GPS", "Tag a GPS POI during a wardrive", "label"),
             # ---- BLE ----
             CommandInfo("sniffbt", "BLE", "Scan / sniff for BLE devices"),
             CommandInfo("sniffbt -t airtag", "BLE", "Sniff for AirTag / tracker beacons"),
@@ -427,6 +434,7 @@ class MarauderProtocol(BaseProtocol):
             # Real verb is `sigmon` (h:67 SIGSTREN_CMD="sigmon"); `foxhunt` was the phantom
             # (absent from v1.12.3); dispatch (cpp:540) parses no args.
             CommandInfo("sigmon", "Signal", "Signal-strength monitor (RSSI of selected target)"),
+            CommandInfo("mactrack", "Signal", "Track a selected MAC by RSSI (proximity/fox-hunt)"),
             # ---- System / Misc ----
             CommandInfo("info", "System", "Show firmware info"),
             CommandInfo("help", "System", "Show help text"),
