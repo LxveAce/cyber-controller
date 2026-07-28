@@ -340,6 +340,10 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("list -c", "Scanning", "List discovered clients"),
             CommandInfo("clearlist -a", "Scanning", "Clear AP list"),
             CommandInfo("clearlist -s", "Scanning", "Clear station list"),
+            # Manually add a target to the list (h:111 ADD_CMD; SAFE list-management).
+            CommandInfo("add -a -b <mac>", "Scanning", "Add an AP to the list by BSSID", "mac"),
+            CommandInfo("add -c -b <mac> -ap <idx>", "Scanning",
+                        "Add a client (by MAC) to an AP index", "mac idx"),
             # ---- Network (LAN recon after joining an AP; CommandLine.h @ v1.12.3) ----
             # join connects marauder to an AP; the scans then enumerate that LAN (recon).
             CommandInfo("join -a <idx> -p <pwd>", "Network", "Join an AP by index + password",
@@ -404,6 +408,8 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("settings -s <key> disable", "Settings", "Disable a setting by key", "key"),
             CommandInfo("reboot", "Settings", "Reboot the device"),
             CommandInfo("update -s", "Settings", "Update firmware from SD card"),
+            CommandInfo("brightness -s <level>", "Settings", "Set brightness 0-9 (-c cycles)",
+                        "level"),
             # ---- GPS (all SAFE reads; CommandLine.h @ v1.12.3) ----
             CommandInfo("gpsdata", "GPS", "Show GPS data"),
             CommandInfo("nmea", "GPS", "Show raw NMEA data"),
@@ -440,6 +446,7 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("help", "System", "Show help text"),
             CommandInfo("save", "System", "Save settings to flash"),
             CommandInfo("load", "System", "Load settings from flash"),
+            CommandInfo("ls <dir>", "System", "List a directory on the SD card", "dir"),
             CommandInfo("led -s <hexcolor>", "System", "Set LED colour (hex, e.g. FF0000)", "hexcolor"),
         ]
 
