@@ -368,6 +368,17 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("attack -t beacon -a", "Offensive", "Beacon spam (rickroll SSIDs)"),
             CommandInfo("attack -t probe", "Offensive", "Probe request flood"),
             CommandInfo("attack -t rickroll", "Offensive", "Rickroll beacon attack"),
+            # More real attack subtypes (ATTACK_TYPE_* h:93-97); the "attack" keyword gates them,
+            # explicit danger= makes it belt-and-suspenders.
+            CommandInfo("attack -t badmsg", "Offensive", "Malformed-frame (bad-msg) attack",
+                        danger="lab-only"),
+            CommandInfo("attack -t sae", "Offensive", "WPA3 SAE-commit flood", danger="lab-only"),
+            CommandInfo("attack -t csa", "Offensive", "Channel-switch-announcement attack",
+                        danger="lab-only"),
+            CommandInfo("attack -t quiet", "Offensive", "802.11 Quiet-element attack",
+                        danger="lab-only"),
+            CommandInfo("attack -t sleep", "Offensive", "Force-sleep (power-save) attack",
+                        danger="lab-only"),
             CommandInfo("stopscan", "Offensive", "Stop current attack"),
             # ---- Evil Portal ----
             # Real Marauder verbs (CommandLine.cpp EVIL_PORTAL_CMD: -c start [-w <html>] / sethtml /
