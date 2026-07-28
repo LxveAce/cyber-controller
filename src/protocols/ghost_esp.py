@@ -495,6 +495,21 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("flockscan", "Flock", "Scan for Flock Safety ALPR cameras"),
             CommandInfo("flocklist", "Flock", "List detected Flock ALPR cameras"),
             CommandInfo("flockstop", "Flock", "Stop the Flock ALPR scan"),
+            # DNS sinkhole (cmd_portal.c) — a filtering DNS server; start/reload actively intercept
+            # DNS for pointed clients (MITM-capable), so they carry explicit danger="lab-only". The
+            # blocklist-management + query verbs are SAFE.
+            CommandInfo("sinkhole start", "Sinkhole", "Start the DNS sinkhole on :53",
+                        danger="lab-only"),
+            CommandInfo("sinkhole reload", "Sinkhole", "Reload the sinkhole blocklist (live)",
+                        danger="lab-only"),
+            CommandInfo("sinkhole stop", "Sinkhole", "Stop the DNS sinkhole"),
+            CommandInfo("sinkhole status", "Sinkhole", "Sinkhole running state + config"),
+            CommandInfo("sinkhole stats", "Sinkhole", "Sinkhole query/block counters"),
+            CommandInfo("sinkhole add <domain>", "Sinkhole", "Add a blocklist domain", "domain"),
+            CommandInfo("sinkhole remove <domain>", "Sinkhole", "Remove a blocklist domain",
+                        "domain"),
+            CommandInfo("sinkhole log <state>", "Sinkhole", "Toggle query logging", "on|off"),
+            CommandInfo("sinkhole download", "Sinkhole", "Download the configured blocklist"),
             # WiFi attacks
             CommandInfo("attack -d", "Offensive", "Deauthentication attack (needs a prior select -a)", danger="lab-only"),
             CommandInfo("attack -e", "Offensive", "EAPOL logoff (works where 802.11w PMF blocks classic deauth)", danger="lab-only"),
