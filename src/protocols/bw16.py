@@ -196,11 +196,31 @@ class BW16Protocol(BaseProtocol):
                 "Deauth all scanned networks",
                 danger="lab-only",
             ),
+            # Deauth by SSID NAME (distinct from the index/ALL forms). Grounded in the shipped
+            # km0_km4_image2.bin: literal "AT+DEAUTH=" + handlers "[DEAUTH] Deauthing: " /
+            # "[ERROR] SSID not found". (AT+DEAUTHALL exists too but is redundant with
+            # AT+DEAUTHIDX=ALL above, so it is deliberately not surfaced.)
+            CommandInfo(
+                "AT+DEAUTH=<ssid>",
+                "Offensive",
+                "Deauth the network with this SSID name",
+                "ssid",
+                danger="lab-only",
+            ),
             CommandInfo(
                 "AT+BEACONRANDOM=<count>",
                 "Offensive",
                 "Beacon spam n random SSIDs",
                 "count",
+                danger="lab-only",
+            ),
+            # Beacon-spam ONE specific SSID (distinct from the random form). Grounded in the .bin:
+            # literal "AT+BEACON=" + handler "[BEACON] Spamming SSID: ".
+            CommandInfo(
+                "AT+BEACON=<ssid>",
+                "Offensive",
+                "Beacon spam this specific SSID",
+                "ssid",
                 danger="lab-only",
             ),
             # ---- System ----
