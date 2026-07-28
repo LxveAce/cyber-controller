@@ -129,14 +129,14 @@ class BroadcastBar(QWidget):
         lbl.setObjectName("muted")
         return lbl
 
-    # ── reactive per-device sections ─────────────────────────────────
+    # ── live enable refresh ──────────────────────────────────────────
     def _on_timer(self) -> None:
         self._refresh_enabled()
 
     # ── interface mode (dual-depth Simple / Pro) ─────────────────────
     def set_ui_mode(self, mode: str) -> None:
-        """Simple hides the offensive attack verbs on the universal row; STOP ALL + scans stay. The
-        per-device sections are unaffected (they're the power surface). Presentation only."""
+        """Simple hides the offensive attack verbs on the universal (fan-out) row; STOP ALL + the
+        scans stay. Presentation only; single-device deep control lives on the Control tab."""
         pro = str(mode).lower() != "simple"
         for btn in self._advanced_buttons:
             btn.setVisible(pro)
