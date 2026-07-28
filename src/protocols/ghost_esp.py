@@ -553,6 +553,18 @@ class GhostESPProtocol(BaseProtocol):
             # Wardrive
             CommandInfo("startwd", "Wardrive", "Start wardriving"),
             CommandInfo("startwd -s", "Wardrive", "Stop wardriving"),
+            # Radio spectrum analyzers (add-on modules) — RX-ONLY, verified no CLI TX path
+            # (cmd_nrf24.c: no tx verb, no W_TX_PAYLOAD; cmd_subghz.c load/replay only displays).
+            CommandInfo("nrf24 start", "NRF24", "Start the nRF24 2.4GHz analyzer (RX-only)"),
+            CommandInfo("nrf24 stop", "NRF24", "Stop the nRF24 analyzer"),
+            CommandInfo("nrf24 status", "NRF24", "nRF24 analyzer state + SPI pins"),
+            CommandInfo("subghz start", "SubGHz", "Start the CC1101 sub-GHz scanner (RX-only)"),
+            CommandInfo("subghz stop", "SubGHz", "Stop the SubGHz scanner"),
+            CommandInfo("subghz status", "SubGHz", "SubGHz scanner state + snapshot + pins"),
+            CommandInfo("subghz capture", "SubGHz", "Capture a spectrum snapshot in RAM", "name"),
+            CommandInfo("subghz save", "SubGHz", "Save the current snapshot to SD", "name"),
+            CommandInfo("subghz load <name>", "SubGHz", "Load a saved snapshot", "name"),
+            CommandInfo("subghz list", "SubGHz", "List saved SubGHz snapshots on SD"),
             # Cast
             CommandInfo("dialconnect", "Cast", "DIAL / Chromecast control of LAN smart TVs"),
             # Print
