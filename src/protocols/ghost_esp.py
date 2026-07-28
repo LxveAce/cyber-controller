@@ -521,6 +521,22 @@ class GhostESPProtocol(BaseProtocol):
                         "cmd", danger="lab-only"),
             CommandInfo("webauth on", "Offensive", "Enable web-UI auth", danger="lab-only"),
             CommandInfo("webauth off", "Offensive", "Disable web-UI auth", danger="lab-only"),
+            # BadUSB HID injection (cmd_badusb.c) — active keystroke/mouse injection into the host.
+            # No danger keyword in the names, so the explicit danger= is what gates them.
+            CommandInfo("badusb run <file>", "Offensive", "Run a DuckyScript (HID injection)",
+                        "file", danger="lab-only"),
+            CommandInfo("badusb exec <size>", "Offensive", "Receive a DuckyScript then inject it",
+                        "size", danger="lab-only"),
+            CommandInfo("badusb type <text>", "Offensive", "Type text via the USB keyboard",
+                        "text", danger="lab-only"),
+            CommandInfo("badusb keysend <mod> <key>", "Offensive", "Send one HID keypress",
+                        "mod key", danger="lab-only"),
+            CommandInfo("badusb jiggle_start", "Offensive", "Start the USB mouse jiggler",
+                        danger="lab-only"),
+            CommandInfo("badusb keyboard_start", "Offensive", "Enter USB keyboard (HID) mode",
+                        danger="lab-only"),
+            CommandInfo("badusb trackpad_start", "Offensive", "Enter USB trackpad (HID) mode",
+                        danger="lab-only"),
             # BLE
             CommandInfo("blescan", "BLE", "Scan for BLE devices"),
             CommandInfo("blescan -s", "BLE", "Stop BLE operations"),
@@ -577,6 +593,8 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("commdisconnect", "Comm", "Disconnect the comm bridge"),
             CommandInfo("commsetpins <rx> <tx>", "Comm", "Set the comm-bridge UART pins", "rx,tx"),
             # System
+            CommandInfo("badusb list", "System", "List BadUSB scripts on the SD card"),
+            CommandInfo("badusb stop", "System", "Stop the current BadUSB script"),
             CommandInfo("chipinfo", "System", "Device / chip info"),
             CommandInfo("reboot", "System", "Reboot device"),
             CommandInfo("gpsinfo", "System", "GPS status"),
