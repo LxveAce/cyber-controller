@@ -433,12 +433,21 @@ class MarauderProtocol(BaseProtocol):
             # ---- BLE ----
             CommandInfo("sniffbt", "BLE", "Scan / sniff for BLE devices"),
             CommandInfo("sniffbt -t airtag", "BLE", "Sniff for AirTag / tracker beacons"),
+            # Device-type BLE detectors (cpp:989/993/996; passive scans, SAFE like the airtag one).
+            CommandInfo("sniffbt -t flipper", "BLE", "Sniff for Flipper Zero devices"),
+            CommandInfo("sniffbt -t flock", "BLE", "Sniff for Flock (ALPR) BLE"),
+            CommandInfo("sniffbt -t meta", "BLE", "Sniff for Meta / Ray-Ban BLE"),
             CommandInfo("sniffskim", "BLE", "BLE skimmer detection"),
             CommandInfo("blespam -t sourapple", "Offensive", "BLE spam (Apple / SourApple)"),
+            CommandInfo("blespam -t applejuice", "Offensive", "BLE spam (Apple Juice)"),
             CommandInfo("blespam -t samsung", "Offensive", "BLE spam (Samsung)"),
             CommandInfo("blespam -t google", "Offensive", "BLE spam (Google Fast Pair)"),
             CommandInfo("blespam -t windows", "Offensive", "BLE spam (Windows Swift Pair)"),
+            CommandInfo("blespam -t flipper", "Offensive", "BLE spam (Flipper)"),
             CommandInfo("blespam -t all", "Offensive", "BLE spam (all vendors)"),
+            # spoofat carries no danger keyword, so the explicit danger= is what gates it.
+            CommandInfo("spoofat -t <idx>", "Offensive", "Spoof a selected AirTag (by index)",
+                        "idx", danger="lab-only"),
             CommandInfo("stopscan", "BLE", "Stop BLE operation"),
             # ---- Karma ----
             # Real form is `karma -p <index>` (HELP_KARMA_CMD:141); bare `karma` and `karma -s` both
