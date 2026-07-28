@@ -490,6 +490,11 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("snmpprobe", "WiFi", "Probe for SNMP hosts on the joined LAN"),
             CommandInfo("enumscan", "WiFi", "Enumerate services/hosts on the joined LAN"),
             CommandInfo("congestion", "WiFi", "Channel-congestion analyzer"),
+            # Flock ALPR (surveillance-camera) detection — on-device GhostESP verbs (commandline.c
+            # @ Development-deki), distinct from CC's OSM/DeFlock map import. All SAFE detection.
+            CommandInfo("flockscan", "Flock", "Scan for Flock Safety ALPR cameras"),
+            CommandInfo("flocklist", "Flock", "List detected Flock ALPR cameras"),
+            CommandInfo("flockstop", "Flock", "Stop the Flock ALPR scan"),
             # WiFi attacks
             CommandInfo("attack -d", "Offensive", "Deauthentication attack (needs a prior select -a)", danger="lab-only"),
             CommandInfo("attack -e", "Offensive", "EAPOL logoff (works where 802.11w PMF blocks classic deauth)", danger="lab-only"),
