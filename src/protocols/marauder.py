@@ -433,6 +433,14 @@ class MarauderProtocol(BaseProtocol):
             # Real form is `karma -p <index>` (HELP_KARMA_CMD:141); bare `karma` and `karma -s` both
             # no-op — dispatch reads only -p (CommandLine.cpp:566-571 @ v1.12.3).
             CommandInfo("karma -p <idx>", "Offensive", "Karma evil-twin AP (by index)", "idx"),
+            # ---- MAC spoof (MAC_CMD_A..D h:107-110; active MAC forge -> lab-only) ----
+            # randapmac/randstamac carry no danger keyword, so the explicit danger= gates them.
+            CommandInfo("randapmac", "Offensive", "Randomize the AP MAC", danger="lab-only"),
+            CommandInfo("randstamac", "Offensive", "Randomize the station MAC", danger="lab-only"),
+            CommandInfo("cloneapmac -a <idx>", "Offensive", "Clone a scanned AP's MAC by index",
+                        "idx", danger="lab-only"),
+            CommandInfo("clonestamac -s <idx>", "Offensive", "Clone a scanned station MAC by index",
+                        "idx", danger="lab-only"),
             # ---- Wardrive ----
             # (removed phantom `wardrive -s`: fw stop-arg is commented out; stop via `stopscan`)
             CommandInfo("wardrive", "Wardrive", "Start wardriving (GPS required)"),
