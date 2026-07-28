@@ -259,6 +259,10 @@ class WardriveMultiTab(QWidget):
         self._timer.start()
         self._btn_start.setEnabled(False)
         self._btn_stop.setEnabled(True)
+        # The live per-board status is a table (the right surface for a fast-updating grid, and
+        # teeing every tick would spam), so only the lifecycle is teed to the app-wide terminal.
+        from src.core.activity_log import activity_log
+        activity_log().emit_line("wardrive-multi", f"started on {len(boards)} board(s) → {out}")
 
     def _on_stop(self) -> None:
         self._timer.stop()
@@ -266,6 +270,8 @@ class WardriveMultiTab(QWidget):
             self._controller.stop()
             self._apply_snapshot(self._controller.snapshot())
             self._controller = None
+            from src.core.activity_log import activity_log
+            activity_log().emit_line("wardrive-multi", "stopped")
         if self._fh is not None:
             try:
                 self._fh.close()

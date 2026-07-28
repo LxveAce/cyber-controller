@@ -23,6 +23,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Persistent terminal now reflects wardrive / OS-flash / Flock live-scan activity too.** Several
+  long-running background surfaces logged only to their own tab panes, so the app-wide bottom terminal
+  (which is meant to reflect *all* activity) never saw them. Wired the wardrive scan log, the OS-image
+  flash progress, and the Flock live-scan diagnostics onto the shared activity bus (source-tagged
+  `wardrive` / `os-flash` / `flock`); multi-board wardrive tees its start/stop lifecycle (the live
+  per-board status stays in its status table — the right surface for a fast-updating grid). Output is
+  still HTML-escaped in the terminal, so a crafted device line can't forge terminal markup.
 - **Network tab per-device quick-menu now reaches EVERY command (was capped at 40).** The experimental
   Network graph's per-device menu built only the first `cmds[:40]` of a firmware's commands, silently hiding
   most of a large firmware's surface — with the Wave-2 additions a device like ghost_esp exposes ~135 no-arg

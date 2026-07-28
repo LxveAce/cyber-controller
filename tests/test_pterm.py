@@ -339,3 +339,32 @@ def test_activity_log_emit_shape_and_blank_drop(qapp):
     bus.emit_line("crack", "bad", "nonsense")     # unknown level -> normalized to info
     bus.emit_line("crack", "err", "error")        # valid level preserved
     assert seen == [("flash", "info", "hello"), ("crack", "info", "bad"), ("crack", "error", "err")]
+
+
+def test_scan_and_flash_tabs_tee_to_activity_bus(qapp, isolated_settings):
+    # The persistent terminal is meant to reflect ALL app activity, but several long-running
+    # surfaces used to dead-end in their own log panes. Wire-up regression: wardrive, OS-flash, and
+    # Flock live-scan now tee their diagnostics onto the activity bus (source-tagged) so the bottom
+    # terminal shows them too. (wardrive-multi tees its start/stop lifecycle; that path needs a full
+    # multi-board controller to trigger, so it is covered by inspection rather than here.)
+    from src.core.activity_log import activity_log
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    from src.ui.qt.software_tab import SoftwareTab
+    from src.ui.qt.wardrive_tab import WardriveTab
+
+    seen: "list[tuple[str, str]]" = []
+
+    def collector(source, _level, text):
+        seen.append((source, text))
+
+    activity_log().line.connect(collector)
+    try:
+        WardriveTab()._logmsg("scanning channel 6")
+        SoftwareTab()._log("writing image 50%")
+        FlockHeatmapTab()._on_live_line("COM7 busy, scan not started")
+    finally:
+        activity_log().line.disconnect(collector)
+
+    assert ("wardrive", "scanning channel 6") in seen
+    assert ("os-flash", "writing image 50%") in seen
+    assert ("flock", "COM7 busy, scan not started") in seen

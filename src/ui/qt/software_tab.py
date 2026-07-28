@@ -405,4 +405,8 @@ class SoftwareTab(QWidget):
 
     def _log(self, msg: str) -> None:
         self._log_output.append(msg)
+        # Tee OS-flash progress to the app-wide terminal so the persistent console reflects this
+        # long-running activity too, not just this tab's own log pane.
+        from src.core.activity_log import activity_log
+        activity_log().emit_line("os-flash", msg)
         log.info("SoftwareTab: %s", msg)

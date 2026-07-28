@@ -544,4 +544,8 @@ class WardriveTab(QWidget):
 
     def _logmsg(self, msg: str) -> None:
         self._log.appendPlainText(msg)
+        # Tee every wardrive diagnostic to the app-wide terminal so the persistent console reflects
+        # this activity too, not just this tab's own log pane.
+        from src.core.activity_log import activity_log
+        activity_log().emit_line("wardrive", msg)
         log.info("WardriveTab: %s", msg)

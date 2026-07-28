@@ -1217,6 +1217,10 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             # Surface every worker diagnostic (esp. the failure paths) so a scan that never starts —
             # busy/denied COM port, pyserial missing — is visible instead of silently swallowed.
             self._live_log.appendPlainText(msg)
+            # Tee to the app-wide terminal too, so the persistent console reflects Flock live-scan
+            # activity instead of it dead-ending in this tab's own live-log pane.
+            from src.core.activity_log import activity_log
+            activity_log().emit_line("flock", msg)
 
         def _on_live_stopped(self) -> None:
             self._live_worker = None
