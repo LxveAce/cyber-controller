@@ -11,11 +11,12 @@ Unlike the fire-on-boot upstream jammers CC treats as no-ops (``nrf_bluenullifie
 ``bluejammer``: ``driver_type="controlmap"``, empty ``get_commands``), BlueStress **boots IDLE
 and exposes a real line-based serial CLI**, so this is a genuine ``text-cli`` protocol with a
 *gated* operate surface. The wire verbs are the UPPERCASE tokens the firmware's dispatcher
-matches (``protocol.h`` / ``serial_cmd.cpp``): ``SET-ENGINE``, ``SET-BAND``, ``SET-POWER``,
-``SET-SWEEP``, ``ATTEST``, ``ARM``, ``CONFIRM``, ``START``, ``CHAR``, ``STOP``, ``TLM``,
-``LOG``, ``CAL-SET``, ``CAL-COMMIT``, ``CAL-CLEAR``. There is NO ``STATUS``/``BANDS``/``FLOOD``/
-``OFF`` command — the earlier catalog sent those lowercase tokens and the firmware answered
-every one with ``unknown-cmd`` (dead buttons), so they are removed here.
+matches (``src/control/protocol.h`` kCmd* / ``serial_cmd.cpp``): ``SET-ENGINE``, ``SET-BAND``,
+``SET-POWER``, ``SET-SWEEP``, ``ATTEST``, ``ARM``, ``CONFIRM``, ``START``, ``CHAR``, ``STOP``,
+``TLM``, ``LOG``, ``STATUS``, ``CAL-SET``, ``CAL-COMMIT``, ``CAL-CLEAR`` (16 verbs). There is NO
+``BANDS``/``FLOOD``/``OFF`` command — the earlier catalog sent those lowercase tokens and the
+firmware answered them ``unknown-cmd`` (dead buttons), so they stay out. (``STATUS`` is a real
+``kCmdStatus`` verb — grounded @ LxveAce/BlueStress e96a08a; a prior comment wrongly dropped it.)
 
 * ``driver_type = "text-cli"`` — an honest statement that it HAS a sendable command channel. NOT
   ``controlmap``, which ``network_tab.py`` renders as a "web-UI / no serial commands" badge —
@@ -96,10 +97,10 @@ class BlueStressProtocol(BaseProtocol):
         return ParsedEvent(event_type="info", data=data, raw=line)
 
     def get_commands(self) -> list[CommandInfo]:
-        # Every verb below is a REAL dispatcher token (protocol.h / serial_cmd.cpp). The bare
-        # UPPERCASE name IS the wire command (the Operate console writes it verbatim, seeding the
-        # `args` string for a prompt when one is present). No lowercase Status/Bands/Flood/Off —
-        # the firmware has no such commands.
+        # Every verb below is a REAL dispatcher token (src/control/protocol.h kCmd*). The bare
+        # UPPERCASE name IS the wire command (the Operate console writes it verbatim, seeding an
+        # args prompt when present). No BANDS/FLOOD/OFF — the firmware has no such verbs — but
+        # STATUS is real (kCmdStatus) and read-only.
         return [
             # ── Config (no carrier keyed; danger="") ─────────────────────────
             CommandInfo(
@@ -201,6 +202,14 @@ class BlueStressProtocol(BaseProtocol):
                     "returns the persisted prior-session forensic snapshot that survives reboot."
                 ),
                 args="[PRIOR]",
+            ),
+            CommandInfo(
+                name="STATUS",
+                category="Status",
+                description=(
+                    "One-line state summary: state, active engine (or '-'), attested flag, fault, "
+                    "and lab posture. Works with no engine bound (unlike TLM, which needs one)."
+                ),
             ),
 
             # ── Calibration (idle-only; no carrier keyed; danger="") ─────────
