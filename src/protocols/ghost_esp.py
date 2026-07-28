@@ -594,6 +594,16 @@ class GhostESPProtocol(BaseProtocol):
             # Wardrive
             CommandInfo("startwd", "Wardrive", "Start wardriving"),
             CommandInfo("startwd -s", "Wardrive", "Stop wardriving"),
+            # WiGLE upload integration (commandline.c @ Development-deki, all SAFE).
+            CommandInfo("wigle api <token>", "Wardrive", "Set the WiGLE API key", "token"),
+            CommandInfo("wigle auto <on|off>", "Wardrive", "Toggle auto-upload at boot", "on|off"),
+            CommandInfo("wigle donate <on|off>", "Wardrive", "Toggle donating to WiGLE", "on|off"),
+            CommandInfo("wigle show", "Wardrive", "Show current WiGLE settings"),
+            CommandInfo("wigle list", "Wardrive", "List stored uploaded-CSV memory"),
+            CommandInfo("wigle files <page>", "Wardrive", "List GPS CSVs to upload", "page"),
+            CommandInfo("wigle upload all", "Wardrive", "Upload all pending wardrive CSVs"),
+            CommandInfo("wigle upload <file>", "Wardrive", "Upload one wardrive CSV", "file"),
+            CommandInfo("wigle stats", "Wardrive", "Show WiGLE account stats"),
             # Radio spectrum analyzers (add-on modules) — RX-ONLY, verified no CLI TX path
             # (cmd_nrf24.c: no tx verb, no W_TX_PAYLOAD; cmd_subghz.c load/replay only displays).
             CommandInfo("nrf24 start", "NRF24", "Start the nRF24 2.4GHz analyzer (RX-only)"),
