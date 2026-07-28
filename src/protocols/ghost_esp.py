@@ -643,6 +643,22 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("mem", "System", "Heap diagnostics"),
             CommandInfo("mem dump", "System", "Dump heap diagnostics"),
             CommandInfo("timezone <TZ>", "System", "Set the device timezone", "TZ"),
+            # Config / apps / SoftAP management (commandline.c @ Development-deki, all SAFE).
+            CommandInfo("gpspin <pin>", "System", "Set the GPS UART RX pin (no arg = show)", "pin"),
+            CommandInfo("gpsbaud <rate>", "System", "Set the GPS UART baud rate", "rate"),
+            CommandInfo("loadconfig", "System", "Load config.cfg from SD and apply"),
+            CommandInfo("apps list", "System", "List installed SD-card plugin apps"),
+            CommandInfo("apps reload", "System", "Rescan the SD card + reload app manifests"),
+            CommandInfo("apps info <id>", "System", "Show details for an installed app", "id"),
+            CommandInfo("apps run <id>", "System", "Launch an installed app by id", "id"),
+            CommandInfo("apps stop", "System", "Stop the currently running app"),
+            CommandInfo("apps reset <id>", "System", "Reset an app's saved state", "id"),
+            CommandInfo("apenable on", "System", "Enable the device SoftAP on boot"),
+            CommandInfo("apenable off", "System", "Disable the device SoftAP on boot"),
+            CommandInfo("apcred <ssid> <pwd>", "System", "Set SoftAP SSID/password", "ssid pwd"),
+            CommandInfo("webuiap on", "System", "Restrict the Web UI to the AP interface"),
+            CommandInfo("webuiap off", "System", "Allow the Web UI on all interfaces"),
+            CommandInfo("webuiap status", "System", "Show whether the Web UI is AP-only"),
             CommandInfo("help", "System", "Show help"),
             # (removed phantom `setch`/`getch`: GhostESP has no standalone channel verb)
             # Flipper bridge (list/select are in the BLE group; only a BT bridge verb exists)
