@@ -6,6 +6,36 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Firmware command-completeness (Wave-2) — every real command CC was missing, grounded to source.** Each
+  command firmware's CC surface was diffed against its ACTUAL upstream firmware source (an 18-agent grounding
+  workflow + per-batch verify-first) and the missing verbs added: **marauder** (sniff variants, LAN recon
+  join/pingscan/arpscan/portscan, mactrack + a consolidated GPS group, ls/brightness/add, MAC-spoof
+  randapmac/clonestamac, attack-t badmsg/sae/csa/quiet/sleep, blespam vendors + spoofat), **ghost_esp** (on-LAN
+  recon netbiosscan/httpbannerscan/snmpprobe/enumscan/congestion, the **Flock ALPR** group flockscan/flocklist/
+  flockstop, nrf24 + subghz **passive spectrum analyzers** — verified RX-only, kept SAFE — BadUSB HID injection,
+  DNS sinkhole, WiFi recon + WiGLE, config/apps/SoftAP, BLE GATT, aerial detect/spoof, beacon-list mgmt),
+  **bruce** (wifi/arp/listen/sniffer, storage rmdir/stat/free/ymodem, crypto/power/sound/display, and the RF/IR
+  transmit verbs subghz txp/keeloqtx/tx_from_buffer + RfSend + ir tx_raw/tx_from_buffer + IRSend — each verified
+  to genuinely transmit before being gated). Every offensive/TX verb carries an explicit `danger=` and lands in
+  the Offensive category; every added verb was classify-verified and the Offensive-category guard stayed green.
+- **Offensive command category across every command firmware.** All attack/TX verbs consolidated under one
+  operable "Offensive" heading (per the owner directive), each gate preserved through the move (verify-first
+  classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
+
+### Changed
+- **Safety over-gating precision fix — un-gate proven-passive verbs without weakening the gate.** `safety.py`
+  gained a narrow, exact-name `_PASSIVE_RX_VERBS` allowlist that suppresses keyword/description escalation for 8
+  verbs each traced to its REAL firmware handler and proven to transmit nothing (an adversarial prove-then-refute
+  workflow): the ceases `stopspam`/`stopdeauth`, the RX pcaps `capture -deauth`/`capture -beacon`, the monitors
+  `sniffbeacon`/`sniffdeauth`, and the detectors `bleflood`/`defend`. No keyword was removed and an explicit
+  `danger=` still wins, so every real attack still gates (locked by new regression tests; verified that
+  attack -t deauth / blespam / karma / spoofat / saeflood / badusb / nrf jam / the bruce RF-IR TX verbs / and the
+  active-scan `blescan -ds` all STAY gated). Also corrected marauder `sniffpwn`'s mislabeled "sniff-then-deauth"
+  description (it is RX-only), which correctly un-gates it.
+- **Phantom purges — CC no longer advertises commands the firmware no-ops.** Removed/fixed verbs that silently do
+  nothing on real hardware, each grounded to source: marauder `foxhunt`→`sigmon` (a prior fix had this inverted),
+  `karma -s`→`karma -p`, dropped `ssid -l/-c` + `wardrive -s`; flipper `bt info`→`bt hci_info`, `power info`→
+  `info power`, removed `nfc detect`/`nfc read`; and repointed the flipper device-info default macro off `power info`.
 - **DeFlock/OSM ALPR import — the "Import from OSM" heatmap button (track complete).** The Flock heatmap tab now has
   a user-initiated "Import from OSM" button that pulls crowdsourced ALPR camera locations for the current view from
   OpenStreetMap. It runs the gated `fetch_alpr_geojson` on a worker thread (`_OsmImportWorker`, mirroring the existing
