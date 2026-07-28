@@ -37,6 +37,18 @@ def _make_tab(with_data: bool = True):
     return tab, sent
 
 
+def _leaves(node):
+    """Flatten a node's menu into leaf (label, callback) pairs — a long command list groups into
+    per-category submenus (label, [leaf, ...]); a short one stays flat. Tests assert on leaves."""
+    out = []
+    for label, target in node.actions:
+        if callable(target):
+            out.append((label, target))
+        else:
+            out.extend(target)
+    return out
+
+
 def test_empty_shows_placeholder(qapp):
     tab, _sent = _make_tab(with_data=False)
     assert "_placeholder" in tab._nodes
@@ -113,8 +125,8 @@ def test_device_node_command_routes_through_send_cmd(qapp):
     tab, sent = _make_tab()
     dev_node = tab._nodes["dev:COM7"]
     assert dev_node.actions, "device node should list firmware commands"
-    # Firing the first action sends it to the right port via the send_cmd callback.
-    _label, cb = dev_node.actions[0]
+    # Firing the first leaf action sends it to the right port via the send_cmd callback.
+    _label, cb = _leaves(dev_node)[0]
     cb()
     assert sent and sent[0][0] == "COM7"
 
@@ -149,7 +161,8 @@ def test_device_node_gates_danger_and_skips_templates(qapp, monkeypatch):
     monkeypatch.setattr("src.config.settings.load_settings", lambda: {})  # defaults -> confirm dangerous
     tab, sent = _make_tab()
     dev_node = tab._nodes["dev:COM7"]
-    labels = [lbl for lbl, _cb in dev_node.actions]
+    leaves = _leaves(dev_node)
+    labels = [lbl for lbl, _cb in leaves]
 
     # (1) no unfilled-template command is offered as a raw send
     assert labels, "device node should still list its non-template commands"
@@ -158,14 +171,75 @@ def test_device_node_gates_danger_and_skips_templates(qapp, monkeypatch):
     # (2) a dangerous command is gated: user answers No -> nothing is sent
     from PyQt5.QtWidgets import QMessageBox
     monkeypatch.setattr(QMessageBox, "warning", staticmethod(lambda *a, **k: QMessageBox.No))
-    deauth = next(cb for lbl, cb in dev_node.actions if lbl == "attack -t deauth")
+    deauth = next(cb for lbl, cb in leaves if lbl == "attack -t deauth")
     deauth()
     assert ("COM7", "attack -t deauth") not in sent
 
     # (3) a safe command still routes unchanged
-    scan = next(cb for lbl, cb in dev_node.actions if lbl == "scanall")
+    scan = next(cb for lbl, cb in leaves if lbl == "scanall")
     scan()
     assert ("COM7", "scanall") in sent
+
+
+def test_large_firmware_menu_reaches_all_commands_categorized(qapp):
+    """Regression: the per-device quick-menu capped at cmds[:40], silently hiding most of a large
+    firmware's commands (ghost_esp has ~135 no-arg commands, marauder ~65) — so most of the Wave-2
+    completeness work was unreachable here. A long list is now grouped into per-category submenus so
+    EVERY no-arg command stays reachable; none is dropped by a flat cap."""
+    from src.protocols import get_protocol
+
+    tab, _sent = _make_tab()
+    dev = tab._dm.get_device("COM7")
+    dev.firmware = "ghostesp"
+    tab.rebuild()
+    node = tab._nodes["dev:COM7"]
+
+    # a large firmware renders as category submenus (label, [leaf, ...]), not flat leaves
+    assert node.actions and all(not callable(t) for _lbl, t in node.actions), \
+        "a long command list should group into submenus"
+    assert len(node.actions) > 1, "more than one category submenu"
+
+    # every no-arg command the firmware exposes is reachable through some submenu — nothing hidden
+    cmds = get_protocol("ghostesp").get_commands()
+    noarg = {getattr(c, "name", str(c)) for c in cmds
+             if "<" not in getattr(c, "name", str(c)) and ">" not in getattr(c, "name", str(c))}
+    reachable = {lbl for _cat, items in node.actions for lbl, _cb in items}
+    assert reachable == noarg, f"commands missing from the menu: {sorted(noarg - reachable)}"
+    assert len(reachable) > 40, "the fix: more than the old 40-cap is reachable (ghost_esp ~135)"
+
+
+def test_build_menu_renders_all_commands_through_submenus(qapp):
+    """The actual QMenu render (not just the action data): a large firmware's menu is built as
+    category submenus whose leaf QActions cover every no-arg command — exercises _show_menu's real
+    addMenu/addAction path offscreen, which is what the user right-clicks into."""
+    from src.protocols import get_protocol
+
+    tab, _sent = _make_tab()
+    dev = tab._dm.get_device("COM7")
+    dev.firmware = "ghostesp"
+    tab.rebuild()
+    node = tab._nodes["dev:COM7"]
+
+    menu = node._build_menu()
+    top = menu.actions()
+    assert top and all(a.menu() is not None for a in top), "large firmware menu should be all submenus"
+    rendered = {leaf.text() for a in top for leaf in a.menu().actions()}
+    cmds = get_protocol("ghostesp").get_commands()
+    noarg = {getattr(c, "name", str(c)) for c in cmds
+             if "<" not in getattr(c, "name", str(c)) and ">" not in getattr(c, "name", str(c))}
+    assert rendered == noarg, f"rendered menu missing commands: {sorted(noarg - rendered)}"
+
+
+def test_small_firmware_menu_stays_flat(qapp):
+    """A short command list gains nothing from nested submenus, so it stays a single flat menu
+    (flipper exposes ~19 no-arg commands, under the flat threshold)."""
+    tab, _sent = _make_tab()
+    dev = tab._dm.get_device("COM7")
+    dev.firmware = "flipper"
+    tab.rebuild()
+    node = tab._nodes["dev:COM7"]
+    assert node.actions and all(callable(cb) for _lbl, cb in node.actions), \
+        "a short command list should stay a flat menu of leaf actions"
 
 
 def test_target_action_gates_danger(qapp, monkeypatch):

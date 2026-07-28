@@ -23,6 +23,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Network tab per-device quick-menu now reaches EVERY command (was capped at 40).** The experimental
+  Network graph's per-device menu built only the first `cmds[:40]` of a firmware's commands, silently hiding
+  most of a large firmware's surface — with the Wave-2 additions a device like ghost_esp exposes ~135 no-arg
+  commands but the menu showed ~30, so most of the completeness work was unreachable there. A long command
+  list is now grouped into per-category submenus (Offensive / WiFi / BLE / System / …) so every no-arg command
+  is reachable; a short list (e.g. flipper's ~19) stays a single flat menu. The safety gate on each send is
+  unchanged (still `safety.classify` + confirm before a dangerous verb fires), and arg-template commands still
+  route to the Devices tab, which collects the argument first. (The full Operate tab already exposed every
+  verb; this fixes the per-device quick-menu specifically.)
 - **Safety over-gating precision fix — un-gate proven-passive verbs without weakening the gate.** `safety.py`
   gained a narrow, exact-name `_PASSIVE_RX_VERBS` allowlist that suppresses keyword/description escalation for 8
   verbs each traced to its REAL firmware handler and proven to transmit nothing (an adversarial prove-then-refute

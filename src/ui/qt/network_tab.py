@@ -13,7 +13,13 @@ TargetPool when present.
 from __future__ import annotations
 
 import math
-from typing import Callable, Optional
+from typing import TYPE_CHECKING, Callable, Optional
+
+if TYPE_CHECKING:
+    # A per-node menu entry is a leaf action (label, callback) or a category submenu; _show_menu
+    # renders a callable 2nd element as a QAction, and a list of leaves as a QMenu submenu.
+    _Leaf = tuple[str, Callable[[], None]]
+    _MenuEntry = _Leaf | tuple[str, list[_Leaf]]
 
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QBrush, QColor, QPainter, QPen
@@ -57,12 +63,18 @@ _NO_COMMAND_NOTES = {
     "controlmap": "(no serial commands — controlled via its web UI)",
 }
 
+# Per-device quick-menu: a short command list stays a single flat menu (nothing to gain from nesting
+# a handful of items); a long one (ghost_esp ~135 no-arg commands, marauder ~65) is grouped into
+# per-category submenus so EVERY command stays reachable. The old flat `cmds[:40]` cap silently hid
+# most of a large firmware's commands, defeating the Wave-2 completeness work.
+_FLAT_MENU_MAX = 24
+
 
 class _Node(QGraphicsRectItem):
     """A draggable boxy node. Double-click pops its command/action menu."""
 
     def __init__(self, label: str, sub: str, kind: str,
-                 actions: "list[tuple[str, Callable[[], None]]]") -> None:
+                 actions: "list[_MenuEntry]") -> None:
         super().__init__(0, 0, _NODE_W, _NODE_H)
         self.kind = kind
         self.actions = actions
@@ -99,12 +111,24 @@ class _Node(QGraphicsRectItem):
     def contextMenuEvent(self, event):  # noqa: N802 (Qt signature) — right-click also opens it
         self._show_menu(event)
 
+    def _build_menu(self) -> QMenu:
+        """Build (but don't show) the node's command menu. Split from _show_menu so the menu contents
+        are inspectable offscreen without the blocking exec — a leaf is a QAction, a submenu entry
+        (label, [leaf, ...]) becomes a QMenu.addMenu so a long command list stays navigable."""
+        menu = QMenu()
+        for label, target in self.actions:
+            if callable(target):
+                menu.addAction(label, target)
+            else:
+                sub = menu.addMenu(label)
+                for sub_label, sub_cb in target:
+                    sub.addAction(sub_label, sub_cb)
+        return menu
+
     def _show_menu(self, event) -> None:
         if not self.actions:
             return
-        menu = QMenu()
-        for label, cb in self.actions:
-            menu.addAction(label, cb)
+        menu = self._build_menu()
         try:
             menu.exec_(event.screenPos())
         except Exception:  # noqa: BLE001 (offscreen / no screen pos)
@@ -445,34 +469,51 @@ class NetworkTab(QWidget):
         return "ap"
 
     # ── actions (the command list per node) ──────────────────────────
-    def _device_actions(self, dev) -> "list[tuple[str, Callable[[], None]]]":
+    def _device_actions(self, dev) -> "list[_MenuEntry]":
         port = getattr(dev, "port", "")
         fw = getattr(dev, "firmware", "") or ""
-        out: "list[tuple[str, Callable[[], None]]]" = []
+        out: "list[_MenuEntry]" = []
         try:
             from src.protocols import get_protocol
             proto = get_protocol(fw) if fw else None
             cmds = proto.get_commands() if proto else []
         except Exception:  # noqa: BLE001
             cmds = []
-        for ci in cmds[:40]:  # cap the menu length
+        # Only no-arg commands are sendable here. A template like "select -a <idx>" the Network tab
+        # can't fill in stays reachable via the Devices tab (which collects the argument first) —
+        # sending it raw would transmit the literal "<idx>" to the radio.
+        def _no_arg(ci) -> bool:
             name = getattr(ci, "name", str(ci))
-            if "<" in name or ">" in name:
-                # A placeholder template (e.g. "select -a <idx>", "channel -s <ch>") the Network tab
-                # can't fill in — sending it raw would transmit the literal "<idx>" to the radio. These
-                # stay reachable via the Devices tab, which collects the argument first.
-                continue
-            out.append((name, lambda c=name, p=port, info=ci: self._run_device_cmd(p, c, info)))
-        if not out:
+            return "<" not in name and ">" not in name
+
+        sendable = [ci for ci in cmds if _no_arg(ci)]
+        if not sendable:
             # Be honest about WHY there's nothing to send: a stream/control-map device has no text command
             # channel at all, versus a text-CLI firmware that simply exposes no commands here.
             note = _NO_COMMAND_NOTES.get(getattr(dev, "driver_type", "text-cli"),
                                          "(no commands for this firmware)")
-            out.append((note, lambda: None))
+            return [(note, lambda: None)]
+
+        def _leaf(ci) -> "tuple[str, Callable[[], None]]":
+            name = getattr(ci, "name", str(ci))
+            return (name, lambda c=name, p=port, info=ci: self._run_device_cmd(p, c, info))
+
+        # A short list is a single flat menu. A long one is grouped into per-category submenus so
+        # every command stays reachable (the old cmds[:40] cap hid most of a large firmware's).
+        if len(sendable) <= _FLAT_MENU_MAX:
+            return [_leaf(ci) for ci in sendable]
+
+        groups: "dict[str, list[tuple[str, Callable[[], None]]]]" = {}
+        for ci in sendable:
+            cat = (getattr(ci, "category", "") or "").strip() or "Other"
+            groups.setdefault(cat, []).append(_leaf(ci))
+        # A submenu entry is (label, [leaf, ...]); _show_menu renders the list as a QMenu.addMenu.
+        for cat, items in groups.items():
+            out.append((f"{cat}  ({len(items)})", items))
         return out
 
-    def _target_actions(self, t) -> "list[tuple[str, Callable[[], None]]]":
-        out: "list[tuple[str, Callable[[], None]]]" = []
+    def _target_actions(self, t) -> "list[_MenuEntry]":
+        out: "list[_MenuEntry]" = []
         resolver = self._resolver
         if resolver is not None:
             try:
