@@ -48,7 +48,10 @@ def test_offensive_commands_flagged_even_when_name_lacks_keyword():
     # HaleHound intentionally omitted: it has no scriptable CLI, so it surfaces no quick commands
     # (get_commands() is empty). See src/protocols/halehound.py / cc-control-coverage-PLAN.md.
     # esp32-div-serial (fork) has the serial CLI; stock esp32-div is touch-only (no quick commands).
-    cases = {"marauder": "sniffpwn", "esp32-div-serial": "probe", "ghostesp": "startportal"}
+    # (marauder example is `evilportal -c start` — genuinely offensive, name lacks a danger keyword,
+    # flagged via its explicit danger=. NOT sniffpwn: proven RX-only + un-gated 2026-07-27.)
+    cases = {"marauder": "evilportal -c start", "esp32-div-serial": "probe",
+             "ghostesp": "startportal"}
     for fw, cmd in cases.items():
         by = {q.command: q.danger for q in quick_commands_for(fw)}
         assert by.get(cmd), f"{fw}/{cmd} must be flagged (label-never-block), got {by.get(cmd)!r}"

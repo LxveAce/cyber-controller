@@ -395,7 +395,10 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("sniffbeacon", "Sniffing", "Sniff beacon frames"),
             CommandInfo("sniffdeauth", "Sniffing", "Sniff deauth frames"),
             CommandInfo("sniffpmkid", "Sniffing", "Sniff PMKID frames"),
-            CommandInfo("sniffpwn", "Sniffing", "Sniff-then-deauth for handshakes"),
+            # RX-only: WIFI_SCAN_PWN is a WIFI_MODE_NULL promiscuous monitor of Pwnagotchi beacons
+            # (no arg parsing, no esp_wifi_80211_tx). The old "sniff-then-deauth" label was a
+            # firmware-mislabel that wrongly gated it (verified vs WiFiScan.cpp RunPwnScan).
+            CommandInfo("sniffpwn", "Sniffing", "Passively sniff Pwnagotchi beacons/handshakes"),
             CommandInfo("sniffraw", "Sniffing", "Raw 802.11 packet sniffing"),
             # Passive frame sniffers, siblings of the above (CommandLine.h @ v1.12.3, no args).
             CommandInfo("sniffprobe", "Sniffing", "Sniff probe-request frames"),

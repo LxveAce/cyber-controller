@@ -176,6 +176,32 @@ def _is_cease(name: str) -> bool:
     return (name or "").strip().lower().startswith(_CEASE_PREFIXES)
 
 
+#: Proven passive-RX / detector / cease verbs whose ONLY danger signal is a keyword in a PASSIVE
+#: context (a monitor that captures attack frames, a detector named for the attack it watches, or a
+#: stop-of-attack whose name embeds the attack it ends). The name+description scans over-flag these,
+#: but each was traced to its REAL firmware handler and shown to transmit NOTHING (adversarial
+#: prove-then-refute, wf_80cc33db-4f2). NARROW allowlist keyed on the EXACT name — removes no
+#: keyword, so every unlisted verb (incl real attacks + the active-scan `blescan -ds`) still gates.
+#: An explicit `danger=` still wins (checked first in classify).
+_PASSIVE_RX_VERBS: frozenset[str] = frozenset({
+    "stopspam",         # ghost_esp: cease — beacon_spam_stop(); every esp_wifi_80211_tx unreachable
+    "stopdeauth",       # ghost_esp: cease — 7 teardown fns; every TX gated behind a running flag
+    "capture -deauth",  # ghost_esp: RX pcap of deauth frames (promiscuous MGMT filter), no send
+    "capture -beacon",  # ghost_esp: RX pcap of beacon frames, no broadcast
+    "sniffbeacon",      # marauder: WIFI_SCAN_AP monitor (WIFI_MODE_NULL promiscuous RX), no TX
+    "sniffdeauth",      # marauder: WIFI_SCAN_DEAUTH monitor, RX-only
+    "bleflood",         # lxveos: advert-flood DETECTOR — ble_gap_disc(disc.passive=1), listen-only
+    "defend",           # lxveos: deauth/disassoc DETECTOR — STA-only promiscuous RX, read-only cb
+})
+
+
+def _is_passive_rx(name: str) -> bool:
+    """True for a verb on the proven-passive allowlist — a monitor/detector/cease whose only danger
+    signal is a keyword in a passive context. Suppresses escalation ONLY for these exact, per-verb-
+    verified names (never a prefix/heuristic, so a real attack can't slip through)."""
+    return (name or "").strip().lower() in _PASSIVE_RX_VERBS
+
+
 def _description_level(desc: str) -> str:
     """Worst danger implied by a command's free-text description (narrow, unambiguous set)."""
     if not desc:
@@ -227,6 +253,11 @@ def classify(cmd: str, info: CommandInfo | None = None) -> str:
         danger = danger.strip()
         if danger:
             return danger
+    # Proven-passive verbs (monitor/detector/cease) — their only danger signal is a keyword in a
+    # passive context, so the scans over-flag them. Suppress escalation for the narrow, per-verb-
+    # verified allowlist (a verb not listed, incl every real attack, still gates below).
+    if _is_passive_rx(cmd):
+        return SAFE
     level = _keyword_level(cmd)
     if info is not None:
         level = worst_of(level, _metadata_level(info))

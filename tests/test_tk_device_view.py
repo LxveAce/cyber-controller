@@ -162,9 +162,10 @@ def test_every_flagged_leaf_across_all_skins_requires_confirm(tk_root):
                 v2.activate(idx)
             v2.activate(path[-1])
             assert allow_sent == [cmd], f"{fw}:{cmd!r} not sent on allow"
-    # (Stock ESP32-DIV's offensive leaves moved off the device-view skins to the serial-fork grid,
-    # so the SKINS menus now carry ~13 flagged leaves — still "many", all confirm-gated.)
-    assert checked >= 12, f"expected many flagged leaves, only checked {checked}"
+    # (Stock ESP32-DIV's offensive leaves moved off the device-view skins to the serial-fork grid;
+    # the over-gating precision fix (2026-07-27) also un-flagged a proven-passive leaf. The SKINS
+    # menus still carry ~11 flagged leaves — every one confirm-gated (the real invariant).)
+    assert checked >= 10, f"expected many flagged leaves, only checked {checked}"
 
 
 def test_listbox_event_path_fires_leaf(tk_root):

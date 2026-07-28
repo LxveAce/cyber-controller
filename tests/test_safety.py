@@ -381,7 +381,7 @@ def test_hardening_never_downgrades_any_real_command():
     """The core safety invariant: folding in description/category must only ADD warnings — for EVERY real
     shipped command, the new level's severity is >= the old (name-only) level. Locked to the actual
     protocol registries, not synthetic fixtures."""
-    from src.core.safety import _SEVERITY, _keyword_level
+    from src.core.safety import _SEVERITY, _is_passive_rx, _keyword_level
     from src.protocols import PROTOCOLS, get_protocol
 
     def _old(ci):  # the pre-hardening behavior: explicit danger, else name-only keyword scan
@@ -393,15 +393,20 @@ def test_hardening_never_downgrades_any_real_command():
         if pname in ("generic", "raw"):
             continue
         for ci in get_protocol(pname).get_commands():
+            # EXCEPTION: the proven-passive allowlist INTENTIONALLY downgrades a monitor/detector/
+            # cease verb whose only danger signal was a passive-context keyword. Each was traced to
+            # its REAL handler and shown to transmit nothing (wf_80cc33db-4f2). No-downgrade holds
+            # for EVERY OTHER verb; only these verified names are excepted.
+            if _is_passive_rx(ci.name):
+                assert classify(ci.name, ci) == safety.SAFE, f"{pname}/{ci.name}: must be SAFE"
+                continue
             old, new = _old(ci), classify(ci.name, ci)
             assert _SEVERITY.get(new, 0) >= _SEVERITY.get(old, 0), f"{pname}/{ci.name}: {old} -> {new} DOWNGRADE"
             changed += old != new
-    # Description-keyword escalation still fires on real commands (e.g. marauder's `sniffpwn`,
-    # "sniff-then-deauth"). The CATEGORY-escalation path no longer fires on any shipped command by
-    # design: the Offensive rollout gives every offensive verb an explicit danger= ("Offensive" is
-    # deliberately NOT in _OFFENSIVE_CATEGORIES — see test_offensive_category_danger), so category
-    # escalation is now a BACKSTOP for un-annotated commands, proven directly in
-    # test_metadata_escalation_mechanism_is_live.
+    # Description-keyword escalation still fires on a real command (e.g. ghost_esp `blescan -ds`,
+    # "Detect BLE-spam sources" — an ACTIVE scan that stays gated). The category-escalation path no
+    # longer fires on any shipped command by design (the Offensive rollout gives every offensive
+    # verb an explicit danger=), so it is a BACKSTOP proven in test_metadata_escalation_mechanism.
     assert changed >= 1, "description-keyword escalation must still fire on a real command"
 
 
@@ -421,6 +426,53 @@ def test_metadata_escalation_mechanism_is_live():
     assert _metadata_level(desc) == LAB_ONLY, "description-keyword escalation went dead"
     # A genuinely neutral command is not escalated (guards against a match-everything regression).
     assert _metadata_level(CommandInfo("ping", "System", "check liveness")) == safety.SAFE
+
+
+def test_passive_rx_allowlist_ungates_only_proven_passive():
+    """The over-gating precision fix: each proven-passive verb (monitor/detector/cease) classifies
+    SAFE, while the allowlist NEVER un-gates a real attack. Locks both directions so the allowlist
+    can't grow to cover a TX verb, and the keyword scan can't re-gate a proven-passive one."""
+    from src.protocols import get_protocol
+
+    def _ci(fw, name):
+        return next((c for c in get_protocol(fw).get_commands() if c.name == name), None)
+
+    # Every allowlisted verb must classify SAFE (with its real CommandInfo where shipped).
+    for fw, name in [
+        ("ghost_esp", "capture -deauth"), ("ghost_esp", "capture -beacon"),
+        ("ghost_esp", "stopspam"), ("ghost_esp", "stopdeauth"),
+        ("marauder", "sniffbeacon"), ("marauder", "sniffdeauth"),
+        ("lxveos", "bleflood"), ("lxveos", "defend"),
+    ]:
+        ci = _ci(fw, name)
+        assert ci is not None, f"{fw}/{name} not shipped — allowlist entry is stale"
+        assert classify(name, ci) == safety.SAFE, f"{fw}/{name} must be SAFE (proven passive)"
+
+    # REGRESSION: no real attack may drop to SAFE. Every one stays gated (lab-only / illegal-tx).
+    # (sniffpwn absent — proven RX-only + un-gated via a description fix; blescan -ds STAYS —
+    # the workflow refuted it as an active SCAN_REQ emitter.)
+    for fw, name in [
+        ("marauder", "attack -t deauth"), ("marauder", "blespam -t all"),
+        ("marauder", "spoofat -t <idx>"), ("ghost_esp", "attack -d"),
+        ("ghost_esp", "saeflood <password>"), ("ghost_esp", "blescan -ds"),
+        ("ghost_esp", "badusb run <file>"), ("esp32_div_serial", "nrf jam"),
+        ("bruce", "subghz txp"), ("bruce", "ir tx_raw <freq> <samples>"),
+        ("bruce", "RfSend <json>"),
+    ]:
+        ci = _ci(fw, name)
+        got = classify(name, ci) if ci else classify(name)
+        assert got != safety.SAFE, f"{fw}/{name} must STAY gated, got SAFE!"
+
+
+def test_passive_rx_allowlist_is_narrow_and_exact():
+    """The allowlist is an EXACT-name set, not a prefix/heuristic — so a real attack that merely
+    shares a prefix with a passive verb (e.g. a hypothetical `sniffbeacon-attack`) stays gated."""
+    from src.core.safety import _is_passive_rx
+    assert _is_passive_rx("stopspam") and _is_passive_rx("Capture -Deauth".lower())
+    # sniffpwn is NOT on the allowlist — its passivity comes from a corrected description.
+    assert not _is_passive_rx("sniffpwn")
+    # A near-miss / prefix-extension must NOT be suppressed.
+    assert not _is_passive_rx("sniffbeaconflood") and not _is_passive_rx("stopspam-and-attack")
 
 
 def test_real_cease_command_in_offensive_category_stays_safe():

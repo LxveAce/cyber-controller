@@ -540,6 +540,11 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("beaconshow", "Offensive", "Show the beacon-spam list", danger="lab-only"),
             CommandInfo("beaconspamlist", "Offensive", "Beacon-spam every SSID on the list",
                         danger="lab-only"),
+            # Cease actions (stop the spam / deauth attack). SAFE — the stop path only halts the TX
+            # task (every esp_wifi_80211_tx unreachable from it, verified vs GhostESP cmd_wifi.c);
+            # classify SAFE via the passive-RX allowlist (safety.py).
+            CommandInfo("stopspam", "Offensive", "Stop the beacon-spam attack"),
+            CommandInfo("stopdeauth", "Offensive", "Stop the deauth attack"),
             # (removed phantom `probe`: no probe-flood verb in GhostESP; verified vs commandline.c)
             CommandInfo("karma start", "Offensive", "KARMA evil-twin: answer probes with the SSIDs clients ask for", danger="lab-only"),
             CommandInfo("karma stop", "Offensive", "Stop KARMA"),
