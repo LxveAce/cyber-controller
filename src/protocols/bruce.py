@@ -108,6 +108,15 @@ class BruceProtocol(BaseProtocol):
             # ---- Config ----
             CommandInfo("settings", "Config", "Dump device settings as JSON"),
             CommandInfo("settings <key> <value>", "Config", "Read or change a setting", "key,value"),
+            # ---- WiFi (real serial CLI — wifi_commands.cpp; the docstring's "WiFi is menu-only"
+            # note is only true of the deauth/beacon ATTACK verbs, not these connect/recon ones).
+            # ----
+            CommandInfo("wifi on", "WiFi", "Connect to a known network (else start AP mode)"),
+            CommandInfo("wifi off", "WiFi", "Disconnect from the current WiFi network"),
+            CommandInfo("wifi add <ssid> <pwd>", "WiFi", "Save a WiFi credential", "ssid pwd"),
+            CommandInfo("arp", "WiFi", "ARP-scan the LAN for live hosts (needs a WiFi STA)"),
+            CommandInfo("listen", "WiFi", "Open a passive TCP listener on the current WiFi"),
+            CommandInfo("sniffer", "WiFi", "Start the passive WiFi packet sniffer"),
             # ---- IR ----
             CommandInfo("ir rx", "IR", "Receive (decode) an IR signal"),
             CommandInfo("ir rx raw", "IR", "Capture raw (unparsed) IR timing"),
