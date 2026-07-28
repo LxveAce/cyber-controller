@@ -2316,11 +2316,18 @@ def _resolve_local(cfg: Dict) -> Tuple[str, List[Dict]]:
     return ("local", [])
 
 
+def _tree_url(sf: Dict, branch: str, rel_path: str) -> str:
+    """The raw URL for a repo-tree support file on a given branch. The single source of truth for
+    that URL — both _fetch_tree (the downloader) and the web-flasher manifest generator use it, so
+    the browser flasher fetches exactly what the desktop does."""
+    return sf["raw_base"].format(branch=branch).rstrip("/") + "/" + rel_path.lstrip("/")
+
+
 def _fetch_tree(sf: Dict, rel_path: str, cache: str, dest_name: str, on_line: Line) -> str:
     """Fetch a support file from a repo raw tree, trying configured branches in order."""
     last_exc: Optional[Exception] = None
     for branch in sf.get("branches", ["main", "master"]):
-        url = sf["raw_base"].format(branch=branch).rstrip("/") + "/" + rel_path.lstrip("/")
+        url = _tree_url(sf, branch, rel_path)
         try:
             return download_to(url, cache, dest_name, on_line)
         except Exception as exc:  # noqa: BLE001 — try the next branch

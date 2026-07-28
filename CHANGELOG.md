@@ -6,6 +6,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Web-flasher manifest generator (`scripts/gen_web_flasher_manifest.py`).** Emits, for the flagship firmwares
+  (marauder / ghost_esp / bruce), a JSON manifest of profile → variant → chip → the exact fetchable release-asset
+  `.bin` URL(s) and the flash offset each is written at — so the website's browser flasher (esptool-js) writes
+  exactly what the desktop does. It REUSES `flash_core`'s own resolution (the single source of truth), so it can't
+  drift: a merged firmware is one segment at its app offset (0x0); marauder ships the app image only, so its
+  bootloader/partitions/boot_app0 segments are derived from the profile's own `support_files` config (a new shared
+  `flash_core._tree_url` helper builds the raw URL for both the downloader and the manifest). Chips with no
+  web-flashable support mapping (e.g. marauder esp32c5/c6) are reported under `skipped` rather than emitted with a
+  broken segment set. Tracks the latest upstream release, so it is regenerated rather than committed stale.
 - **Firmware command-completeness (Wave-2) — every real command CC was missing, grounded to source.** Each
   command firmware's CC surface was diffed against its ACTUAL upstream firmware source (an 18-agent grounding
   workflow + per-batch verify-first) and the missing verbs added: **marauder** (sniff variants, LAN recon
