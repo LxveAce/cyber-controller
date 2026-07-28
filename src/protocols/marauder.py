@@ -340,6 +340,15 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("list -c", "Scanning", "List discovered clients"),
             CommandInfo("clearlist -a", "Scanning", "Clear AP list"),
             CommandInfo("clearlist -s", "Scanning", "Clear station list"),
+            # ---- Network (LAN recon after joining an AP; CommandLine.h @ v1.12.3) ----
+            # join connects marauder to an AP; the scans then enumerate that LAN (recon).
+            CommandInfo("join -a <idx> -p <pwd>", "Network", "Join an AP by index + password",
+                        "index password"),
+            CommandInfo("pingscan", "Network", "Ping-sweep the joined LAN"),
+            CommandInfo("arpscan", "Network", "ARP-scan the joined LAN (add -f for full)"),
+            CommandInfo("portscan -s <service>", "Network",
+                        "Port-scan a service (ssh/telnet/dns/http/smtp/https/rdp) across the LAN",
+                        "service"),
             # ---- Selection ----
             CommandInfo("select -a <idx>", "Selection", "Select AP by index", "idx"),
             CommandInfo("select -s <idx>", "Selection", "Select station by index", "idx"),
