@@ -530,6 +530,16 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("beaconspam -rr", "Offensive", "Rickroll beacon spam", danger="lab-only"),
             CommandInfo("beaconspam -l", "Offensive", "Beacon spam cloning all visible SSIDs", danger="lab-only"),
             CommandInfo("beaconspam <name>", "Offensive", "Beacon spam a specific SSID", "name", danger="lab-only"),
+            # Beacon-spam list management (configures the spam attack; "beacon" keyword gates them,
+            # explicit danger= makes it belt-and-suspenders).
+            CommandInfo("beaconadd <ssid>", "Offensive", "Add an SSID to the beacon-spam list",
+                        "ssid", danger="lab-only"),
+            CommandInfo("beaconremove <ssid>", "Offensive", "Remove an SSID from the spam list",
+                        "ssid", danger="lab-only"),
+            CommandInfo("beaconclear", "Offensive", "Clear the spam list", danger="lab-only"),
+            CommandInfo("beaconshow", "Offensive", "Show the beacon-spam list", danger="lab-only"),
+            CommandInfo("beaconspamlist", "Offensive", "Beacon-spam every SSID on the list",
+                        danger="lab-only"),
             # (removed phantom `probe`: no probe-flood verb in GhostESP; verified vs commandline.c)
             CommandInfo("karma start", "Offensive", "KARMA evil-twin: answer probes with the SSIDs clients ask for", danger="lab-only"),
             CommandInfo("karma stop", "Offensive", "Stop KARMA"),
@@ -575,6 +585,14 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("blespam", "Offensive", "BLE advertisement spam (pairing popups)", danger="lab-only"),
             CommandInfo("blespam -s", "Offensive", "Stop BLE spam"),
             CommandInfo("aerialscan", "BLE", "Scan for AirTags / aerial trackers"),
+            # Aerial (drone/tracker) detection — SAFE reads; aerialspoof is active TX (below).
+            CommandInfo("aeriallist", "BLE", "List detected aerial trackers"),
+            CommandInfo("aerialtrack <target>", "BLE", "Track an aerial target by RSSI", "target"),
+            CommandInfo("aerialstop", "BLE", "Stop the aerial track"),
+            CommandInfo("aerialspoofstop", "BLE", "Stop the aerial spoof"),
+            # aerialspoof broadcasts a forged aerial/RID frame (TX) — no keyword, explicit gate.
+            CommandInfo("aerialspoof [id lat lon alt]", "Offensive", "Spoof an aerial ID (TX)",
+                        "id lat lon", danger="lab-only"),
             CommandInfo("listairtags", "BLE", "List detected AirTags"),
             CommandInfo("selectairtag <idx>", "BLE", "Select an AirTag by index", "idx"),
             CommandInfo("spoofairtag", "Offensive", "Spoof an AirTag advertisement",
