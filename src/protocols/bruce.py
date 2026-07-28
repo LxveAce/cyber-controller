@@ -169,6 +169,34 @@ class BruceProtocol(BaseProtocol):
             CommandInfo("gpio set <pin> <0/1>", "Hardware", "Drive a GPIO pin high/low", "pin,value"),
             # ---- Apps ----
             CommandInfo("loader open <app>", "Apps", "Open an app / module by name", "app"),
+            CommandInfo("loader list", "Apps", "List available apps / modules"),
+            # ---- Crypto (serial_commands/crypto_commands.cpp; local file crypto = SAFE) ----
+            CommandInfo("decrypt <path> <pwd>", "Crypto", "Decrypt a .enc file", "path pwd"),
+            CommandInfo("encrypt <path> <pwd>", "Crypto", "Encrypt text to a file", "path pwd"),
+            CommandInfo("crypto decrypt_from_file <path> <pwd>", "Crypto", "Decrypt a file",
+                        "path pwd"),
+            CommandInfo("crypto encrypt_to_file <path> <pwd>", "Crypto", "Encrypt text to a file",
+                        "path pwd"),
+            # type_from_file DECRYPTS then TYPES the plaintext over USB HID (keystroke injection).
+            CommandInfo("crypto type_from_file <path> <pwd>", "Offensive",
+                        "Decrypt a file then type it over USB HID", "path pwd", danger="lab-only"),
+            # ---- Power ----
+            CommandInfo("poweroff", "Power", "Power off (deep sleep; wakes on reset)"),
+            CommandInfo("sleep", "Power", "Enter sleep mode"),
+            CommandInfo("power off", "Power", "Power off (deep sleep)"),
+            CommandInfo("power reboot", "Power", "Reboot the device"),
+            CommandInfo("power sleep", "Power", "Enter sleep mode"),
+            # ---- Display / clock ----
+            CommandInfo("clock", "System", "Show the device time / clock"),
+            CommandInfo("screen brightness <value>", "System", "Set backlight brightness (0-255)",
+                        "value"),
+            CommandInfo("screen color rgb <r> <g> <b>", "System", "Set UI color (RGB)", "r g b"),
+            CommandInfo("screen color hex <value>", "System", "Set UI color from hex", "value"),
+            CommandInfo("help", "System", "Show the shell command help"),
+            # ---- Sound (speaker/buzzer required) ----
+            CommandInfo("tone <freq> <dur>", "Sound", "Play a tone (Hz, ms)", "freq dur"),
+            CommandInfo("play <song>", "Sound", "Play an audio file or RTTTL string", "song"),
+            CommandInfo("tts <text>", "Sound", "Text-to-speech: speak the text", "text"),
         ]
 
     # ── Formatting ───────────────────────────────────────────────────
