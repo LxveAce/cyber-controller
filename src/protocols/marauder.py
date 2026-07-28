@@ -333,6 +333,7 @@ class MarauderProtocol(BaseProtocol):
             # ---- Scanning ----
             # v1.12.3 removed scanap/scansta; the combined scan is 'scanall'.
             CommandInfo("scanall", "Scanning", "Scan for APs and stations (combined)"),
+            CommandInfo("packetcount", "Scanning", "Passive per-channel packet-rate monitor"),
             CommandInfo("stopscan", "Scanning", "Stop current scan"),
             CommandInfo("list -a", "Scanning", "List discovered APs"),
             CommandInfo("list -s", "Scanning", "List discovered stations"),
@@ -372,6 +373,11 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("sniffpmkid", "Sniffing", "Sniff PMKID frames"),
             CommandInfo("sniffpwn", "Sniffing", "Sniff-then-deauth for handshakes"),
             CommandInfo("sniffraw", "Sniffing", "Raw 802.11 packet sniffing"),
+            # Passive frame sniffers, siblings of the above (CommandLine.h @ v1.12.3, no args).
+            CommandInfo("sniffprobe", "Sniffing", "Sniff probe-request frames"),
+            CommandInfo("sniffsae", "Sniffing", "Sniff WPA3 SAE-commit frames"),
+            CommandInfo("sniffpinescan", "Sniffing", "Sniff Pinescan (Pwnagotchi) frames"),
+            CommandInfo("sniffmultissid", "Sniffing", "Sniff multi-SSID (Karma-probe) frames"),
             CommandInfo("stopscan", "Sniffing", "Stop sniffing"),
             # ---- SSID list ----
             # v1.12.3: add/generate live under 'ssid -a' (-n name / -g count).
