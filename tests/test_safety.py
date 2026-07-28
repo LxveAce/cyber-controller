@@ -441,6 +441,7 @@ def test_passive_rx_allowlist_ungates_only_proven_passive():
     for fw, name in [
         ("ghost_esp", "capture -deauth"), ("ghost_esp", "capture -beacon"),
         ("ghost_esp", "stopspam"), ("ghost_esp", "stopdeauth"),
+        ("ghost_esp", "stopsaeflood"), ("esp32_div_serial", "stopattack"),
         ("marauder", "sniffbeacon"), ("marauder", "sniffdeauth"),
         ("lxveos", "bleflood"), ("lxveos", "defend"),
     ]:

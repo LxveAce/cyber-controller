@@ -202,7 +202,7 @@ def test_large_firmware_menu_reaches_all_commands_categorized(qapp):
     # every no-arg command the firmware exposes is reachable through some submenu — nothing hidden
     cmds = get_protocol("ghostesp").get_commands()
     noarg = {getattr(c, "name", str(c)) for c in cmds
-             if "<" not in getattr(c, "name", str(c)) and ">" not in getattr(c, "name", str(c))}
+             if not any(ch in getattr(c, "name", str(c)) for ch in "<>[]")}
     reachable = {lbl for _cat, items in node.actions for lbl, _cb in items}
     assert reachable == noarg, f"commands missing from the menu: {sorted(noarg - reachable)}"
     assert len(reachable) > 40, "the fix: more than the old 40-cap is reachable (ghost_esp ~135)"
@@ -226,7 +226,7 @@ def test_build_menu_renders_all_commands_through_submenus(qapp):
     rendered = {leaf.text() for a in top for leaf in a.menu().actions()}
     cmds = get_protocol("ghostesp").get_commands()
     noarg = {getattr(c, "name", str(c)) for c in cmds
-             if "<" not in getattr(c, "name", str(c)) and ">" not in getattr(c, "name", str(c))}
+             if not any(ch in getattr(c, "name", str(c)) for ch in "<>[]")}
     assert rendered == noarg, f"rendered menu missing commands: {sorted(noarg - rendered)}"
 
 
@@ -240,6 +240,25 @@ def test_small_firmware_menu_stays_flat(qapp):
     node = tab._nodes["dev:COM7"]
     assert node.actions and all(callable(cb) for _lbl, cb in node.actions), \
         "a short command list should stay a flat menu of leaf actions"
+
+
+def test_bracket_template_commands_are_not_sendable_leaves(qapp):
+    """A [ ... ] argument template (e.g. ghost_esp's `aerialspoof [id lat lon alt]`) can't be filled
+    in here, so it must NOT appear as a sendable leaf — else the Network tab would transmit the
+    literal '[id lat lon alt]' to the radio. Like `<...>`, it routes to the Devices tab instead."""
+    from src.protocols import get_protocol
+
+    names = {getattr(c, "name", str(c)) for c in get_protocol("ghostesp").get_commands()}
+    assert any("[" in n for n in names), "premise: ghost_esp should have a [ ] template command"
+
+    tab, _sent = _make_tab()
+    dev = tab._dm.get_device("COM7")
+    dev.firmware = "ghostesp"
+    tab.rebuild()
+    leaves = _leaves(tab._nodes["dev:COM7"])
+    assert leaves, "the device should still expose its no-arg commands"
+    assert not any("[" in lbl or "]" in lbl for lbl, _cb in leaves), \
+        "a [ ] argument-template command must not be offered as a raw send"
 
 
 def test_target_action_gates_danger(qapp, monkeypatch):

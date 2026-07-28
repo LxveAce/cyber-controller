@@ -186,6 +186,8 @@ def _is_cease(name: str) -> bool:
 _PASSIVE_RX_VERBS: frozenset[str] = frozenset({
     "stopspam",         # ghost_esp: cease — beacon_spam_stop(); every esp_wifi_80211_tx unreachable
     "stopdeauth",       # ghost_esp: cease — 7 teardown fns; every TX gated behind a running flag
+    "stopsaeflood",     # ghost_esp: cease — stops the SAE flood; no TX (name embeds "flood")
+    "stopattack",       # esp32_div_serial: cease — stops the attack; no TX (name embeds "attack")
     "capture -deauth",  # ghost_esp: RX pcap of deauth frames (promiscuous MGMT filter), no send
     "capture -beacon",  # ghost_esp: RX pcap of beacon frames, no broadcast
     "sniffbeacon",      # marauder: WIFI_SCAN_AP monitor (WIFI_MODE_NULL promiscuous RX), no TX

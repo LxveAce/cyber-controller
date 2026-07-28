@@ -479,12 +479,13 @@ class NetworkTab(QWidget):
             cmds = proto.get_commands() if proto else []
         except Exception:  # noqa: BLE001
             cmds = []
-        # Only no-arg commands are sendable here. A template like "select -a <idx>" the Network tab
-        # can't fill in stays reachable via the Devices tab (which collects the argument first) —
-        # sending it raw would transmit the literal "<idx>" to the radio.
+        # Only no-arg commands are sendable here. A template like "select -a <idx>" or "aerialspoof
+        # [id lat lon alt]" the Network tab can't fill in stays reachable via the Devices tab (which
+        # collects the argument first) — sending it raw would transmit the literal placeholder
+        # ("<idx>", "[id ...]") to the radio.
         def _no_arg(ci) -> bool:
             name = getattr(ci, "name", str(ci))
-            return "<" not in name and ">" not in name
+            return not any(ch in name for ch in "<>[]")
 
         sendable = [ci for ci in cmds if _no_arg(ci)]
         if not sendable:

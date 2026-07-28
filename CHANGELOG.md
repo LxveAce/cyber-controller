@@ -32,6 +32,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Safety over-gating precision — two more proven-passive ceases un-gated.** A self-audit found the Wave-2
+  precision pass missed two verbs of the exact class it targeted: `stopsaeflood` (its name embeds "flood" →
+  was classified illegal-tx, gating the *stop* harder than the `saeflood` attack itself) and `stopattack` (name
+  embeds "attack" → lab-only). Both are pure ceases that transmit nothing, so they join the exact-name
+  `_PASSIVE_RX_VERBS` allowlist (SAFE), locked by the allowlist regression test. No keyword removed; every real
+  attack still gates.
+- **Network tab won't send a `[ ... ]` argument template raw.** The per-device quick-menu only excluded `< >`
+  templates, so a `[ ]` template (e.g. ghost_esp's `aerialspoof [id lat lon alt]`, `options [index]`) was offered
+  as a no-arg send and would have transmitted the literal bracket text. It's now excluded like `< >` and routes to
+  the Devices tab, which collects the argument first.
 - **Persistent terminal now reflects wardrive / OS-flash / Flock live-scan activity too.** Several
   long-running background surfaces logged only to their own tab panes, so the app-wide bottom terminal
   (which is meant to reflect *all* activity) never saw them. Wired the wardrive scan log, the OS-image
