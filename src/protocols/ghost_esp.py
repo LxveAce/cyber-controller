@@ -582,6 +582,11 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("stopspoof", "Offensive", "Stop the AirTag spoof"),
             CommandInfo("listflippers", "BLE", "List nearby Flipper Zero devices"),
             CommandInfo("selectflipper <idx>", "BLE", "Select a Flipper by index", "idx"),
+            # BLE GATT recon (commandline.c; #ifndef ESP32-S2 — real on non-S2, all SAFE reads).
+            CommandInfo("listgatt", "BLE", "List discovered BLE GATT devices"),
+            CommandInfo("selectgatt <idx>", "BLE", "Select a GATT device by index", "idx"),
+            CommandInfo("enumgatt", "BLE", "Enumerate GATT services on the selected device"),
+            CommandInfo("listadv", "BLE", "List detected BLE advertisers"),
             # Packet capture (receive-only)
             CommandInfo("capture -eapol", "Capture", "Capture EAPOL / handshakes"),
             CommandInfo("capture -probe", "Capture", "Capture probe requests"),
@@ -604,6 +609,10 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("wigle upload all", "Wardrive", "Upload all pending wardrive CSVs"),
             CommandInfo("wigle upload <file>", "Wardrive", "Upload one wardrive CSV", "file"),
             CommandInfo("wigle stats", "Wardrive", "Show WiGLE account stats"),
+            # Streaming wardrive (passive AP/BLE+GPS records; commandline.c, SAFE).
+            CommandInfo("wdstream start", "Wardrive", "Start the streaming wardrive"),
+            CommandInfo("wdstream stop", "Wardrive", "Stop the streaming wardrive"),
+            CommandInfo("wdstream status", "Wardrive", "Streaming-wardrive status"),
             # Radio spectrum analyzers (add-on modules) — RX-ONLY, verified no CLI TX path
             # (cmd_nrf24.c: no tx verb, no W_TX_PAYLOAD; cmd_subghz.c load/replay only displays).
             CommandInfo("nrf24 start", "NRF24", "Start the nRF24 2.4GHz analyzer (RX-only)"),
