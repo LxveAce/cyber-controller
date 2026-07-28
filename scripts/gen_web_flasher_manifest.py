@@ -30,8 +30,8 @@ Output shape (JSON)::
 
 A MERGED firmware (ghost_esp, bruce) is one segment — the single ``.bin`` at its app offset (0x0).
 MARAUDER ships the app ``.bin`` only; its bootloader/partitions/boot_app0 live in the repo's
-``FlashFiles/`` tree, so a full web flash needs those raw URLs too — and only for the chips that have
-a support-file mapping (esp32 / esp32s2 / esp32s3). Other marauder chips are reported under "skipped".
+``FlashFiles/`` tree, so a full web flash needs those raw URLs too — and only for chips with a
+support-file mapping (esp32 / esp32s2 / esp32s3). Others are reported under "skipped".
 
 Because the profiles track the *latest* upstream release, this manifest goes stale as upstream
 releases — regenerate it (CI on a schedule, or on demand) rather than trusting a committed copy.
@@ -123,8 +123,9 @@ def manifest_for_assets(profile: fc.FirmwareProfile, tag: str, assets: List[Dict
     for a in assets:
         entry = variant_entry(profile, a)
         if entry is None:
-            skipped.append({"firmware": profile.id, "variant": a.get("name"),
-                            "chip": a.get("chip"), "reason": "no web-flashable support-file mapping"})
+            skipped.append({
+                "firmware": profile.id, "variant": a.get("name"), "chip": a.get("chip"),
+                "reason": "no web-flashable support-file mapping"})
             continue
         variants.append(entry)
     section = {
@@ -148,7 +149,7 @@ def build_manifest(ids=FLAGSHIP_IDS) -> Dict:
         skipped.extend(built["skipped"])
     return {
         "generated": "scripts/gen_web_flasher_manifest.py (reuses src.core.flash_core resolution)",
-        "note": ("Tracks the LATEST upstream release, so it goes stale on new releases — regenerate "
+        "note": ("Tracks the LATEST upstream release, so it goes stale on release; regenerate "
                  "rather than trusting a committed copy. Multi-file support segments (bootloader/"
                  "partitions/boot_app0) use each profile's first configured branch; the desktop "
                  "falls back through the rest if one 404s."),
@@ -158,7 +159,7 @@ def build_manifest(ids=FLAGSHIP_IDS) -> Dict:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    ap = argparse.ArgumentParser(description="Generate the web-flasher manifest (flagship firmwares).")
+    ap = argparse.ArgumentParser(description="Generate the web-flasher manifest (flagship 3).")
     ap.add_argument("--out", default="", help="Write JSON here (default: stdout).")
     args = ap.parse_args(argv)
     manifest = build_manifest()

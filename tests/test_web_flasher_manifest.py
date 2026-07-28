@@ -6,12 +6,12 @@ all with canned assets, no network."""
 
 from __future__ import annotations
 
-from src.core import flash_core as fc
 from scripts.gen_web_flasher_manifest import (
     build_manifest,
     manifest_for_assets,
     variant_entry,
 )
+from src.core import flash_core as fc
 
 
 def _asset(name, url, chip, label="v"):
@@ -30,15 +30,15 @@ def test_merged_firmware_is_one_segment_at_app_offset():
 
 def test_marauder_multi_file_segments_have_the_right_offsets_and_flashfiles_urls():
     # marauder ships the app .bin only; a full flash also needs bootloader/partitions/boot_app0 from
-    # the repo FlashFiles tree. Segments must be, in order, bootloader@chip-offset, partitions@0x8000,
-    # boot_app0@0xe000, app@0x10000 — and the support URLs must be derived from the profile's OWN
+    # the repo FlashFiles tree. Segments in order: bootloader@chip-offset, partitions 0x8000,
+    # boot_app0 0xe000, app 0x10000 — and the support URLs must be derived from the profile's OWN
     # support_files config via flash_core's URL helper (the same source the downloader uses).
     mar = fc.get_profile("marauder")
     assert mar.image_model == fc.IMAGE_MULTI
     sf = mar.cfg["support_files"]
     branch = sf["branches"][0]
     d = sf["support_dir_by_chip"]["esp32"]
-    entry = variant_entry(mar, _asset("esp32_marauder_old_hardware.bin", "https://x/app.bin", "esp32"))
+    entry = variant_entry(mar, _asset("esp32_marauder_old_hw.bin", "https://x/app.bin", "esp32"))
     assert entry["segments"] == [
         {"offset": fc._bootloader_offset("esp32"),
          "url": fc._tree_url(sf, branch, sf["bootloader_path"].format(dir=d))},
@@ -48,7 +48,7 @@ def test_marauder_multi_file_segments_have_the_right_offsets_and_flashfiles_urls
          "url": fc._tree_url(sf, branch, sf["boot_app0_path"].format(dir=d))},
         {"offset": "0x10000", "url": "https://x/app.bin"},   # app image, written last
     ]
-    # concrete offset invariants (a wrong offset bricks a board): partitions 0x8000, boot_app0 0xe000
+    # concrete offset invariants (a wrong offset bricks a board): partitions/boot_app0/app
     assert [s["offset"] for s in entry["segments"]] == \
         [fc._bootloader_offset("esp32"), "0x8000", "0xe000", "0x10000"]
 
