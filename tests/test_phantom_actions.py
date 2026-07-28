@@ -29,8 +29,11 @@ def test_flipper_ble_scan_broadcast_removed():
 
 
 def test_surviving_flipper_actions_intact():
-    """The real Flipper actions are untouched."""
+    """The real one-line Flipper target actions are untouched. NFC has NO target action: nfc emulate
+    no-ops as a one-liner (the flipper nfc CLI is an interactive sub-REPL, nfc_cli.c:107); it is
+    reached via the bare nfc REPL-entry command. RFID, by contrast, is one-line-drivable."""
     from src.models.target import TargetType
     from src.protocols import flipper
     assert flipper.TARGET_ACTIONS.get(TargetType.SUBGHZ)
-    assert flipper.TARGET_ACTIONS.get(TargetType.NFC)
+    assert flipper.TARGET_ACTIONS.get(TargetType.RFID)   # real one-line `rfid emulate`
+    assert not flipper.TARGET_ACTIONS.get(TargetType.NFC)  # removed: REPL-only, no one-line form

@@ -213,10 +213,11 @@ class FlipperProtocol(BaseProtocol):
                         "Transmit a saved .sub file (opt: <repeat> <device 0|1>)", "file",
                         danger="lab-only"),
             # ---- NFC ----
-            # flipper nfc opens an INTERACTIVE sub-REPL and discards same-line args, so a bare
-            # 'nfc <subcmd>' won't run as one line (nfc_cli.c:107). detect/read = phantoms; real
-            # subcmds: apdu/raw/emulate/mfu/scanner/dump/field. nfc emulate = real but REPL-only.
-            CommandInfo("nfc emulate", "Offensive", "Emulate an .nfc tag", danger="lab-only"),
+            # flipper nfc opens an interactive sub-REPL, discarding same-line args (nfc_cli.c:107).
+            # So no nfc-subcmd one-liner works (detect/read/emulate all no-op). The bare nfc verb
+            # opens the sub-shell; the operator then types scanner/emulate/dump + exit there.
+            # (rfid, by contrast, is one-line-drivable.)
+            CommandInfo("nfc", "NFC", "Open the interactive NFC sub-CLI (scanner/emulate/dump)"),
             # ---- RFID ----
             CommandInfo("rfid read", "RFID", "Read 125kHz RFID"),
             CommandInfo("rfid emulate", "Offensive", "Emulate RFID tag", danger="lab-only"),
@@ -275,9 +276,8 @@ TARGET_ACTIONS: dict[TargetType, list[TargetAction]] = {
     TargetType.SUBGHZ: [
         TargetAction("SubGHz Replay", "subghz tx", "Replay SubGHz signal via Flipper", ActionCategory.ATTACK),
     ],
-    TargetType.NFC: [
-        TargetAction("NFC Emulate", "nfc emulate", "Emulate NFC tag via Flipper", ActionCategory.ATTACK),
-    ],
+    # No NFC target action: nfc emulate no-ops as a one-liner (the flipper nfc CLI is an interactive
+    # sub-REPL, nfc_cli.c:107). NFC is reached via the bare nfc REPL-entry command, not a target action.
     TargetType.RFID: [
         TargetAction("RFID Emulate", "rfid emulate", "Emulate 125 kHz RFID tag via Flipper", ActionCategory.ATTACK),
     ],
