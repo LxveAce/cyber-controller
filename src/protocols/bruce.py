@@ -105,6 +105,15 @@ class BruceProtocol(BaseProtocol):
             CommandInfo("uptime", "System", "Show device uptime"),
             CommandInfo("reboot", "System", "Reboot device"),
             CommandInfo("webui", "System", "Start the on-device web UI / server"),
+            CommandInfo("date", "System", "Show the device date/time (RTC)"),
+            CommandInfo("display <option>", "System", "TFT serial-logging control", "option"),
+            CommandInfo("nav <command> [duration]", "System", "Simulate a UI button press", "cmd"),
+            CommandInfo("options [index]", "System", "List on-device menu options (or select one)",
+                        "index"),
+            CommandInfo("optionsJSON", "System", "Dump the on-device menu options as JSON"),
+            # factory_reset wipes device config (destructive) — explicit gate.
+            CommandInfo("factory_reset", "System", "Reset all settings to factory defaults",
+                        danger="lab-only"),
             # ---- Config ----
             CommandInfo("settings", "Config", "Dump device settings as JSON"),
             CommandInfo("settings <key> <value>", "Config", "Read or change a setting", "key,value"),
@@ -149,6 +158,10 @@ class BruceProtocol(BaseProtocol):
             CommandInfo("storage copy <src> <dst>", "Storage", "Copy a file", "src,dst"),
             CommandInfo("storage md5 <path>", "Storage", "MD5 checksum of a file", "path"),
             CommandInfo("storage crc32 <path>", "Storage", "CRC32 checksum of a file", "path"),
+            CommandInfo("storage rmdir <path>", "Storage", "Remove a directory", "path"),
+            CommandInfo("storage stat <path>", "Storage", "Show a file's size/type/mtime", "path"),
+            CommandInfo("storage free <sd/littlefs>", "Storage", "Show free space", "target"),
+            CommandInfo("storage ymodem <path>", "Storage", "Receive a file over YModem", "path"),
             # ---- Hardware (recon / bus) ----
             CommandInfo("i2c scan", "Hardware", "Enumerate I2C bus addresses"),
             CommandInfo("gpio read <pin>", "Hardware", "Read a GPIO pin", "pin"),
