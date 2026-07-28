@@ -13,7 +13,7 @@
       "expected_response": ""
     },
     {
-      "command": "power info",
+      "command": "info power",
       "delay_ms": 400,
       "expected_response": ""
     }
