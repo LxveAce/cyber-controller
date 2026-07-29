@@ -134,6 +134,23 @@ class SettingsTab(QWidget):
         flash_outer.addLayout(flash_form)
         self._cards.append(flash_card)
 
+        # ── Interface ────────────────────────────────────────────────
+        iface_card, iface_outer = _make_card("Interface")
+        iface_form = QFormLayout()
+        iface_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
+        self._touch_mode_combo = QComboBox()
+        self._touch_mode_combo.addItem("Auto (detect a touchscreen)", "auto")
+        self._touch_mode_combo.addItem("On (force touch-sized controls)", "on")
+        self._touch_mode_combo.addItem("Off (force pointer-sized controls)", "off")
+        self._touch_mode_combo.setToolTip(
+            "Touch mode sizes the responsive layout — bigger hit targets and the touch stacking on "
+            "the Nodes/Crack screens. Auto detects a touch device; force it On for a touchscreen "
+            "deck where detection is unreliable. Takes full effect on the next window resize or "
+            "restart. (Auto-detection is not yet validated on real touch hardware.)")
+        iface_form.addRow("Touch mode:", self._touch_mode_combo)
+        iface_outer.addLayout(iface_form)
+        self._cards.append(iface_card)
+
         # ── Cross-Comm ───────────────────────────────────────────────
         # The old "Auto-share discoveries" / "De-duplicate targets by MAC" checkboxes were inert — nothing
         # read them, so unchecking either changed nothing. Rather than ship toggles that lie, describe the
@@ -311,7 +328,9 @@ class SettingsTab(QWidget):
         compacts around the now-hidden cards."""
         from src.ui.qt.layout_profile import layout_profile, settings_layout
         dpi = self.logicalDpiX() or 96
-        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        from src.ui.qt.touch_mode import touch_active
+        profile = layout_profile(max(1, self.width()), max(1, self.height()),
+                                 touch=touch_active(), dpi=dpi)
         if not force and profile.size == self._last_settings_size:   # debounce on the size class
             return
         self._last_settings_size = profile.size
@@ -377,10 +396,19 @@ class SettingsTab(QWidget):
         self._secure_container_check.toggled.connect(self._mark_dirty)
         self._wigle_token_edit.textChanged.connect(self._mark_dirty)
         self._wdgwars_token_edit.textChanged.connect(self._mark_dirty)
+        self._touch_mode_combo.currentIndexChanged.connect(self._on_touch_mode_changed)
 
     def _mark_dirty(self, *_args) -> None:
         if not self._loading:
             self._dirty = True
+
+    def _on_touch_mode_changed(self, *_args) -> None:
+        """Apply the touch-mode override live (so the next relayout uses it) and mark the tab dirty
+        so the choice persists on Save. Applied even during load — that just syncs the module global
+        to the value read from disk, which is correct."""
+        from src.ui.qt.touch_mode import set_touch_mode
+        set_touch_mode(self._touch_mode_combo.currentData())
+        self._mark_dirty()
 
     # ── Load / gather ────────────────────────────────────────────────
 
@@ -399,6 +427,10 @@ class SettingsTab(QWidget):
 
         flash = settings.get("flash", {})
         self._set_combo_text(self._flash_baud_combo, str(flash.get("flash_baud", 921600)))
+
+        interface = settings.get("interface", {})
+        tm_idx = self._touch_mode_combo.findData(str(interface.get("touch_mode", "auto")))
+        self._touch_mode_combo.setCurrentIndex(tm_idx if tm_idx >= 0 else 0)
 
         sec = settings.get("safety", {})
         self._confirm_dangerous_check.setChecked(bool(sec.get("confirm_dangerous", True)))
@@ -465,7 +497,13 @@ class SettingsTab(QWidget):
             # carrying them forward makes save_settings' deep-merge reset mode to 'pro', DROP the
             # loadout, and reset _interface_mode_ack to False: a plain Save silently undoes the Simple
             # choice + loadout and re-arms both first-run choosers on the next launch.
-            "interface": disk.get("interface", {}),
+            # Carry the interface section forward (Simple/Pro mode + loadout this tab owns no
+            # widgets for), overlaying only the widget-backed touch_mode so a Save persists it
+            # without wiping the mode/loadout.
+            "interface": {
+                **disk.get("interface", {}),
+                "touch_mode": self._touch_mode_combo.currentData(),
+            },
             "_interface_mode_ack": disk.get("_interface_mode_ack", False),
             # CRITICAL carry-forward: this tab owns only the `enabled` toggle for `updates`, but _gather
             # rebuilds the WHOLE settings dict. Without preserving the rest of the section, a plain Save

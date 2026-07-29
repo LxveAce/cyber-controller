@@ -330,7 +330,9 @@ class FlashTab(QWidget):
 
     def _relayout_for_size(self) -> None:
         dpi = self.logicalDpiX() or 96
-        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        from src.ui.qt.touch_mode import touch_active
+        profile = layout_profile(max(1, self.width()), max(1, self.height()),
+                                 touch=touch_active(), dpi=dpi)
         if profile.size == self._last_flash_size:  # debounce: reflow only on a size-class change
             return
         self._last_flash_size = profile.size

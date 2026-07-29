@@ -480,7 +480,9 @@ class NetworkTab(QWidget):
         """Rescale the node geometry when the size class changes (debounced)."""
         from src.ui.qt.layout_profile import layout_profile, network_layout
         dpi = self.logicalDpiX() or 96
-        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        from src.ui.qt.touch_mode import touch_active
+        profile = layout_profile(max(1, self.width()), max(1, self.height()),
+                                 touch=touch_active(), dpi=dpi)
         if not force and profile.size == self._last_network_size:   # debounce on the size class
             return
         self._last_network_size = profile.size

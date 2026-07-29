@@ -209,7 +209,9 @@ class OperateTab(QWidget):
         at build so the grid columns + button hit-target are seeded before the first grid build."""
         from src.ui.qt.layout_profile import layout_profile, operate_layout
         dpi = self.logicalDpiX() or 96
-        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        from src.ui.qt.touch_mode import touch_active
+        profile = layout_profile(max(1, self.width()), max(1, self.height()),
+                                 touch=touch_active(), dpi=dpi)
         if not force and profile.size == self._last_operate_size:   # debounce on the size class
             return
         self._last_operate_size = profile.size

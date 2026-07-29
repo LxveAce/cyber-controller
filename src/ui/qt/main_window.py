@@ -249,7 +249,9 @@ class CyberControllerWindow(QMainWindow):
             return
         from src.ui.qt.layout_profile import layout_profile
         dpi = self.logicalDpiX() or 96
-        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        from src.ui.qt.touch_mode import touch_active
+        profile = layout_profile(max(1, self.width()), max(1, self.height()),
+                                 touch=touch_active(), dpi=dpi)
         if profile.size == self._last_shell_size:   # debounce: relayout only on a size-class change
             return
         self._last_shell_size = profile.size
@@ -534,6 +536,16 @@ class CyberControllerWindow(QMainWindow):
 
         # Apply the persisted interface mode to every tab now that they exist (no persist write-back).
         self._apply_ui_mode(self._load_ui_mode(), persist=False)
+
+        # Apply the persisted touch-mode override so the responsive layout's touch paths (bigger hit
+        # targets, the Nodes/Crack touch stacking) are live from the first relayout, not dead until
+        # the user opens Settings. auto (default) auto-detects; on/off force it. See touch_mode.py.
+        try:
+            from src.config.settings import load_settings
+            from src.ui.qt.touch_mode import set_touch_mode
+            set_touch_mode(str(load_settings().get("interface", {}).get("touch_mode", "auto")))
+        except Exception:  # noqa: BLE001 — never let a settings read block window construction
+            pass
 
         # Re-open any tabs the user had popped out into their own windows last session.
         try:

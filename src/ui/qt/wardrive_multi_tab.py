@@ -74,7 +74,9 @@ class WardriveMultiTab(QWidget):
     def _relayout_for_size(self) -> None:
         from src.ui.qt.layout_profile import layout_profile, wardrive_multi_layout
         dpi = self.logicalDpiX() or 96
-        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        from src.ui.qt.touch_mode import touch_active
+        profile = layout_profile(max(1, self.width()), max(1, self.height()),
+                                 touch=touch_active(), dpi=dpi)
         if profile.size == self._last_wm_size:   # debounce: relayout only on a size-class change
             return
         self._last_wm_size = profile.size

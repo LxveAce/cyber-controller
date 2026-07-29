@@ -140,7 +140,9 @@ class NodesTab(QWidget):
         initial placement at build."""
         from src.ui.qt.layout_profile import layout_profile, nodes_layout
         dpi = self.logicalDpiX() or 96
-        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        from src.ui.qt.touch_mode import touch_active
+        profile = layout_profile(max(1, self.width()), max(1, self.height()),
+                                 touch=touch_active(), dpi=dpi)
         if not force and profile.size == self._last_nodes_size:   # debounce on the size class
             return
         self._last_nodes_size = profile.size

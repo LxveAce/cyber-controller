@@ -69,6 +69,10 @@ DEFAULTS: dict[str, Any] = {
     # status-bar badge. A first-run prompt lets new users pick Simple. Pro has ZERO feature penalty.
     "interface": {
         "mode": "pro",
+        # Touch mode for the responsive layout (src/ui/qt/touch_mode.py): "auto" detects a touch
+        # device (QTouchDevice), "on"/"off" force touch-sized chrome (bigger hit targets, stacking).
+        # auto-detection is unverified on real touch hardware — "on" is the reliable manual path.
+        "touch_mode": "auto",
     },
     # In-app update check (see src/core/updater.py). A non-blocking startup check asks GitHub for the
     # latest published release and — only when the running build is behind — offers a deep-link to the

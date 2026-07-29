@@ -32,6 +32,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Touch mode drives the responsive layout — the touch paths are no longer dead code (GUI rebuild Wave-3).**
+  Every tab's relayout hard-coded `touch=False`, so all the touch responsiveness Batch C built (bigger hit
+  targets, the Nodes action row's 1-wide stack, the Crack panel stacking) never activated — even on a real
+  touchscreen. A new shared `touch_mode.touch_active()` now drives it: a user override (a **Touch mode** setting,
+  Auto / On / Off, in Settings ▸ Interface) layered over runtime detection (`QTouchDevice`). "Auto" detects a
+  touch device; "On"/"Off" force it for a touchscreen deck where detection is unreliable. The override is applied
+  at startup and persisted, and all ten `_relayout_*` sites plus the app shell read it. (Auto-detection is not
+  yet validated on real touch hardware — "On" is the reliable manual path meanwhile.)
 - **Status consolidated into the one shell — transient toasts + folded-in chrome, no second bottom bar (GUI
   rebuild Wave-3).** `PageLayout.toast(message, level, timeout)` is now the single home for the fleeting
   "action ran / failed" notices that used to scatter onto a duplicate `QMainWindow.statusBar()` — a transient

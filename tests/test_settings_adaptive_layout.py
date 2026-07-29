@@ -70,12 +70,13 @@ def test_relayout_debounces_on_size_class(qapp):
 
 
 def test_simple_mode_compacts_the_grid(qapp):
-    # Simple mode hides the six advanced cards; the grid must re-flow to place only the three that
-    # remain (Serial, Flash, Updates), not leave gaps where the hidden cards were.
+    # Simple mode hides the six advanced cards; the grid must re-flow to place only the basic ones
+    # that remain (Serial, Flash, Interface, Updates), not leave gaps where the hidden cards were.
     tab = ST.SettingsTab()
     tab._apply_settings_layout(settings_layout(layout_profile(1440, 900)))
-    assert tab._cards_grid.count() == 9
+    total = len(tab._cards)
+    assert tab._cards_grid.count() == total
     tab.set_ui_mode("simple")
-    assert tab._cards_grid.count() == 3
+    assert tab._cards_grid.count() == total - 6   # six advanced cards hidden
     tab.set_ui_mode("pro")
-    assert tab._cards_grid.count() == 9
+    assert tab._cards_grid.count() == total
