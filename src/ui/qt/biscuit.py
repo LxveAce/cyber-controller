@@ -121,13 +121,28 @@ class StatGrid(QWidget):
     def __init__(self, labels, columns: int = 3, parent: "Optional[QWidget]" = None) -> None:
         super().__init__(parent)
         self._tiles: "dict[str, StatTile]" = {}
-        grid = QGridLayout(self)
-        grid.setContentsMargins(0, 0, 0, 0)
-        grid.setSpacing(8)
-        for i, label in enumerate(labels):
-            tile = StatTile(label)
-            self._tiles[label] = tile
-            grid.addWidget(tile, i // columns, i % columns)
+        self._grid = QGridLayout(self)
+        self._grid.setContentsMargins(0, 0, 0, 0)
+        self._grid.setSpacing(8)
+        self._columns = max(1, columns)
+        for label in labels:
+            self._tiles[label] = StatTile(label)
+        self._reflow()
+
+    def _reflow(self) -> None:
+        for i, tile in enumerate(self._tiles.values()):
+            self._grid.addWidget(tile, i // self._columns, i % self._columns)
+
+    def set_columns(self, columns: int) -> None:
+        """Re-flow the tiles into ``columns`` columns — the host drives this from its layout profile
+        so a 6-wide stat row wraps to 2-3 columns on a compact deck instead of overflowing."""
+        columns = max(1, columns)
+        if columns == self._columns:
+            return
+        self._columns = columns
+        for tile in self._tiles.values():
+            self._grid.removeWidget(tile)
+        self._reflow()
 
     def set_stats(self, stats: dict) -> None:
         for label, val in stats.items():

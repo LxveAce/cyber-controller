@@ -209,6 +209,7 @@ try:
             self._sort = "rssi"
             self._paused = False
             self._last_event_ts: "Optional[float]" = None  # when we last folded in a Wi-Fi event
+            self._last_wifi_size: "Optional[str]" = None    # Wave-3: size class (debounce)
 
             root = QVBoxLayout(self)
             self._header = QLabel(
@@ -263,6 +264,25 @@ try:
             self._timer.setInterval(1000)
             self._timer.timeout.connect(self._refresh)
             self._timer.start()
+            self._relayout_wifi(force=True)   # seed the stat-grid column count
+
+        # ── responsive layout (Wave-3) ──
+        def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+            super().resizeEvent(event)
+            self._relayout_wifi()
+
+        def _relayout_wifi(self, force: bool = False) -> None:
+            """Wrap the six stat tiles from one 6-wide row to 3 (regular) / 2 (compact) columns so
+            they don't overflow a narrow deck. Debounced on the size class."""
+            from src.ui.qt.layout_profile import layout_profile
+            from src.ui.qt.touch_mode import touch_active
+            dpi = self.logicalDpiX() or 96
+            p = layout_profile(max(1, self.width()), max(1, self.height()),
+                               touch=touch_active(), dpi=dpi)
+            if not force and p.size == self._last_wifi_size:   # debounce on the size class
+                return
+            self._last_wifi_size = p.size
+            self._stats.set_columns(2 if p.is_compact else 6 if p.is_expanded else 3)
 
         # ── data in ──
         def set_clock(self, fn) -> None:

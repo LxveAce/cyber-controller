@@ -32,6 +32,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Wi-Fi + BLE analyzer stat grids wrap on a compact canvas (GUI rebuild Wave-3, bespoke screens).** The shared
+  Biscuit `StatGrid` built a fixed N-wide tile row that overflows a narrow deck; it now exposes `set_columns()`,
+  and both analyzer tabs drive it from their layout profile (one shared fix, reused twice): the 6-wide Wi-Fi
+  stat row and the 5-wide BLE row wrap to 3 columns on a regular window and 2 on a compact deck, full width when
+  expanded. Size-driven and debounced; the analyzer models, graphs, and tables are untouched.
 - **Cross-Comm tab's Event-Stream / Auto-Rules row stacks on a compact canvas (GUI rebuild Wave-3, bespoke
   screens).** The Live Event Stream and Auto-Routing Rules cards sat side-by-side in a fixed horizontal row that
   cramps on a narrow deck; they now flip to a vertical stack on a compact window (horizontal otherwise).
