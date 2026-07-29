@@ -233,6 +233,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   over the one engine (its `flash_parallel` multi-board capability is preserved).
 
 ### Fixed
+- **Background tabs no longer burn CPU on off-screen refreshes.** The Broadcast, Wi-Fi analyzer, and BLE
+  analyzer tabs started a 1–4 second refresh timer at construction and never stopped it, so each kept
+  recomputing and repainting even while hidden behind another tab. They now start the timer on show and stop
+  it on hide (like the Operate/Health/Nodes/Device tabs already did), so a backgrounded tab costs ~0.
 - **Vampire Deauther is now detected (CC-DEAUTHER-UNDETECTED-0724).** The AmebaD/BW16 (RTL8720DN) Vampire
   Deauther firmware — which CC flashes via the rtl8720 backend's "Vampire Deauther AmebaD bundle" — was
   unidentified on connect: its runtime banner `[Vampire Deauther Ready]` carries no Realtek/RTL marker, so
