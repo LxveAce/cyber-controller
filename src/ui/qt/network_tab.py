@@ -606,8 +606,8 @@ class NetworkTab(QWidget):
             except Exception:  # noqa: BLE001 — telemetry must never break the send path
                 pass
         window = self.window()
-        if window is not None and hasattr(window, "statusBar"):
-            window.statusBar().showMessage(f"{action_name} {status} on {port}: {detail}", 5000)
+        if window is not None and hasattr(window, "toast"):
+            window.toast(f"{action_name} {status} on {port}: {detail}", timeout=5000)
 
     def _run_target_action(self, action, port: str) -> None:
         if self._dm is None:

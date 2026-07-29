@@ -1771,8 +1771,12 @@ class CyberControllerWindow(QMainWindow):
     # ── Status bar ───────────────────────────────────────────────────
 
     def _build_status_bar(self) -> None:
+        # The system-health summary + mode badge fold into the ONE shell status bar (the app-shell's top
+        # bar), retiring the second, duplicate QMainWindow.statusBar() — transient action notices now go
+        # through self.toast() -> the shell's toast slot, not a bottom bar. Falls back to the bottom bar
+        # only if the shell somehow isn't built yet (defensive; _build_main_layout runs first).
+        shell = getattr(self, "_app_shell", None)
         self._status_label = QLabel()
-        self.statusBar().addPermanentWidget(self._status_label)
 
         # Clickable Interface-Mode badge (one-click recovery to Pro / quick switch to Simple).
         self._mode_badge = QLabel()
@@ -1780,7 +1784,13 @@ class CyberControllerWindow(QMainWindow):
         self._mode_badge.setCursor(Qt.PointingHandCursor)
         self._mode_badge.setToolTip("Click (or Ctrl+M) to switch between Simple and Pro interface modes")
         self._mode_badge.mousePressEvent = lambda _ev: self._toggle_ui_mode()  # type: ignore[assignment]
-        self.statusBar().addPermanentWidget(self._mode_badge)
+
+        if shell is not None:
+            shell.add_status_widget(self._status_label)
+            shell.add_status_widget(self._mode_badge)
+        else:  # pragma: no cover - defensive fallback
+            self.statusBar().addPermanentWidget(self._status_label)
+            self.statusBar().addPermanentWidget(self._mode_badge)
 
         self._refresh_status()
         # Paint the badge from the already-applied interface mode. _apply_ui_mode() ran during layout
@@ -1802,6 +1812,16 @@ class CyberControllerWindow(QMainWindow):
             f"  CPU: {cpu:.0f}%  |  RAM: {mem:.0f}%  "
             f"|  Devices: {n}/{total}  |  Targets: {targets}  "
         )
+
+    def toast(self, message: str, level: str = "info", timeout: int = 4000) -> None:
+        """Show a transient status notice in the shell's toast slot (the single status surface).
+
+        The one entry point tabs use for fleeting "action ran / failed" messages — routes to
+        ``PageLayout.toast`` so nothing has to reach for a second bottom status bar. A no-op if the
+        shell isn't built (e.g. a tab hosted standalone in a test), matching the old graceful-degrade."""
+        shell = getattr(self, "_app_shell", None)
+        if shell is not None:
+            shell.toast(message, level=level, timeout=timeout)
 
     # ── Command palette ─────────────────────────────────────────────
 

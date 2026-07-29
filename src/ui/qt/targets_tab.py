@@ -520,10 +520,10 @@ class TargetsTab(QWidget):
         self.fill_macro_requested.emit(target)
 
     def _notify(self, msg: str) -> None:
-        """Show a transient hint on the main window's status bar, when there is one."""
+        """Show a transient hint in the shell's toast slot, when there is a host window."""
         window = self.window()
-        if window is not None and hasattr(window, "statusBar"):
-            window.statusBar().showMessage(msg, 4000)
+        if window is not None and hasattr(window, "toast"):
+            window.toast(msg, timeout=4000)
 
     def _on_context_menu(self, pos) -> None:
         """Build and show the right-click context menu for a target row."""
@@ -679,12 +679,10 @@ class TargetsTab(QWidget):
                 "chain_events": list(getattr(action, "chain_events", None) or []),
             })
 
-            # Update status bar via parent window
+            # Transient notice via the shell's toast slot
             window = self.window()
-            if window and hasattr(window, "statusBar"):
-                window.statusBar().showMessage(
-                    f"Action '{action_name}' {status} on {port}: {detail}", 5000
-                )
+            if window and hasattr(window, "toast"):
+                window.toast(f"Action '{action_name}' {status} on {port}: {detail}", timeout=5000)
 
         except Exception as exc:
             log.exception("Failed to execute action on %s", port)
@@ -697,8 +695,8 @@ class TargetsTab(QWidget):
                 "detail": str(exc),
             })
             window = self.window()
-            if window and hasattr(window, "statusBar"):
-                window.statusBar().showMessage(f"Action failed: {exc}", 5000)
+            if window and hasattr(window, "toast"):
+                window.toast(f"Action failed: {exc}", level="error", timeout=5000)
 
     @staticmethod
     def _copy_to_clipboard(text: str) -> None:

@@ -32,6 +32,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Status consolidated into the one shell — transient toasts + folded-in chrome, no second bottom bar (GUI
+  rebuild Wave-3).** `PageLayout.toast(message, level, timeout)` is now the single home for the fleeting
+  "action ran / failed" notices that used to scatter onto a duplicate `QMainWindow.statusBar()` — a transient
+  slot distinct from the persistent device-truth slots (`set_status`) and count badges (`set_badge`), auto-
+  clearing after a timeout and tinted by level (info/success/warning/error). The four `statusBar().showMessage`
+  call sites (Targets + Network tabs) route through a new `MainWindow.toast()`, and the system-health line +
+  Simple/Pro mode badge fold into the shell's top bar via `add_status_widget`, retiring the duplicate bottom
+  status bar entirely.
 - **Network graph rescales its node geometry with the window (GUI rebuild Wave-3, Batch C — screen 7/7; Batch
   C COMPLETE).** The network graph's node boxes and their text now scale by size class via the pure
   `network_layout` resolver (the one decider with screen-specific fields): node width 132/150/176, height floored

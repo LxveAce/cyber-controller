@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PyQt5.QtCore import Qt, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -29,6 +29,10 @@ from src.ui.qt.theme import colors as C
 
 POSTURE_RECON = "recon"      # default: passive recon / defence
 POSTURE_OFFENSE = "offense"  # gated: active/offensive ops (the host logs + authorises the switch)
+
+# Transient-toast tints by level. Kept literal (matches the app's danger palette in operate_tab) so
+# a theme without semantic success/warn/error names still renders; info falls back to muted text.
+_TOAST_COLORS = {"success": "#3fb950", "warning": "#d29922", "error": "#f85149"}
 
 
 class _Destination(QPushButton):
@@ -79,6 +83,9 @@ class PageLayout(QWidget):
         self._posture = POSTURE_RECON
         self._collapsed = False
         self._content: Optional[QWidget] = None
+        self._toast_timer = QTimer(self)   # transient-toast auto-clear
+        self._toast_timer.setSingleShot(True)
+        self._toast_timer.timeout.connect(self._clear_toast)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -124,7 +131,12 @@ class PageLayout(QWidget):
             lbl.setVisible(False)
             self._status[key] = lbl
             h.addWidget(lbl)
+        # transient-toast slot (separate from the persistent device-truth slots above) — see toast()
+        self._toast_label = QLabel("")
+        self._toast_label.setVisible(False)
+        h.addWidget(self._toast_label)
         h.addStretch(1)
+        self._status_bar_layout = h   # host widgets (add_status_widget) insert before the omnibar
         # omnibar (command + fuzzy search fused)
         self._omnibar = QLineEdit()
         self._omnibar.setPlaceholderText("Command or search…")
@@ -209,6 +221,31 @@ class PageLayout(QWidget):
         lbl.setText(text)
         lbl.setVisible(bool(text))
         lbl.setStyleSheet(f"color:{color or C.TEXT_MUTED}; padding:0 6px;")
+
+    def toast(self, message: str, level: str = "info", timeout: int = 4000) -> None:
+        """Show a TRANSIENT status message in the one shell bar, auto-clearing after *timeout* ms.
+
+        This is the single home for the fleeting "action X ran / failed" notices that used to
+        scatter onto a second, bottom ``QMainWindow.statusBar()`` — distinct from the persistent
+        device-truth slots (:meth:`set_status`) and count badges (:meth:`set_badge`). ``level`` in
+        ``info``/``success``/``warning``/``error`` tints the text; ``timeout <= 0`` holds the
+        message until the next toast or an explicit empty one."""
+        self._toast_timer.stop()
+        color = _TOAST_COLORS.get(level, C.TEXT_MUTED)
+        self._toast_label.setText(message)
+        self._toast_label.setStyleSheet(f"color:{color}; padding:0 8px; font-weight:600;")
+        self._toast_label.setVisible(bool(message))
+        if message and timeout and timeout > 0:
+            self._toast_timer.start(int(timeout))
+
+    def _clear_toast(self) -> None:
+        self._toast_label.clear()
+        self._toast_label.setVisible(False)
+
+    def add_status_widget(self, widget: QWidget) -> None:
+        """Add a host widget to the top status bar (right side, before the omnibar) — so chrome that
+        used to live on a second bottom status bar folds into this one shell bar."""
+        self._status_bar_layout.insertWidget(self._status_bar_layout.count() - 1, widget)
 
     def set_collapsed(self, collapsed: bool) -> None:
         """Collapse the sidebar to an icon rail (True) or expand it (False). Idempotent: a no-op
