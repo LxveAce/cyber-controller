@@ -62,10 +62,20 @@ class BroadcastBar(QWidget):
             if callable(fn):
                 fn(lambda *_a: self._bridge.rebuild.emit())
         self._refresh_enabled()
-        # A slow safety-net timer (events do the real work); re-enable is a cheap recompute.
+        # A slow safety-net timer (events do the real work); re-enable is a cheap recompute. Runs
+        # only while the tab is visible (showEvent/hideEvent) — a hidden tab costs ~0, no 4s poll.
         self._timer = QTimer(self)
+        self._timer.setInterval(4000)
         self._timer.timeout.connect(self._on_timer)
-        self._timer.start(4000)
+
+    def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().showEvent(ev)
+        self._refresh_enabled()   # catch up immediately when shown
+        self._timer.start()
+
+    def hideEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().hideEvent(ev)
+        self._timer.stop()
 
     # ── layout ───────────────────────────────────────────────────────
     def _build_ui(self) -> None:
