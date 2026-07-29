@@ -140,6 +140,7 @@ class SoftwareTab(QWidget):
         self._resolver: _ResolveWorker | None = None
         self._worker: _OSFlashWorker | None = None
         self._drive_scan: _DriveScanWorker | None = None
+        self._last_sw_size: "str | None" = None   # Wave-3: last size class (relayout debounce)
         self._build_ui()
         self._load_catalog()
         self._refresh_drives()
@@ -162,6 +163,7 @@ class SoftwareTab(QWidget):
         root.addWidget(intro)
 
         top = QHBoxLayout()
+        self._top_row = top   # Wave-3: OS / USB / action columns stack on a compact canvas
         top.setSpacing(8)
 
         os_card, os_layout = _make_card("Operating System")
@@ -236,6 +238,28 @@ class SoftwareTab(QWidget):
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
+        self._relayout_software(force=True)   # seed the OS/USB/action row orientation
+
+    # ── responsive layout (Wave-3) ───────────────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_software()
+
+    def _relayout_software(self, force: bool = False) -> None:
+        """Stack the OS-picker / target-USB / action columns vertically on a compact canvas (three
+        cards side-by-side cramp a narrow deck), horizontal otherwise. Debounced on the size class.
+        Does not touch the destructive-write path — it stays gated by its pre-execution confirm."""
+        from src.ui.qt.layout_profile import layout_profile
+        from src.ui.qt.touch_mode import touch_active
+        dpi = self.logicalDpiX() or 96
+        p = layout_profile(max(1, self.width()), max(1, self.height()),
+                           touch=touch_active(), dpi=dpi)
+        if not force and p.size == self._last_sw_size:   # debounce on the size class
+            return
+        self._last_sw_size = p.size
+        from PyQt5.QtWidgets import QBoxLayout
+        self._top_row.setDirection(
+            QBoxLayout.TopToBottom if p.is_compact else QBoxLayout.LeftToRight)
 
     # ── data ─────────────────────────────────────────────────────────
 

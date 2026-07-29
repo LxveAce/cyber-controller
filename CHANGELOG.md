@@ -32,6 +32,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Software-OS tab reflows on a compact canvas — the last Wave-3 screen (GUI rebuild Wave-3, bespoke screens
+  COMPLETE).** The OS-picker, target-USB, and action columns stacked three cards across a narrow deck; they now
+  stack vertically on a compact window (horizontal otherwise). The destructive whole-disk OS write is
+  unchanged — it stays gated by its existing pre-execution "Erase and flash?" confirm (default No), matching
+  the owner's usable-by-default safety model (a pre-execution confirm, not a posture gate); a regression test
+  now locks that the write cannot start unless the confirm is accepted. **With this, every one of the app's
+  screens reflows to its window.**
 - **Flock heatmap control rows stack on a compact canvas (GUI rebuild Wave-3, bespoke screens).** The three
   control strips — file (Load/Folder/Export/Import-OSM), live-scan (GPS/device/scan), and the eight map
   checkboxes/buttons (Reset view, street/world/online basemap, My location, Follow, Center, Unload) — packed
