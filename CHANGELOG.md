@@ -6,6 +6,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Whole-app launch-render/resize coherence smoke (`test_app_launch_render_smoke`).** Assembles the real
+  `CyberControllerWindow` and renders all 18 leaf screens at three size classes (compact / regular / expanded),
+  firing each screen's `resizeEvent` -> `_relayout_*`. After Wave-3 + the Grand-Overhaul touched every screen's
+  reflow, the shared terminal, and the timers, this proves they cohere assembled — a layout crash or null render
+  on any screen fails the suite, not just a per-screen unit test.
 - **Force-firmware now leaves an honest terminal trace (Grand-Overhaul).** Forcing (or clearing) a device's
   firmware on the Operate console — a manual override that changes which commands the device accepts — emits a
   line to the app terminal (`operate` source; the force line at `warn` level, flagged "may not match the
