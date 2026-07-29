@@ -18,17 +18,6 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-@pytest.fixture(autouse=True)
-def _offense_posture():
-    # test_target_action_gates_danger exercises the per-command confirm gate, which now sits BEHIND
-    # the global posture master gate (src.core.posture). Run in Offense so the offensive action
-    # reaches that downstream gate; reset to the safe default after so posture never leaks away.
-    from src.core import posture
-    posture.set_posture(posture.POSTURE_OFFENSE)
-    yield
-    posture.set_posture(posture.POSTURE_RECON)
-
-
 def _make_tab(with_data: bool = True):
     from src.core.device_manager import DeviceManager
     from src.core.cross_comm import EventBus, TargetPool

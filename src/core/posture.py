@@ -1,56 +1,34 @@
-"""Global operating-posture gate — a master switch OVER the per-command safety floor.
+"""Global operating-posture — a VISIBLE display/convenience state (it gates nothing).
 
-The app shell carries a Recon/Defense <-> Offense posture toggle. This module is the security state
-behind it: a process-global posture the command send paths consult IN ADDITION TO
-:mod:`src.core.safety`. It never weakens safety.py — it only ADDS a gate:
+The app shell carries a Recon/Defense <-> Offense posture toggle. This module is the process-global
+state behind it, mirrored from the shell so any surface can read the current posture for display.
 
-    RECON (the default)  -> every offensive/TX verb is HARD-BLOCKED, even if the device is armed
-    OFFENSE (host-gated) -> offensive verbs proceed to their NORMAL per-verb gate (classify +
-                            tx_hard_block arm gate + the confirm dialog)
+**It does NOT gate command usage** (owner decision, 2026-07-29): CC is universally usable out of the
+box — offensive verbs are reachable by default. The safety model is (1) a one-time first-run
+authorized-use consent and (2) the per-command pre-execution confirm (``safety.should_confirm``),
+plus the arm gate where a firmware implements it (``safety.tx_hard_block``). safety.py stays the
+untouched floor. An earlier build made Recon hard-block offensive verbs until a switch to Offense;
+that forced-switch was removed per the owner — the toggle is a visible indicator, never a blocker.
 
-So the offensive path now needs TWO independent unlocks: a deliberate, host-authorized switch to
-Offense (the shell logs + authorizes it) AND the existing per-command arm/confirm. A SAFE verb is
-never affected. The default is the safe posture, and a construction with no shell wired (e.g. a
-standalone tab in a test) stays RECON — fail-safe.
-
-The shell owns the VISIBLE posture (``PageLayout``); the ``PageLayoutBinder`` mirrors every change
-into here via ``set_posture`` so this global can't lie about what the toggle shows. These string
-values are canonical; ``page_layout`` imports them from here so the two can't drift.
+These string values are canonical; ``page_layout`` imports them from here so they can't drift, and
+``PageLayoutBinder`` mirrors the visible toggle into here via ``set_posture``.
 """
 from __future__ import annotations
 
-POSTURE_RECON = "recon"      # default: passive recon / defence — offensive verbs blocked
-POSTURE_OFFENSE = "offense"  # host-authorized: offensive ops allowed (still per-verb arm + confirm)
+POSTURE_RECON = "recon"      # passive recon / defence (the default)
+POSTURE_OFFENSE = "offense"  # active/offensive posture (a visible indicator only — gates nothing)
 
 _VALID = (POSTURE_RECON, POSTURE_OFFENSE)
 _POSTURE = POSTURE_RECON     # process global; the shell's binder mirrors the visible toggle here
 
 
 def set_posture(posture: str) -> None:
-    """Set the global posture. Any value but the two valid ones is ignored (stays fail-safe)."""
+    """Set the global posture indicator. Any value but the two valid ones is ignored."""
     global _POSTURE
     if posture in _VALID:
         _POSTURE = posture
 
 
 def get_posture() -> str:
-    """The current global posture (recon/offense)."""
+    """The current global posture indicator (recon/offense) — for display, not gating."""
     return _POSTURE
-
-
-def offensive_blocked(danger: str, posture: str | None = None) -> bool:
-    """Whether an offensive verb must be blocked by the posture gate.
-
-    True when the verb is offensive (``danger`` non-empty, i.e. lab-only / illegal-tx per
-    :func:`safety.classify`) AND the posture is not OFFENSE. A SAFE verb (empty ``danger``) is never
-    blocked. ``posture`` defaults to the current global. Purely ADDITIVE over safety.py: it can only
-    ever REFUSE a command, never permit one safety.py would refuse."""
-    if not danger:
-        return False
-    return (posture if posture is not None else _POSTURE) != POSTURE_OFFENSE
-
-
-def block_reason() -> str:
-    """The honest, actionable message shown when the posture gate refuses an offensive verb."""
-    return ("Blocked by Recon posture — switch the header posture toggle to Offense to enable "
-            "offensive / TX operations. (They then still require the per-command arm + confirm.)")

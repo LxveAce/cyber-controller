@@ -54,14 +54,6 @@ All notable changes to Cyber Controller are documented here. This project adhere
   wide grid (1 on a compact deck, 2/3 as it widens) and sizes every action button — and STOP ALL — from the
   hit-target floor, shrinking the base on a compact canvas but never below the touch target. Size-driven and
   debounced; the broadcast engine and per-device fan-out are untouched.
-- **The Recon/Offense posture is now a REAL global offensive master gate (GUI rebuild Wave-3, A2).** The app
-  shell's posture toggle previously gated nothing. It is now a security master switch layered OVER the
-  per-command safety floor (`src.core.safety`, unchanged): in **Recon** (the default) every offensive/TX verb is
-  hard-blocked at every send surface (Operate console, Targets, Network) — even on an armed device — with an
-  honest, actionable refusal; **Offense** (a deliberate, host-authorized escalation the shell logs) lets an
-  offensive verb proceed to its normal per-command arm + confirm gate. So the offensive path now needs two
-  independent unlocks. A new `src.core.posture` holds the gate (default fail-safe Recon; the shell binder mirrors
-  the visible toggle into it so it can never lie); `safety.py` is never weakened — the gate can only ever refuse.
 - **Touch mode drives the responsive layout — the touch paths are no longer dead code (GUI rebuild Wave-3).**
   Every tab's relayout hard-coded `touch=False`, so all the touch responsiveness Batch C built (bigger hit
   targets, the Nodes action row's 1-wide stack, the Crack panel stacking) never activated — even on a real

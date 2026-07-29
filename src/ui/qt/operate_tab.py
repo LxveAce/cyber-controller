@@ -42,7 +42,7 @@ from PyQt5.QtWidgets import (
 )
 
 from src.config.settings import load_settings
-from src.core import posture, safety
+from src.core import safety
 from src.protocols import PROTOCOL_DISPLAY_NAMES, get_protocol
 from src.ui.qt.arm_lamp import arm_lamp_render
 from src.ui.qt.link_strip import (
@@ -425,13 +425,6 @@ class OperateTab(QWidget):
         # settings change takes effect immediately (same posture as DeviceTab._on_send).
         settings = load_settings()
         danger = safety.classify(cmd, ci)
-        # Master posture gate (ADDS a layer over safety.py, never weakens it): a Recon posture stops
-        # every offensive verb BEFORE the per-verb arm/confirm gate — the operator must first switch
-        # to the host-authorized Offense posture. safety.classify stays the floor; this only ever
-        # refuses, never permits.
-        if posture.offensive_blocked(danger):
-            self._append_log(f"[blocked: {posture.block_reason()}]")
-            return
         # Defense-in-depth TX lockout: on a firmware that implements arming (LxveOS), an offensive-TX verb
         # is REFUSED unless the device is explicitly armed at send time — not just because a button was left
         # enabled during the <=2s between an armed -> safe change and the next poll repaint. On firmware with

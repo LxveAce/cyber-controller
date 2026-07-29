@@ -22,17 +22,6 @@ def qapp():
     return QApplication.instance() or QApplication([])
 
 
-@pytest.fixture(autouse=True)
-def _offense_posture():
-    # These tests exercise the per-command arm/confirm safety gate, which now sits BEHIND the global
-    # posture master gate (src.core.posture). Run them in Offense so the offensive verbs reach that
-    # downstream gate; reset to the safe default after so posture never leaks to another test file.
-    from src.core import posture
-    posture.set_posture(posture.POSTURE_OFFENSE)
-    yield
-    posture.set_posture(posture.POSTURE_RECON)
-
-
 def _make_tab():
     from src.core.cross_comm import TargetPool, EventBus
     from src.core.action_resolver import ActionResolver
