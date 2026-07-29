@@ -32,6 +32,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Nodes action row reflows by density (GUI rebuild Wave-3, Batch C — screen 6/7).** The six-button node
+  action row (Provision / Rotate / Deprovision / Attach / Detach / Refresh) now flows through a grid whose
+  column count is density-driven via the pure `nodes_layout` resolver: 6-wide when roomy, but on a compact
+  canvas it splits by input type — a 1-wide stack for touch, a 3×2 grid for pointer — and each button gains a
+  real touch-target min-height. Size-driven and debounced; the node provisioning/attach/detach logic and the
+  access-gate handling are untouched.
 - **Crack Lab reflows into a controls / captures-and-log split on a desktop (GUI rebuild Wave-3, Batch C —
   screen 5/7).** The Crack Lab, previously one long vertical stack, now splits into a controls column (engine,
   capture/wordlist/BSSID pickers, run/stop) beside a captures-and-log column via a `QSplitter` — but ONLY on a

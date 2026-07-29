@@ -16,7 +16,7 @@ from typing import Any, Optional
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
-    QHBoxLayout,
+    QGridLayout,
     QHeaderView,
     QInputDialog,
     QLabel,
@@ -46,6 +46,7 @@ class NodesTab(QWidget):
         if controller is None:
             controller = NodesController(device_manager)
         self._ctrl = controller
+        self._last_nodes_size: "Optional[str]" = None   # Wave-3 Batch C: last size class (debounce)
         self._build_ui()
         self._refresh()
         self._timer = QTimer(self)
@@ -108,7 +109,10 @@ class NodesTab(QWidget):
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         root.addWidget(self._table, stretch=1)
 
-        btn_row = QHBoxLayout()
+        # Wave-3 Batch C: the six-button action row is DENSITY-driven (see _apply_nodes_layout /
+        # nodes_layout) — a grid that reflows 6-wide when roomy, else 2 (pointer) or 1 (touch) when
+        # compact. Buttons are placed by the resolver rather than added directly.
+        self._btn_grid = QGridLayout()
         self._btn_provision = QPushButton("Provision…")
         self._btn_provision.clicked.connect(self._on_provision)
         self._btn_rotate = QPushButton("Rotate key")
@@ -123,10 +127,40 @@ class NodesTab(QWidget):
         self._btn_refresh.clicked.connect(self._refresh)
         self._buttons = [self._btn_provision, self._btn_rotate, self._btn_deprov,
                          self._btn_attach, self._btn_detach, self._btn_refresh]
+        root.addLayout(self._btn_grid)
+        self._relayout_nodes(force=True)   # seed the button placement into the grid
+
+    # ── responsive layout (Wave-3 Batch C) ───────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_nodes()
+
+    def _relayout_nodes(self, force: bool = False) -> None:
+        """Re-flow the action-button row on a size-class change (debounced). ``force`` seeds the
+        initial placement at build."""
+        from src.ui.qt.layout_profile import layout_profile, nodes_layout
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if not force and profile.size == self._last_nodes_size:   # debounce on the size class
+            return
+        self._last_nodes_size = profile.size
+        self._apply_nodes_layout(nodes_layout(profile))
+
+    def _apply_nodes_layout(self, nl) -> None:
+        """Place the six buttons row-major into an ``nl.columns``-wide grid (6/2/1 by density), each
+        with a touch-target min-height; dense chrome tightens spacing."""
+        cols = max(1, nl.columns)
+        grid = self._btn_grid
         for b in self._buttons:
-            btn_row.addWidget(b)
-        btn_row.addStretch(1)
-        root.addLayout(btn_row)
+            grid.removeWidget(b)
+            b.setMinimumHeight(nl.hit_edge_pt)
+        for i, b in enumerate(self._buttons):
+            grid.addWidget(b, i // cols, i % cols)
+        # Keep the buttons left/top-packed: absorb the slack in the columns past the ones in use.
+        for c in range(len(self._buttons) + 1):
+            grid.setColumnStretch(c, 1 if c >= cols else 0)
+        grid.setHorizontalSpacing(6 if nl.collapse_chrome else 10)
+        grid.setVerticalSpacing(6 if nl.collapse_chrome else 8)
 
     # ── refresh / gate state ─────────────────────────────────────────
     def _refresh(self) -> None:
