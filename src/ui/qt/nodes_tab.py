@@ -208,24 +208,34 @@ class NodesTab(QWidget):
             return None
 
     # ── delegated actions (unit-tested; no dialogs) ──────────────────
+    def _emit(self, text: str) -> None:
+        """Reflect a node action in the app terminal (all-source activity log)."""
+        from src.core.activity_log import activity_log
+        activity_log().emit_line("nodes", text)
+
     def _do_provision(self, node_id: int, role: str = "host", label: str = "") -> None:
         self._ctrl.provision(node_id, role=role, label=label)
+        self._emit(f"provisioned node {node_id} (role={role})")
         self._refresh()
 
     def _do_rotate(self, node_id: int) -> None:
         self._ctrl.rotate(node_id)
+        self._emit(f"rotated key for node {node_id}")
         self._refresh()
 
     def _do_deprovision(self, node_id: int) -> None:
         self._ctrl.deprovision(node_id)
+        self._emit(f"deprovisioned node {node_id}")
         self._refresh()
 
     def _do_attach(self, node_id: int, gateway_port: str) -> None:
         self._ctrl.attach_via_port(node_id, gateway_port)
+        self._emit(f"attached node {node_id} via {gateway_port}")
         self._refresh()
 
     def _do_detach(self, node_id: int) -> None:
         self._ctrl.detach(node_id)
+        self._emit(f"detached node {node_id}")
         self._refresh()
 
     # ── button handlers (dialogs; delegate to _do_*) ─────────────────

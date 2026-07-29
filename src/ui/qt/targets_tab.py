@@ -679,7 +679,10 @@ class TargetsTab(QWidget):
                 "chain_events": list(getattr(action, "chain_events", None) or []),
             })
 
-            # Transient notice via the shell's toast slot
+            # Reflect the action in the app terminal (all-source activity log) + a transient toast.
+            from src.core.activity_log import activity_log
+            activity_log().emit_line("targets", f"{action_name} {status} on {port}: {detail}",
+                                     level="warning" if status == "failed" else "info")
             window = self.window()
             if window and hasattr(window, "toast"):
                 window.toast(f"Action '{action_name}' {status} on {port}: {detail}", timeout=5000)
@@ -694,6 +697,9 @@ class TargetsTab(QWidget):
                 "status": "failed",
                 "detail": str(exc),
             })
+            from src.core.activity_log import activity_log
+            activity_log().emit_line("targets", f"{action_name} failed on {port}: {exc}",
+                                     level="error")
             window = self.window()
             if window and hasattr(window, "toast"):
                 window.toast(f"Action failed: {exc}", level="error", timeout=5000)
