@@ -31,6 +31,7 @@ from PyQt5.QtWidgets import (
     QPlainTextEdit,
     QPushButton,
     QScrollArea,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -422,6 +423,7 @@ class CrackLabTab(QWidget):
         super().__init__()
         self._worker: _CrackWorker | None = None
         self._backends_cache: list[str] = []   # detected crack backends; refreshed by _refresh_tools()
+        self._last_crack_size: "str | None" = None   # Wave-3 Batch C: size class (debounce)
 
         # Shared capture log (auto-populates the Captures table). None when the hub is unavailable.
         self._captures = getattr(hub, "captures", None) if hub is not None else None
@@ -441,9 +443,22 @@ class CrackLabTab(QWidget):
         _outer.addWidget(_scroll)
         root = QVBoxLayout(_content)
 
+        # Wave-3 Batch C: controls (left) / captures+log (right) split. Only a true desktop
+        # (>=1024) gets the side-by-side; it stacks vertical otherwise (see _apply_crack_layout).
+        self._split = QSplitter(Qt.Horizontal)
+        _left = QWidget()
+        left_col = QVBoxLayout(_left)
+        left_col.setContentsMargins(0, 0, 0, 0)
+        _right = QWidget()
+        right_col = QVBoxLayout(_right)
+        right_col.setContentsMargins(0, 0, 0, 0)
+        self._split.addWidget(_left)
+        self._split.addWidget(_right)
+        root.addWidget(self._split, 1)
+
         info = QLabel(cp.capability_text())
         info.setWordWrap(True)
-        root.addWidget(info)
+        left_col.addWidget(info)
 
         # tools presence
         tools_box = QGroupBox("Engine (built-in native cracker always works — optional faster engines below)")
@@ -457,7 +472,7 @@ class CrackLabTab(QWidget):
         recheck = QPushButton("Re-check")
         recheck.clicked.connect(self._refresh_tools)
         tl.addWidget(recheck)
-        root.addWidget(tools_box)
+        left_col.addWidget(tools_box)
 
         # capture picker
         cap_row = QHBoxLayout()
@@ -472,7 +487,7 @@ class CrackLabTab(QWidget):
         browse_cap = QPushButton("Browse…")
         browse_cap.clicked.connect(self._pick_capture)
         cap_row.addWidget(browse_cap)
-        root.addLayout(cap_row)
+        left_col.addLayout(cap_row)
 
         # ── Captures (auto-populated from live device captures) ──────────
         cap_box = QGroupBox("Captured handshakes")
@@ -493,7 +508,7 @@ class CrackLabTab(QWidget):
         self._captures_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._captures_table.cellDoubleClicked.connect(self._on_capture_activated)
         cb.addWidget(self._captures_table)
-        root.addWidget(cap_box)
+        right_col.addWidget(cap_box, 1)
 
         # wordlist picker
         wl_row = QHBoxLayout()
@@ -510,7 +525,7 @@ class CrackLabTab(QWidget):
         catalog = QPushButton("Catalog…")
         catalog.clicked.connect(self._show_catalog)
         wl_row.addWidget(catalog)
-        root.addLayout(wl_row)
+        left_col.addLayout(wl_row)
 
         # backend + optional BSSID
         opt_row = QHBoxLayout()
@@ -521,7 +536,7 @@ class CrackLabTab(QWidget):
         self._bssid_edit = QLineEdit()
         self._bssid_edit.setPlaceholderText("AA:BB:CC:DD:EE:FF")
         opt_row.addWidget(self._bssid_edit, 1)
-        root.addLayout(opt_row)
+        left_col.addLayout(opt_row)
 
         # run / stop
         run_row = QHBoxLayout()
@@ -536,13 +551,14 @@ class CrackLabTab(QWidget):
         self._result_label = QLabel("")
         self._result_label.setWordWrap(True)
         run_row.addWidget(self._result_label, 1)
-        root.addLayout(run_row)
+        left_col.addLayout(run_row)
+        left_col.addStretch(1)
 
         # log
         self._log = QPlainTextEdit()
         self._log.setReadOnly(True)
         self._log.setPlaceholderText("tool output appears here during a run")
-        root.addWidget(self._log, 1)
+        right_col.addWidget(self._log, 1)
 
         self._refresh_tools()
         self._refresh_wordlists()
@@ -554,6 +570,33 @@ class CrackLabTab(QWidget):
                           "capture.cleared", "capture.cracked"):
                 self._captures.bus.subscribe(topic, self._on_capture_event)
             self._refresh_captures()
+
+        self._relayout_crack(force=True)   # seed the split orientation before first show
+
+    # ── responsive layout (Wave-3 Batch C) ───────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_crack()
+
+    def _relayout_crack(self, force: bool = False) -> None:
+        """Flip the controls/captures split when the size class changes (debounced). ``force`` seeds
+        the initial orientation at build."""
+        from src.ui.qt.layout_profile import crack_layout, layout_profile
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if not force and profile.size == self._last_crack_size:   # debounce on the size class
+            return
+        self._last_crack_size = profile.size
+        self._apply_crack_layout(crack_layout(profile))
+
+    def _apply_crack_layout(self, cl) -> None:
+        """Apply the Crack resolver: the controls/captures split goes side-by-side only on a true
+        desktop (>=1024) and stacks vertical otherwise; the run/stop buttons get a touch-target
+        min-height; dense chrome caps the captures table so the controls stay reachable."""
+        self._split.setOrientation(Qt.Vertical if cl.stack else Qt.Horizontal)
+        for btn in (self._run_btn, self._stop_btn):
+            btn.setMinimumHeight(cl.hit_edge_pt)
+        self._captures_table.setMaximumHeight(160 if cl.collapse_chrome else 16777215)
 
     # ── captures ─────────────────────────────────────────────────────
     def _on_capture_event(self, _topic: str, _payload) -> None:

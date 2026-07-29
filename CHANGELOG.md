@@ -32,6 +32,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Crack Lab reflows into a controls / captures-and-log split on a desktop (GUI rebuild Wave-3, Batch C —
+  screen 5/7).** The Crack Lab, previously one long vertical stack, now splits into a controls column (engine,
+  capture/wordlist/BSSID pickers, run/stop) beside a captures-and-log column via a `QSplitter` — but ONLY on a
+  true desktop: per the pure `crack_layout` resolver it keys off `is_expanded` (the 1024 breakpoint), so it stays
+  a single vertical stack on both compact AND regular windows (a 1023px window stacks, 1024px splits) because the
+  side-by-side panels need the width. Dense chrome caps the captures table so the controls stay reachable on a
+  small deck, and the run/stop buttons get a real touch-target min-height. Size-driven and debounced; the crack
+  pipeline, tool detection, and capture wiring are untouched.
 - **Operate console reflows with the window size (GUI rebuild Wave-3, Batch C — screen 4/7).** The command
   grid's column count now tracks the window's size class via the pure `operate_layout` resolver (1/2/3 columns),
   replacing the hard-coded `grid.addWidget(btn, i // 3, i % 3)`; the device/firmware header stacks vertically on
