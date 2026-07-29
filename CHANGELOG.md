@@ -32,6 +32,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Health tab's gauge + detail rows stack on a compact canvas (GUI rebuild Wave-3, bespoke screens).** The four
+  arc gauges (CPU/RAM/Disk/Battery) and their detail labels sat in fixed horizontal rows that cram four-across on
+  a narrow deck; they now flip to a vertical stack on a compact window (horizontal otherwise). Size-driven and
+  debounced; the health monitor, gauge painting, and device table are untouched.
 - **Broadcast bar's button grid reflows with the window (GUI rebuild Wave-3, bespoke screens).** The Universal-
   broadcast grid used a magic `cols = 4` and fixed 64/48px button heights; it now flows into a `profile.columns`-
   wide grid (1 on a compact deck, 2/3 as it widens) and sizes every action button — and STOP ALL — from the
