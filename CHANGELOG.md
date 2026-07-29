@@ -32,6 +32,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Flash tab stacks its whole body on a compact canvas, not just the top row (GUI rebuild Wave-3, Batch B).**
+  The port/profile/actions row already reflowed to vertical on a cramped window; now the Log+Queue row and the
+  Firmware-Vault row (status + its buttons) stack the same way, so nothing gets squeezed off a narrow deck panel.
+  All three key off the same `layout_profile` size class; size-driven only, never the Simple/Pro depth choice.
 - **Main window is now responsive (GUI rebuild Wave-3, Batch A).** The app-shell was wired but never
   reacted to the window size. It now folds the sidebar to an icon rail and hides the bottom terminal on a
   cramped canvas (a 35%-tall terminal wastes a tiny deck-panel window), restoring both when there's room.

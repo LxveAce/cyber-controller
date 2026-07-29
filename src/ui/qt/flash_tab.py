@@ -337,8 +337,12 @@ class FlashTab(QWidget):
         self._apply_flash_layout(flash_layout(profile))
 
     def _apply_flash_layout(self, layout) -> None:
+        # The whole tab stacks on a compact canvas, not just the top selector row: the Log+Queue row
+        # (log beside queue) and the Vault row (status beside its buttons) also go vertical so
+        # nothing is squeezed off a narrow deck panel. All three key off the same size class.
         direction = QBoxLayout.TopToBottom if layout.stack_top_row else QBoxLayout.LeftToRight
-        self._top_row.setDirection(direction)
+        for row in (self._top_row, self._bottom_row, self._vault_row):
+            row.setDirection(direction)
 
     # ── Layout ───────────────────────────────────────────────────────
 
@@ -493,7 +497,7 @@ class FlashTab(QWidget):
         root.addWidget(self._progress)
 
         # ── Bottom: log output + batch queue ─────────────────────────
-        bottom = QHBoxLayout()
+        self._bottom_row = bottom = QHBoxLayout()
 
         # Log output card
         log_card, log_layout = _make_card("Flash Log")
@@ -524,7 +528,7 @@ class FlashTab(QWidget):
 
         # ── Firmware Vault section ───────────────────────────────────
         self._vault_card, vault_layout = _make_card("Firmware Vault (Offline Cache)")
-        vault_row = QHBoxLayout()
+        self._vault_row = vault_row = QHBoxLayout()
 
         self._vault_status = QLabel("No cached firmware")
         self._vault_status.setObjectName("muted")

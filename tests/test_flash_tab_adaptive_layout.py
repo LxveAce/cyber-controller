@@ -35,10 +35,11 @@ def _expected_dir(tab):
 
 def test_apply_flash_layout_flips_direction(qapp):
     tab = FT.FlashTab(DeviceManager(), FlashEngine())
-    tab._apply_flash_layout(flash_layout(layout_profile(480, 800)))   # compact -> stacked
-    assert tab._top_row.direction() == QBoxLayout.TopToBottom
-    tab._apply_flash_layout(flash_layout(layout_profile(1600, 900)))  # expanded -> horizontal row
-    assert tab._top_row.direction() == QBoxLayout.LeftToRight
+    rows = (tab._top_row, tab._bottom_row, tab._vault_row)
+    tab._apply_flash_layout(flash_layout(layout_profile(480, 800)))   # compact -> all rows stacked
+    assert all(r.direction() == QBoxLayout.TopToBottom for r in rows)
+    tab._apply_flash_layout(flash_layout(layout_profile(1600, 900)))  # expanded -> all horizontal
+    assert all(r.direction() == QBoxLayout.LeftToRight for r in rows)
 
 
 def test_relayout_matches_the_resolver(qapp):
