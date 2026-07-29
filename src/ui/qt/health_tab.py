@@ -50,6 +50,7 @@ class HealthTab(QWidget):
     def __init__(self, health_monitor: HealthMonitor) -> None:
         super().__init__()
         self._monitor = health_monitor
+        self._last_health_size: "str | None" = None   # Wave-3: last size class (relayout debounce)
         self._build_ui()
 
         # Refresh timer (5 seconds)
@@ -77,8 +78,9 @@ class HealthTab(QWidget):
         # ── System Health Section ────────────────────────────────────
         sys_card, sys_layout = _make_card("System Health")
 
-        # Arc gauges in a horizontal row
+        # Arc gauges in a horizontal row (stacks vertically on a compact canvas — see below)
         gauge_row = QHBoxLayout()
+        self._gauge_row = gauge_row
         gauge_row.setSpacing(16)
 
         # Shared band legend for the utilization gauges (green→red = low→high usage).
@@ -109,8 +111,9 @@ class HealthTab(QWidget):
 
         sys_layout.addLayout(gauge_row)
 
-        # Detail labels row
+        # Detail labels row (stacks with the gauges on a compact canvas)
         detail_row = QHBoxLayout()
+        self._detail_row = detail_row
         self._cpu_detail = QLabel("")
         self._cpu_detail.setAlignment(Qt.AlignCenter)
         self._cpu_detail.setObjectName("muted")
@@ -180,6 +183,31 @@ class HealthTab(QWidget):
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
+        self._relayout_health(force=True)   # seed the gauge/detail row orientation
+
+    # ── responsive layout (Wave-3) ───────────────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_health()
+
+    def _relayout_health(self, force: bool = False) -> None:
+        """Stack the four gauges + their detail labels vertically on a compact canvas (they don't
+        fit four-across on a narrow deck), horizontal otherwise. Debounced on the size class."""
+        from src.ui.qt.layout_profile import layout_profile
+        from src.ui.qt.touch_mode import touch_active
+        dpi = self.logicalDpiX() or 96
+        p = layout_profile(max(1, self.width()), max(1, self.height()),
+                           touch=touch_active(), dpi=dpi)
+        if not force and p.size == self._last_health_size:   # debounce on the size class
+            return
+        self._last_health_size = p.size
+        self._apply_health_layout(p.is_compact)
+
+    def _apply_health_layout(self, compact: bool) -> None:
+        from PyQt5.QtWidgets import QBoxLayout
+        direction = QBoxLayout.TopToBottom if compact else QBoxLayout.LeftToRight
+        self._gauge_row.setDirection(direction)
+        self._detail_row.setDirection(direction)
 
     # ── Dual-depth (Simple / Pro) ────────────────────────────────────
 
