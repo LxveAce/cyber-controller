@@ -99,13 +99,20 @@ def variant_entry(profile: fc.FirmwareProfile, asset: Dict) -> Optional[Dict]:
     app_url = asset.get("url")
     app_offset = asset.get("offset") or profile.app_offset(chip)
 
+    # The app image may be a per-board .zip bundle (GhostESP, Meshtastic) rather than a bare .bin.
+    # Carry the member name to extract (e.g. "merged.bin") so the browser flasher unzips the same
+    # file the desktop does — exactly the desktop's `zip_member` resolution, not a re-derivation.
+    app_seg = {"offset": app_offset, "url": app_url}
+    if asset.get("zip_member"):
+        app_seg["zip_member"] = asset["zip_member"]
+
     if profile.image_model == fc.IMAGE_MERGED:
-        segments = [{"offset": app_offset, "url": app_url}]
+        segments = [app_seg]
     else:
         support = support_segments(profile, chip)
         if support is None:
             return None
-        segments = support + [{"offset": app_offset, "url": app_url}]
+        segments = support + [app_seg]
 
     return {
         "name": asset.get("name"),

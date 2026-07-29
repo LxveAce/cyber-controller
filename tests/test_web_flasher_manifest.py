@@ -28,6 +28,21 @@ def test_merged_firmware_is_one_segment_at_app_offset():
     assert entry["segments"] == [{"offset": "0x0", "url": "https://x/ESP32.bin"}]
 
 
+def test_zip_bundle_carries_the_member_to_extract():
+    # GhostESP ships per-board .zip bundles, not bare .bins. flash_core's resolution tags the asset with
+    # the member to unzip (merged.bin); the manifest must carry it through so the browser flasher extracts
+    # the SAME file the desktop does instead of flashing the .zip raw.
+    ghost = fc.get_profile("ghostesp")
+    asset = _asset("ACE_S3.zip", "https://x/ACE_S3.zip", "esp32s3")
+    asset["zip_member"] = "merged.bin"
+    seg = variant_entry(ghost, asset)["segments"][0]
+    assert seg["url"] == "https://x/ACE_S3.zip"
+    assert seg["zip_member"] == "merged.bin"
+    # a plain .bin asset must NOT gain a zip_member key
+    plain = variant_entry(ghost, _asset("ESP32.bin", "https://x/ESP32.bin", "esp32"))["segments"][0]
+    assert "zip_member" not in plain
+
+
 def test_marauder_multi_file_segments_have_the_right_offsets_and_flashfiles_urls():
     # marauder ships the app .bin only; a full flash also needs bootloader/partitions/boot_app0 from
     # the repo FlashFiles tree. Segments in order: bootloader@chip-offset, partitions 0x8000,
