@@ -41,6 +41,22 @@ def test_apply_device_layout_flips_orientation(qapp):
     assert tab._splitter.orientation() == Qt.Horizontal
 
 
+def test_collapse_chrome_hides_supplementary_but_keeps_safety(qapp):
+    # Dense chrome trims the informational detail (caps / telemetry / airspace snapshot) but must
+    # never hide the safety-critical arm lamp, detector-alert line, or connection-health line.
+    # Offscreen -> use isHidden() (isVisible() is always False without a shown top-level).
+    tab = DT.DeviceTab(DeviceManager())
+    supp = (tab._caps_label, tab._telemetry_label, tab._snapshot_label)
+    safety = (tab._arm_label, tab._alert_label, tab._health_label)
+
+    tab._apply_device_layout(device_layout(layout_profile(480, 800)))    # compact -> dense chrome
+    assert all(lbl.isHidden() for lbl in supp), "supplementary detail should hide on dense chrome"
+    assert not any(lbl.isHidden() for lbl in safety), "arm/alert/health must stay visible"
+
+    tab._apply_device_layout(device_layout(layout_profile(1600, 900)))   # expanded -> full chrome
+    assert not any(lbl.isHidden() for lbl in supp), "supplementary detail restored with room"
+
+
 def test_relayout_matches_the_resolver(qapp):
     tab = DT.DeviceTab(DeviceManager())
     for w, h in [(400, 800), (1600, 900)]:

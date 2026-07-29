@@ -32,6 +32,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Devices tab trims supplementary detail on a compact canvas (GUI rebuild Wave-3, Batch B).** The tab already
+  reflowed its list/detail split; now it also honors the dense-chrome flag it was computing but ignoring — on a
+  cramped window it hides the informational detail labels (capabilities, telemetry, airspace snapshot) to reclaim
+  vertical room, while ALWAYS keeping the safety-critical arm/SAFE lamp, the detector-alert line, and the
+  connection-health line. Size-driven only; independent of the Simple/Pro depth toggle, so the two never fight.
 - **Flash tab stacks its whole body on a compact canvas, not just the top row (GUI rebuild Wave-3, Batch B).**
   The port/profile/actions row already reflowed to vertical on a cramped window; now the Log+Queue row and the
   Firmware-Vault row (status + its buttons) stack the same way, so nothing gets squeezed off a narrow deck panel.

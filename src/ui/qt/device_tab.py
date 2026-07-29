@@ -237,6 +237,13 @@ class DeviceTab(QWidget):
 
     def _apply_device_layout(self, layout) -> None:
         self._splitter.setOrientation(Qt.Vertical if layout.stack_panels else Qt.Horizontal)
+        # Dense chrome (a cramped canvas): hide the supplementary detail labels — capabilities,
+        # telemetry, airspace snapshot — to reclaim vertical room. ALWAYS keep the safety-critical
+        # arm lamp + the detector-alert line + the connection-health line visible. Size-driven and
+        # independent of the Simple/Pro depth toggle (which hides the firmware selector + palette,
+        # different widgets), so the two never fight.
+        for lbl in (self._caps_label, self._telemetry_label, self._snapshot_label):
+            lbl.setVisible(not layout.collapse_chrome)
 
     # ── Layout ───────────────────────────────────────────────────────
 
