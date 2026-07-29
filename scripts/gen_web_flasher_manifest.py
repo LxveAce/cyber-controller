@@ -99,12 +99,15 @@ def variant_entry(profile: fc.FirmwareProfile, asset: Dict) -> Optional[Dict]:
     app_url = asset.get("url")
     app_offset = asset.get("offset") or profile.app_offset(chip)
 
-    # The app image may be a per-board .zip bundle (GhostESP, Meshtastic) rather than a bare .bin.
-    # Carry the member name to extract (e.g. "merged.bin") so the browser flasher unzips the same
-    # file the desktop does — exactly the desktop's `zip_member` resolution, not a re-derivation.
+    # The app image may be a per-board .zip bundle (GhostESP, Meshtastic) rather than a bare .bin. Carry
+    # the member to extract (e.g. "merged.bin") so the browser flasher unzips the same file the desktop
+    # does. Only a .bin member is esptool-flashable: Meshtastic's per-chip zips also hold .uf2 images for
+    # nRF/RP2040 boards that esptool-js can't write, so leave those without a member (not web-flashable)
+    # rather than mis-offering them.
     app_seg = {"offset": app_offset, "url": app_url}
-    if asset.get("zip_member"):
-        app_seg["zip_member"] = asset["zip_member"]
+    zip_member = asset.get("zip_member")
+    if zip_member and zip_member.endswith(".bin"):
+        app_seg["zip_member"] = zip_member
 
     if profile.image_model == fc.IMAGE_MERGED:
         segments = [app_seg]

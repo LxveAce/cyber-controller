@@ -42,6 +42,14 @@ def test_zip_bundle_carries_the_member_to_extract():
     plain = variant_entry(ghost, _asset("ESP32.bin", "https://x/ESP32.bin", "esp32"))["segments"][0]
     assert "zip_member" not in plain
 
+    # a .uf2 member (nRF/RP2040 — esptool-js can't write it) must NOT be offered as web-flashable: the
+    # segment carries no zip_member, so the browser marks it not-flashable instead of mis-flashing a .uf2.
+    uf2 = _asset("meshtastic-rak4631.zip", "https://x/firmware-nrf52.zip", "esp32s3")
+    uf2["zip_member"] = "firmware-rak4631.uf2"
+    uf2["offset"] = "0x0"
+    uf2_seg = variant_entry(ghost, uf2)["segments"][0]
+    assert "zip_member" not in uf2_seg
+
 
 def test_marauder_multi_file_segments_have_the_right_offsets_and_flashfiles_urls():
     # marauder ships the app .bin only; a full flash also needs bootloader/partitions/boot_app0 from
