@@ -241,6 +241,15 @@ def test_widget_empty_is_safe(qapp):
     assert (img.width(), img.height()) == (800, 600)
 
 
+def test_wip_banner_is_present_and_honest(qapp):
+    # The known-camera catalog (F3) is a stub; the tab must SAY so rather than imply completeness.
+    w = FlockHeatmapTab()
+    assert w._wip_banner.isVisibleTo(w)
+    text = w._wip_banner.text().lower()
+    assert "work in progress" in text
+    assert "f3" in text          # names the missing piece, not a vague "coming soon"
+
+
 def test_widget_renders_cameras_from_session(qapp):
     w = FlockHeatmapTab()
     w.set_session(_session_two_cameras())

@@ -562,6 +562,17 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._osm_fetcher = None   # None -> real network; tests inject a fake fetcher(url)->str
 
             root = QVBoxLayout(self)
+            # Honest WIP notice: the offline known-camera catalog (F3) is not built yet — the map
+            # only shows detections that come from a live scan, a loaded file, or an OSM import.
+            self._wip_banner = QLabel(
+                "⚠ Work in progress — the offline known-camera catalog (F3) isn't built yet. "
+                "Today this maps only live-scan, loaded, and OSM-imported detections.")
+            self._wip_banner.setObjectName("flockWipBanner")
+            self._wip_banner.setWordWrap(True)
+            self._wip_banner.setStyleSheet(
+                "color:#d29922;background:#1c1908;border:1px solid #493c0e;"
+                "border-radius:4px;padding:5px 8px;font-weight:600;")
+            root.addWidget(self._wip_banner)
             self._last_flock_size: "Optional[str]" = None   # Wave-3: size class (debounce)
             _note = QLabel(
                 "Cameras appear from a live scan or a loaded cameras.geojson, on a real street "

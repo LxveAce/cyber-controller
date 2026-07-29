@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Flock Map honest WIP banner (Grand-Overhaul).** The heatmap now shows an amber "Work in progress" notice
+  naming the missing piece — the offline known-camera catalog (F3) — so the screen no longer implies it maps a
+  full camera database when it only plots live-scan / loaded / OSM-imported detections.
+- **App terminal reflects all activity, not just serial RX (Grand-Overhaul).** Node, target, and network-tool
+  actions now emit to the shared `activity_log` (source tags `nodes`/`targets`/`network`), so the main-window
+  terminal traces every action alongside flash/crack/broadcast/macro/operate.
 - **Web-flasher manifest generator (`scripts/gen_web_flasher_manifest.py`).** Emits, for the flagship firmwares
   (marauder / ghost_esp / bruce), a JSON manifest of profile → variant → chip → the exact fetchable release-asset
   `.bin` URL(s) and the flash offset each is written at — so the website's browser flasher (esptool-js) writes
