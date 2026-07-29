@@ -316,6 +316,7 @@ class WardriveTab(QWidget):
         super().__init__()
         self._dm = device_manager                       # when present, capture routes through it (no COM clash)
         self._worker = None
+        self._last_wd_size: "str | None" = None          # Wave-3: size class (debounce)
         self._build_ui()
         self._refresh_ports()
 
@@ -336,6 +337,11 @@ class WardriveTab(QWidget):
         banner.setWordWrap(True)
         banner.setStyleSheet("color:#f0883e;")
         root.addWidget(banner)
+
+        # Wave-3: the Serial-ports + Output cards sit 2-up on a roomy window and stack on a compact
+        # deck (see _apply_wardrive_layout). The log/controls below stay full-width.
+        self._cards_row = QHBoxLayout()
+        root.addLayout(self._cards_row)
 
         port_card, port_layout = _make_card("Serial ports")
         row = QHBoxLayout()
@@ -362,7 +368,7 @@ class WardriveTab(QWidget):
         btn_refresh = QPushButton("Refresh ports")
         btn_refresh.clicked.connect(self._refresh_ports)
         port_layout.addWidget(btn_refresh)
-        root.addWidget(port_card)
+        self._cards_row.addWidget(port_card, 1)
 
         self._out_card, out_layout = _make_card("Output (WiGLE CSV)")
         out_card = self._out_card
@@ -385,7 +391,7 @@ class WardriveTab(QWidget):
         self._btn_upload.clicked.connect(self._on_upload)
         orow.addWidget(self._btn_upload)
         out_layout.addLayout(orow)
-        root.addWidget(out_card)
+        self._cards_row.addWidget(out_card, 1)
         self._upload_worker = None
 
         ctrl = QHBoxLayout()
@@ -406,6 +412,27 @@ class WardriveTab(QWidget):
         self._log.setReadOnly(True)
         self._log.setMinimumHeight(140)
         root.addWidget(self._log, 1)
+        self._relayout_wardrive(force=True)   # seed the cards-row orientation
+
+    # ── responsive layout (Wave-3) ───────────────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_wardrive()
+
+    def _relayout_wardrive(self, force: bool = False) -> None:
+        """Sit the Serial-ports + Output cards 2-up when roomy, stacked on a compact deck; the log +
+        controls below stay full-width. Debounced on the size class."""
+        from src.ui.qt.layout_profile import layout_profile
+        from src.ui.qt.touch_mode import touch_active
+        dpi = self.logicalDpiX() or 96
+        p = layout_profile(max(1, self.width()), max(1, self.height()),
+                           touch=touch_active(), dpi=dpi)
+        if not force and p.size == self._last_wd_size:   # debounce on the size class
+            return
+        self._last_wd_size = p.size
+        from PyQt5.QtWidgets import QBoxLayout
+        self._cards_row.setDirection(
+            QBoxLayout.TopToBottom if p.is_compact else QBoxLayout.LeftToRight)
 
     # ── Dual-depth (Simple / Pro) ────────────────────────────────────
 

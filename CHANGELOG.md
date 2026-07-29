@@ -32,6 +32,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Wardrive tab's config cards go 2-up on a roomy window (GUI rebuild Wave-3, bespoke screens).** The Serial-
+  ports and Output (WiGLE CSV) cards were stacked vertically; they now sit side-by-side (2-up) when there's
+  width and stack on a compact deck, with the Start/Stop controls and the log staying full-width below.
+  Size-driven and debounced; the capture worker, GPS routing, and CSV output are untouched.
 - **Wi-Fi + BLE analyzer stat grids wrap on a compact canvas (GUI rebuild Wave-3, bespoke screens).** The shared
   Biscuit `StatGrid` built a fixed N-wide tile row that overflows a narrow deck; it now exposes `set_columns()`,
   and both analyzer tabs drive it from their layout profile (one shared fix, reused twice): the 6-wide Wi-Fi
