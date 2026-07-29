@@ -164,6 +164,8 @@ class CyberControllerWindow(QMainWindow):
         macro_recorder: MacroRecorder | None = None,
     ) -> None:
         super().__init__()
+        # Wave-3 Batch A: last size-class the shell laid out for (debounce, mirrors flash_tab).
+        self._last_shell_size: "str | None" = None
         self._dm = device_manager
         self._fe = flash_engine
         self._bus = event_bus
@@ -230,6 +232,36 @@ class CyberControllerWindow(QMainWindow):
         self._sidebar_timer.timeout.connect(self._refresh_sidebar_devices)
         self._sidebar_timer.start(3000)
         self._scan_worker: "_PortScanWorker | None" = None  # in-flight Scan-Ports enumeration (off-GUI-thread)
+
+    # ── Adaptive shell layout (Wave-3 Batch A) ──────────
+    # Make the app-shell respond to the window size: on a cramped canvas the sidebar folds to an
+    # icon rail and the bottom terminal hides (a 35%-tall terminal wastes a tiny window). The
+    # DECISION is the pure `layout_profile` size class (unit-tested without Qt); here we only map it
+    # to the shell collapse + the terminal pane's visibility. Size-driven only — never touches the
+    # user's Simple/Pro depth choice. Debounced on size-class, mirroring flash_tab.
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_shell()
+
+    def _relayout_shell(self) -> None:
+        shell = getattr(self, "_app_shell", None)
+        if shell is None:   # a resize can fire during construction, before the shell is wired
+            return
+        from src.ui.qt.layout_profile import layout_profile
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if profile.size == self._last_shell_size:   # debounce: relayout only on a size-class change
+            return
+        self._last_shell_size = profile.size
+        self._apply_shell_layout(profile)
+
+    def _apply_shell_layout(self, profile) -> None:
+        self._app_shell.set_collapsed(profile.is_compact)
+        # widget(1) of the vertical splitter is the persistent terminal — hide it on a compact
+        # canvas (it needs the room), restore it when there's space again.
+        splitter = getattr(self, "_main_splitter", None)
+        if splitter is not None and splitter.count() > 1:
+            splitter.widget(1).setVisible(not profile.is_compact)
 
     # ── Menu bar ─────────────────────────────────────────────────────
 

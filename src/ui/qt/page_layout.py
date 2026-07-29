@@ -210,13 +210,22 @@ class PageLayout(QWidget):
         lbl.setVisible(bool(text))
         lbl.setStyleSheet(f"color:{color or C.TEXT_MUTED}; padding:0 6px;")
 
-    def toggle_sidebar(self) -> None:
-        """Collapse/expand the sidebar to an icon rail."""
-        self._collapsed = not self._collapsed
-        self._sidebar.setMaximumWidth(44 if self._collapsed else 220)
-        self._sidebar.setMinimumWidth(44 if self._collapsed else 160)
+    def set_collapsed(self, collapsed: bool) -> None:
+        """Collapse the sidebar to an icon rail (True) or expand it (False). Idempotent: a no-op
+        when already in that state, so a responsive driver (resizeEvent) can call it on every
+        size-class change without fighting the user's manual ≡ toggle within a class."""
+        collapsed = bool(collapsed)
+        if collapsed == self._collapsed:
+            return
+        self._collapsed = collapsed
+        self._sidebar.setMaximumWidth(44 if collapsed else 220)
+        self._sidebar.setMinimumWidth(44 if collapsed else 160)
         for d in self._destinations.values():
-            d._render(self._collapsed)
+            d._render(collapsed)
+
+    def toggle_sidebar(self) -> None:
+        """Collapse/expand the sidebar to an icon rail (the manual ≡ button)."""
+        self.set_collapsed(not self._collapsed)
 
     @property
     def posture(self) -> str:

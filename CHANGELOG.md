@@ -32,6 +32,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Main window is now responsive (GUI rebuild Wave-3, Batch A).** The app-shell was wired but never
+  reacted to the window size. It now folds the sidebar to an icon rail and hides the bottom terminal on a
+  cramped canvas (a 35%-tall terminal wastes a tiny deck-panel window), restoring both when there's room.
+  The breakpoint decision is the pure `layout_profile` size class (headless-unit-tested); the window only
+  maps it to the shell collapse + terminal visibility. Size-driven only — it never touches the user's
+  Simple/Pro depth choice, and it's debounced on the size class so it can't fight a manual sidebar toggle.
 - **Safety over-gating precision — two more proven-passive ceases un-gated.** A self-audit found the Wave-2
   precision pass missed two verbs of the exact class it targeted: `stopsaeflood` (its name embeds "flood" →
   was classified illegal-tx, gating the *stop* harder than the `saeflood` attack itself) and `stopattack` (name
