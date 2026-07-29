@@ -16,6 +16,7 @@ from PyQt5.QtWidgets import (
     QFileDialog,
     QFormLayout,
     QFrame,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -75,6 +76,7 @@ class SettingsTab(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
+        self._last_settings_size: "str | None" = None   # Wave-3 Batch C: last size class (debounce)
         self._settings = load_settings()
         self._dirty = False    # True once the user edits a field; blocks showEvent's disk-reload from
         self._loading = False  # clobbering it. _loading guards programmatic _load_into_ui from self-marking.
@@ -96,6 +98,14 @@ class SettingsTab(QWidget):
         container = QWidget()
         root = QVBoxLayout(container)
 
+        # Wave-3 Batch C: cards flow into a 1/2/3-column grid (see _apply_settings_layout).
+        # Each goes into self._cards and is placed by the resolver rather than stacked directly.
+        self._cards: list[QFrame] = []
+        self._settings_muted_labels: list[QLabel] = []
+        self._suppressed_cards: set = set()   # cards Simple mode hides — kept out of the grid flow
+        self._cards_grid = QGridLayout()
+        root.addLayout(self._cards_grid)
+
         # ── Serial ───────────────────────────────────────────────────
         serial_card, serial_outer = _make_card("Serial Defaults")
         serial_form = QFormLayout()
@@ -109,7 +119,7 @@ class SettingsTab(QWidget):
         self._baud_combo.addItems(["9600", "57600", "115200", "230400", "460800", "921600"])
         serial_form.addRow("Default Baud Rate:", self._baud_combo)
         serial_outer.addLayout(serial_form)
-        root.addWidget(serial_card)
+        self._cards.append(serial_card)
 
         # ── Flash ────────────────────────────────────────────────────
         flash_card, flash_outer = _make_card("Flash Defaults")
@@ -122,7 +132,7 @@ class SettingsTab(QWidget):
         self._flash_baud_combo.addItems(["115200", "230400", "460800", "921600"])
         flash_form.addRow("Flash Baud Rate:", self._flash_baud_combo)
         flash_outer.addLayout(flash_form)
-        root.addWidget(flash_card)
+        self._cards.append(flash_card)
 
         # ── Cross-Comm ───────────────────────────────────────────────
         # The old "Auto-share discoveries" / "De-duplicate targets by MAC" checkboxes were inert — nothing
@@ -138,8 +148,9 @@ class SettingsTab(QWidget):
         )
         comm_desc.setObjectName("muted")
         comm_desc.setWordWrap(True)
+        self._settings_muted_labels.append(comm_desc)
         comm_outer.addWidget(comm_desc)
-        root.addWidget(comm_card)
+        self._cards.append(comm_card)
 
         # ── Updates ──────────────────────────────────────────────────
         self._updates_card, updates_outer = _make_card("Updates")
@@ -151,6 +162,7 @@ class SettingsTab(QWidget):
         )
         updates_desc.setObjectName("muted")
         updates_desc.setWordWrap(True)
+        self._settings_muted_labels.append(updates_desc)
         updates_outer.addWidget(updates_desc)
         self._updates_enabled_check = QCheckBox("Automatically check for updates")
         updates_outer.addWidget(self._updates_enabled_check)
@@ -164,7 +176,7 @@ class SettingsTab(QWidget):
         self._check_updates_btn = QPushButton("Check now")
         updates_btn_row.addWidget(self._check_updates_btn)
         updates_outer.addLayout(updates_btn_row)
-        root.addWidget(updates_card)
+        self._cards.append(updates_card)
 
         # ── Wardrive uploads (WiGLE) — WS-8 ──────────────────────────
         self._uploads_card, uploads_outer = _make_card("Wardrive uploads (WiGLE)")
@@ -178,6 +190,7 @@ class SettingsTab(QWidget):
         )
         uploads_desc.setObjectName("muted")
         uploads_desc.setWordWrap(True)
+        self._settings_muted_labels.append(uploads_desc)
         uploads_outer.addWidget(uploads_desc)
         token_form = QFormLayout()
         token_form.setRowWrapPolicy(QFormLayout.WrapLongRows)
@@ -190,7 +203,7 @@ class SettingsTab(QWidget):
         self._wdgwars_token_edit.setPlaceholderText("WDG Wars API key (64 hex)")
         token_form.addRow("WDG Wars token:", self._wdgwars_token_edit)
         uploads_outer.addLayout(token_form)
-        root.addWidget(uploads_card)
+        self._cards.append(uploads_card)
 
         # ── Safety & Disclaimers ─────────────────────────────────────
         # These LABEL and warn; they never remove or block a capability. The
@@ -208,7 +221,7 @@ class SettingsTab(QWidget):
         safety_form.addRow(self._confirm_dangerous_check)
         safety_form.addRow(self._suppress_warnings_check)
         safety_outer.addLayout(safety_form)
-        root.addWidget(safety_card)
+        self._cards.append(safety_card)
 
         # ── Access Gate (Security) ───────────────────────────────────
         self._gate_card, gate_outer = _make_card("Access Gate (Security)")
@@ -220,6 +233,7 @@ class SettingsTab(QWidget):
         )
         gate_desc.setObjectName("muted")
         gate_desc.setWordWrap(True)
+        self._settings_muted_labels.append(gate_desc)
         gate_outer.addWidget(gate_desc)
         self._gate_status_lbl = QLabel("")
         self._gate_status_lbl.setObjectName("muted")
@@ -229,7 +243,7 @@ class SettingsTab(QWidget):
         self._gate_setup_btn.setToolTip("Set or change the admin password, create a physical USB key, "
                                         "or choose the unlock policy — from inside the app.")
         gate_outer.addWidget(self._gate_setup_btn)
-        root.addWidget(gate_card)
+        self._cards.append(gate_card)
 
         # ── Secure Container (Security) ──────────────────────────────
         # When ON, saved macros are encrypted at rest in a gate-keyed AES-256-GCM container and are
@@ -247,10 +261,11 @@ class SettingsTab(QWidget):
         )
         secure_desc.setObjectName("muted")
         secure_desc.setWordWrap(True)
+        self._settings_muted_labels.append(secure_desc)
         secure_outer.addWidget(secure_desc)
         self._secure_container_check = QCheckBox("Encrypt my saved macros in the secure container")
         secure_outer.addWidget(self._secure_container_check)
-        root.addWidget(secure_card)
+        self._cards.append(secure_card)
 
         # ── Firmware Vault ───────────────────────────────────────────
         self._vault_card, vault_outer = _make_card("Firmware Vault")
@@ -266,7 +281,7 @@ class SettingsTab(QWidget):
         dir_row.addWidget(self._vault_browse_btn)
         vault_form.addRow("Vault Directory:", dir_row)
         vault_outer.addLayout(vault_form)
-        root.addWidget(vault_card)
+        self._cards.append(vault_card)
 
         # ── Save / Reset ─────────────────────────────────────────────
         btn_row = QHBoxLayout()
@@ -282,6 +297,42 @@ class SettingsTab(QWidget):
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
+        self._relayout_settings(force=True)   # initial placement of the cards into the grid
+
+    # ── Responsive layout (Wave-3 Batch C) ───────────────────────────
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_settings()
+
+    def _relayout_settings(self, force: bool = False) -> None:
+        """Re-flow the cards when the size class changes (debounced). ``force`` re-applies even when
+        the class is unchanged — used after set_ui_mode() toggles card visibility so the grid
+        compacts around the now-hidden cards."""
+        from src.ui.qt.layout_profile import layout_profile, settings_layout
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if not force and profile.size == self._last_settings_size:   # debounce on the size class
+            return
+        self._last_settings_size = profile.size
+        self._apply_settings_layout(settings_layout(profile))
+
+    def _apply_settings_layout(self, sl) -> None:
+        """Place VISIBLE cards row-major into an sl.columns-wide grid; dense chrome tightens grid
+        spacing and demotes the long helper-text descriptions (never a functional control)."""
+        cols = max(1, sl.columns)
+        grid = self._cards_grid
+        for card in self._cards:
+            grid.removeWidget(card)
+        visible = [c for c in self._cards if c not in self._suppressed_cards]
+        for i, card in enumerate(visible):
+            grid.addWidget(card, i // cols, i % cols)
+        for col in range(3):
+            grid.setColumnStretch(col, 1 if col < cols else 0)
+        grid.setHorizontalSpacing(8 if sl.collapse_chrome else 16)
+        grid.setVerticalSpacing(8 if sl.collapse_chrome else 12)
+        for lbl in self._settings_muted_labels:
+            lbl.setVisible(not sl.collapse_chrome)
 
     # ── Dual-depth (Simple / Pro) ────────────────────────────────────
 
@@ -297,6 +348,15 @@ class SettingsTab(QWidget):
         ):
             if card is not None:
                 card.setVisible(pro)
+                # Track the suppressed set so the re-flow keeps them out of the flow (Simple) or
+                # restores them (Pro) — independent of Qt's pre-show isHidden() state.
+                if pro:
+                    self._suppressed_cards.discard(card)
+                else:
+                    self._suppressed_cards.add(card)
+        # Re-flow the grid so it compacts around the cards Simple mode just hid (force: the size
+        # class hasn't changed, but the visible-card set has).
+        self._relayout_settings(force=True)
 
     def _connect_signals(self) -> None:
         self._save_btn.clicked.connect(self._on_save)

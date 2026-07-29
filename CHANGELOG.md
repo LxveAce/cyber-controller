@@ -32,6 +32,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Settings tab cards reflow into a responsive 1/2/3-column grid (GUI rebuild Wave-3, Batch C — screen 3/7).**
+  The nine settings cards, previously a single vertical stack, now flow into a one-, two-, or three-column grid
+  keyed off the window's size class (compact/regular/expanded) via the pure `settings_layout` resolver; dense
+  chrome (compact) tightens the grid spacing and demotes the long helper-text descriptions (never a functional
+  control). Size-driven and debounced; the Simple/Pro depth toggle still hides the advanced cards, and the grid
+  now re-flows to compact around them rather than leaving gaps. This introduces the multi-column grid path the
+  later screens build on.
 - **Macro tab reflows on a compact canvas (GUI rebuild Wave-3, Batch C — screen 2/7).** The left/right splitter
   (saved-macros list vs the editor) flips to a vertical stack on a cramped window, and the macro-list button row +
   the variable-substitution field row wrap so nothing clips off a narrow deck panel — via the pure `macro_layout`.
