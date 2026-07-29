@@ -32,6 +32,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Network graph rescales its node geometry with the window (GUI rebuild Wave-3, Batch C — screen 7/7; Batch
+  C COMPLETE).** The network graph's node boxes and their text now scale by size class via the pure
+  `network_layout` resolver (the one decider with screen-specific fields): node width 132/150/176, height floored
+  to the touch target, and title/subtitle truncation tightening to 18/22/26 as the canvas shrinks — replacing the
+  hard-coded `_NODE_W/_NODE_H` and `label[:22]`/`sub[:26]`. Auto-arrange now caps the target fan by the column
+  count and drops targets below the device column on a compact canvas, and dense chrome demotes the toolbar hint.
+  Size-driven and debounced; a size-class change repaints the graph (dragged positions preserved). **This wires
+  the last of the seven Batch C screens — every tab now reflows to its window.**
 - **Nodes action row reflows by density (GUI rebuild Wave-3, Batch C — screen 6/7).** The six-button node
   action row (Provision / Rotate / Deprovision / Attach / Detach / Refresh) now flows through a grid whose
   column count is density-driven via the pure `nodes_layout` resolver: 6-wide when roomy, but on a compact

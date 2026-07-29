@@ -74,8 +74,11 @@ class _Node(QGraphicsRectItem):
     """A draggable boxy node. Double-click pops its command/action menu."""
 
     def __init__(self, label: str, sub: str, kind: str,
-                 actions: "list[_MenuEntry]") -> None:
-        super().__init__(0, 0, _NODE_W, _NODE_H)
+                 actions: "list[_MenuEntry]", node_w: float = _NODE_W, node_h: float = _NODE_H,
+                 title_chars: int = 22, sub_chars: int = 26) -> None:
+        # Wave-3 Batch C: node box + text truncation are size-driven (network_layout geometry); the
+        # defaults match the old hard-coded "regular" tier so a bare construction is unchanged.
+        super().__init__(0, 0, node_w, node_h)
         self.kind = kind
         self.actions = actions
         self._edges: "list[_Edge]" = []
@@ -86,11 +89,11 @@ class _Node(QGraphicsRectItem):
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
         self.setZValue(1)
-        title = QGraphicsSimpleTextItem(label[:22], self)
+        title = QGraphicsSimpleTextItem(label[:title_chars], self)
         title.setBrush(QBrush(QColor("#e6edf3")))
         title.setPos(9, 6)
         if sub:
-            st = QGraphicsSimpleTextItem(sub[:26], self)
+            st = QGraphicsSimpleTextItem(sub[:sub_chars], self)
             st.setBrush(QBrush(QColor(border)))
             f = st.font(); f.setPointSizeF(max(6.0, f.pointSizeF() - 2)); st.setFont(f)
             st.setPos(9, 24)
@@ -264,6 +267,8 @@ class NetworkTab(QWidget):
         self._bus = event_bus
         self._nodes: "dict[str, _Node]" = {}
         self._device_fp: tuple = ()   # last-seen device fingerprint; drives the device-change poll
+        self._net_geom = None   # Wave-3 Batch C: current NetworkLayout geometry (None = defaults)
+        self._last_network_size: "Optional[str]" = None   # last size class (relayout debounce)
 
         root = QVBoxLayout(self)
         # Toolbar lives in its own container so Simple mode can hide the whole control row at once.
@@ -282,6 +287,7 @@ class NetworkTab(QWidget):
         hint = QLabel("Drag nodes to orient the web · drag empty space to pan · double-click a node for "
                       "its commands · scroll to zoom")
         hint.setStyleSheet("color:#8b949e;")
+        self._hint_label = hint   # Wave-3 Batch C: demoted on dense chrome (compact)
         bar.addWidget(hint)
         root.addWidget(self._controls)
 
@@ -423,7 +429,7 @@ class NetworkTab(QWidget):
             marker = _DRIVER_MARKERS.get(getattr(dev, "driver_type", "text-cli"))
             if marker:
                 sub = f"{sub} · {marker}"
-            node = _Node(str(label), sub, "device", self._device_actions(dev))
+            node = self._new_node(str(label), sub, "device", self._device_actions(dev))
             self._scene.addItem(node)
             self._nodes["dev:" + str(port)] = node
 
@@ -431,7 +437,7 @@ class NetworkTab(QWidget):
             kind = self._target_kind(t)
             label = getattr(t, "ssid", "") or getattr(t, "mac", "") or "target"
             sub = getattr(t, "mac", "")
-            node = _Node(str(label), str(sub), kind, self._target_actions(t))
+            node = self._new_node(str(label), str(sub), kind, self._target_actions(t))
             self._scene.addItem(node)
             key = "tgt:" + str(getattr(t, "mac", id(t)))
             self._nodes[key] = node
@@ -440,7 +446,8 @@ class NetworkTab(QWidget):
                 self._scene.addItem(_Edge(src, node))
 
         if not self._nodes:
-            placeholder = _Node("No devices / targets yet", "connect a device, scan, then Rebuild", "node", [])
+            placeholder = self._new_node("No devices / targets yet",
+                                         "connect a device, scan, then Rebuild", "node", [])
             self._scene.addItem(placeholder)
             self._nodes["_placeholder"] = placeholder
         # Restore the positions of nodes that survived the rebuild; only new ones get auto-placed.
@@ -455,6 +462,37 @@ class NetworkTab(QWidget):
         # Record the device set this build reflects, so the poll only re-fires on a real change
         # (a target.* rebuild also refreshes it — no redundant device-poll rebuild right after).
         self._device_fp = self._device_fingerprint()
+
+    # ── responsive layout (Wave-3 Batch C) ───────────────────────────
+    def _new_node(self, label: str, sub: str, kind: str, actions: "list[_MenuEntry]") -> "_Node":
+        """Build a node at the current size-driven geometry (falls back to _Node's regular defaults
+        before the first layout pass)."""
+        g = self._net_geom
+        if g is None:
+            return _Node(label, sub, kind, actions)
+        return _Node(label, sub, kind, actions, g.node_w, g.node_h, g.title_chars, g.sub_chars)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_network()
+
+    def _relayout_network(self, force: bool = False) -> None:
+        """Rescale the node geometry when the size class changes (debounced)."""
+        from src.ui.qt.layout_profile import layout_profile, network_layout
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if not force and profile.size == self._last_network_size:   # debounce on the size class
+            return
+        self._last_network_size = profile.size
+        self._apply_network_layout(network_layout(profile))
+
+    def _apply_network_layout(self, nl) -> None:
+        """Apply the Network resolver: nodes redraw at the size's geometry (box + truncation,
+        node_h floored to the hit target); dense chrome demotes the hint; rebuild repaints the
+        graph at the new geometry (dragged positions are preserved)."""
+        self._net_geom = nl
+        self._hint_label.setVisible(not nl.collapse_chrome)
+        self.rebuild()
 
     @staticmethod
     def _target_kind(t) -> str:
@@ -619,11 +657,18 @@ class NetworkTab(QWidget):
         targets = [k for k in self._nodes if k.startswith("tgt:") and k not in skip]
         for i, k in enumerate(devices):
             self._nodes[k].setPos(40.0, 40.0 + i * 90.0)
-        # fan each target near... simplest: a grid to the right
+        # Fan each target out to the right — or, on a compact/stacked layout, BELOW the devices
+        # (network_layout.stack: targets drop below the device column). ``columns`` caps the fan
+        # width so a narrow canvas doesn't lay targets out wider than it can show.
         cols = max(1, int(math.sqrt(max(1, len(targets)))) + 1)
+        if self._net_geom is not None:
+            cols = max(1, min(cols, self._net_geom.columns))
+        stacked = bool(self._net_geom and self._net_geom.stack)
+        base_x = 40.0 if stacked else 300.0
+        base_y = 40.0 + len(devices) * 90.0 + 40.0 if stacked else 30.0
         for i, k in enumerate(targets):
             r, c = divmod(i, cols)
-            self._nodes[k].setPos(300.0 + c * 190.0, 30.0 + r * 80.0)
+            self._nodes[k].setPos(base_x + c * 190.0, base_y + r * 80.0)
         for k, n in self._nodes.items():
             if not k.startswith(("dev:", "tgt:")) and k not in skip:
                 n.setPos(300.0, 30.0)
