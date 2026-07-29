@@ -144,3 +144,142 @@ def device_layout(profile: LayoutProfile) -> DeviceLayout:
     vertical); anything roomier keeps them side by side. Depth (Simple/Pro) is the user's separate
     choice and is NOT touched here."""
     return DeviceLayout(stack_panels=profile.is_compact, collapse_chrome=profile.dense_chrome)
+
+
+# ── Batch C deciders — the 7 operator/config screens ──────
+# Per CC-GUI-DECIDER-CONTRACT-2026-07-28: per-screen frozen dataclasses (NOT one god-type), fields
+# drawn from ONE vocabulary — `columns` (primary-grid columns), `stack` (flip the primary axis to
+# vertical on a cramped canvas), `collapse_chrome` (dense chrome, == profile.dense_chrome), and
+# `hit_edge_pt` (min hit-target, == profile.min_target_pt, surfaced only where a screen uses it).
+# All pure + depth-invariant; the widgets apply them (Step 2). Two deliberate divergences: Crack
+# stacks at 1024 (not 600), and Nodes' columns are density-driven.
+
+
+@dataclass(frozen=True)
+class OperateLayout:
+    """Operate console grid + header."""
+
+    columns: int
+    stack: bool
+    collapse_chrome: bool
+    hit_edge_pt: int
+
+
+def operate_layout(profile: LayoutProfile) -> OperateLayout:
+    """Operate console: command grid columns from `profile.columns` (replaces the hard-coded 3 in
+    `grid.addWidget(btn, i//3, i%3)`); the device/fw header stacks on compact; dense chrome shrinks
+    the log; the grid/arm buttons get a hit-target min-height (they have none today)."""
+    return OperateLayout(columns=profile.columns, stack=profile.is_compact,
+                         collapse_chrome=profile.dense_chrome, hit_edge_pt=profile.min_target_pt)
+
+
+@dataclass(frozen=True)
+class CrackLayout:
+    """Crack Lab panel split."""
+
+    stack: bool
+    collapse_chrome: bool
+    hit_edge_pt: int
+
+
+def crack_layout(profile: LayoutProfile) -> CrackLayout:
+    """Crack Lab: only a true desktop (>= 1024 ref-pt) gets the controls-left / captures+log-right
+    split, so it STACKS unless expanded — `stack = not is_expanded`. The one decider keyed off
+    is_expanded (the 1024 breakpoint), not is_compact (600)."""
+    return CrackLayout(stack=not profile.is_expanded, collapse_chrome=profile.dense_chrome,
+                       hit_edge_pt=profile.min_target_pt)
+
+
+@dataclass(frozen=True)
+class SettingsLayout:
+    """Settings card grid."""
+
+    columns: int
+    collapse_chrome: bool
+
+
+def settings_layout(profile: LayoutProfile) -> SettingsLayout:
+    """Settings: the nine cards flow into a 1/2/3-column grid keyed off `profile.columns`
+    (`columns == 1` IS the stack). Dense chrome tightens the card margins + demotes helper text."""
+    return SettingsLayout(columns=profile.columns, collapse_chrome=profile.dense_chrome)
+
+
+@dataclass(frozen=True)
+class MacroLayout:
+    """Macro editor splitter."""
+
+    stack: bool
+    collapse_chrome: bool
+
+
+def macro_layout(profile: LayoutProfile) -> MacroLayout:
+    """Macro: the left/right `QSplitter` flips to vertical on compact. The proposed
+    `wrap_action_row` is dropped as redundant — the toolbar wrap rides on `collapse_chrome`."""
+    return MacroLayout(stack=profile.is_compact, collapse_chrome=profile.dense_chrome)
+
+
+# Network graph node geometry + truncation caps, per size class. The 'regular' row reproduces the
+# frozen `_NODE_W=150 / _NODE_H=46 / label[:22] / sub[:26]` the rebuild replaces.
+# (node_w, node_h_base, title_chars, sub_chars); sub_chars always exceeds title_chars.
+_NETWORK_GEOM = {
+    "compact":  (132, 44, 18, 22),
+    "regular":  (150, 46, 22, 26),
+    "expanded": (176, 52, 26, 30),
+}
+
+
+@dataclass(frozen=True)
+class NetworkLayout:
+    """Network graph node geometry (the only decider with screen-specific fields)."""
+
+    columns: int
+    stack: bool
+    collapse_chrome: bool
+    node_w: int
+    node_h: int
+    title_chars: int
+    sub_chars: int
+
+
+def network_layout(profile: LayoutProfile) -> NetworkLayout:
+    """Network graph: node size + truncation scale by size; `node_h` floors the hit-target
+    (`max(base, min_target_pt)`); `columns` caps the target fan; the target field drops below the
+    device column on compact. The only decider carrying screen-specific fields."""
+    node_w, node_h_base, title_chars, sub_chars = _NETWORK_GEOM[profile.size]
+    return NetworkLayout(columns=profile.columns, stack=profile.is_compact,
+                         collapse_chrome=profile.dense_chrome, node_w=node_w,
+                         node_h=max(node_h_base, profile.min_target_pt),
+                         title_chars=title_chars, sub_chars=sub_chars)
+
+
+@dataclass(frozen=True)
+class NodesLayout:
+    """Nodes action-button row."""
+
+    columns: int
+    collapse_chrome: bool
+    hit_edge_pt: int
+
+
+def nodes_layout(profile: LayoutProfile) -> NodesLayout:
+    """Nodes: the six-button action row is DENSITY-driven — `6` when roomy, else `1` (compact
+    touch, a 1-wide stack) or `2` (compact pointer, a 3x2). The single density-driven column count
+    in the set (`columns == 1` IS the stack)."""
+    columns = 6 if not profile.is_compact else (1 if profile.is_touch else 2)
+    return NodesLayout(columns=columns, collapse_chrome=profile.dense_chrome,
+                       hit_edge_pt=profile.min_target_pt)
+
+
+@dataclass(frozen=True)
+class WardriveMultiLayout:
+    """Multi-Wardrive control rows."""
+
+    stack: bool
+    collapse_chrome: bool
+
+
+def wardrive_multi_layout(profile: LayoutProfile) -> WardriveMultiLayout:
+    """Multi-Wardrive: the Boards row + GPS row go vertical on compact (freeing the baud fields);
+    dense chrome trims the banner + helper labels. No `columns` — the status-table columns are
+    fixed semantic data."""
+    return WardriveMultiLayout(stack=profile.is_compact, collapse_chrome=profile.dense_chrome)

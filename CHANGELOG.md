@@ -32,6 +32,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Seven more adaptive-layout deciders landed, pure + headless-tested (GUI rebuild Wave-3, Batch C groundwork).**
+  Added `operate_layout`, `crack_layout`, `settings_layout`, `macro_layout`, `network_layout`, `nodes_layout`, and
+  `wardrive_multi_layout` to the pure resolver — each a frozen dataclass drawing from one vocabulary (columns / stack /
+  collapse_chrome / hit-target edge), so every operator screen becomes unit-testable against a window profile the same
+  way Flash and Devices already are. Two deliberate quirks are pinned by tests: Crack Lab splits at the desktop width
+  (1024), not the compact one (600), and the Nodes action row is density-driven (6 across when roomy, 1 on a compact
+  touch panel, 2 on compact pointer). No widget is wired yet — these lock the contract before the per-screen changes.
 - **Devices tab trims supplementary detail on a compact canvas (GUI rebuild Wave-3, Batch B).** The tab already
   reflowed its list/detail split; now it also honors the dense-chrome flag it was computing but ignoring — on a
   cramped window it hides the informational detail labels (capabilities, telemetry, airspace snapshot) to reclaim

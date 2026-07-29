@@ -14,9 +14,16 @@ from src.ui.qt.layout_profile import (
     COMPACT_MAX,
     REGULAR_MAX,
     LayoutProfile,
+    crack_layout,
     device_layout,
     flash_layout,
     layout_profile,
+    macro_layout,
+    network_layout,
+    nodes_layout,
+    operate_layout,
+    settings_layout,
+    wardrive_multi_layout,
 )
 
 
@@ -166,3 +173,100 @@ def test_device_layout_is_size_driven_not_touch():
     assert device_layout(layout_profile(1600, 900, touch=True)).stack_panels is False
     # A compact touch surface stacks (because it's compact, not because it's touch).
     assert device_layout(layout_profile(400, 800, touch=True)).stack_panels is True
+
+
+# ── Batch C: the 7 operator/config-screen deciders share one contract ──
+_DECIDERS = [operate_layout, crack_layout, settings_layout, macro_layout,
+             network_layout, nodes_layout, wardrive_multi_layout]
+_SIZES = [(480, 800), (800, 600), (1440, 900)]  # compact / regular / expanded
+
+
+@pytest.mark.parametrize("decide", _DECIDERS)
+@pytest.mark.parametrize("w,h", _SIZES)
+@pytest.mark.parametrize("touch", [False, True])
+def test_decider_contract(decide, w, h, touch):
+    p = layout_profile(w, h, touch=touch)
+    out = decide(p)
+    # frozen dataclass, like FlashLayout / DeviceLayout
+    assert dataclasses.is_dataclass(out) and type(out).__dataclass_params__.frozen
+    # pure: identical profile -> equal result
+    assert decide(p) == out
+    # depth (Simple/Pro) NEVER changes the decision — the user's Ctrl+M choice is a separate axis
+    for depth in ("simple", "pro"):
+        assert decide(dataclasses.replace(p, depth_hint=depth)) == out
+    # the one universal field: every decision's chrome flag == profile.dense_chrome
+    assert out.collapse_chrome is p.dense_chrome
+
+
+def test_operate_layout_columns_stack_and_hit_edge():
+    assert operate_layout(layout_profile(500, 800)).columns == 1
+    assert operate_layout(layout_profile(800, 600)).columns == 2
+    assert operate_layout(layout_profile(1400, 900)).columns == 3
+    assert operate_layout(layout_profile(480, 800)).stack is True   # stack only on compact
+    assert operate_layout(layout_profile(800, 600)).stack is False
+    assert operate_layout(layout_profile(800, 600, touch=True)).hit_edge_pt == 44
+    assert operate_layout(layout_profile(800, 600, touch=False)).hit_edge_pt == 28
+    # touch never changes the column count (size-only)
+    assert operate_layout(layout_profile(800, 600, touch=True)).columns == \
+        operate_layout(layout_profile(800, 600, touch=False)).columns
+
+
+def test_crack_layout_splits_at_1024_not_600():
+    assert crack_layout(layout_profile(1023, 900)).stack is True    # still stacked just under 1024
+    assert crack_layout(layout_profile(1024, 900)).stack is False   # unstacks at 1024, not 600
+    assert crack_layout(layout_profile(400, 800)).stack is True
+    assert crack_layout(layout_profile(800, 600)).stack is True     # regular STILL stacks
+    assert crack_layout(layout_profile(599, 800)).collapse_chrome is True   # chrome keeps 600 edge
+    assert crack_layout(layout_profile(600, 800)).collapse_chrome is False
+
+
+def test_settings_layout_columns():
+    assert settings_layout(layout_profile(480, 800)).columns == 1   # compact == the stack
+    assert settings_layout(layout_profile(800, 600)).columns == 2
+    assert settings_layout(layout_profile(1400, 900)).columns == 3
+    assert settings_layout(layout_profile(800, 600, touch=True)).columns == 2   # density no change
+
+
+def test_macro_layout_stack_only_on_compact():
+    assert macro_layout(layout_profile(480, 800)).stack is True
+    assert macro_layout(layout_profile(800, 600)).stack is False
+    assert macro_layout(layout_profile(1440, 900)).stack is False   # regular == expanded
+    assert not hasattr(macro_layout(layout_profile(800, 600)), "wrap_action_row")
+
+
+def test_network_layout_geometry():
+    reg = network_layout(layout_profile(800, 600))   # the frozen 'regular' geometry
+    assert (reg.node_w, reg.node_h, reg.title_chars, reg.sub_chars) == (150, 46, 22, 26)
+    for w, h in _SIZES:
+        for touch in (False, True):
+            p = layout_profile(w, h, touch=touch)
+            nl = network_layout(p)
+            assert nl.node_h >= p.min_target_pt      # node_h floors the hit-target
+            assert nl.sub_chars > nl.title_chars     # sub caption always wider than the title
+    assert network_layout(layout_profile(480, 800)).stack is True
+    assert network_layout(layout_profile(1440, 900)).stack is False
+    # a touch profile lifts compact node_h (base 44) to the 44pt floor
+    assert network_layout(layout_profile(480, 800, touch=True)).node_h == 44
+
+
+def test_nodes_layout_density_driven_columns():
+    assert nodes_layout(layout_profile(480, 800, touch=False)).columns == 2   # compact pointer: 3x2
+    assert nodes_layout(layout_profile(480, 800, touch=True)).columns == 1    # compact touch:1
+    assert nodes_layout(layout_profile(800, 600)).columns == 6                # regular: single row
+    assert nodes_layout(layout_profile(1440, 900)).columns == 6
+    assert nodes_layout(layout_profile(800, 600, touch=True)).hit_edge_pt == 44
+    assert nodes_layout(layout_profile(800, 600, touch=False)).hit_edge_pt == 28
+
+
+def test_wardrive_multi_layout_stack_edge_density_independent():
+    assert wardrive_multi_layout(layout_profile(599, 800)).stack is True
+    assert wardrive_multi_layout(layout_profile(600, 800)).stack is False
+    assert wardrive_multi_layout(layout_profile(400, 800, touch=True)).stack is True
+    assert wardrive_multi_layout(layout_profile(400, 800, touch=False)).stack is True
+
+
+def test_deciders_dpi_normalized():
+    # 1920px @ 192dpi -> 960 ref-pt -> regular; a size-branching decider must see 'regular'
+    p = layout_profile(1920, 1080, dpi=192)
+    assert p.size == "regular"
+    assert settings_layout(p).columns == 2 and operate_layout(p).columns == 2
