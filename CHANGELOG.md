@@ -32,6 +32,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Flock heatmap control rows stack on a compact canvas (GUI rebuild Wave-3, bespoke screens).** The three
+  control strips — file (Load/Folder/Export/Import-OSM), live-scan (GPS/device/scan), and the eight map
+  checkboxes/buttons (Reset view, street/world/online basemap, My location, Follow, Center, Unload) — packed
+  into fixed horizontal rows that overflow a narrow deck; they now flip to a vertical stack on a compact window
+  (horizontal otherwise). Size-driven and debounced; the map view, tile cache, and scan workers are untouched.
 - **Wardrive tab's config cards go 2-up on a roomy window (GUI rebuild Wave-3, bespoke screens).** The Serial-
   ports and Output (WiGLE CSV) cards were stacked vertically; they now sit side-by-side (2-up) when there's
   width and stack on a compact deck, with the Start/Stop controls and the log staying full-width below.

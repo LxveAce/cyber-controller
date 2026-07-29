@@ -562,6 +562,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._osm_fetcher = None   # None -> real network; tests inject a fake fetcher(url)->str
 
             root = QVBoxLayout(self)
+            self._last_flock_size: "Optional[str]" = None   # Wave-3: size class (debounce)
             _note = QLabel(
                 "Cameras appear from a live scan or a loaded cameras.geojson, on a real street "
                 "basemap. The map stays offline by default; turn on “Online tiles” once, with "
@@ -572,6 +573,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             _note.setStyleSheet("color:#8b949e;padding:4px 2px;")
             root.addWidget(_note)
             file_row = QHBoxLayout()
+            self._file_row = file_row   # Wave-3: control rows stack on a compact canvas
             self._btn_load = QPushButton("Load cameras.geojson…")
             self._btn_load.setToolTip("Open a saved Flock scan (the cameras.geojson a FlockSession writes).")
             self._btn_load.clicked.connect(self._on_load)
@@ -596,6 +598,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
 
             # ── Live scan controls (F5 live driving loop) ──
             live_row = QHBoxLayout()
+            self._live_row = live_row
             self._gps_combo = QComboBox()
             self._gps_combo.setToolTip("GPS (NMEA) serial port — optional; without a fix the map stays empty.")
             self._dev_combo = QComboBox()
@@ -624,6 +627,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             # Map controls: the view is now a slippy map (drag to pan, wheel to zoom); "Reset view"
             # re-frames every camera so you can always get back to the whole set after exploring.
             map_row = QHBoxLayout()
+            self._map_row = map_row
             self._btn_reset_view = QPushButton("Reset view")
             self._btn_reset_view.setToolTip("Re-frame all cameras (drag to pan · scroll to zoom).")
             self._btn_reset_view.clicked.connect(self.reset_view)
@@ -731,6 +735,28 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._gps_worker = None      # standalone NMEA reader (F3) — GPS tracking without a full scan
 
             self.set_geojson({"type": "FeatureCollection", "features": []})
+            self._relayout_flock(force=True)   # seed the control-row orientation
+
+        # ── responsive layout (Wave-3) ──
+        def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+            super().resizeEvent(event)
+            self._relayout_flock()
+
+        def _relayout_flock(self, force: bool = False) -> None:
+            """Stack the file / live-scan / map control rows vertically on a compact canvas so their
+            many buttons + checkboxes don't overflow a narrow deck; horizontal otherwise."""
+            from src.ui.qt.layout_profile import layout_profile
+            from src.ui.qt.touch_mode import touch_active
+            dpi = self.logicalDpiX() or 96
+            p = layout_profile(max(1, self.width()), max(1, self.height()),
+                               touch=touch_active(), dpi=dpi)
+            if not force and p.size == self._last_flock_size:   # debounce on the size class
+                return
+            self._last_flock_size = p.size
+            from PyQt5.QtWidgets import QBoxLayout
+            direction = QBoxLayout.TopToBottom if p.is_compact else QBoxLayout.LeftToRight
+            for row in (self._file_row, self._live_row, self._map_row):
+                row.setDirection(direction)
 
         # ── data in ───────────────────────────────────────────────────
         def set_session(self, session: Any) -> None:
