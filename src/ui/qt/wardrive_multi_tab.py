@@ -61,9 +61,32 @@ class WardriveMultiTab(QWidget):
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self._tick)
+        self._last_wm_size: "str | None" = None   # Wave-3 Batch C: last size class (debounce)
         self._build_ui()
         self._refresh_boards()
         self._refresh_ports()
+
+    # ── Adaptive layout (Wave-3 Batch C) ──────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_for_size()
+
+    def _relayout_for_size(self) -> None:
+        from src.ui.qt.layout_profile import layout_profile, wardrive_multi_layout
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if profile.size == self._last_wm_size:   # debounce: relayout only on a size-class change
+            return
+        self._last_wm_size = profile.size
+        self._apply_wm_layout(wardrive_multi_layout(profile))
+
+    def _apply_wm_layout(self, layout) -> None:
+        # On a compact canvas the Boards + GPS/baud rows go vertical (freeing the two 80px baud
+        # fields); a roomy canvas keeps them horizontal. Size-driven; never the Simple/Pro depth.
+        from PyQt5.QtWidgets import QBoxLayout
+        direction = QBoxLayout.TopToBottom if layout.stack else QBoxLayout.LeftToRight
+        for row in (self._boards_row, self._gps_row):
+            row.setDirection(direction)
 
     # ── UI ────────────────────────────────────────────────────────────
     def _build_ui(self) -> None:
@@ -83,7 +106,7 @@ class WardriveMultiTab(QWidget):
         root.addWidget(banner)
 
         boards_card, boards_l = _make_card("Boards")
-        row = QHBoxLayout()
+        self._boards_row = row = QHBoxLayout()
         self._board_list = QListWidget()
         self._board_list.setSelectionMode(QAbstractItemView.NoSelection)
         row.addWidget(self._board_list, 1)
@@ -100,7 +123,7 @@ class WardriveMultiTab(QWidget):
         root.addWidget(boards_card)
 
         gps_card, gps_l = _make_card("GPS + output")
-        g = QHBoxLayout()
+        self._gps_row = g = QHBoxLayout()
         g.addWidget(QLabel("GPS port:"))
         self._gps_combo = QComboBox()
         g.addWidget(self._gps_combo, 1)

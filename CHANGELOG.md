@@ -32,6 +32,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Multi-Wardrive tab reflows on a compact canvas (GUI rebuild Wave-3, Batch C — first screen wired).** The Boards
+  row and the GPS/output row (which carries the two 80px baud fields) now stack vertically on a cramped window and
+  sit side-by-side when there's room, via the pure `wardrive_multi_layout`. Size-driven only, debounced on the size
+  class; the capture logic in `MultiWardriveController` is untouched.
 - **Seven more adaptive-layout deciders landed, pure + headless-tested (GUI rebuild Wave-3, Batch C groundwork).**
   Added `operate_layout`, `crack_layout`, `settings_layout`, `macro_layout`, `network_layout`, `nodes_layout`, and
   `wardrive_multi_layout` to the pure resolver — each a frozen dataclass drawing from one vocabulary (columns / stack /
