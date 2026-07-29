@@ -25,10 +25,8 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
+from src.core.posture import POSTURE_OFFENSE, POSTURE_RECON  # canonical (re-exported); never drift
 from src.ui.qt.theme import colors as C
-
-POSTURE_RECON = "recon"      # default: passive recon / defence
-POSTURE_OFFENSE = "offense"  # gated: active/offensive ops (the host logs + authorises the switch)
 
 # Transient-toast tints by level. Kept literal (matches the app's danger palette in operate_tab) so
 # a theme without semantic success/warn/error names still renders; info falls back to muted text.

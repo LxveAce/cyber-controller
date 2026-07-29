@@ -576,8 +576,13 @@ class NetworkTab(QWidget):
         # safety gate as the Devices tab (_on_send) and Device View — otherwise the experimental Network
         # tab is a silent bypass that fires attack commands with no confirmation.
         from src.config.settings import load_settings
-        from src.core import safety
+        from src.core import posture, safety
         danger = safety.classify(cmd, ci)
+        # Master posture gate (over safety.py, never weakening it): a Recon posture blocks every
+        # offensive verb before the confirm gate — this real send surface must honor it too.
+        if posture.offensive_blocked(danger):
+            self._posture_refuse()
+            return
         if safety.should_confirm(danger, load_settings()):
             from PyQt5.QtWidgets import QMessageBox
             reply = QMessageBox.warning(
@@ -611,6 +616,13 @@ class NetworkTab(QWidget):
         if window is not None and hasattr(window, "toast"):
             window.toast(f"{action_name} {status} on {port}: {detail}", timeout=5000)
 
+    def _posture_refuse(self) -> None:
+        """Surface the master posture-gate refusal in the shell toast (no-op if hosted alone)."""
+        from src.core import posture
+        window = self.window()
+        if window is not None and hasattr(window, "toast"):
+            window.toast(posture.block_reason(), level="warning", timeout=6000)
+
     def _run_target_action(self, action, port: str) -> None:
         if self._dm is None:
             return
@@ -620,13 +632,17 @@ class NetworkTab(QWidget):
         # command AND its pre-commands (worst wins), and floor an ATTACK-category action at lab-only so a
         # keyword-free attack template is still gated.
         from src.config.settings import load_settings
-        from src.core import safety
+        from src.core import posture, safety
         from src.models.action import ActionCategory
         cmds = [getattr(action, "command_template", "") or ""]
         cmds += list(getattr(action, "pre_commands", None) or [])
         danger = safety.worst_of(*(safety.classify(c) for c in cmds))
         if getattr(action, "category", None) == ActionCategory.ATTACK:
             danger = safety.worst_of(danger, safety.LAB_ONLY)
+        # Master posture gate (over safety.py) — a Recon posture refuses an offensive action.
+        if posture.offensive_blocked(danger):
+            self._posture_refuse()
+            return
         if safety.should_confirm(danger, load_settings()):
             from PyQt5.QtWidgets import QMessageBox
             reply = QMessageBox.warning(

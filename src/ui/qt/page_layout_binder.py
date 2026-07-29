@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 from typing import Callable, Optional
 
+from src.core import posture as posture_state
 from src.ui.qt.page_layout import POSTURE_OFFENSE, PageLayout
 from src.ui.qt.theme import colors as C
 
@@ -33,6 +34,12 @@ class PageLayoutBinder:
             for t in ("capture.added", "capture.removed", "capture.cleared", "capture.cracked"):
                 bus.subscribe(t, self._on_capture_event)
         layout.posture_escalation_requested.connect(self._on_escalation_requested)
+        # Mirror the shell's VISIBLE posture into the core posture gate (src.core.posture) so the
+        # send paths' master gate can never disagree with what the toggle shows. Sync the initial
+        # state now, then track every change (both host-authorized escalate + immediate de-escalate
+        # route through PageLayout.set_posture -> posture_changed).
+        layout.posture_changed.connect(posture_state.set_posture)
+        posture_state.set_posture(layout.posture)
         self.refresh()
 
     # ── live counts ──────────────────────────────────────────────────

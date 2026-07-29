@@ -622,13 +622,18 @@ class TargetsTab(QWidget):
             # command AND its pre-commands (worst wins) and floor an ATTACK-category action at lab-only, so
             # a keyword-free attack template is still gated. Inside the try -> a gate error fails closed.
             from src.config.settings import load_settings
-            from src.core import safety
+            from src.core import posture, safety
             from src.models.action import ActionCategory
             _cmds = [getattr(action, "command_template", "") or ""]
             _cmds += list(getattr(action, "pre_commands", None) or [])
             _danger = safety.worst_of(*(safety.classify(c) for c in _cmds))
             if getattr(action, "category", None) == ActionCategory.ATTACK:
                 _danger = safety.worst_of(_danger, safety.LAB_ONLY)
+            # Master posture gate (over safety.py, never weakening it) — a Recon posture refuses an
+            # offensive action here too, before the confirm gate, so this send surface is no bypass.
+            if posture.offensive_blocked(_danger):
+                self._notify(posture.block_reason())
+                return
             if safety.should_confirm(_danger, load_settings()):
                 reply = QMessageBox.warning(
                     self, "Confirm dangerous command",
