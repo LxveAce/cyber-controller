@@ -32,6 +32,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Macro tab reflows on a compact canvas (GUI rebuild Wave-3, Batch C — screen 2/7).** The left/right splitter
+  (saved-macros list vs the editor) flips to a vertical stack on a cramped window, and the macro-list button row +
+  the variable-substitution field row wrap so nothing clips off a narrow deck panel — via the pure `macro_layout`.
+  Size-driven only, debounced; the recorder/playback logic is untouched.
 - **Multi-Wardrive tab reflows on a compact canvas (GUI rebuild Wave-3, Batch C — first screen wired).** The Boards
   row and the GPS/output row (which carries the two 80px baud fields) now stack vertically on a cramped window and
   sit side-by-side when there's room, via the pure `wardrive_multi_layout`. Size-driven only, debounced on the size

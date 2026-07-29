@@ -69,16 +69,41 @@ class MacroTab(QWidget):
         self._playback_signal = _PlaybackSignal()
         self._playback_signal.progress.connect(self._on_playback_progress)
         self._playback_signal.complete.connect(self._on_playback_complete)
+        self._last_macro_size: "str | None" = None   # Wave-3 Batch C: last size class (debounce)
 
         self._build_ui()
         self._refresh_macro_list()
+
+    # ── Adaptive layout (Wave-3 Batch C) ──────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_for_size()
+
+    def _relayout_for_size(self) -> None:
+        from src.ui.qt.layout_profile import layout_profile, macro_layout
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if profile.size == self._last_macro_size:   # debounce: relayout only on a size-class change
+            return
+        self._last_macro_size = profile.size
+        self._apply_macro_layout(macro_layout(profile))
+
+    def _apply_macro_layout(self, layout) -> None:
+        # Compact: the left/right macro-list vs editor splitter flips vertical (list above editor).
+        self._splitter.setOrientation(Qt.Vertical if layout.stack else Qt.Horizontal)
+        # Dense chrome: wrap the macro-list button row + the variable-substitution field row so
+        # their buttons/fields don't clip off a narrow panel. Size-driven, not the depth.
+        from PyQt5.QtWidgets import QBoxLayout
+        direction = QBoxLayout.TopToBottom if layout.collapse_chrome else QBoxLayout.LeftToRight
+        for row in (self._btn_row, self._var_row):
+            row.setDirection(direction)
 
     # ── Layout ───────────────────────────────────────────────────────
 
     def _build_ui(self) -> None:
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-        splitter = QSplitter(Qt.Horizontal)
+        self._splitter = splitter = QSplitter(Qt.Horizontal)
 
         # ── Left panel: saved macros (in scroll area) ────────────────
         left_scroll = QScrollArea()
@@ -99,7 +124,7 @@ class MacroTab(QWidget):
         self._macro_list.currentItemChanged.connect(self._on_macro_selected)
         left_layout.addWidget(self._macro_list, stretch=1)
 
-        btn_row = QHBoxLayout()
+        self._btn_row = btn_row = QHBoxLayout()
         btn_load = QPushButton("Load File...")
         btn_load.clicked.connect(self._on_load_file)
         btn_row.addWidget(btn_load)
@@ -128,7 +153,7 @@ class MacroTab(QWidget):
         # Variable substitution fields card
         self._var_card, var_layout_inner = _make_card("Variable Substitution")
         var_card = self._var_card
-        var_row = QHBoxLayout()
+        self._var_row = var_row = QHBoxLayout()
 
         mac_label = QLabel("TARGET_MAC:")
         mac_label.setWordWrap(True)
