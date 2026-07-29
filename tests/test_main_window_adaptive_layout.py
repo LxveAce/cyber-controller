@@ -73,3 +73,19 @@ def test_relayout_debounces_on_size_class(qapp):
 # (The "resize before the shell exists" guard is exercised by construction itself: __init__ calls
 # self.resize(...) before _build_main_layout wires _app_shell, firing resizeEvent -> _relayout_shell
 # -> the None-guard. If it were broken, _make_window() above would crash.)
+
+
+def test_operate_home_external_tiles_route_to_their_real_tabs(qapp):
+    # The Operate-Home Tools / Settings tiles have no in-place screen — a tap must open the real tab
+    # (Crack Lab inside Analyze; Settings top-level), NOT a "coming soon" placeholder for a shipped
+    # feature. Drive the same navigate_requested signal the tile emits.
+    win = _make_window()
+    try:
+        win._operate_home.navigate_requested.emit("tools")
+        assert win._tabs.currentWidget() is win._network_surface
+        assert win._network_surface.currentWidget() is win._crack_lab_tab
+
+        win._operate_home.navigate_requested.emit("settings")
+        assert win._tabs.currentWidget() is win._settings_tab
+    finally:
+        win.close()

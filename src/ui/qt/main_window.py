@@ -668,7 +668,12 @@ class CyberControllerWindow(QMainWindow):
         # the same ingestor tap as the existing analyzers (see _wire_wifi/_ble_analyzer). Awareness
         # only — the fresh centers transmit nothing.
         from src.ui.qt.operate_home import build_operate_home
-        self._operate_home, self._oh_wifi, self._oh_ble = build_operate_home()
+        # Tools / Settings tiles have no in-place Operate-Home screen — those live in real tabs
+        # (Crack Lab, Settings). Mark them external so a tap opens that tab instead of a "coming
+        # soon" placeholder for an already-shipped feature.
+        self._operate_home, self._oh_wifi, self._oh_ble = build_operate_home(
+            external_domains={"tools", "settings"})
+        self._operate_home.navigate_requested.connect(self._on_home_navigate)
         # Wave-10 Phase C (slice D): the Operate Home tab holds the OperateHome directly. The global
         # chrome (status bar / posture / omnibar) is owned once by the app-shell (_app_shell) that
         # wraps the whole top area, so the old per-tab PageLayout wrapper (_home_frame) + its binder
@@ -824,6 +829,14 @@ class CyberControllerWindow(QMainWindow):
         if self._tabs.indexOf(surface) >= 0:
             self._tabs.setCurrentWidget(surface)
         surface.setCurrentWidget(widget)
+
+    def _on_home_navigate(self, key: str) -> None:
+        """An Operate-Home 'external' tile (Tools / Settings) asks to open its real tab — route
+        there, not a placeholder. Crack Lab is in the Analyze surface; Settings is top-level."""
+        if key == "tools":
+            self._show_subtab(self._network_surface, self._crack_lab_tab)
+        elif key == "settings" and self._tabs.indexOf(self._settings_tab) >= 0:
+            self._tabs.setCurrentWidget(self._settings_tab)
 
     def _tab_registry(self) -> "list[tuple[str, object]]":
         """Canonical (label, widget) tabs in order — the source of truth for loadout show/hide."""

@@ -47,6 +47,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Fixed
+- **Operate Home's "Tools" and "Settings" tiles showed a dead "coming soon" for features that already
+  ship.** Tapping either domain tile landed on a placeholder even though Crack Lab and Settings are live
+  tabs. Operate Home now marks those two domains "external" and, when tapped, emits `navigate_requested`
+  so the shell opens the real tab (Tools → Crack Lab, Settings → the Settings tab). Radios with genuinely
+  no screen yet (2.4 GHz, NFC) keep their honest "coming soon". Found by an unbiased codebase audit.
 - **Activity-log `warn` level was silently downgraded to `info`.** Three call sites emitted `level="warning"`,
   but `activity_log.LEVELS` only recognizes `"warn"`, so `emit_line` coerced them to `info` — the failed
   network-tool / target-attack lines (and the new force-firmware line) rendered in the muted default instead of

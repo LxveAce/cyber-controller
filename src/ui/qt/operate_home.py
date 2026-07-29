@@ -1,9 +1,12 @@
 """OPERATE HOME screen (design brief) — the domain tile grid + the selected domain's detail.
 
 Composes :class:`DomainGrid` (the radio/domain tiles) with a ``QStackedWidget``: tapping a tile
-shows that domain's screen, a Home action returns to the grid. Wi-Fi opens the real three-panel
-:class:`WifiDomainView`; the other domains show an honest "coming soon" placeholder until their
-screens land. Self-contained so the app shell embeds THIS one widget — no tab-structure coupling.
+shows that domain's screen, a Home action returns to the grid. Wi-Fi / BLE / GPS / Sub-GHz open
+their real domain views; radios with no screen yet (2.4 GHz, NFC) show an honest "coming soon"
+placeholder. A domain listed in ``external_domains`` has NO in-place screen — tapping it emits
+``navigate_requested`` so the host switches to that capability's real tab (Tools -> Crack Lab,
+Settings -> the Settings tab) instead of a placeholder that lies about an already-shipped feature.
+Self-contained: it emits an intent and never reaches for the tab structure itself.
 """
 from __future__ import annotations
 
@@ -98,23 +101,31 @@ class OperateHome(QWidget):
 
     domain_shown = pyqtSignal(str)  # a domain screen was opened (key)
     home_shown = pyqtSignal()       # returned to the grid
+    navigate_requested = pyqtSignal(str)  # external-domain tile asks the host to open its tab
 
     def __init__(self, wifi_center: "Optional[QWidget]" = None,
                  ble_center: "Optional[QWidget]" = None,
                  gps_center: "Optional[QWidget]" = None,
                  subghz_center: "Optional[QWidget]" = None,
+                 external_domains: "Optional[set[str]]" = None,
                  parent: "Optional[QWidget]" = None) -> None:
         super().__init__(parent)
         self._current: Optional[str] = None
+        # Domains that live in a real tab elsewhere: no in-place screen is built for them.
+        # Tapping the tile emits navigate_requested for the host to open that tab (see docstring).
+        self._external: set[str] = set(external_domains or ())
         self._grid = DomainGrid()
         self._stack = QStackedWidget()
         self._stack.addWidget(self._grid)  # index 0 = home
 
         # One screen per domain: Wi-Fi and BLE reuse the SAME three-panel frame (proving it is
-        # general); the remaining domains are honest placeholders until their screens land.
+        # general); the remaining domains are honest placeholders until their screens land. An
+        # external domain gets no screen at all — it navigates the host instead.
         self._views: dict[str, QWidget] = {}
         titles = {k: t for k, _i, t, _d in _domain_titles()}
         for key in self._grid.domain_keys():
+            if key in self._external:
+                continue
             if key == "wifi":
                 view: QWidget = WifiDomainView(center=wifi_center or QWidget())
             elif key == "ble":
@@ -159,6 +170,10 @@ class OperateHome(QWidget):
         self.home_shown.emit()
 
     def show_domain(self, key: str) -> None:
+        if key in self._external:
+            # No in-place screen: ask the host to open this capability's real tab. Stay on the grid.
+            self.navigate_requested.emit(key)
+            return
         view = self._views.get(key)
         if view is None:
             return
@@ -181,9 +196,13 @@ def _domain_titles():
     return _DOMAINS
 
 
-def build_operate_home(parent: "Optional[QWidget]" = None):
+def build_operate_home(external_domains: "Optional[set[str]]" = None,
+                       parent: "Optional[QWidget]" = None):
     """Build an :class:`OperateHome` with its OWN FRESH WiFi/BLE analyzer centers, for embedding in
     the app shell WITHOUT reparenting the shell's existing analyzer instances.
+
+    ``external_domains`` names tiles that live in a real tab (e.g. ``{"tools", "settings"}``), so
+    tapping them emits ``navigate_requested`` instead of showing a "coming soon" placeholder.
 
     Returns ``(operate_home, wifi_center, ble_center)`` — the caller feeds the centers from the
     shared event tap (``wifi_center.on_wifi_event`` / ``ble_center.on_ble_event``) alongside the
@@ -195,5 +214,6 @@ def build_operate_home(parent: "Optional[QWidget]" = None):
 
     wifi_center: QWidget = WifiAnalyzerTab() if WifiAnalyzerTab is not None else QWidget()
     ble_center: QWidget = BleAnalyzerTab() if BleAnalyzerTab is not None else QWidget()
-    home = OperateHome(wifi_center=wifi_center, ble_center=ble_center, parent=parent)
+    home = OperateHome(wifi_center=wifi_center, ble_center=ble_center,
+                       external_domains=external_domains, parent=parent)
     return home, wifi_center, ble_center

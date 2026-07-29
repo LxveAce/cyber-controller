@@ -1,7 +1,8 @@
 """OPERATE HOME shell (src/ui/qt/operate_home.py) — the domain grid ⇄ per-domain screen routing.
 
 Asserts the CLAIM, offscreen: it starts on the domain grid, tapping the Wi-Fi tile routes to the
-real three-panel WifiDomainView, Home returns to the grid, and every domain has a stack screen.
+real three-panel WifiDomainView, Home returns to the grid, each in-place domain has a stack screen,
+and an external domain (Tools/Settings) emits navigate_requested instead of a "coming soon" lie.
 """
 from __future__ import annotations
 
@@ -53,10 +54,25 @@ def test_every_domain_has_a_screen(qapp):
     h = OperateHome()
     for key in h._grid.domain_keys():
         assert h.domain_view(key) is not None
-    # Wi-Fi and BLE are real domain views on the shared frame; the rest are placeholders.
+    # Wi-Fi/BLE (and GPS/Sub-GHz) are real domain views; 2.4 GHz + NFC are honest placeholders.
     assert isinstance(h.domain_view("wifi"), WifiDomainView)
     assert isinstance(h.domain_view("ble"), BleDomainView)
     assert not isinstance(h.domain_view("nfc"), WifiDomainView)
+
+
+def test_external_domains_navigate_instead_of_showing_a_placeholder(qapp):
+    # Tools/Settings live in real tabs, so Operate Home ROUTES to them — no "coming soon" lie.
+    seen: list[str] = []
+    h = OperateHome(external_domains={"tools", "settings"})
+    h.navigate_requested.connect(seen.append)
+    assert h.domain_view("tools") is None        # no in-place screen built for an external domain
+    assert h.domain_view("settings") is None
+    h._grid.domain_selected.emit("tools")        # tapping the tile
+    assert seen == ["tools"]                      # asks the host to open the real tab
+    assert h.current_domain() is None             # and stays on the grid (no placeholder swap)
+    assert h._stack.currentWidget() is h._grid
+    # A radio with genuinely no screen yet stays an honest in-place placeholder.
+    assert h.domain_view("nrf") is not None
 
 
 def test_selecting_ble_routes_to_the_ble_domain(qapp):
