@@ -32,6 +32,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Cross-Comm tab's Event-Stream / Auto-Rules row stacks on a compact canvas (GUI rebuild Wave-3, bespoke
+  screens).** The Live Event Stream and Auto-Routing Rules cards sat side-by-side in a fixed horizontal row that
+  cramps on a narrow deck; they now flip to a vertical stack on a compact window (horizontal otherwise).
+  Size-driven and debounced; the target pool, auto-router, and event/action wiring are untouched.
 - **Health tab's gauge + detail rows stack on a compact canvas (GUI rebuild Wave-3, bespoke screens).** The four
   arc gauges (CPU/RAM/Disk/Battery) and their detail labels sat in fixed horizontal rows that cram four-across on
   a narrow deck; they now flip to a vertical stack on a compact window (horizontal otherwise). Size-driven and

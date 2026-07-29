@@ -171,6 +171,7 @@ class CrossCommTab(QWidget):
         self._pool = target_pool
         self._router = auto_router
         self._dm = device_manager
+        self._last_cc_size: "str | None" = None   # Wave-3: last size class (relayout debounce)
 
         # Bridge bus callbacks (worker threads) onto the GUI thread.
         self._bridge = _BusBridge()
@@ -251,9 +252,10 @@ class CrossCommTab(QWidget):
 
         splitter.addWidget(pool_card)
 
-        # ── Bottom: event stream + auto-rules ────────────────────────
+        # ── Bottom: event stream + auto-rules (stack vertically on a compact canvas) ──
         bottom = QWidget()
         bottom_layout = QHBoxLayout(bottom)
+        self._bottom_row = bottom_layout
         bottom_layout.setContentsMargins(0, 0, 0, 0)
 
         # Live event stream card
@@ -345,6 +347,27 @@ class CrossCommTab(QWidget):
 
         scroll.setWidget(scroll_container)
         outer.addWidget(scroll)
+        self._relayout_cross_comm(force=True)   # seed the stream/rules row orientation
+
+    # ── responsive layout (Wave-3) ───────────────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_cross_comm()
+
+    def _relayout_cross_comm(self, force: bool = False) -> None:
+        """Flip the Event-Stream / Auto-Rules row to a vertical stack on a compact canvas (side-by-
+        side cramps a narrow deck), horizontal otherwise. Debounced on the size class."""
+        from src.ui.qt.layout_profile import layout_profile
+        from src.ui.qt.touch_mode import touch_active
+        dpi = self.logicalDpiX() or 96
+        p = layout_profile(max(1, self.width()), max(1, self.height()),
+                           touch=touch_active(), dpi=dpi)
+        if not force and p.size == self._last_cc_size:   # debounce on the size class
+            return
+        self._last_cc_size = p.size
+        from PyQt5.QtWidgets import QBoxLayout
+        self._bottom_row.setDirection(
+            QBoxLayout.TopToBottom if p.is_compact else QBoxLayout.LeftToRight)
 
     # ── Dual-depth (Simple / Pro) ────────────────────────────────────
 
