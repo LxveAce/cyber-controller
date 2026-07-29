@@ -273,11 +273,19 @@ class OperateTab(QWidget):
         dev = self._active_device()
         if dev is None:
             return
+        from src.core.activity_log import activity_log
         data = self._fw_combo.currentData()
         if data is None:   # release the force, keep the current firmware (no re-probe)
             self._dm.set_firmware(self._active_port, dev.firmware, forced=False)
+            activity_log().emit_line(
+                "operate", f"[{self._active_port}] cleared forced firmware "
+                f"(keeps {dev.firmware or 'unknown'})")
         else:              # force to the chosen firmware + its command set
             self._dm.set_firmware(self._active_port, str(data), forced=True)
+            disp = PROTOCOL_DISPLAY_NAMES.get(str(data), str(data))
+            activity_log().emit_line(
+                "operate", f"[{self._active_port}] forced firmware -> {disp} "
+                "(manual override; may not match the hardware)", level="warn")
 
     def _active_device(self):
         port = self._active_port

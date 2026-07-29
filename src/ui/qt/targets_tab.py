@@ -682,7 +682,7 @@ class TargetsTab(QWidget):
             # Reflect the action in the app terminal (all-source activity log) + a transient toast.
             from src.core.activity_log import activity_log
             activity_log().emit_line("targets", f"{action_name} {status} on {port}: {detail}",
-                                     level="warning" if status == "failed" else "info")
+                                     level="warn" if status == "failed" else "info")
             window = self.window()
             if window and hasattr(window, "toast"):
                 window.toast(f"Action '{action_name}' {status} on {port}: {detail}", timeout=5000)

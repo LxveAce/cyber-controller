@@ -70,6 +70,22 @@ def test_console_force_firmware_sets_and_clears_forced(qapp):
     assert dm.get_device("COM7").firmware_forced is False
 
 
+def test_console_force_firmware_traces_to_the_terminal(qapp):
+    # Forcing a firmware changes which commands the device accepts — a significant manual action that
+    # must leave an honest trace in the app terminal (activity_log), not happen silently.
+    from src.core.activity_log import activity_log
+    seen: list[tuple[str, str, str]] = []
+    activity_log().line.connect(lambda s, lvl, t: seen.append((s, lvl, t)))
+    dm = DeviceManager()
+    dm.add_device(Device(port="COM7", firmware="marauder", connected=True))
+    tab = OperateTab(dm)
+    tab._fw_combo.setCurrentIndex(1)                       # force
+    tab._fw_combo.setCurrentIndex(0)                       # clear
+    ops = [(lvl, t) for s, lvl, t in seen if s == "operate"]
+    assert any(lvl == "warn" and "forced firmware" in t for lvl, t in ops)
+    assert any("cleared forced firmware" in t for _lvl, t in ops)
+
+
 def test_console_force_combo_first_item_is_honest_clear_label(qapp):
     dm = DeviceManager()
     dm.add_device(Device(port="COM7", firmware="marauder", connected=True))

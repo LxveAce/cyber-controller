@@ -610,7 +610,7 @@ class NetworkTab(QWidget):
         # Reflect the send in the app terminal (all-source activity log), not just the toast.
         from src.core.activity_log import activity_log
         activity_log().emit_line("network", f"{action_name} {status} on {port}: {detail}",
-                                 level="warning" if status == "failed" else "info")
+                                 level="warn" if status == "failed" else "info")
         window = self.window()
         if window is not None and hasattr(window, "toast"):
             window.toast(f"{action_name} {status} on {port}: {detail}", timeout=5000)

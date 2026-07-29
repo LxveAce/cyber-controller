@@ -6,6 +6,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Force-firmware now leaves an honest terminal trace (Grand-Overhaul).** Forcing (or clearing) a device's
+  firmware on the Operate console — a manual override that changes which commands the device accepts — emits a
+  line to the app terminal (`operate` source; the force line at `warn` level, flagged "may not match the
+  hardware"), so the action no longer happens silently. The force path itself was verified fully built + honest.
 - **Flock Map honest WIP banner (Grand-Overhaul).** The heatmap now shows an amber "Work in progress" notice
   naming the missing piece — the offline known-camera catalog (F3) — so the screen no longer implies it maps a
   full camera database when it only plots live-scan / loaded / OSM-imported detections.
@@ -36,6 +40,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 - **Offensive command category across every command firmware.** All attack/TX verbs consolidated under one
   operable "Offensive" heading (per the owner directive), each gate preserved through the move (verify-first
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
+
+### Fixed
+- **Activity-log `warn` level was silently downgraded to `info`.** Three call sites emitted `level="warning"`,
+  but `activity_log.LEVELS` only recognizes `"warn"`, so `emit_line` coerced them to `info` — the failed
+  network-tool / target-attack lines (and the new force-firmware line) rendered in the muted default instead of
+  the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
 - **Software-OS tab reflows on a compact canvas — the last Wave-3 screen (GUI rebuild Wave-3, bespoke screens
