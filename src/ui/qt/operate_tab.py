@@ -80,6 +80,9 @@ class OperateTab(QWidget):
         self._last_arm_state: Optional[str] = None
         self._last_link_view = None    # last Link-strip render, to repaint only on change
         self._fw_syncing = False       # guard: syncing the firmware combo must not re-fire its slot
+        self._grid_cols: int = 3       # Wave-3 Batch C: command-grid columns (was hard-coded 3)
+        self._hit_edge_pt: int = 0     # touch-target min-height for grid/arm buttons (0 = none yet)
+        self._last_operate_size: "Optional[str]" = None   # last size class (relayout debounce)
         self._build_ui()
         self._timer = QTimer(self)
         # The poll cadence is tier-aware (see _apply_poll_interval): base on USB/Wi-Fi, lengthened on a
@@ -115,6 +118,7 @@ class OperateTab(QWidget):
 
         # Header: device picker + force-firmware combo + telemetry line
         head = QHBoxLayout()
+        self._head_row = head   # Wave-3 Batch C: flips to a vertical stack on a compact canvas
         head.addWidget(QLabel("Device:"))
         self._device_combo = QComboBox()
         self._device_combo.setMinimumWidth(260)
@@ -193,6 +197,38 @@ class OperateTab(QWidget):
         self._log.setPlaceholderText("Sent commands and results appear here.")
         root.addWidget(self._log)
         root.addStretch(1)
+        self._relayout_operate(force=True)   # seed grid cols / hit target / header pre-build
+
+    # ── responsive layout (Wave-3 Batch C) ─────────────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_operate()
+
+    def _relayout_operate(self, force: bool = False) -> None:
+        """Re-apply the Operate layout on a size-class change (debounced). ``force`` runs it once
+        at build so the grid columns + button hit-target are seeded before the first grid build."""
+        from src.ui.qt.layout_profile import layout_profile, operate_layout
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()), touch=False, dpi=dpi)
+        if not force and profile.size == self._last_operate_size:   # debounce on the size class
+            return
+        self._last_operate_size = profile.size
+        self._apply_operate_layout(operate_layout(profile))
+
+    def _apply_operate_layout(self, ol) -> None:
+        """Apply the Operate resolver: header stacks on compact, the log shrinks on dense chrome,
+        arm buttons get a touch-target min-height, and the command grid re-flows its columns."""
+        from PyQt5.QtWidgets import QBoxLayout
+        self._head_row.setDirection(QBoxLayout.TopToBottom if ol.stack else QBoxLayout.LeftToRight)
+        self._log.setMaximumHeight(72 if ol.collapse_chrome else 120)
+        self._hit_edge_pt = ol.hit_edge_pt
+        for btn in (self._btn_arm, self._btn_confirm, self._btn_disarm):
+            btn.setMinimumHeight(ol.hit_edge_pt)
+        # Command grid columns change 1:1 with the size class; re-flow a built grid when they do.
+        if ol.columns != self._grid_cols:
+            self._grid_cols = ol.columns
+            if self._grid_fw:
+                self._rebuild_grid(self._grid_fw)
 
     # ── device selection ──────────────────────────────────────────────────
     def _reload_devices(self) -> None:
@@ -310,11 +346,13 @@ class OperateTab(QWidget):
         groups: "dict[str, list]" = {}
         for ci in commands:
             groups.setdefault(getattr(ci, "category", "") or "Other", []).append(ci)
+        cols = max(1, self._grid_cols)   # Wave-3 Batch C: size-driven columns (was hard-coded 3)
         for category, cmds in groups.items():
             box = QGroupBox(category)
             grid = QGridLayout(box)
             for i, ci in enumerate(cmds):
                 btn = QPushButton(ci.name)
+                btn.setMinimumHeight(self._hit_edge_pt)   # real touch target (0 until first layout)
                 # The authoritative danger level (same call the send path uses), not the raw catalog field.
                 danger = safety.classify(ci.name, ci)
                 tip = ci.description or ci.name
@@ -328,7 +366,7 @@ class OperateTab(QWidget):
                 btn.setToolTip(tip)
                 btn.setProperty("base_tip", tip)   # so _refresh can append the "disabled until ARMED" hint
                 btn.clicked.connect(lambda _checked=False, c=ci: self._on_command_button(c))
-                grid.addWidget(btn, i // 3, i % 3)
+                grid.addWidget(btn, i // cols, i % cols)
                 if danger:
                     self._tx_buttons.append(btn)
                 else:

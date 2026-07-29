@@ -32,6 +32,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Operate console reflows with the window size (GUI rebuild Wave-3, Batch C — screen 4/7).** The command
+  grid's column count now tracks the window's size class via the pure `operate_layout` resolver (1/2/3 columns),
+  replacing the hard-coded `grid.addWidget(btn, i // 3, i % 3)`; the device/firmware header stacks vertically on
+  a compact canvas, dense chrome shrinks the activity log, and the grid + arm buttons finally get a real
+  touch-target min-height (they had none). Size-driven and debounced on the size class; a built grid re-flows its
+  columns in place when the class changes. Command classification, the offensive-TX arm gate, and send-path
+  safety are untouched.
 - **Settings tab cards reflow into a responsive 1/2/3-column grid (GUI rebuild Wave-3, Batch C — screen 3/7).**
   The nine settings cards, previously a single vertical stack, now flow into a one-, two-, or three-column grid
   keyed off the window's size class (compact/regular/expanded) via the pure `settings_layout` resolver; dense
