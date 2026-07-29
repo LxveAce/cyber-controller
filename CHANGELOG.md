@@ -147,6 +147,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   over the one engine (its `flash_parallel` multi-board capability is preserved).
 
 ### Fixed
+- **Vampire Deauther is now detected (CC-DEAUTHER-UNDETECTED-0724).** The AmebaD/BW16 (RTL8720DN) Vampire
+  Deauther firmware — which CC flashes via the rtl8720 backend's "Vampire Deauther AmebaD bundle" — was
+  unidentified on connect: its runtime banner `[Vampire Deauther Ready]` carries no Realtek/RTL marker, so
+  neither the generic `bw16` signature nor any other matched it. Added a dedicated `vampire-deauther` firmware
+  signature, HIL-grounded on the real banner (machine `extra`, COM38, 2026-07-28), checked before the generic
+  `bw16` chip-family signature so a running board is named by its firmware rather than the bare chip. It shares
+  the BW16's CH340 VID/PID, so the app banner is the only reliable tell.
 - **Batch flash de-drift: BatchFlasher and FlashEngine now share the download step + honor a variant's offset.**
   `BatchFlasher._flash_one` was a hand-maintained parallel copy of `FlashEngine._flash_esptool` (self-labeled "parity
   with FlashEngine") and had drifted. Both flash paths now call one shared `flash_core.download_variant_image` helper

@@ -61,6 +61,13 @@ FIRMWARE_SIGNATURES: Dict[str, str] = {
     "esp32-div":  r"ESP32.?DIV\s+[Vv]?([\d.]+)",
     "flipper":    r"Flipper\s+Zero\s+[Vv]?([\d.]+)",
     "evil-portal": r"Evil.?Portal\s+[Vv]?([\d.]+)",
+    # Vampire Deauther — the AmebaD / BW16 (RTL8720DN) deauth firmware CC flashes via the rtl8720
+    # backend's "Vampire Deauther AmebaD bundle". HIL-grounded on its runtime banner
+    # `[Vampire Deauther Ready]` (machine `extra`, COM38, 2026-07-28). Checked BEFORE the generic
+    # "bw16" Realtek-SDK boot banner so a running board is named by its firmware, not the bare chip
+    # family (it shares the BW16's CH340 VID/PID, so the app banner is the only reliable tell).
+    # Closes CC-DEAUTHER-UNDETECTED-0724 — the board was unidentified: no signature matched it.
+    "vampire-deauther": r"Vampire\s+Deauther(?:\s+v?([\d.]+))?",
     # BW16 / RTL8720DN (AmebaD): the Realtek SDK boot banner is the reliable tell — a
     # CH340 VID/PID alone can't distinguish a BW16 from a classic ESP32 (they share it),
     # so probe the serial banner for these RTL markers. Version is usually absent.

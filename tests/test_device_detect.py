@@ -56,6 +56,25 @@ def test_match_firmware_bw16_banner_version_is_empty_string():
     assert ver == ""
 
 
+def test_match_firmware_vampire_deauther_banner():
+    # HIL-grounded (machine `extra`, COM38, 2026-07-28): a running Vampire Deauther prints this app
+    # banner, which carries NO Realtek/RTL marker, so before this signature existed it matched nothing
+    # (CC-DEAUTHER-UNDETECTED-0724). It must now be named specifically, with no spurious version.
+    assert dd.match_firmware("[Vampire Deauther Ready]") == ("vampire-deauther", None)
+
+
+def test_match_firmware_vampire_deauther_captures_version():
+    assert dd.match_firmware("Vampire Deauther v2.1 ready") == ("vampire-deauther", "2.1")
+
+
+def test_match_firmware_vampire_beats_generic_bw16():
+    # The Vampire Deauther IS a BW16/RTL8720 board, so a capture window can hold BOTH the Realtek boot
+    # spew (which matches "bw16") AND the app banner. The specific firmware is inserted before "bw16",
+    # so match_firmware (first-match-wins) resolves it to the firmware, not the bare chip family.
+    name, _ = dd.match_firmware("rltk_wlan init done\n[Vampire Deauther Ready]")
+    assert name == "vampire-deauther"
+
+
 def test_match_firmware_no_match():
     assert dd.match_firmware("nothing recognizable here") == (None, None)
 
