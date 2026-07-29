@@ -48,6 +48,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Whole-app timer perf verified complete + the regression lock broadened (Grand-Overhaul).** Audited all 19
+  `QTimer`s in `ui/qt`: every always-on repeating refresh/poll timer already starts in `showEvent` and stops in
+  `hideEvent` (lazy-armed, no hidden-tab firing), and the remaining timers are single-shot event-driven debouncers
+  (cross_comm/network/targets) or scan-lifecycle-gated (wardrive-multi) — correct by design, not leaks. Extended
+  `test_timer_visibility_gating` from 3 to 6 tabs (adds Operate/Nodes/Health) to lock the invariant against a
+  future re-arm-in-`__init__` regression.
 - **Software-OS tab reflows on a compact canvas — the last Wave-3 screen (GUI rebuild Wave-3, bespoke screens
   COMPLETE).** The OS-picker, target-USB, and action columns stacked three cards across a narrow deck; they now
   stack vertically on a compact window (horizontal otherwise). The destructive whole-disk OS write is
