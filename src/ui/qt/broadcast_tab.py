@@ -50,6 +50,7 @@ class BroadcastBar(QWidget):
         self._load_settings = settings_loader
         self._buttons: dict[BroadcastVerb, QPushButton] = {}
         self._advanced_buttons: list[QPushButton] = []
+        self._last_broadcast_size: "str | None" = None   # Wave-3: last size class (debounce)
         self._bridge = _Bridge()
         self._bridge.done.connect(self._set_status)
         self._bridge.rebuild.connect(self._refresh_enabled)
@@ -89,28 +90,24 @@ class BroadcastBar(QWidget):
         col = QVBoxLayout(inner)
 
         col.addWidget(self._section_label("Universal — fan out to all connected devices"))
-        grid = QGridLayout()
-        cols = 4
-        i = 0
+        # Wave-3: the button grid is responsive — column count + button heights come from the layout
+        # profile (see _apply_broadcast_layout), replacing the magic 4 columns + fixed heights.
+        self._verb_grid = QGridLayout()
         for verb, action in BROADCAST_ACTIONS.items():
             if verb == BroadcastVerb.STOP_ALL:
                 continue
             btn = QPushButton(f"{action.icon}\n{action.label}")
             btn.setObjectName("broadcast_btn")
-            btn.setMinimumHeight(64)
             if action.category == ActionCategory.ATTACK:
                 btn.setProperty("danger", "true")
                 self._advanced_buttons.append(btn)
             btn.clicked.connect(lambda _=False, v=verb: self._on_verb_clicked(v))
             self._buttons[verb] = btn
-            grid.addWidget(btn, i // cols, i % cols)
-            i += 1
-        col.addLayout(grid)
+        col.addLayout(self._verb_grid)
 
         self._stop_btn = QPushButton("\U0001F6D1  STOP ALL")
         self._stop_btn.setObjectName("broadcast_btn")
         self._stop_btn.setProperty("danger", "true")
-        self._stop_btn.setMinimumHeight(48)
         self._stop_btn.clicked.connect(lambda: self._on_verb_clicked(BroadcastVerb.STOP_ALL))
         col.addWidget(self._stop_btn)
 
@@ -122,6 +119,36 @@ class BroadcastBar(QWidget):
         self._status.setObjectName("broadcast_status")
         self._status.setWordWrap(True)
         root.addWidget(self._status)
+        self._relayout_broadcast(force=True)   # seed the grid columns + button heights
+
+    # ── responsive layout (Wave-3) ───────────────────────────────────
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_broadcast()
+
+    def _relayout_broadcast(self, force: bool = False) -> None:
+        """Re-flow the broadcast grid when the size class changes (debounced)."""
+        from src.ui.qt.layout_profile import layout_profile
+        from src.ui.qt.touch_mode import touch_active
+        dpi = self.logicalDpiX() or 96
+        p = layout_profile(max(1, self.width()), max(1, self.height()),
+                           touch=touch_active(), dpi=dpi)
+        if not force and p.size == self._last_broadcast_size:   # debounce on the size class
+            return
+        self._last_broadcast_size = p.size
+        self._apply_broadcast_layout(p.columns, p.min_target_pt, p.is_compact)
+
+    def _apply_broadcast_layout(self, columns: int, hit_pt: int, compact: bool) -> None:
+        """Place the verb buttons into a `columns`-wide grid (was a magic 4) and size each from the
+        hit-target floor (was fixed 64/48px) — compact shrinks the base but never below target."""
+        cols = max(1, columns)
+        buttons = list(self._buttons.values())
+        for b in buttons:
+            self._verb_grid.removeWidget(b)
+        for i, b in enumerate(buttons):
+            self._verb_grid.addWidget(b, i // cols, i % cols)
+            b.setMinimumHeight(max(44 if compact else 64, hit_pt))
+        self._stop_btn.setMinimumHeight(max(40 if compact else 48, hit_pt))
 
     @staticmethod
     def _section_label(text: str) -> QLabel:

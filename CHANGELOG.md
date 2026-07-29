@@ -32,6 +32,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   classify-preservation caught category-only-gated verbs and gave them explicit `danger=`).
 
 ### Changed
+- **Broadcast bar's button grid reflows with the window (GUI rebuild Wave-3, bespoke screens).** The Universal-
+  broadcast grid used a magic `cols = 4` and fixed 64/48px button heights; it now flows into a `profile.columns`-
+  wide grid (1 on a compact deck, 2/3 as it widens) and sizes every action button — and STOP ALL — from the
+  hit-target floor, shrinking the base on a compact canvas but never below the touch target. Size-driven and
+  debounced; the broadcast engine and per-device fan-out are untouched.
 - **The Recon/Offense posture is now a REAL global offensive master gate (GUI rebuild Wave-3, A2).** The app
   shell's posture toggle previously gated nothing. It is now a security master switch layered OVER the
   per-command safety floor (`src.core.safety`, unchanged): in **Recon** (the default) every offensive/TX verb is
