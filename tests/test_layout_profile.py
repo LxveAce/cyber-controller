@@ -296,6 +296,17 @@ def test_nav_mode_phone_is_bottombar():
     assert p.nav_mode == "bottombar" and p.rail_px == 0 and p.terminal_docked is False
 
 
+def test_min_target_qss_from_density():
+    from src.ui.qt.layout_profile import min_target_qss
+    # touch profile -> 44px floor; pointer -> 28px; non-positive -> a no-op empty string (clears it)
+    assert "min-height: 44px" in min_target_qss(44)
+    assert "min-height: 28px" in min_target_qss(28)
+    assert min_target_qss(0) == "" and min_target_qss(-5) == ""
+    # keyed off the profile's min_target_pt (touch=44, pointer=28)
+    assert "44px" in min_target_qss(layout_profile(800, 480, touch=True).min_target_pt)
+    assert "28px" in min_target_qss(layout_profile(1440, 900).min_target_pt)
+
+
 def test_nav_fields_default_on_bare_construction():
     # appended defaulted fields: a LayoutProfile built without them still works
     p = LayoutProfile(size="regular", density="pointer", depth_hint="pro", columns=2,

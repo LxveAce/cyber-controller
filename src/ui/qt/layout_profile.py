@@ -130,6 +130,16 @@ def layout_profile(
     )
 
 
+def min_target_qss(min_target_pt: int) -> str:
+    """A tiny QSS snippet lifting interactive controls to a min hit-target height (Spade v2 touch
+    density). Pure; the widget applies it. Returns '' for a non-positive target (a no-op), so a
+    pointer profile clears any prior touch styling."""
+    pt = int(min_target_pt)
+    if pt <= 0:
+        return ""
+    return f"QPushButton, QToolButton, QComboBox, QLineEdit {{ min-height: {pt}px; }}"
+
+
 # ── Per-screen layout decisions (pure; the widgets apply them) ──────────────────────────────────
 # Wave-3 rebuild: keep each screen's "how do I arrange for this profile" decision here as pure data,
 # so it's unit-testable without a live Qt widget. The widget only maps the decision to Qt calls.

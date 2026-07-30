@@ -263,6 +263,7 @@ class CyberControllerWindow(QMainWindow):
         # deck resolves to 'rail' at ~800x480 though it is NOT compact, so the old is_compact gate
         # left it with desktop chrome. nav_mode fixes it (see layout_profile v2).
         self._app_shell.set_nav_mode(profile.nav_mode)
+        self._app_shell.set_touch_density(profile.min_target_pt)   # 44px+ hit targets on touch
         # widget(1) of the vertical splitter is the terminal — docked only when the profile
         # says so (undocked on the deck/phone that need the room; a pull-up sheet later).
         splitter = getattr(self, "_main_splitter", None)

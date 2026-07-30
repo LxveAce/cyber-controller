@@ -135,6 +135,31 @@ def test_set_nav_mode_three_modes(qapp):
     assert p.nav_mode == "sidebar"
 
 
+def test_primary_action_docks_on_rail_only(qapp):
+    from PyQt5.QtWidgets import QPushButton
+    p = PageLayout()
+    p.add_destination("wifi", "Wi-Fi", "📶")
+    btn = QPushButton("Start")
+    p.set_primary_action(btn)
+    # on the full sidebar the action lives inline in the surface -> the docked bar stays hidden
+    assert p.nav_mode == "sidebar" and not p._primary_bar.isVisibleTo(p)
+    p.set_nav_mode("rail")                       # the touch deck -> the docked bar appears
+    assert p._primary_bar.isVisibleTo(p)
+    assert btn.parent() is not None              # the button was docked into the bar
+    p.set_primary_action(None)                   # clearing hides it again
+    assert not p._primary_bar.isVisibleTo(p)
+
+
+def test_touch_density_applies_and_clears(qapp):
+    p = PageLayout()
+    p.set_touch_density(44)                       # a touch deck -> 44px hit-target floor
+    assert "min-height: 44px" in p.styleSheet()
+    p.set_touch_density(28)                       # a pointer profile -> 28px
+    assert "min-height: 28px" in p.styleSheet()
+    p.set_touch_density(0)                         # non-positive clears it
+    assert p.styleSheet() == ""
+
+
 def test_set_content_replaces(qapp):
     p = PageLayout()
     a, b = QLabel("A"), QLabel("B")

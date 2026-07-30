@@ -110,6 +110,16 @@ class PageLayout(QWidget):
         self._content_holder.setContentsMargins(0, 0, 0, 0)
         holder = QWidget()
         holder.setLayout(self._content_holder)
+        # Spade v2: a bottom action bar that docks a surface's primary Start/Stop bottom-RIGHT (the
+        # right-thumb arc) on the rail/bottombar deck. Hidden on the sidebar (the action is inline
+        # there). set_content inserts ABOVE it; set_primary_action fills it.
+        self._primary_action: "Optional[QWidget]" = None
+        self._primary_bar = QWidget()
+        _pb = QHBoxLayout(self._primary_bar)
+        _pb.setContentsMargins(8, 4, 8, 8)
+        _pb.addStretch(1)   # push the action to the right
+        self._primary_bar.setVisible(False)
+        self._content_holder.addWidget(self._primary_bar)
         body.addWidget(holder, 1)
         outer.addLayout(body, 1)
 
@@ -219,11 +229,34 @@ class PageLayout(QWidget):
             dest.set_count(count)
 
     def set_content(self, widget: QWidget) -> None:
-        """Set the central content widget (replaces any previous)."""
+        """Set the central content widget (replaces any previous). Inserted ABOVE the primary-action
+        bar so a docked Start/Stop stays pinned to the bottom."""
         if self._content is not None:
             self._content.setParent(None)
         self._content = widget
-        self._content_holder.addWidget(widget)
+        self._content_holder.insertWidget(0, widget)
+
+    def set_primary_action(self, widget: "Optional[QWidget]") -> None:
+        """Dock a surface's primary action (its Start/Stop) bottom-RIGHT of the content — the
+        right-thumb arc on the rail/bottombar deck. Shown only on rail/bottombar (on the sidebar
+        the action lives inline in the surface). Pass None to clear."""
+        if self._primary_action is not None:
+            self._primary_action.setParent(None)
+        self._primary_action = widget
+        if widget is not None:
+            self._primary_bar.layout().addWidget(widget)   # after the stretch -> right-aligned
+        self._update_primary_bar()
+
+    def _update_primary_bar(self) -> None:
+        show = self._primary_action is not None and self._nav_mode != "sidebar"
+        self._primary_bar.setVisible(show)
+
+    def set_touch_density(self, min_target_pt: int) -> None:
+        """Lift the shell's interactive controls to a minimum hit-target height (Spade v2 touch
+        density): on a touch deck every button/input is >= min_target_pt tall. Reversible (a pointer
+        profile clears it). Additive — min-height only; the theme's colours are untouched."""
+        from src.ui.qt.layout_profile import min_target_qss
+        self.setStyleSheet(min_target_qss(min_target_pt))
 
     def set_status(self, key: str, text: str, color: "Optional[str]" = None) -> None:
         """Set a top-bar device-truth field (link/battery/sd/gps/task/armed). Empty hides it."""
@@ -279,6 +312,7 @@ class PageLayout(QWidget):
         dest_mode = "sidebar" if mode == "sidebar" else "rail"
         for d in self._destinations.values():
             d._render(dest_mode)
+        self._update_primary_bar()   # the docked primary action shows only on rail/bottombar
 
     def set_collapsed(self, collapsed: bool) -> None:
         """Back-compat shim: collapse to the icon rail (True) or the full sidebar (False)."""

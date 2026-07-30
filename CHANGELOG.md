@@ -65,6 +65,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 P1c — floating primary action + touch-density pass (P1 now code-complete).**
+  `PageLayout.set_primary_action(widget)` docks a surface's Start/Stop bottom-RIGHT (the right-thumb arc),
+  shown only on the rail/bottombar deck (inline in the surface on a full sidebar). `set_touch_density(pt)`
+  applies a reversible `min-height` floor (`layout_profile.min_target_qss`) so a touch deck's controls are
+  >=44px, driven from `_apply_shell_layout` off `profile.min_target_pt`. Apply-tested. P1 (deck chrome) is
+  code-complete; final sign-off waits on a hardware walkthrough on the real 800x480 deck.
 - **Spade v2 P1b — a real icon-over-label rail render (`PageLayout.set_nav_mode`).** The shell now renders the
   surface nav three ways from the P0 profile axis: the full labeled `sidebar`, a 64px icon-OVER-label `rail`
   (the 7" touch deck — a legible cell that keeps the label under the icon, replacing the old icon-only 44px
