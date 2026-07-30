@@ -52,10 +52,25 @@ def test_kept_system_commands_present():
 
 
 def test_fabricated_serial_commands_removed():
+    # WiFi/BLE scan+attack have no named serial command (menu-/js-driven) — kept out.
+    # NOTE: NFC/RFID tag ops are NOT fabricated — the `rfid,nfc` composite is real
+    # (rfid_commands.cpp), offered under the `rfid` prefix; see the rfid test below.
     names = _command_names()
-    for phantom in ("wifi scan", "wifi deauth", "wifi beacon",
-                    "ble scan", "ble spam", "nfc read", "nfc emulate"):
+    for phantom in ("wifi scan", "wifi deauth", "wifi beacon", "ble scan", "ble spam"):
         assert phantom not in names, f"fabricated command still present: {phantom}"
+
+
+def test_rfid_nfc_commands_present_and_gated():
+    # 2026-07-30 re-verify vs pr3y/Bruce rfid_commands.cpp: addCompositeCmd("rfid,nfc") is real. CC
+    # offers the subcommands under the `rfid` prefix; tag-modifying/impersonating verbs are lab-only
+    # (confirm-gated), passive reads are safe. (Source-grounded; HW-unverified.)
+    cmds = {ci.name: ci for ci in BruceProtocol().get_commands()}
+    assert "rfid read [timeout]" in cmds and "rfid info" in cmds        # passive reads present
+    for offensive in ("rfid write [timeout]", "rfid clone [timeout]", "rfid emulate <args>",
+                      "rfid erase", "rfid ndef <args>"):
+        assert offensive in cmds, f"missing rfid command: {offensive}"
+        assert cmds[offensive].danger == "lab-only", f"{offensive} must be lab-only"
+    assert not cmds["rfid read [timeout]"].danger and not cmds["rfid info"].danger  # passive = safe
 
 
 def test_old_verb_names_replaced():

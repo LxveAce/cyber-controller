@@ -89,10 +89,11 @@ class BruceProtocol(BaseProtocol):
 
         Every entry is a real verb registered in the firmware's
         src/core/serial_commands/*.cpp (cross-checked against the 2026-07-15
-        command-surface audit). The former WiFi/BLE/NFC entries were fabricated
-        — there is no such dedicated serial command (WiFi/BLE/NFC scanning and
-        attacks are driven on-device or scripted via the `js` interpreter) — so
-        they stay removed rather than shipped as dead buttons.
+        command-surface audit + a 2026-07-30 re-verify vs pr3y/Bruce). The former
+        WiFi/BLE SCAN/attack entries were fabricated — that scanning is menu-driven
+        or scripted via the `js` interpreter, not a named serial command — so they
+        stay removed. RFID/NFC TAG ops, by contrast, ARE real serial commands
+        (rfid_commands.cpp's `rfid,nfc` composite) and are included below.
 
         Danger flags: active RF/HID emitters (ir tx*, subghz tx*, badusb run_*,
         js run_*) are lab-only; passive rx/raw captures, file management, and
@@ -163,6 +164,27 @@ class BruceProtocol(BaseProtocol):
                         "entry", danger="lab-only"),
             CommandInfo("subghz mfcodes list", "SubGHz", "List the KeeLoq keystore"),
             CommandInfo("subghz mfcodes clear", "SubGHz", "Clear the KeeLoq keystore"),
+            # ---- RFID / NFC (rfid_commands.cpp: addCompositeCmd("rfid,nfc") — a "rfid" OR "nfc"
+            # prefix both work). read/info/save/loadfile/reset/autotest are passive/file-mgmt;
+            # write/clone/emulate/erase/ndef MODIFY or impersonate a tag (unauthorized-access
+            # territory) -> lab-only. Source-verified 2026-07-30 vs pr3y/Bruce (HW-unverified). ----
+            CommandInfo("rfid read [timeout]", "RFID", "Read an RFID / NFC tag", "timeout"),
+            CommandInfo("rfid info", "RFID", "Show info about the read tag"),
+            CommandInfo("rfid save [filename] [format]", "RFID", "Save the read tag to a file",
+                        "filename format"),
+            CommandInfo("rfid loadfile [filepath]", "RFID", "Load a saved tag dump", "filepath"),
+            CommandInfo("rfid reset", "RFID", "Reset the RFID / NFC reader"),
+            CommandInfo("rfid autotest [mode] [timeout]", "RFID", "Run the reader autotest",
+                        "mode timeout"),
+            CommandInfo("rfid write [timeout]", "Offensive", "Write data to an RFID / NFC tag",
+                        "timeout", danger="lab-only"),
+            CommandInfo("rfid clone [timeout]", "Offensive", "Clone the read tag onto a new one",
+                        "timeout", danger="lab-only"),
+            CommandInfo("rfid emulate <args>", "Offensive", "Emulate an RFID / NFC tag", "args",
+                        danger="lab-only"),
+            CommandInfo("rfid erase", "Offensive", "Erase an RFID / NFC tag", danger="lab-only"),
+            CommandInfo("rfid ndef <args>", "Offensive", "Write an NDEF record to a tag", "args",
+                        danger="lab-only"),
             # ---- BadUSB (HID injection) ----
             CommandInfo("badusb run_from_file <script>", "Offensive", "Run a BadUSB/Ducky script",
                         "script", danger="lab-only"),
