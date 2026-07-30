@@ -98,31 +98,19 @@ def test_selecting_subghz_routes_to_the_subghz_domain(qapp):
     assert isinstance(h._stack.currentWidget(), SubGhzDomainView)
 
 
-# ── build_operate_home factory: the app-shell embed with FRESH analyzer centers (no reparenting) ──
-def test_build_operate_home_uses_fresh_live_centers(qapp):
-    from src.ui.qt.ble_analyzer_tab import BleAnalyzerTab
-    from src.ui.qt.wifi_analyzer_tab import WifiAnalyzerTab
-    home, wifi_center, ble_center = build_operate_home()
+# ── build_operate_home: Spade v2 P2c — wifi/ble are EXTERNAL (navigate, no duplicate) ──
+def test_build_operate_home_returns_a_single_operate_home(qapp):
+    home = build_operate_home()
     assert isinstance(home, OperateHome)
-    assert isinstance(wifi_center, WifiAnalyzerTab) and isinstance(ble_center, BleAnalyzerTab)
-    # the WiFi/BLE domain views use THESE fresh centers (not the shell's parented analyzers)
-    assert home.domain_view("wifi")._center is wifi_center
-    assert home.domain_view("ble")._center is ble_center
 
 
-def test_build_operate_home_center_is_live_when_fed(qapp):
-    # feeding the fresh WiFi center an event (as the shared tap would) fills its table — a live view
-    home, wifi_center, _ble = build_operate_home()
-    wifi_center.set_clock(lambda: 1000.0)
-    wifi_center.on_wifi_event("COM4", "ap_found",
-                              {"bssid": "aa:bb:cc:dd:ee:01", "ssid": "Net", "rssi": -50,
-                               "encryption": "WPA2"})
-    wifi_center._refresh()
-    assert wifi_center._table.rowCount() >= 1
-
-
-def test_build_operate_home_routes_to_domains(qapp):
-    home, _wifi, _ble = build_operate_home()
-    home._grid.domain_selected.emit("ble")
-    assert home.current_domain() == "ble"
-    assert isinstance(home._stack.currentWidget(), BleDomainView)
+def test_build_operate_home_marks_wifi_ble_external(qapp):
+    # No duplicate analyzers: wifi/ble build no domain view — tapping emits navigate_requested
+    # so the host opens the ONE real analyzer, not a transmit-nothing clone double-fed by a tap.
+    home = build_operate_home()
+    assert home.domain_view("wifi") is None and home.domain_view("ble") is None
+    seen = []
+    home.navigate_requested.connect(seen.append)
+    home._grid.domain_selected.emit("wifi")
+    assert seen == ["wifi"]
+    assert home.current_domain() is None   # stayed on the grid; the host does the navigation

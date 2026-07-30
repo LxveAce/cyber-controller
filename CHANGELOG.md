@@ -76,6 +76,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 P2c1 — Operate Home drops the duplicate Wi-Fi/BLE analyzers (D7).** The wifi/ble tiles are now
+  EXTERNAL domains that navigate to the ONE real analyzer (in the Analyze surface), instead of embedding a
+  fresh `WifiAnalyzerTab`/`BleAnalyzerTab` clone double-fed from the event taps. Removes the transmit-nothing
+  duplicates AND their orphan event-tap connections (a real crash risk: signals into destroyed widgets on
+  teardown). `build_operate_home` returns just the OperateHome; `_on_home_navigate` routes wifi→Wi-Fi Analyzer,
+  ble→BLE Analyzer. safety.py untouched; the guarded send is unaffected.
 - **Spade v2 P1c — floating primary action + touch-density pass (P1 now code-complete).**
   `PageLayout.set_primary_action(widget)` docks a surface's Start/Stop bottom-RIGHT (the right-thumb arc),
   shown only on the rail/bottombar deck (inline in the surface on a full sidebar). `set_touch_density(pt)`

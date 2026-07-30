@@ -75,8 +75,8 @@ def test_operate_home_tab_is_the_operate_home_directly(win):
     assert not isinstance(win._operate_home, PageLayout)    # the frame wrapper is gone
     win._tabs.setCurrentWidget(win._operate_home)            # the focus reference still works
     assert win._tabs.currentWidget() is win._operate_home
-    # the domain grid centers main_window wired are still intact
-    assert win._oh_wifi is not None and win._oh_ble is not None
+    # Spade v2 P2c: no duplicate analyzer clones — wifi/ble navigate to the real analyzer instead.
+    assert not hasattr(win, "_oh_wifi") and not hasattr(win, "_oh_ble")
 
 
 def test_no_stray_home_frame_or_binder(win):
@@ -94,10 +94,11 @@ def test_global_chrome_lives_once_on_the_app_shell(win):
 
 
 def test_operate_home_grid_navigates_domains(win):
-    # OperateHome's OWN domain grid is the Operate content nav (the radio axis). Selecting a domain
-    # drives its stack to that domain screen; the back button returns to the grid.
-    assert "wifi" in win._operate_home._grid.domain_keys()
-    win._operate_home.show_domain("wifi")
-    assert win._operate_home.current_domain() == "wifi"
+    # OperateHome's OWN domain grid is the Operate content nav. Selecting an IN-PLACE
+    # domain (gps — wifi/ble are external now, they navigate away) drives its stack to that screen;
+    # the back button returns to the grid.
+    assert "gps" in win._operate_home._grid.domain_keys()
+    win._operate_home.show_domain("gps")
+    assert win._operate_home.current_domain() == "gps"
     win._operate_home.show_home()
     assert win._operate_home.current_domain() is None       # back to the grid

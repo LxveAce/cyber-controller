@@ -667,17 +667,12 @@ class CyberControllerWindow(QMainWindow):
         self._operate_surface.addTab(self._macro_tab, label_icon("Macros"), "Macros")
         self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
 
-        # OPERATE HOME (dual-axis shell rebuild) — the brief's domain-grid -> per-domain three-panel
-        # view, embedded alongside the flat tabs. Its WiFi/BLE domain views use FRESH analyzer
-        # centers (build_operate_home) so nothing here is reparented; the fresh centers are fed from
-        # the same ingestor tap as the existing analyzers (see _wire_wifi/_ble_analyzer). Awareness
-        # only — the fresh centers transmit nothing.
+        # OPERATE HOME (dual-axis shell). Spade v2 P2c: Wi-Fi/BLE/Tools/Settings are external —
+        # a tap navigates to the real tab (Analyze's analyzers, Crack Lab, Settings) instead of
+        # embedding a duplicate. No more _oh_wifi/_oh_ble clones double-fed from the event taps
+        # (transmit-nothing dupes + an orphan-tap crash risk); the shell routes navigate_requested.
         from src.ui.qt.operate_home import build_operate_home
-        # Tools / Settings tiles have no in-place Operate-Home screen — those live in real tabs
-        # (Crack Lab, Settings). Mark them external so a tap opens that tab instead of a "coming
-        # soon" placeholder for an already-shipped feature.
-        self._operate_home, self._oh_wifi, self._oh_ble = build_operate_home(
-            external_domains={"tools", "settings"})
+        self._operate_home = build_operate_home(external_domains={"tools", "settings"})
         self._operate_home.navigate_requested.connect(self._on_home_navigate)
         # Wave-10 Phase C (slice D): the Operate Home tab holds the OperateHome directly. The global
         # chrome (status bar / posture / omnibar) is owned once by the app-shell (_app_shell) that
@@ -840,6 +835,10 @@ class CyberControllerWindow(QMainWindow):
         there, not a placeholder. Crack Lab is in the Analyze surface; Settings is top-level."""
         if key == "tools":
             self._show_subtab(self._network_surface, self._crack_lab_tab)
+        elif key == "wifi" and getattr(self, "_wifi_analyzer", None) is not None:
+            self._show_subtab(self._network_surface, self._wifi_analyzer)
+        elif key == "ble" and getattr(self, "_ble_analyzer", None) is not None:
+            self._show_subtab(self._network_surface, self._ble_analyzer)
         elif key == "settings" and self._tabs.indexOf(self._settings_tab) >= 0:
             self._tabs.setCurrentWidget(self._settings_tab)
 
@@ -1492,11 +1491,6 @@ class CyberControllerWindow(QMainWindow):
 
         self._ble_event_signal = _BleEventSignal()
         self._ble_event_signal.ble_event.connect(analyzer.on_ble_event)
-        # Also feed the Operate Home BLE domain's fresh center from the same fan-out (additive; the
-        # tap is read-only, so both views update without double-opening a board).
-        _oh_ble = getattr(self, "_oh_ble", None)
-        if _oh_ble is not None:
-            self._ble_event_signal.ble_event.connect(_oh_ble.on_ble_event)
 
         def _observer(ev, port):
             # Serial-thread callback: keep only BLE adverts; emit queues onto the GUI thread.
@@ -1525,10 +1519,6 @@ class CyberControllerWindow(QMainWindow):
 
         self._wifi_event_signal = _WifiEventSignal()
         self._wifi_event_signal.wifi_event.connect(analyzer.on_wifi_event)
-        # Also feed the Operate Home Wi-Fi domain's fresh center from the same fan-out (additive).
-        _oh_wifi = getattr(self, "_oh_wifi", None)
-        if _oh_wifi is not None:
-            self._wifi_event_signal.wifi_event.connect(_oh_wifi.on_wifi_event)
 
         # The Wi-Fi discovery + capture events the AP view folds in
         # (mirrors _event_to_target / _event_to_capture).

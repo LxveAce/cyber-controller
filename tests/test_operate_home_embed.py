@@ -1,8 +1,9 @@
 """Smoke test for the Operate Home embed into the app shell (CyberControllerWindow).
 
 Verifies the dual-axis shell is wired into the ACTUAL app additively: the OPERATE HOME tab is
-present, the existing top-level tabs are intact (nothing disrupted), the embedded OperateHome uses
-the shell's FRESH analyzer centers (no reparenting), and those centers are fed from the event tap.
+present, the existing top-level tabs are intact (nothing disrupted), and — Spade v2 P2c (D7 removed)
+— Operate Home no longer embeds duplicate WiFi/BLE analyzers; wifi/ble are EXTERNAL tiles that
+navigate to the ONE real analyzer, so there are no clones + no orphan taps to crash into.
 """
 from __future__ import annotations
 
@@ -44,26 +45,29 @@ def test_operate_home_tab_is_embedded_additively(window):
         assert existing in labels
 
 
-def test_embedded_operate_home_is_the_real_shell_with_fresh_centers(window):
+def test_operate_home_has_no_duplicate_analyzers(window):
+    # D7 removed: wifi/ble are EXTERNAL (navigate) — no embedded clones, no _oh_wifi/_oh_ble attrs.
     assert isinstance(window._operate_home, OperateHome)
-    # the WiFi/BLE domain views use the shell's FRESH centers, not the parented analyzer instances
-    assert window._operate_home.domain_view("wifi")._center is window._oh_wifi
-    assert window._operate_home.domain_view("ble")._center is window._oh_ble
-    assert window._oh_wifi is not window._wifi_analyzer   # a distinct instance (no reparenting)
+    assert not hasattr(window, "_oh_wifi") and not hasattr(window, "_oh_ble")
+    assert window._operate_home.domain_view("wifi") is None   # external -> no embedded view
+    assert window._operate_home.domain_view("ble") is None
 
 
-def test_embedded_operate_home_routes_to_a_domain(window):
+def test_operate_home_wifi_tile_navigates_to_the_real_analyzer(window):
+    # tapping the Wi-Fi tile routes to the Analyze surface's ONE real analyzer, not an embedded dupe
+    if window._wifi_analyzer is None:
+        pytest.skip("no Wi-Fi analyzer in this build")
     window._operate_home._grid.domain_selected.emit("wifi")
-    assert window._operate_home.current_domain() == "wifi"
+    assert window._network_surface.currentWidget() is window._wifi_analyzer
 
 
-def test_embedded_center_is_fed_by_the_shared_tap(window):
+def test_the_one_real_wifi_analyzer_is_fed_by_the_shared_tap(window):
     sig = getattr(window, "_wifi_event_signal", None)
-    if sig is None:
-        pytest.skip("Wi-Fi analyzer tap not wired in this construction (no ingestor)")
-    window._oh_wifi.set_clock(lambda: 5000.0)
+    if sig is None or window._wifi_analyzer is None:
+        pytest.skip("Wi-Fi analyzer tap not wired in this construction")
+    window._wifi_analyzer.set_clock(lambda: 5000.0)
     sig.wifi_event.emit("COM4", "ap_found",
                         {"bssid": "aa:bb:cc:dd:ee:09", "ssid": "Z", "rssi": -55,
                          "encryption": "WPA2"})
-    window._oh_wifi._refresh()
-    assert window._oh_wifi._table.rowCount() >= 1  # the fresh center folded in the tapped event
+    window._wifi_analyzer._refresh()
+    assert window._wifi_analyzer._table.rowCount() >= 1  # the ONE real analyzer folds in the event

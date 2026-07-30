@@ -197,23 +197,14 @@ def _domain_titles():
 
 
 def build_operate_home(external_domains: "Optional[set[str]]" = None,
-                       parent: "Optional[QWidget]" = None):
-    """Build an :class:`OperateHome` with its OWN FRESH WiFi/BLE analyzer centers, for embedding in
-    the app shell WITHOUT reparenting the shell's existing analyzer instances.
+                       parent: "Optional[QWidget]" = None) -> "OperateHome":
+    """Build an :class:`OperateHome` for the app shell.
 
-    ``external_domains`` names tiles that live in a real tab (e.g. ``{"tools", "settings"}``), so
-    tapping them emits ``navigate_requested`` instead of showing a "coming soon" placeholder.
-
-    Returns ``(operate_home, wifi_center, ble_center)`` — the caller feeds the centers from the
-    shared event tap (``wifi_center.on_wifi_event`` / ``ble_center.on_ble_event``) alongside the
-    existing analyzers, so the dual-axis shell shows the same live data without double-opening a
-    board (the tap is read-only fan-out). The centers are awareness views; they transmit nothing.
+    Spade v2 (P2c): Wi-Fi and BLE are **external** domains — a tap navigates to the real analyzer
+    (in the Analyze surface) instead of embedding a FRESH duplicate double-fed from the same event
+    taps (the old transmit-nothing clones + orphan-tap crash risk are gone). The caller passes any
+    other external tiles (e.g. ``{"tools", "settings"}``); ``wifi``/``ble`` are always added.
+    Returns just the :class:`OperateHome` (no centers — the shell routes ``navigate_requested``).
     """
-    from src.ui.qt.ble_analyzer_tab import BleAnalyzerTab
-    from src.ui.qt.wifi_analyzer_tab import WifiAnalyzerTab
-
-    wifi_center: QWidget = WifiAnalyzerTab() if WifiAnalyzerTab is not None else QWidget()
-    ble_center: QWidget = BleAnalyzerTab() if BleAnalyzerTab is not None else QWidget()
-    home = OperateHome(wifi_center=wifi_center, ble_center=ble_center,
-                       external_domains=external_domains, parent=parent)
-    return home, wifi_center, ble_center
+    ext = set(external_domains or set()) | {"wifi", "ble"}
+    return OperateHome(external_domains=ext, parent=parent)
