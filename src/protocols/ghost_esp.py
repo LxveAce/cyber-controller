@@ -67,6 +67,12 @@ _RE_CAPTURE = re.compile(
 # `Name: <60k spaces>x` (no RSSI:) drove catastrophic backtracking on the reader thread (ReDoS,
 # twin of _RE_AP). A BLE GAP name is <= 248 bytes, so a 255-char cap bounds the lazy quantifier
 # without dropping a real name; the leading space is .strip()'d at the call site.
+# GROUNDING (2026-07-30, vs GhostESP-Revival — the canonical fork; Spooks4576 archived):
+# the single-line `BLE Device: <mac> Name:<name> RSSI:` appears only in the Revival DOCS,
+# not its current .c source. The live BLE paths (flipper_scan.c / airtag_scan.c /
+# device_detect_scan.c) are all MULTI-LINE (via _RE_FLIPPER/_RE_AIRTAG/_RE_TRK_*). Kept for
+# older-firmware / other-command compat; a stale pattern matches nothing (no wrong output).
+# Confirm on real Revival HW before removing. AP/Flipper/AirTag formats re-verified current.
 _RE_BLE = re.compile(
     r"BLE\s+Device:\s*([\da-fA-F:]{17})\s+Name:(.{1,255}?)\s+RSSI:\s*(-?\d+)"
 )
