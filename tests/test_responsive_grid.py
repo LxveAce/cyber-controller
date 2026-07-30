@@ -80,14 +80,14 @@ def test_debounces_within_a_column_band(qapp):
 # ── OPERATE HOME DomainGrid (uses the responsive engine) ──
 def test_domain_grid_has_the_brief_domains(qapp):
     dg = DomainGrid()
-    assert dg.domain_keys() == ["wifi", "ble", "subghz", "nrf", "nfc", "gps", "tools", "settings"]
-    assert len(dg._cards) == 8
+    assert dg.domain_keys() == ["wifi", "ble", "subghz", "gps", "tools", "settings"]
+    assert len(dg._cards) == 6
     assert isinstance(dg.grid, ResponsiveTileGrid)
 
 
 def test_domain_grid_reflows_and_emits_the_selected_key(qapp):
     dg = DomainGrid()
-    dg.grid.resize(1600, 900)   # expanded -> 3-up across the 8 domain tiles
+    dg.grid.resize(1600, 900)   # expanded -> 3-up across the 6 domain tiles
     qapp.processEvents()
     dg.grid._relayout_for_size()
     assert dg.grid.column_count() == 3

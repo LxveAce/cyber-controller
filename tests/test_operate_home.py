@@ -33,12 +33,9 @@ def test_starts_on_the_domain_grid(qapp):
 
 def test_selecting_wifi_routes_to_the_three_panel_view(qapp):
     h = OperateHome()
-    shown = []
-    h.domain_shown.connect(shown.append)
     h._grid.domain_selected.emit("wifi")   # a tile activation announces its key
     assert h.current_domain() == "wifi"
     assert isinstance(h._stack.currentWidget(), WifiDomainView)
-    assert shown == ["wifi"]
 
 
 def test_home_returns_to_the_grid(qapp):
@@ -54,10 +51,11 @@ def test_every_domain_has_a_screen(qapp):
     h = OperateHome()
     for key in h._grid.domain_keys():
         assert h.domain_view(key) is not None
-    # Wi-Fi/BLE (and GPS/Sub-GHz) are real domain views; 2.4 GHz + NFC are honest placeholders.
+    # Wi-Fi/BLE (and GPS/Sub-GHz) are real domain views; Tools/Settings are honest placeholders
+    # in a bare instance (no external routing configured).
     assert isinstance(h.domain_view("wifi"), WifiDomainView)
     assert isinstance(h.domain_view("ble"), BleDomainView)
-    assert not isinstance(h.domain_view("nfc"), WifiDomainView)
+    assert not isinstance(h.domain_view("tools"), WifiDomainView)
 
 
 def test_external_domains_navigate_instead_of_showing_a_placeholder(qapp):
@@ -71,8 +69,9 @@ def test_external_domains_navigate_instead_of_showing_a_placeholder(qapp):
     assert seen == ["tools"]                      # asks the host to open the real tab
     assert h.current_domain() is None             # and stays on the grid (no placeholder swap)
     assert h._stack.currentWidget() is h._grid
-    # A radio with genuinely no screen yet stays an honest in-place placeholder.
-    assert h.domain_view("nrf") is not None
+    # A domain with a real in-place screen (Sub-GHz) still builds its view — external routing
+    # doesn't swallow the domains that genuinely live here.
+    assert h.domain_view("subghz") is not None
 
 
 def test_selecting_ble_routes_to_the_ble_domain(qapp):

@@ -76,6 +76,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 P2c2b — dropped the placeholder radio tiles (D8) + the dead `domain_shown` signal (D5).** The
+  Operate-Home domain grid no longer carries the `nrf` ("2.4 GHz") and `nfc` tiles — both only ever rendered a
+  "coming soon" placeholder for a screen that does not exist, so the grid now shows only domains that genuinely
+  land somewhere (Wi-Fi / BLE / RF-Sub-GHz / GPS-Wardrive / Tools / Settings). Also removed `OperateHome.domain_shown`,
+  a signal emitted on every in-place domain open but consumed by nothing in production (only a test listened) — a
+  dead wire, gone with no behavior change. `_placeholder` stays (a bare `OperateHome` still uses it for
+  Tools/Settings). safety.py untouched; no send path involved.
 - **Spade v2 P2c2a — deleted the Operate-Home 'Passive/Active' posture theater (D1/D2).** `DomainDetailView`'s
   left posture panel + `active_authorization_requested` / `request_active` / `confirm_active` / `set_passive` are
   gone: the 'Active · Attack' button never actually flipped posture, its signal was wired nowhere in production,

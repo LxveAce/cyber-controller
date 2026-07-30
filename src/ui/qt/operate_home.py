@@ -2,7 +2,7 @@
 
 Composes :class:`DomainGrid` (the radio/domain tiles) with a ``QStackedWidget``: tapping a tile
 shows that domain's screen, a Home action returns to the grid. Wi-Fi / BLE / GPS / Sub-GHz open
-their real domain views; radios with no screen yet (2.4 GHz, NFC) show an honest "coming soon"
+their real domain views; a domain with no dedicated screen yet shows an honest "coming soon"
 placeholder. A domain listed in ``external_domains`` has NO in-place screen — tapping it emits
 ``navigate_requested`` so the host switches to that capability's real tab (Tools -> Crack Lab,
 Settings -> the Settings tab) instead of a placeholder that lies about an already-shipped feature.
@@ -99,7 +99,6 @@ def _placeholder(title: str) -> QWidget:
 class OperateHome(QWidget):
     """The OPERATE HOME shell: domain grid ⇄ per-domain screen on a stack."""
 
-    domain_shown = pyqtSignal(str)  # a domain screen was opened (key)
     home_shown = pyqtSignal()       # returned to the grid
     navigate_requested = pyqtSignal(str)  # external-domain tile asks the host to open its tab
 
@@ -181,7 +180,6 @@ class OperateHome(QWidget):
         self._stack.setCurrentWidget(view)
         self._btn_home.setVisible(True)
         self._summary.setVisible(False)    # give the domain screen the full height
-        self.domain_shown.emit(key)
 
     def current_domain(self) -> "Optional[str]":
         return self._current

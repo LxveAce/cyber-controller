@@ -1,8 +1,8 @@
 """OPERATE HOME domain grid (design brief) — the stable, branded radio/domain tile grid.
 
-A fixed set of domain tiles (Wi-Fi / BLE / RF-SubGHz / 2.4 GHz / NFC / GPS-Wardrive / Tools /
-Settings) laid out responsively by :class:`ResponsiveTileGrid` (real 2-col/3-up by width, not a
-2x4 postage stamp). Each tile is a Biscuit :class:`OperationCard`; activating one emits
+A fixed set of domain tiles (Wi-Fi / BLE / RF-SubGHz / GPS-Wardrive / Tools / Settings) laid out
+responsively by :class:`ResponsiveTileGrid` (real 2-col/3-up by width, not a fixed postage-stamp
+grid). Each tile is a Biscuit :class:`OperationCard`; activating one emits
 ``domain_selected(key)`` so the host shell can open that domain's detail screen. Presentation only —
 the shell wires the navigation.
 """
@@ -21,8 +21,6 @@ _DOMAINS: tuple[tuple[str, str, str, str], ...] = (
     ("wifi", "\U0001F4F6", "Wi-Fi", "Scan, capture, and analyze 802.11 networks"),
     ("ble", "\U0001F4F1", "BLE", "Bluetooth LE scan, GATT, and tracker detection"),
     ("subghz", "\U0001F4E1", "RF / Sub-GHz", "Sub-GHz capture and OOK/FSK decode"),
-    ("nrf", "\U0001F3AF", "2.4 GHz", "Nordic 2.4 GHz scan and analyze"),
-    ("nfc", "\U0001F4B3", "NFC", "Read and inspect NFC / RFID tags"),
     ("gps", "\U0001F6F0", "GPS Wardrive", "GPS-tagged wardriving to WiGLE CSV"),
     ("tools", "\U0001F9F0", "Tools", "Crack Lab, OSINT, and utilities"),
     ("settings", "⚙", "Settings", "Device, interface, and accessibility"),
