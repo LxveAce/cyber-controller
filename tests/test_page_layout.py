@@ -101,12 +101,38 @@ def test_sidebar_collapses(qapp):
     assert p.collapsed is False
     full = p._destinations["wifi"].text()
     p.toggle_sidebar()
-    assert p.collapsed is True
-    # collapsed rail hides the label text (icon-only), and narrows the rail
-    assert p._destinations["wifi"].text() != full
-    assert p._sidebar.maximumWidth() <= 44
+    assert p.collapsed is True and p.nav_mode == "rail"
+    # Spade v2: the rail render is icon-OVER-label (a legible 64px touch cell), not the old
+    # icon-only 44px collapse — the label is KEPT, stacked under the icon.
+    rail_text = p._destinations["wifi"].text()
+    assert rail_text != full
+    assert "\n" in rail_text and "Wi-Fi" in rail_text
+    assert p._sidebar.maximumWidth() == 64
     p.toggle_sidebar()
-    assert p.collapsed is False
+    assert p.collapsed is False and p.nav_mode == "sidebar"
+
+
+def test_set_nav_mode_three_modes(qapp):
+    # Spade v2: the shell renders the surface nav three ways from one profile axis.
+    p = PageLayout()
+    p.add_destination("wifi", "Wi-Fi", "📶")
+    d = p._destinations["wifi"]
+
+    p.set_nav_mode("sidebar")
+    assert p.nav_mode == "sidebar" and p.collapsed is False
+    assert "\n" not in d.text() and "Wi-Fi" in d.text()        # inline icon + label
+    assert p._sidebar.maximumWidth() == 220
+
+    p.set_nav_mode("rail")                                       # the 7" touch deck
+    assert p.nav_mode == "rail" and p.collapsed is True
+    assert "\n" in d.text() and "Wi-Fi" in d.text()             # icon OVER a kept label
+    assert p._sidebar.maximumWidth() == 64 and p._sidebar.minimumWidth() == 64
+
+    p.set_nav_mode("bottombar")                                 # phone (interim: rail-rendered)
+    assert p.nav_mode == "bottombar" and p.collapsed is True
+
+    p.set_nav_mode("garbage")                                    # unknown -> safe sidebar default
+    assert p.nav_mode == "sidebar"
 
 
 def test_set_content_replaces(qapp):

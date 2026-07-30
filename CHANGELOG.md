@@ -65,6 +65,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 P1b — a real icon-over-label rail render (`PageLayout.set_nav_mode`).** The shell now renders the
+  surface nav three ways from the P0 profile axis: the full labeled `sidebar`, a 64px icon-OVER-label `rail`
+  (the 7" touch deck — a legible cell that keeps the label under the icon, replacing the old icon-only 44px
+  collapse), and `bottombar` (phone, interim rail-rendered). `main_window._apply_shell_layout` drives it off
+  `profile.nav_mode`; `set_collapsed` stays as a back-compat shim. Apply-tested across all three modes.
 - **Spade v2 P1a — the app shell drives off `nav_mode`, not `is_compact`.** `main_window._apply_shell_layout`
   now collapses the sidebar to an icon rail whenever the nav chrome isn't a full sidebar and docks the terminal
   per `terminal_docked` — so a 7" touch deck (~800x480, which classifies as "regular") finally gets deck chrome

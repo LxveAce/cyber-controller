@@ -83,11 +83,13 @@ def test_touch_deck_collapses_to_rail_and_undocks_terminal(qapp):
         terminal = win._main_splitter.widget(1)
 
         win._apply_shell_layout(layout_profile(800, 480, touch=True))    # the deck
+        assert win._app_shell.nav_mode == "rail", "the 800x480 touch deck renders the icon rail"
         assert win._app_shell.collapsed, "the 800x480 touch deck must fold to an icon rail"
         assert terminal.isHidden(), "the deck undocks the terminal (it needs the room)"
 
         win._apply_shell_layout(layout_profile(800, 480, touch=False))   # same size, pointer
-        assert not win._app_shell.collapsed, "a pointer window at 800x480 keeps the sidebar"
+        assert win._app_shell.nav_mode == "sidebar", "a pointer window keeps the full sidebar"
+        assert not win._app_shell.collapsed
         assert not terminal.isHidden()
     finally:
         win.close()

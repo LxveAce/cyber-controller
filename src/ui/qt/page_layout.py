@@ -42,26 +42,37 @@ class _Destination(QPushButton):
         self._label = label
         self._icon = icon_text
         self._count = 0
+        self._mode = "sidebar"
         self.setCheckable(True)
         self.setCursor(Qt.PointingHandCursor)
-        self.setStyleSheet(
-            f"QPushButton{{text-align:left; padding:6px 10px; border:none; color:{C.TEXT_MUTED};"
+        self._render("sidebar")
+
+    def _style(self, align: str) -> str:
+        return (
+            f"QPushButton{{text-align:{align}; padding:6px 10px; border:none; color:{C.TEXT_MUTED};"
             f" background:transparent;}}"
             f"QPushButton:checked{{color:{C.TEXT_PRIMARY}; background:{C.BG_CARD};"
             f" border-left:2px solid {C.ACCENT};}}"
             f"QPushButton:hover{{color:{C.TEXT_PRIMARY};}}")
-        self._render(collapsed=False)
 
     def set_count(self, count: int) -> None:
         self._count = max(0, int(count))
-        self._render(self._collapsed)
+        self._render(self._mode)
 
-    def _render(self, collapsed: bool) -> None:
-        self._collapsed = collapsed
+    def _render(self, mode: str) -> None:
+        """Render for one nav mode: 'sidebar' = icon + label inline; 'rail' = icon OVER a tiny label
+        (a legible ~64px touch cell for the deck — replaces the old icon-only 44px collapse)."""
+        self._mode = mode
         badge = f"  ({self._count})" if self._count > 0 else ""
         icon = self._icon or "•"
-        self.setText(icon if collapsed else f"{icon}  {self._label}{badge}")
-        self.setToolTip(f"{self._label}{badge}" if collapsed else "")
+        if mode == "rail":
+            self.setText(f"{icon}\n{self._label}")   # icon over label
+            self.setToolTip(f"{self._label}{badge}")
+            self.setStyleSheet(self._style("center"))
+        else:  # sidebar
+            self.setText(f"{icon}  {self._label}{badge}")
+            self.setToolTip("")
+            self.setStyleSheet(self._style("left"))
 
 
 class PageLayout(QWidget):
@@ -80,6 +91,7 @@ class PageLayout(QWidget):
         self._status: dict[str, QLabel] = {}
         self._posture = POSTURE_RECON
         self._collapsed = False
+        self._nav_mode = "sidebar"   # "sidebar" | "rail" | "bottombar" (Spade v2 nav-chrome)
         self._content: Optional[QWidget] = None
         self._toast_timer = QTimer(self)   # transient-toast auto-clear
         self._toast_timer.setSingleShot(True)
@@ -166,6 +178,8 @@ class PageLayout(QWidget):
         if key in self._destinations:
             return
         dest = _Destination(key, label, icon_text)
+        if self._nav_mode != "sidebar":   # match the current nav mode if we're already on a rail
+            dest._render("rail")
         dest.clicked.connect(lambda _checked=False, k=key: self.select_destination(k))
         self._destinations[key] = dest
         # insert above the trailing stretch
@@ -245,22 +259,34 @@ class PageLayout(QWidget):
         used to live on a second bottom status bar folds into this one shell bar."""
         self._status_bar_layout.insertWidget(self._status_bar_layout.count() - 1, widget)
 
-    def set_collapsed(self, collapsed: bool) -> None:
-        """Collapse the sidebar to an icon rail (True) or expand it (False). Idempotent: a no-op
-        when already in that state, so a responsive driver (resizeEvent) can call it on every
-        size-class change without fighting the user's manual ≡ toggle within a class."""
-        collapsed = bool(collapsed)
-        if collapsed == self._collapsed:
+    def set_nav_mode(self, mode: str) -> None:
+        """Render the surface nav three ways: the full labeled 'sidebar', a 64px icon-over-label
+        'rail' (the 7" touch deck), or 'bottombar' (phone — interim: rail-rendered until the mobile
+        bottom-bar lands). Idempotent, so a resize driver can call it every nav-mode change without
+        fighting the user's manual toggle. Replaces the old icon-only 44px collapse."""
+        if mode not in ("sidebar", "rail", "bottombar"):
+            mode = "sidebar"
+        if mode == self._nav_mode:
             return
-        self._collapsed = collapsed
-        self._sidebar.setMaximumWidth(44 if collapsed else 220)
-        self._sidebar.setMinimumWidth(44 if collapsed else 160)
+        self._nav_mode = mode
+        self._collapsed = mode != "sidebar"   # back-compat with the .collapsed property + callers
+        if mode == "sidebar":
+            self._sidebar.setMinimumWidth(160)
+            self._sidebar.setMaximumWidth(220)
+        else:  # rail / bottombar (interim): a fixed 64px icon-over-label rail
+            self._sidebar.setMinimumWidth(64)
+            self._sidebar.setMaximumWidth(64)
+        dest_mode = "sidebar" if mode == "sidebar" else "rail"
         for d in self._destinations.values():
-            d._render(collapsed)
+            d._render(dest_mode)
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        """Back-compat shim: collapse to the icon rail (True) or the full sidebar (False)."""
+        self.set_nav_mode("rail" if collapsed else "sidebar")
 
     def toggle_sidebar(self) -> None:
-        """Collapse/expand the sidebar to an icon rail (the manual ≡ button)."""
-        self.set_collapsed(not self._collapsed)
+        """Manual ≡ toggle between the full sidebar and the icon rail."""
+        self.set_nav_mode("sidebar" if self._nav_mode != "sidebar" else "rail")
 
     @property
     def posture(self) -> str:
@@ -277,6 +303,10 @@ class PageLayout(QWidget):
     @property
     def collapsed(self) -> bool:
         return self._collapsed
+
+    @property
+    def nav_mode(self) -> str:
+        return self._nav_mode
 
     # ── internals ────────────────────────────────────────────────────
     def _on_posture_clicked(self) -> None:
