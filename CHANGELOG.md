@@ -6,6 +6,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Spade v2 P2a — pure op-spec seam (`src/core/op_spec.py`).** Derives the Biscuit `OperationDetail`'s
+  inputs from a firmware `CommandInfo`: `op_help_spec` (title/description/args + the authoritative
+  `safety.classify` danger label), `op_modes` (Run vs Manual), and `op_command` (bare verb or `verb <arg>`,
+  never doubled). Qt-free + tested, so the P2 OperationDetail wiring reads one clean seam instead of
+  re-deriving arg/help logic in the widget. Sends nothing — the guarded send stays in `operate_tab._send`.
 - **Spade v2 P0 — pure navigation model (`src/core/nav_model.py`) + a nav-chrome axis on `LayoutProfile`.**
   The GUI overhaul's IA is now one Qt-free `NavNode` tree (5 verb job-surfaces RIG/HUNT/OPERATE/CRACK/MAP +
   a pinned Settings + a capability-gated Sense slot), with `nav_spec()` JSON round-trip and a `visible_nav()`
