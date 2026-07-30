@@ -1,7 +1,8 @@
-"""Wave-3 Batch A — the app-shell (main_window) responds to window size: the sidebar folds to an
-icon rail and the bottom terminal hides on a compact canvas, restoring when there's room. The
-decision is the pure `layout_profile` size class; this exercises the widget wiring. Offscreen, so
-visibility is checked with `isHidden()` (isVisible() is always False without a shown top-level).
+"""The app-shell (main_window) responds to the form factor: the sidebar folds to an icon rail and
+the bottom terminal undocks whenever the nav chrome isn't a full sidebar. The decision is the pure
+`layout_profile` nav_mode (Spade v2: form-factor AND density, not size alone, so the 7" touch deck
+collapses even at "regular" width); this exercises the widget wiring. Offscreen, so visibility is
+checked with `isHidden()` (isVisible() is always False without a shown top-level).
 
 `_apply_shell_layout` is tested with constructed profiles rather than `resize()` because the window
 carries a minimum size (`adaptive_minimum_size`) that clamps a resize back up on a desktop screen —

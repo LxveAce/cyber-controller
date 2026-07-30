@@ -233,12 +233,13 @@ class CyberControllerWindow(QMainWindow):
         self._sidebar_timer.start(3000)
         self._scan_worker: "_PortScanWorker | None" = None  # in-flight Scan-Ports enumeration (off-GUI-thread)
 
-    # ── Adaptive shell layout (Wave-3 Batch A) ──────────
-    # Make the app-shell respond to the window size: on a cramped canvas the sidebar folds to an
-    # icon rail and the bottom terminal hides (a 35%-tall terminal wastes a tiny window). The
-    # DECISION is the pure `layout_profile` size class (unit-tested without Qt); here we only map it
-    # to the shell collapse + the terminal pane's visibility. Size-driven only — never touches the
-    # user's Simple/Pro depth choice. Debounced on size-class, mirroring flash_tab.
+    # ── Adaptive shell layout (Spade v2 nav-chrome axis) ──────────
+    # Make the app-shell respond to the form factor: sidebar folds to an icon rail and the bottom
+    # terminal undocks whenever the nav chrome isn't a full sidebar. The DECISION is the pure
+    # `layout_profile` nav_mode (unit-tested without Qt); here we map it to the shell collapse +
+    # the terminal pane's visibility. Driven by nav_mode (form-factor AND density) — so the 7" touch
+    # deck collapses even though it's "regular" width. Never touches the user's Simple/Pro depth
+    # choice. Debounced on nav_mode, mirroring flash_tab.
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_shell()
@@ -258,9 +259,9 @@ class CyberControllerWindow(QMainWindow):
         self._apply_shell_layout(profile)
 
     def _apply_shell_layout(self, profile) -> None:
-        # touch deck resolves to 'rail' at ~800x480 though it is NOT compact, so the old
-        # touch deck resolves to 'rail' at ~800x480 even though it is NOT 'compact', so the old
-        # is_compact gate left it with desktop chrome; nav_mode fixes that (see layout_profile v2).
+        # Collapse the sidebar to an icon rail when the nav chrome isn't a full sidebar: 7" touch
+        # deck resolves to 'rail' at ~800x480 though it is NOT compact, so the old is_compact gate
+        # left it with desktop chrome. nav_mode fixes it (see layout_profile v2).
         self._app_shell.set_collapsed(profile.nav_mode != "sidebar")
         # widget(1) of the vertical splitter is the terminal — docked only when the profile
         # says so (undocked on the deck/phone that need the room; a pull-up sheet later).
