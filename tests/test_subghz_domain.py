@@ -32,12 +32,6 @@ def _sig(code=0xA5C3E1, rssi=-72, freq=433.92):
 def test_subghz_domain_reuses_the_shared_frame(qapp):
     v = SubGhzDomainView(center=QWidget())
     assert isinstance(v, DomainDetailView)   # same frame, not a one-off
-    asked = []
-    v.active_authorization_requested.connect(lambda: asked.append(True))
-    v.request_active()
-    assert v.posture() == DomainDetailView.POSTURE_PASSIVE and asked == [True]
-    v.confirm_active()
-    assert v.posture() == DomainDetailView.POSTURE_ACTIVE
     v.resize(1600, 900)
     qapp.processEvents()
     v._relayout_for_size()

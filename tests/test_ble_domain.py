@@ -32,14 +32,7 @@ def _dev(addr="aa:bb:cc:dd:ee:ff", name="Fitbit"):
 def test_ble_domain_reuses_the_shared_frame(qapp):
     v = BleDomainView(center=QWidget())
     assert isinstance(v, DomainDetailView)   # same frame, not a WiFi one-off
-    # posture boundary (inherited): Active is never one tap — it requests authorization.
-    asked = []
-    v.active_authorization_requested.connect(lambda: asked.append(True))
-    v.request_active()
-    assert v.posture() == DomainDetailView.POSTURE_PASSIVE and asked == [True]
-    v.confirm_active()
-    assert v.posture() == DomainDetailView.POSTURE_ACTIVE
-    # responsive reflow (inherited): 3-up expanded, stacked + detail-collapsed compact.
+    # responsive reflow (inherited): side-by-side expanded, stacked + detail-collapsed compact.
     v.resize(1600, 900)
     qapp.processEvents()
     v._relayout_for_size()

@@ -76,6 +76,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 P2c2a — deleted the Operate-Home 'Passive/Active' posture theater (D1/D2).** `DomainDetailView`'s
+  left posture panel + `active_authorization_requested` / `request_active` / `confirm_active` / `set_passive` are
+  gone: the 'Active · Attack' button never actually flipped posture, its signal was wired nowhere in production,
+  and it implied a safety boundary that does not exist (the audit's high-severity honesty finding). The domain
+  view is now an honest center+detail master/detail; the REAL consent floor (`safety.classify` + the OPERATE
+  two-factor arm in `operate_tab._send`) is untouched.
 - **Spade v2 P2c1 — Operate Home drops the duplicate Wi-Fi/BLE analyzers (D7).** The wifi/ble tiles are now
   EXTERNAL domains that navigate to the ONE real analyzer (in the Analyze surface), instead of embedding a
   fresh `WifiAnalyzerTab`/`BleAnalyzerTab` clone double-fed from the event taps. Removes the transmit-nothing

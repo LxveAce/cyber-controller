@@ -1,8 +1,8 @@
 """Wi-Fi DOMAIN DETAIL three-panel view (src/ui/qt/wifi_domain.py).
 
-Asserts the CLAIM, offscreen: the passive/active split is a real boundary (Active is never one tap —
-it requires authorization), the right detail collapses on a cramped canvas and reveals on selection,
-and selecting an AP populates the detail with its real, OUI-resolved, honestly-graded fields.
+Asserts the CLAIM, offscreen: the right detail collapses on a cramped canvas and reveals on
+selection, and selecting an AP populates the detail with its real, OUI-resolved, graded fields.
+(The old passive/active posture panel was authorization theater — deleted in Spade v2 P2c.)
 """
 from __future__ import annotations
 
@@ -31,25 +31,6 @@ def _ap(bssid="00:00:01:11:22:33", ssid="Lab", enc="WPA2", rssi=-55, channel=6):
 
 def _view(qapp):
     return WifiDomainView(center=QWidget())
-
-
-def test_default_posture_is_passive(qapp):
-    assert _view(qapp).posture() == WifiDomainView.POSTURE_PASSIVE
-
-
-def test_active_is_a_boundary_not_one_tap(qapp):
-    v = _view(qapp)
-    asked = []
-    v.active_authorization_requested.connect(lambda: asked.append(True))
-    v.request_active()
-    # The tap did NOT enter Active — it asked for authorization (the real boundary).
-    assert v.posture() == WifiDomainView.POSTURE_PASSIVE
-    assert asked == [True]
-    # Only an explicit host confirm (after the safety gate) enters Active.
-    v.confirm_active()
-    assert v.posture() == WifiDomainView.POSTURE_ACTIVE
-    v.set_passive()
-    assert v.posture() == WifiDomainView.POSTURE_PASSIVE
 
 
 def test_detail_collapses_when_cramped_and_reveals_on_selection(qapp):

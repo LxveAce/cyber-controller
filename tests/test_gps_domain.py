@@ -36,12 +36,6 @@ def _obs(bssid="00:00:01:aa:bb:cc", ssid="LabNet", rssi=-55, ch=6, auth="[WPA2-P
 def test_gps_domain_reuses_the_shared_frame(qapp):
     v = GpsDomainView(center=QWidget())
     assert isinstance(v, DomainDetailView)   # same frame, not a one-off
-    asked = []
-    v.active_authorization_requested.connect(lambda: asked.append(True))
-    v.request_active()
-    assert v.posture() == DomainDetailView.POSTURE_PASSIVE and asked == [True]
-    v.confirm_active()
-    assert v.posture() == DomainDetailView.POSTURE_ACTIVE
     v.resize(1600, 900)
     qapp.processEvents()
     v._relayout_for_size()
