@@ -16,11 +16,22 @@ def test_marauder_tokens_corrected():
     assert "blescan" not in names and "bletrack" not in names
     # blespam token fixes
     assert any("sourapple" in n for n in names) and not any("blespam -t apple" == n for n in names)
-    # Real signal verb is `sigmon` (CommandLine.h:67 SIGSTREN_CMD="sigmon"); `foxhunt` is the
-    # phantom — absent from v1.12.3. (A prior QA-6 fix had this inverted; corrected 2026-07-26 by
-    # re-grounding vs the real source.) No `deselect` verb (only `select` + `clearlist`).
-    assert "sigmon" in names and "foxhunt" not in names
+    # Signal fox-hunt is version-split: `sigmon` on <=v1.13.x, RENAMED to `foxhunt` (-b BLE / -w
+    # Wi-Fi) in v1.14.0 (re-verified 2026-07-30). CC offers BOTH. No `deselect` verb.
+    assert "sigmon" in names and any(n.startswith("foxhunt") for n in names)
     assert not any(n.startswith("deselect") for n in names)
+
+
+def test_marauder_v1_14_0_commands_present():
+    # v1.14.0 (justcallmekoko/ESP32Marauder, source-verified 2026-07-30) added upload / foxhunt /
+    # list -b. CC now offers them (foxhunt alongside the older-fw sigmon). All passive/benign.
+    from src.protocols import get_protocol
+    cmds = {c.name: c for c in get_protocol("marauder").get_commands()}
+    assert "list -b" in cmds                          # list discovered Bluetooth devices
+    assert "upload -d <wdg/wigle/both>" in cmds        # upload wardrive logs
+    assert "foxhunt -b" in cmds and "foxhunt -w" in cmds  # v1.14.0 fox-hunt (renamed sigmon)
+    for safe in ("list -b", "upload -d <wdg/wigle/both>", "foxhunt -b"):
+        assert not cmds[safe].danger, f"{safe} should be passive/safe"
 
 
 def test_marauder_multiline_ap_parse():

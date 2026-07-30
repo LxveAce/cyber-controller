@@ -338,6 +338,8 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("list -a", "Scanning", "List discovered APs"),
             CommandInfo("list -s", "Scanning", "List discovered stations"),
             CommandInfo("list -c", "Scanning", "List discovered clients"),
+            # v1.14.0 added `list -b` (Bluetooth). Source-verified 2026-07-30.
+            CommandInfo("list -b", "Scanning", "List discovered Bluetooth devices"),
             CommandInfo("clearlist -a", "Scanning", "Clear AP list"),
             CommandInfo("clearlist -s", "Scanning", "Clear station list"),
             # Manually add a target to the list (h:111 ADD_CMD; SAFE list-management).
@@ -473,10 +475,17 @@ class MarauderProtocol(BaseProtocol):
             # ---- Wardrive ----
             # (removed phantom `wardrive -s`: fw stop-arg is commented out; stop via `stopscan`)
             CommandInfo("wardrive", "Wardrive", "Start wardriving (GPS required)"),
+            # v1.14.0 added `upload` (send wardrive logs to wardriver.app / WiGLE).
+            CommandInfo("upload -d <wdg/wigle/both>", "Wardrive",
+                        "Upload saved wardrive logs (wardriver.app / WiGLE / both)", "dest"),
             # ---- Signal Strength ----
-            # Real verb is `sigmon` (h:67 SIGSTREN_CMD="sigmon"); `foxhunt` was the phantom
-            # (absent from v1.12.3); dispatch (cpp:540) parses no args.
-            CommandInfo("sigmon", "Signal", "Signal-strength monitor (RSSI of selected target)"),
+            # The signal-strength fox-hunt verb is version-split: `sigmon` on <=v1.13.x, RENAMED to
+            # `foxhunt` (-b BLE / -w Wi-Fi) in v1.14.0 (SIGSTREN_CMD). BOTH offered so either
+            # firmware works (the wrong one just errors; older-fw keeps sigmon). Source-verified
+            # 2026-07-30 vs justcallmekoko/ESP32Marauder (HW-unverified).
+            CommandInfo("sigmon", "Signal", "Signal-strength fox-hunt (Marauder <=v1.13.x)"),
+            CommandInfo("foxhunt -b", "Signal", "Fox-hunt a BLE device by RSSI (v1.14.0+)"),
+            CommandInfo("foxhunt -w", "Signal", "Fox-hunt a Wi-Fi target by RSSI (v1.14.0+)"),
             CommandInfo("mactrack", "Signal", "Track a selected MAC by RSSI (proximity/fox-hunt)"),
             # ---- System / Misc ----
             CommandInfo("info", "System", "Show firmware info"),
