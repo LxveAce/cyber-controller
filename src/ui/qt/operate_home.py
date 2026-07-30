@@ -24,8 +24,6 @@ from PyQt5.QtWidgets import (
 
 from src.ui.qt.ble_domain import BleDomainView
 from src.ui.qt.domain_grid import DomainGrid
-from src.ui.qt.gps_domain import GpsDomainView
-from src.ui.qt.subghz_domain import SubGhzDomainView
 from src.ui.qt.theme import colors as C
 from src.ui.qt.wifi_domain import WifiDomainView
 
@@ -123,16 +121,14 @@ class OperateHome(QWidget):
         self._views: dict[str, QWidget] = {}
         titles = {k: t for k, _i, t, _d in _domain_titles()}
         for key in self._grid.domain_keys():
-            if key in self._external:
+            # External domains navigate to a real tab; roadmap domains (gps/subghz -> MAP at P4) are
+            # greyed, non-activating tiles — neither builds an in-place screen here.
+            if key in self._external or key in self._grid.roadmap_keys():
                 continue
             if key == "wifi":
                 view: QWidget = WifiDomainView(center=wifi_center or QWidget())
             elif key == "ble":
                 view = BleDomainView(center=ble_center or QWidget())
-            elif key == "gps":
-                view = GpsDomainView(center=gps_center or QWidget())
-            elif key == "subghz":
-                view = SubGhzDomainView(center=subghz_center or QWidget())
             else:
                 view = _placeholder(titles.get(key, key))
             self._views[key] = view

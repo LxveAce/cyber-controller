@@ -76,6 +76,14 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 D6c-1 — gps/subghz are honest greyed "P4 · opens in MAP" roadmap tiles; their in-place browser is
+  gone.** The Operate-Home domain grid no longer builds a `DomainDetailView` browser for GPS-Wardrive or RF/Sub-GHz
+  (their real screen lands in MAP at P4). Each is now a greyed, non-activating `OperationCard` labelled "P4 · opens
+  in MAP" — Qt blocks input to a disabled widget, so it can't emit `domain_selected`; an honest roadmap marker, not
+  a navigate-to-nothing or a browser wearing an action name (Atlas's call over dropping them like nrf/nfc, since
+  these are real capabilities landing at P4). `DomainGrid` gains `roadmap_keys()`; OperateHome skips roadmap
+  domains when building screens. The `DomainDetailView` scaffold + the four `*DomainView` classes are now unused by
+  production (only a bare OperateHome still builds Wi-Fi/BLE) — wholesale deletion is D6c-2.
 - **Spade v2 D6b — the Operate console's per-command atom is now `OpPanel` on the REAL guarded send.** Clicking a
   command in the console grid no longer pops a raw `QInputDialog`; it selects the command into a "Selected
   operation" detail pane that renders `biscuit.OperationDetail` (Start/Stop + Help + Modes from `op_spec`) wired to

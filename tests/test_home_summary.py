@@ -69,10 +69,11 @@ def _target():
 
 
 def test_summary_shows_on_grid_and_hides_inside_a_domain(win):
-    home = win._operate_home
+    from src.ui.qt.operate_home import OperateHome
+    home = OperateHome()                         # bare: wifi/ble build in-place screens
     home.show_home()
     assert not home._summary.isHidden()          # the landing header belongs to the grid
-    home.show_domain("gps")                      # an in-place domain (wifi/ble are external now)
+    home.show_domain("wifi")                     # an in-place domain (gps/subghz are roadmap now)
     assert home._summary.isHidden()              # gone inside a domain screen (full height)
     home.show_home()
     assert not home._summary.isHidden()          # back on the grid -> back on screen

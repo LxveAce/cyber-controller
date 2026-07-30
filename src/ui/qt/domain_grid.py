@@ -26,6 +26,11 @@ _DOMAINS: tuple[tuple[str, str, str, str], ...] = (
     ("settings", "⚙", "Settings", "Device, interface, and accessibility"),
 )
 
+# Domains whose real screen lands at P4 (they open in MAP). Shown as honest, greyed ROADMAP tiles —
+# non-activating, labelled with where they're going — instead of an in-place browser or a
+# navigate-to-nothing placeholder. Spade D6c (Atlas call): grey + "P4 · opens in MAP".
+_ROADMAP: dict[str, str] = {"gps": "P4 · opens in MAP", "subghz": "P4 · opens in MAP"}
+
 
 class DomainGrid(QWidget):
     """The OPERATE HOME domain tile grid. ``domain_selected(key)`` fires when a tile is chosen."""
@@ -37,9 +42,15 @@ class DomainGrid(QWidget):
         self._cards: dict[str, OperationCard] = {}
         tiles: list[QWidget] = []
         for key, icon, title, desc in _DOMAINS:
-            card = OperationCard(icon, title, desc)
-            # Bind the key per-iteration; activating the card announces which domain was chosen.
-            card.activated.connect(lambda _=False, k=key: self.domain_selected.emit(k))
+            roadmap = _ROADMAP.get(key)
+            card = OperationCard(icon, title, roadmap or desc)
+            if roadmap:
+                # Greyed, non-activating roadmap tile: Qt blocks input to a disabled widget, so it
+                # can't emit domain_selected — an honest "coming at P4", not a dead-end navigate.
+                card.setEnabled(False)
+            else:
+                # Bind the key per-iteration; activating the card announces which domain was chosen.
+                card.activated.connect(lambda _=False, k=key: self.domain_selected.emit(k))
             self._cards[key] = card
             tiles.append(card)
         self._grid = ResponsiveTileGrid(tiles)
@@ -50,6 +61,10 @@ class DomainGrid(QWidget):
     def domain_keys(self) -> list[str]:
         """The domain keys, in display order."""
         return [d[0] for d in _DOMAINS]
+
+    def roadmap_keys(self) -> list[str]:
+        """Domains rendered as greyed, non-activating roadmap tiles (their screen lands at P4)."""
+        return list(_ROADMAP)
 
     @property
     def grid(self) -> ResponsiveTileGrid:

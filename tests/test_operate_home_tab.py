@@ -94,11 +94,12 @@ def test_global_chrome_lives_once_on_the_app_shell(win):
 
 
 def test_operate_home_grid_navigates_domains(win):
-    # OperateHome's OWN domain grid is the Operate content nav. Selecting an IN-PLACE
-    # domain (gps — wifi/ble are external now, they navigate away) drives its stack to that screen;
-    # the back button returns to the grid.
-    assert "gps" in win._operate_home._grid.domain_keys()
-    win._operate_home.show_domain("gps")
-    assert win._operate_home.current_domain() == "gps"
-    win._operate_home.show_home()
-    assert win._operate_home.current_domain() is None       # back to the grid
+    # OperateHome is a launcher: external domains (wifi/ble/tools/settings) navigate away, and P4
+    # roadmap domains (gps/subghz) are greyed non-activating tiles — none show an in-place browser.
+    home = win._operate_home
+    assert "gps" in home._grid.domain_keys() and "gps" in home._grid.roadmap_keys()
+    seen: list[str] = []
+    home.navigate_requested.connect(seen.append)
+    home._grid.domain_selected.emit("wifi")                 # external -> navigate, stay on grid
+    assert seen == ["wifi"] and home.current_domain() is None
+    assert home.domain_view("gps") is None                  # roadmap: no in-place screen

@@ -50,9 +50,12 @@ def test_home_returns_to_the_grid(qapp):
 def test_every_domain_has_a_screen(qapp):
     h = OperateHome()
     for key in h._grid.domain_keys():
-        assert h.domain_view(key) is not None
-    # Wi-Fi/BLE (and GPS/Sub-GHz) are real domain views; Tools/Settings are honest placeholders
-    # in a bare instance (no external routing configured).
+        if key in h._grid.roadmap_keys():
+            assert h.domain_view(key) is None      # roadmap tiles build no in-place screen
+        else:
+            assert h.domain_view(key) is not None
+    # Wi-Fi/BLE are real in-place views; Tools/Settings are honest placeholders in a bare instance;
+    # gps/subghz are greyed P4 roadmap tiles (asserted separately).
     assert isinstance(h.domain_view("wifi"), WifiDomainView)
     assert isinstance(h.domain_view("ble"), BleDomainView)
     assert not isinstance(h.domain_view("tools"), WifiDomainView)
@@ -69,9 +72,9 @@ def test_external_domains_navigate_instead_of_showing_a_placeholder(qapp):
     assert seen == ["tools"]                      # asks the host to open the real tab
     assert h.current_domain() is None             # and stays on the grid (no placeholder swap)
     assert h._stack.currentWidget() is h._grid
-    # A domain with a real in-place screen (Sub-GHz) still builds its view — external routing
+    # A domain with a real in-place screen (Wi-Fi) still builds its view — external routing
     # doesn't swallow the domains that genuinely live here.
-    assert h.domain_view("subghz") is not None
+    assert h.domain_view("wifi") is not None
 
 
 def test_selecting_ble_routes_to_the_ble_domain(qapp):
@@ -81,20 +84,15 @@ def test_selecting_ble_routes_to_the_ble_domain(qapp):
     assert isinstance(h._stack.currentWidget(), BleDomainView)
 
 
-def test_selecting_gps_routes_to_the_gps_domain(qapp):
-    from src.ui.qt.gps_domain import GpsDomainView
+def test_gps_and_subghz_are_greyed_roadmap_tiles(qapp):
+    # Spade D6c (Atlas call): GPS + Sub-GHz land in MAP at P4, so Operate Home shows them as greyed,
+    # non-activating roadmap tiles — no in-place browser, no navigate-to-nothing placeholder. Their
+    # cards are disabled (Qt blocks the click) and build no in-place screen.
     h = OperateHome()
-    h._grid.domain_selected.emit("gps")
-    assert h.current_domain() == "gps"
-    assert isinstance(h._stack.currentWidget(), GpsDomainView)
-
-
-def test_selecting_subghz_routes_to_the_subghz_domain(qapp):
-    from src.ui.qt.subghz_domain import SubGhzDomainView
-    h = OperateHome()
-    h._grid.domain_selected.emit("subghz")
-    assert h.current_domain() == "subghz"
-    assert isinstance(h._stack.currentWidget(), SubGhzDomainView)
+    assert set(h._grid.roadmap_keys()) == {"gps", "subghz"}
+    for key in ("gps", "subghz"):
+        assert h.domain_view(key) is None              # no in-place screen built
+        assert not h._grid._cards[key].isEnabled()     # greyed, non-activating tile
 
 
 # ── build_operate_home: Spade v2 P2c — wifi/ble are EXTERNAL (navigate, no duplicate) ──
