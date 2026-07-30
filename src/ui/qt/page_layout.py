@@ -230,7 +230,8 @@ class PageLayout(QWidget):
 
     def set_content(self, widget: QWidget) -> None:
         """Set the central content widget (replaces any previous). Inserted ABOVE the primary-action
-        bar so a docked Start/Stop stays pinned to the bottom."""
+        bar so a docked Start/Stop sits at the bottom of the content column (an expanding surface —
+        the real case — pushes the bar flush to the bottom edge)."""
         if self._content is not None:
             self._content.setParent(None)
         self._content = widget
