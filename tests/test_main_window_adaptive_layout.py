@@ -54,19 +54,40 @@ def test_apply_shell_layout_collapses_and_hides_on_compact(qapp):
         win.close()
 
 
-def test_relayout_debounces_on_size_class(qapp):
-    # Within one size class the resolver must NOT re-apply, so resize jitter can't fight the user's
-    # manual ≡ collapse (mirrors flash_tab's debounce).
+def test_relayout_debounces_on_nav_mode(qapp):
+    # Within one nav-chrome mode the resolver must NOT re-apply, so resize jitter can't fight the
+    # user's manual collapse (mirrors flash_tab's debounce). Spade v2: keys on nav_mode, not size.
     win = _make_window()
     try:
-        win._relayout_shell()                 # establish the current size class + apply once
-        first = win._last_shell_size
-        assert first in ("compact", "regular", "expanded")
+        win._relayout_shell()                 # establish the current nav mode + apply once
+        first = win._last_nav_key
+        assert first in ("sidebar", "rail", "bottombar")
 
-        win._app_shell.set_collapsed(True)    # user manually collapses within the same class
-        win._relayout_shell()                 # same size class -> debounced -> must not un-collapse
-        assert win._last_shell_size == first
-        assert win._app_shell.collapsed, "debounce: same-class relayout must not fight the user"
+        win._app_shell.set_collapsed(True)    # user manually collapses within the same mode
+        win._relayout_shell()                 # same nav mode -> debounced -> must not un-collapse
+        assert win._last_nav_key == first
+        assert win._app_shell.collapsed, "debounce: same-mode relayout must not fight the user"
+    finally:
+        win.close()
+
+
+def test_touch_deck_collapses_to_rail_and_undocks_terminal(qapp):
+    # THE Spade P1 deck fix: at 800x480 the size is "regular" (< 1024), so the old is_compact-only
+    # gate left the 7" TOUCH deck with a full desktop sidebar + docked terminal. Driving off
+    # nav_mode fixes it — touch collapses to a rail + undocks the terminal; the same geometry with a
+    # POINTER (a small desktop window) keeps the full sidebar. nav_mode, not size, is the driver.
+    from src.ui.qt.layout_profile import layout_profile
+    win = _make_window()
+    try:
+        terminal = win._main_splitter.widget(1)
+
+        win._apply_shell_layout(layout_profile(800, 480, touch=True))    # the deck
+        assert win._app_shell.collapsed, "the 800x480 touch deck must fold to an icon rail"
+        assert terminal.isHidden(), "the deck undocks the terminal (it needs the room)"
+
+        win._apply_shell_layout(layout_profile(800, 480, touch=False))   # same size, pointer
+        assert not win._app_shell.collapsed, "a pointer window at 800x480 keeps the sidebar"
+        assert not terminal.isHidden()
     finally:
         win.close()
 

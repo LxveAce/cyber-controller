@@ -65,6 +65,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 P1a — the app shell drives off `nav_mode`, not `is_compact`.** `main_window._apply_shell_layout`
+  now collapses the sidebar to an icon rail whenever the nav chrome isn't a full sidebar and docks the terminal
+  per `terminal_docked` — so a 7" touch deck (~800x480, which classifies as "regular") finally gets deck chrome
+  instead of a desktop sidebar (the old `is_compact`-only gate missed it). Relayout debounces on `nav_mode`.
 - **Whole-app timer perf verified complete + the regression lock broadened (Grand-Overhaul).** Audited all 19
   `QTimer`s in `ui/qt`: every always-on repeating refresh/poll timer already starts in `showEvent` and stops in
   `hideEvent` (lazy-armed, no hidden-tab firing), and the remaining timers are single-shot event-driven debouncers

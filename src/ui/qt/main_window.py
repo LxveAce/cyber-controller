@@ -165,7 +165,7 @@ class CyberControllerWindow(QMainWindow):
     ) -> None:
         super().__init__()
         # Wave-3 Batch A: last size-class the shell laid out for (debounce, mirrors flash_tab).
-        self._last_shell_size: "str | None" = None
+        self._last_nav_key: "str | None" = None   # last applied nav-chrome mode (debounce key)
         self._dm = device_manager
         self._fe = flash_engine
         self._bus = event_bus
@@ -252,18 +252,21 @@ class CyberControllerWindow(QMainWindow):
         from src.ui.qt.touch_mode import touch_active
         profile = layout_profile(max(1, self.width()), max(1, self.height()),
                                  touch=touch_active(), dpi=dpi)
-        if profile.size == self._last_shell_size:   # debounce: relayout only on a size-class change
+        if profile.nav_mode == self._last_nav_key:   # debounce: re-apply only on a nav-mode change
             return
-        self._last_shell_size = profile.size
+        self._last_nav_key = profile.nav_mode
         self._apply_shell_layout(profile)
 
     def _apply_shell_layout(self, profile) -> None:
-        self._app_shell.set_collapsed(profile.is_compact)
-        # widget(1) of the vertical splitter is the persistent terminal — hide it on a compact
-        # canvas (it needs the room), restore it when there's space again.
+        # touch deck resolves to 'rail' at ~800x480 though it is NOT compact, so the old
+        # touch deck resolves to 'rail' at ~800x480 even though it is NOT 'compact', so the old
+        # is_compact gate left it with desktop chrome; nav_mode fixes that (see layout_profile v2).
+        self._app_shell.set_collapsed(profile.nav_mode != "sidebar")
+        # widget(1) of the vertical splitter is the terminal — docked only when the profile
+        # says so (undocked on the deck/phone that need the room; a pull-up sheet later).
         splitter = getattr(self, "_main_splitter", None)
         if splitter is not None and splitter.count() > 1:
-            splitter.widget(1).setVisible(not profile.is_compact)
+            splitter.widget(1).setVisible(profile.terminal_docked)
 
     # ── Menu bar ─────────────────────────────────────────────────────
 
