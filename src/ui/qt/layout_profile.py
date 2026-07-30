@@ -49,6 +49,11 @@ class LayoutProfile:
     dense_chrome: bool   # collapse toolbars / prefer overflow menus when True
     ref_width: float     # dpi-normalized width the classification was made on
     ref_height: float    # dpi-normalized height
+    # Spade v2 — nav-chrome axis (defaulted so existing constructors/importers don't churn). Derived
+    # from form-factor + density, not size alone, so the 7" deck avoids desktop chrome.
+    nav_mode: str = "sidebar"       # "sidebar"|"rail"|"bottombar" — how Axis-1 nav renders
+    rail_px: int = 200              # nav rail/sidebar width in reference points (0 when bottombar)
+    terminal_docked: bool = True    # docked terminal (True) vs a pull-up/full-screen sheet
 
     @property
     def is_compact(self) -> bool:
@@ -100,6 +105,16 @@ def layout_profile(
     min_target_pt = TOUCH_TARGET_PT if touch else POINTER_TARGET_PT
     dense_chrome = size == "compact"
 
+    # Nav-chrome axis (Spade v2): form-factor + density, not size alone.
+    if size == "compact":
+        nav_mode, rail_px, terminal_docked = "bottombar", 0, False          # phone: bottom tab bar
+    elif size == "regular" and touch:
+        # the 7" touch deck (~800x480): regular WIDTH but touch density -> icon rail + undocked
+        # terminal. The old is_compact-only collapse missed this and gave the deck desktop chrome.
+        nav_mode, rail_px, terminal_docked = "rail", 64, False
+    else:
+        nav_mode, rail_px, terminal_docked = "sidebar", 200, True   # desktop / regular-pointer
+
     return LayoutProfile(
         size=size,
         density=density,
@@ -109,6 +124,9 @@ def layout_profile(
         dense_chrome=dense_chrome,
         ref_width=ref_width,
         ref_height=ref_height,
+        nav_mode=nav_mode,
+        rail_px=rail_px,
+        terminal_docked=terminal_docked,
     )
 
 

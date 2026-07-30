@@ -270,3 +270,34 @@ def test_deciders_dpi_normalized():
     p = layout_profile(1920, 1080, dpi=192)
     assert p.size == "regular"
     assert settings_layout(p).columns == 2 and operate_layout(p).columns == 2
+
+
+# ── Spade v2: nav-chrome axis (nav_mode / rail_px / terminal_docked) ──────────────────────────────
+def test_nav_mode_desktop_is_docked_sidebar():
+    p = layout_profile(1440, 900)                    # expanded pointer desktop
+    assert p.nav_mode == "sidebar" and p.terminal_docked is True and p.rail_px == 200
+
+
+def test_nav_mode_regular_pointer_is_sidebar():
+    p = layout_profile(900, 700)          # regular WIDTH, pointer -> still a sidebar
+    assert p.nav_mode == "sidebar" and p.terminal_docked is True
+
+
+def test_nav_mode_touch_deck_collapses_to_rail():
+    # THE 7" deck fix: 800x480 is "regular" (<1024) but touch -> an icon rail with
+    # an undocked terminal, NOT desktop chrome (the old is_compact-only gate got this wrong).
+    p = layout_profile(800, 480, touch=True)
+    assert p.size == "regular"
+    assert p.nav_mode == "rail" and p.rail_px == 64 and p.terminal_docked is False
+
+
+def test_nav_mode_phone_is_bottombar():
+    p = layout_profile(400, 800, touch=True)         # compact -> bottom tab bar, no side rail
+    assert p.nav_mode == "bottombar" and p.rail_px == 0 and p.terminal_docked is False
+
+
+def test_nav_fields_default_on_bare_construction():
+    # appended defaulted fields: a LayoutProfile built without them still works
+    p = LayoutProfile(size="regular", density="pointer", depth_hint="pro", columns=2,
+                      min_target_pt=28, dense_chrome=False, ref_width=900.0, ref_height=700.0)
+    assert p.nav_mode == "sidebar" and p.rail_px == 200 and p.terminal_docked is True

@@ -6,6 +6,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Spade v2 P0 — pure navigation model (`src/core/nav_model.py`) + a nav-chrome axis on `LayoutProfile`.**
+  The GUI overhaul's IA is now one Qt-free `NavNode` tree (5 verb job-surfaces RIG/HUNT/OPERATE/CRACK/MAP +
+  a pinned Settings + a capability-gated Sense slot), with `nav_spec()` JSON round-trip and a `visible_nav()`
+  that drops any node lacking a real provider (honest-functionality made structural — no "coming soon" render
+  path). `LayoutProfile` gains `nav_mode`/`rail_px`/`terminal_docked` derived from form-factor AND density, so a
+  7" touch deck (~800x480, "regular" width) now collapses to an icon rail instead of getting desktop chrome.
+  Substrate only — not wired into the running UI yet (headless-tested).
 - **Whole-app launch-render/resize coherence smoke (`test_app_launch_render_smoke`).** Assembles the real
   `CyberControllerWindow` and renders all 18 leaf screens at three size classes (compact / regular / expanded),
   firing each screen's `resizeEvent` -> `_relayout_*`. After Wave-3 + the Grand-Overhaul touched every screen's
