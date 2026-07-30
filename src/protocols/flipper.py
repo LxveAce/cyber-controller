@@ -24,6 +24,14 @@ from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for Flipper CLI output (ported verbatim) ---
+# GROUNDING CAVEAT (2026-07-30, test-all-firmware): these pipe-tag formats were ported from
+# universal-flasher-ui, NOT grounded in the real Flipper Zero firmware. A source-check vs
+# flipperdevices/flipperzero-firmware found the exact tags (e.g. `| ATQA:`) appear NOWHERE in the
+# current firmware — so these likely do NOT match real Flipper CLI output (which is app-specific,
+# largely multi-line, not one tagged line). The command side (CR-only line ending) IS
+# firmware-verified; this READ/parse path is the un-grounded part. Needs HW/source validation
+# before it can fire on a real Flipper; until then a non-match just falls through to generic info
+# (no wrong output). Left as-is (no speculative rewrite without the real format + hardware).
 
 # SubGHz: Protocol: ... | Key: ... | Freq: ...
 _RE_SUBGHZ = re.compile(
