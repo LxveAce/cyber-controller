@@ -17,6 +17,14 @@
     --radius: 8px;
     --font: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif;
     --mono: 'Consolas', 'JetBrains Mono', 'Fira Code', monospace;
+
+    /* Responsive SSOT — mirrors src/ui/qt/layout_profile.py so every renderer shares ONE size model.
+       (CSS @media can't read a custom property, so the two @media widths below are hand-kept in sync
+       with these; if layout_profile changes, change both places.) */
+    --bp-compact: 600px;   /* < this = compact / phone (layout_profile COMPACT_MAX) */
+    --bp-regular: 1024px;  /* < this = regular / tablet (layout_profile REGULAR_MAX); >= = expanded desktop */
+    --touch-target: 44px;  /* layout_profile TOUCH_TARGET_PT */
+    --pointer-target: 28px;/* layout_profile POINTER_TARGET_PT */
 }
 
 * {
@@ -527,7 +535,7 @@ select.form-control {
 
 /* ── Mobile responsive ──────────────────────────────────────────── */
 
-@media (max-width: 768px) {
+@media (max-width: 1024px) {   /* --bp-regular (layout_profile REGULAR_MAX); was 768px magic */
     .nav-toggle {
         display: block;
     }
@@ -588,7 +596,7 @@ select.form-control {
     }
 }
 
-@media (max-width: 480px) {
+@media (max-width: 600px) {   /* --bp-compact (layout_profile COMPACT_MAX); was 480px magic */
     .card-grid {
         grid-template-columns: repeat(2, 1fr);
         gap: 8px;
@@ -668,7 +676,7 @@ select.form-control {
 .dv-title { font-weight:700; color:#a371f7; }
 .dv-crumb { color:#8b949e; font-size:.82rem; font-family:monospace; text-align:right; }
 .dv-list { list-style:none; margin:0; padding:0; }
-.dv-item { display:flex; align-items:center; justify-content:space-between; gap:.5rem; min-height:44px; padding:.55rem .9rem; border-bottom:1px solid #161b22; color:#e6edf3; cursor:pointer; }
+.dv-item { display:flex; align-items:center; justify-content:space-between; gap:.5rem; min-height:var(--touch-target); padding:.55rem .9rem; border-bottom:1px solid #161b22; color:#e6edf3; cursor:pointer; }
 .dv-item:last-child { border-bottom:none; }
 .dv-item:hover { background:#161b22; }
 .dv-item:focus-visible { outline:2px solid #a371f7; outline-offset:-2px; }
