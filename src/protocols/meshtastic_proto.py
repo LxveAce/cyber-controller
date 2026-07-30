@@ -15,6 +15,8 @@ would break every existing Meshtastic client), so a minimal codec is safe, depen
 here against a real Heltec node's captured stream — honest. Every unrecognised field is skipped generically.
 
 Field numbers pinned from upstream ``meshtastic/protobufs`` (mesh.proto, portnums.proto, channel.proto).
+Re-verified 2026-07-30 vs canonical mesh.proto — FromRadio/NodeInfo/User/Position all still match
+(newer optional NodeInfo fields e.g. via_mqtt=8 / hops_away=9 are skipped generically).
 This module is PURE: no serial, no Qt, no I/O — trivially testable and validated against golden real-radio bytes.
 """
 
