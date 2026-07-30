@@ -76,6 +76,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 D6c-2 — Operate-Home is a pure LAUNCHER; the read-only domain-browser scaffold is deleted (D6 +
+  all D-items complete).** OperateHome no longer builds any in-place `DomainDetailView` screen: every domain tile
+  navigates to its real surface (`navigate_requested` — Wi-Fi/BLE → the analyzer, Tools → Crack Lab, Settings →
+  the Settings tab) or is a greyed P4 roadmap tile (gps/subghz). Removed the per-domain `QStackedWidget`, the
+  placeholder/back-button machinery, and the `home_shown` signal; `current_domain()`/`domain_view()` remain as
+  honest accessors (a launcher has no in-place view, so they return None). DELETED the retired scaffold wholesale —
+  `domain_view.py` (`DomainDetailView`) + `wifi_domain.py`/`ble_domain.py`/`gps_domain.py`/`subghz_domain.py` (the
+  four `*DomainView` classes + their DetailPanels) + their four test files — after verifying no production consumer
+  remained (identicon coverage lives in `test_identicon.py`, not the deleted `test_wifi_domain.py`). This closes D6
+  and the entire P2 Phase-0 wire-or-delete overhaul (D1–D8). safety.py + operate_tab.py untouched.
 - **Spade v2 D6c-1 — gps/subghz are honest greyed "P4 · opens in MAP" roadmap tiles; their in-place browser is
   gone.** The Operate-Home domain grid no longer builds a `DomainDetailView` browser for GPS-Wardrive or RF/Sub-GHz
   (their real screen lands in MAP at P4). Each is now a greyed, non-activating `OperationCard` labelled "P4 · opens

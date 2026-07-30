@@ -68,15 +68,13 @@ def _target():
     return Target(mac="AA:BB:CC:DD:EE:FF", target_type=TargetType.AP, device_source="COM3")
 
 
-def test_summary_shows_on_grid_and_hides_inside_a_domain(win):
-    from src.ui.qt.operate_home import OperateHome
-    home = OperateHome()                         # bare: wifi/ble build in-place screens
-    home.show_home()
-    assert not home._summary.isHidden()          # the landing header belongs to the grid
-    home.show_domain("wifi")                     # an in-place domain (gps/subghz are roadmap now)
-    assert home._summary.isHidden()              # gone inside a domain screen (full height)
-    home.show_home()
-    assert not home._summary.isHidden()          # back on the grid -> back on screen
+def test_summary_is_present_on_the_launcher(win):
+    # Spade D6c: OperateHome is a launcher — there are no in-place domain screens, so the landing
+    # summary is always present (nothing to hide it behind); a host still pushes real counts in.
+    home = win._operate_home
+    assert not home._summary.isHidden()          # the landing header is on the launcher
+    home.set_summary(1, 0, 0, "")                # host-driven; still updates
+    assert not home._summary.isHidden()
 
 
 def test_set_summary_updates_the_metric_strip(win):
