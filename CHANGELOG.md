@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Spade v2 P2b — `OpPanel` (`src/ui/qt/op_panel.py`): the OperationDetail-backed op atom wired to the
+  guarded send.** Given a firmware command + a `(cmd, ci)` send callable (operate_tab's guarded `_send`) +
+  a readiness provider, it renders `biscuit.OperationDetail` (Start/Stop + Help + Modes from `op_spec`) and
+  routes Start through the SAME guarded send — never reimplementing `safety.classify`/`tx_hard_block`, never
+  one-tapping an offensive op (a not-ready `set_ready` disables Start with the arm-staircase reason). Tested in
+  isolation with a fake send; not yet swapped into Operate-Home (that + the dead-scaffold deletions are P2c).
 - **Spade v2 P2a — pure op-spec seam (`src/core/op_spec.py`).** Derives the Biscuit `OperationDetail`'s
   inputs from a firmware `CommandInfo`: `op_help_spec` (title/description/args + the authoritative
   `safety.classify` danger label), `op_modes` (Run vs Manual), and `op_command` (bare verb or `verb <arg>`,
