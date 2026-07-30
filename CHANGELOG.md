@@ -76,6 +76,17 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 D6b — the Operate console's per-command atom is now `OpPanel` on the REAL guarded send.** Clicking a
+  command in the console grid no longer pops a raw `QInputDialog`; it selects the command into a "Selected
+  operation" detail pane that renders `biscuit.OperationDetail` (Start/Stop + Help + Modes from `op_spec`) wired to
+  OperateTab's OWN guarded `self._send`. So an op runs through the exact
+  `safety.classify → tx_hard_block (two-factor arm) → confirm → conn.write` path — never a one-tap offensive send,
+  never a re-implemented floor, and (per the design) never a device handle handed anywhere else. A new
+  `_op_ready_fn` disables Start with an honest "arm to transmit" reason until an offensive verb's device is armed
+  (the UX layer that pairs with the floor; the poll repaint keeps it in sync). safety.py + the `_send` guard
+  sequence are BYTE-UNTOUCHED. Regression tests assert the injected send IS `operate_tab._send` (`==` +
+  `.__self__ is tab` + `.__func__ is OperateTab._send`), that a real job completes, and that an offensive op
+  cannot one-tap even with Start force-fired.
 - **Spade v2 P2c2c — made the shell posture toggle display-only + deleted the dead escalation path (D3/D4).**
   The `PageLayout` header "Recon/Defense ↔ Offense" control was a *checkable* button whose click emitted a
   `posture_escalation_requested` that `PageLayoutBinder` gated behind a host `authorize_offense` — but production

@@ -30,7 +30,6 @@ from PyQt5.QtWidgets import (
     QGridLayout,
     QGroupBox,
     QHBoxLayout,
-    QInputDialog,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -52,6 +51,7 @@ from src.ui.qt.link_strip import (
     poll_interval_ms,
     stream_blocked,
 )
+from src.ui.qt.op_panel import OpPanel
 
 log = logging.getLogger(__name__)
 
@@ -83,6 +83,8 @@ class OperateTab(QWidget):
         self._grid_cols: int = 3       # Wave-3 Batch C: command-grid columns (was hard-coded 3)
         self._hit_edge_pt: int = 0     # touch-target min-height for grid/arm buttons (0 = none yet)
         self._last_operate_size: "Optional[str]" = None   # last size class (relayout debounce)
+        self._op_panel = None          # D6b: selected command's OperationDetail atom (on _send)
+        self._op_arg_edit = None       # D6b: optional arg field for a command with arguments
         self._build_ui()
         self._timer = QTimer(self)
         # The poll cadence is tier-aware (see _apply_poll_interval): base on USB/Wi-Fi, lengthened on a
@@ -189,6 +191,16 @@ class OperateTab(QWidget):
         self._grid_box = QGroupBox("Commands")
         self._grid_layout = QVBoxLayout(self._grid_box)
         root.addWidget(self._grid_box)
+
+        # Selected-operation detail pane (Spade D6b): the grid is the SELECTOR; choosing a command
+        # shows its OperationDetail atom here, wired to the REAL guarded self._send (never a
+        # re-parented send, never a re-implemented floor). Replaces the old QInputDialog.
+        self._op_detail_box = QGroupBox("Selected operation")
+        self._op_detail_layout = QVBoxLayout(self._op_detail_box)
+        self._op_hint = QLabel("Select a command above to configure and run it.")
+        self._op_hint.setStyleSheet("color:#8b949e;")
+        self._op_detail_layout.addWidget(self._op_hint)
+        root.addWidget(self._op_detail_box)
 
         # Small activity log (sent commands / errors — this tab is button-driven, not a terminal)
         self._log = QTextEdit()
@@ -375,7 +387,7 @@ class OperateTab(QWidget):
                     btn.setStyleSheet(f"QPushButton {{ border: 1px solid {color}; color: {color}; }}")
                 btn.setToolTip(tip)
                 btn.setProperty("base_tip", tip)   # so _refresh can append the "disabled until ARMED" hint
-                btn.clicked.connect(lambda _checked=False, c=ci: self._on_command_button(c))
+                btn.clicked.connect(lambda _checked=False, c=ci: self._on_command_selected(c))
                 grid.addWidget(btn, i // cols, i % cols)
                 if danger:
                     self._tx_buttons.append(btn)
@@ -388,21 +400,46 @@ class OperateTab(QWidget):
                     self._stream_buttons.append(btn)
             self._grid_layout.addWidget(box)
 
-    def _on_command_button(self, ci) -> None:
-        """A grid button was clicked. If the command takes arguments, prompt for the full argument
-        string (seeded with the verb); otherwise send the bare verb."""
-        cmd = ci.name
+    def _on_command_selected(self, ci) -> None:
+        """A grid command was chosen: show its OperationDetail atom in the detail pane, wired to the
+        REAL guarded send (``self._send``) + an arm-derived readiness gate. Grid = the selector;
+        the atom is where the op runs. Start routes safety.classify + tx_hard_block (two-factor arm)
+        + confirm, so an offensive op is never one-tap and the floor is never re-implemented."""
+        self._op_hint.setVisible(False)
+        if self._op_panel is not None:
+            self._op_panel.setParent(None)
+            self._op_panel.deleteLater()
+            self._op_panel = None
+        if self._op_arg_edit is not None:
+            self._op_arg_edit.setParent(None)
+            self._op_arg_edit.deleteLater()
+            self._op_arg_edit = None
+        panel = OpPanel(ci, self._send, ready_fn=self._op_ready_fn(ci))
+        # A command with args gets a seed field (placeholder = the firmware's arg spec) above the
+        # atom; its text feeds the panel's arg. No args -> the bare verb is sent.
         if getattr(ci, "args", ""):
-            text, ok = QInputDialog.getText(
-                self, f"{ci.name} — arguments", f"{ci.description}\n\nargs: {ci.args}",
-                QLineEdit.Normal, ci.name + " ",
-            )
-            if not ok:
-                return
-            cmd = text.strip()
-            if not cmd:
-                return
-        self._send(cmd, ci)
+            edit = QLineEdit()
+            edit.setPlaceholderText(f"args: {ci.args}")
+            edit.textChanged.connect(panel.set_arg)
+            self._op_detail_layout.addWidget(edit)
+            self._op_arg_edit = edit
+        self._op_detail_layout.addWidget(panel)
+        self._op_panel = panel
+
+    def _op_ready_fn(self, ci):
+        """A zero-arg readiness provider for the selected command's OpPanel Start: an offensive verb
+        is not ready ('arm to transmit') until the device is ARMED; a safe verb is ready
+        when connected. Mirrors the grid's tx-enable gate — the UX layer that pairs with the real
+        floor (``_send``'s tx_hard_block still hard-refuses at write time regardless of this)."""
+        def ready():
+            dev = self._active_device()
+            if dev is None or not getattr(dev, "connected", False):
+                return (False, "connect the device first")
+            if (safety.classify(ci.name, ci) and self._active_supports_arm()
+                    and getattr(dev, "arm_state", "") != "armed"):
+                return (False, "arm to transmit")
+            return (True, "")
+        return ready
 
     # ── arm toggle ────────────────────────────────────────────────────────
     def _on_confirm_token(self) -> None:
@@ -565,6 +602,11 @@ class OperateTab(QWidget):
         self._btn_arm.setEnabled(connected and state != "armed")
         self._btn_confirm.setEnabled(connected and state == "pending")
         self._btn_disarm.setEnabled(connected)
+        # D6b: keep the selected-op atom's Start in sync with arm/connection state (the same poll
+        # repaint that syncs the grid buttons). The real floor (tx_hard_block) is enforced at send
+        # regardless — this is only the honest UX gate.
+        if self._op_panel is not None:
+            self._op_panel.refresh_ready()
         # Tier-aware stream gate (LxveNode): high-bandwidth STREAM verbs (live pcap / packet monitor /
         # sniff / wardrive tail) are disabled on a constrained LoRa/compact relay link, so the operator
         # can't fire something the link can't carry — the target's compact console text still streams

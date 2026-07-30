@@ -389,3 +389,68 @@ def test_stream_gate_does_not_touch_non_stream_verbs(qapp):
     # A passive non-stream recon verb (e.g. `scan`) stays enabled on LoRa — only the firehose is gated.
     non_stream_safe = [b for b in tab._safe_buttons if b not in tab._stream_buttons]
     assert non_stream_safe and all(b.isEnabled() for b in non_stream_safe)
+
+
+# ── D6b: selecting a command builds an OpPanel wired to the REAL guarded send ──
+# The grid is the selector; the selected command runs through an OperationDetail atom bound to the
+# console's own guarded _send (not a re-parented/re-derived send). Proves the injection contract
+# on the REAL console — the production form of the fdc5f8e oracle.
+
+def test_selecting_a_command_builds_an_oppanel_on_the_real_send(qapp):
+    from src.models.device import Device
+    from src.protocols.base import CommandInfo
+    from src.ui.qt.operate_tab import OperateTab
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    conn = _FakeConn()
+    tab = _tab(dev, conn)
+    tab._on_command_selected(CommandInfo("scan", "Recon", "Passive Wi-Fi AP scan"))
+    panel = tab._op_panel
+    assert panel is not None
+    # Gate #1: the atom's send IS operate_tab._send — same bound method, bound to THIS console,
+    # same underlying function (Atlas's belt-and-suspenders guard against a future refactor).
+    assert panel._send == tab._send
+    assert panel._send.__self__ is tab
+    assert panel._send.__func__ is OperateTab._send
+    # Gate #4: Start completes a real SAFE op through the console's guarded send.
+    panel.detail.start_requested.emit()
+    assert conn.writes == ["scan"]
+
+
+def test_selecting_an_offensive_command_cannot_one_tap_on_the_console(qapp, monkeypatch):
+    from src.models.device import Device
+    from src.protocols.base import CommandInfo
+    from src.ui.qt import operate_tab
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    dev.arm_state = "safe"
+    conn = _FakeConn()
+    tab = _tab(dev, conn)
+    tab._on_command_selected(CommandInfo("evilportal", "Offensive", "rogue AP", danger="lab-only"))
+    panel = tab._op_panel
+    # UX gate: Start is disabled with the arm reason while SAFE...
+    assert not panel.detail._btn.isEnabled()
+    # ...and even a forced Start writes NOTHING — _send's tx_hard_block refuses (no one-tap).
+    panel.detail.start_requested.emit()
+    assert conn.writes == []
+    # Arm the device: the poll repaint re-enables Start, and the SAME Start now lands.
+    monkeypatch.setattr(operate_tab.safety, "should_confirm", lambda *a, **k: False)
+    dev.arm_state = "armed"
+    tab._refresh()
+    assert panel.detail._btn.isEnabled()
+    panel.detail.start_requested.emit()
+    assert conn.writes == ["evilportal"]
+
+
+def test_selecting_a_new_command_replaces_the_previous_op_panel(qapp):
+    # The detail pane holds ONE selected op; picking another swaps it (no stacking / widget leak).
+    from src.models.device import Device
+    from src.protocols.base import CommandInfo
+
+    dev = Device(port="COM23", firmware="lxveos", connected=True)
+    tab = _tab(dev, _FakeConn())
+    tab._on_command_selected(CommandInfo("scan", "Recon", "scan"))
+    first = tab._op_panel
+    tab._on_command_selected(CommandInfo("blescan", "Recon", "ble scan", args="[seconds]"))
+    assert tab._op_panel is not first                    # a fresh atom for the new command
+    assert tab._op_arg_edit is not None                  # blescan takes args -> seed field appears
