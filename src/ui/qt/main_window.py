@@ -2054,9 +2054,25 @@ class CyberControllerWindow(QMainWindow):
         tabs = QTabWidget()
 
         guide_content = {
+            "Layout": (
+                "<h2 style='color:#a371f7;'>Layout</h2>"
+                "<p>The top nav is five job surfaces, read left to right as the mission arc, plus a pinned "
+                "<b>Settings</b>:</p>"
+                "<ul>"
+                "<li><b>RIG</b> &mdash; get a rig ready: Devices, Health, Nodes, Firmware, Software OS, Mesh.</li>"
+                "<li><b>HUNT</b> &mdash; see what's out there, passively: the Wi-Fi and BLE analyzers, "
+                "Targets, the node Graph.</li>"
+                "<li><b>OPERATE</b> &mdash; the action surface: the Home launcher, the Control console, Macros.</li>"
+                "<li><b>CRACK</b> &mdash; capture to key: the offline Crack Lab.</li>"
+                "<li><b>MAP</b> &mdash; one map canvas: Wardrive, Multi-Wardrive, the Flock map.</li>"
+                "</ul>"
+                "<p>Each surface holds its tools as sub-views. Press <b>Ctrl+Shift+P</b> for the command "
+                "palette to jump straight to any of them.</p>"
+            ),
             "Flash": (
                 "<h2 style='color:#a371f7;'>Flash Firmware</h2>"
-                "<p>The Flash tab lets you write firmware to connected ESP32 and similar devices.</p>"
+                "<p>Firmware flashing lives under <b>RIG &rarr; Firmware</b> &mdash; write firmware to "
+                "connected ESP32 and similar devices.</p>"
                 "<h3 style='color:#a371f7;'>Getting Started</h3>"
                 "<ul>"
                 "<li><b>Select Port</b> &mdash; Pick the serial port your device is connected to. "
@@ -2081,7 +2097,7 @@ class CyberControllerWindow(QMainWindow):
             ),
             "Device Control": (
                 "<h2 style='color:#a371f7;'>Device Control</h2>"
-                "<p>The Devices tab provides a serial terminal for real-time device communication.</p>"
+                "<p><b>RIG &rarr; Devices</b> provides a serial terminal for real-time device communication.</p>"
                 "<h3 style='color:#a371f7;'>Connecting</h3>"
                 "<ul>"
                 "<li>Select a device from the list on the left.</li>"
@@ -2099,7 +2115,7 @@ class CyberControllerWindow(QMainWindow):
             ),
             "Health Monitor": (
                 "<h2 style='color:#a371f7;'>Health Monitor</h2>"
-                "<p>The Health tab displays real-time metrics for your system and connected devices.</p>"
+                "<p><b>RIG &rarr; Health</b> displays real-time metrics for your system and connected devices.</p>"
                 "<h3 style='color:#a371f7;'>System Health</h3>"
                 "<ul>"
                 "<li><b>CPU %</b> &mdash; Current processor utilization.</li>"
@@ -2118,7 +2134,7 @@ class CyberControllerWindow(QMainWindow):
             ),
             "Targets": (
                 "<h2 style='color:#a371f7;'>Targets</h2>"
-                "<p>The Targets tab shows discovered Wi-Fi access points and clients from scanning "
+                "<p><b>HUNT &rarr; Targets</b> shows discovered Wi-Fi access points and clients from scanning "
                 "devices.</p>"
                 "<h3 style='color:#a371f7;'>Understanding Targets</h3>"
                 "<ul>"
@@ -2507,7 +2523,7 @@ class CyberControllerWindow(QMainWindow):
     def _on_flock_heatmap(self) -> None:
         """Focus the Flock Map tab (FL F5) — located ALPR-camera detections from a scan's GeoJSON.
 
-        The map used to open as a standalone Tools window; since WS-6 A it's a sub-tab of the Survey surface,
+        The map used to open as a standalone Tools window; since the verb-IA rewire it's a sub-view of MAP,
         so this menu / palette action just navigates to it."""
         self._show_subtab(self._map_surface, self._flock_heatmap)
 
@@ -2572,7 +2588,7 @@ class CyberControllerWindow(QMainWindow):
     def _send_to_port(self, port: str, command: str) -> None:
         """Write a routed command to a connected device. Thin delegate to the cross-comm spine — the logic
         lives once on the hub (src/core/cross_comm_hub.py); kept here for the callers that pass this bound
-        method as a send callback (e.g. the Network tab)."""
+        method as a send callback (e.g. the Graph view)."""
         self._hub.send_to_port(port, command)
 
     # ── Cleanup ──────────────────────────────────────────────────────

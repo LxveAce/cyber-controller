@@ -157,7 +157,7 @@ class SoftwareTab(QWidget):
         root = QVBoxLayout(container)
 
         intro = QLabel("Write a verified bootable operating system to a USB stick. Firmware for boards "
-                       "lives on the Flash tab — this tab is for PC/USB operating systems.")
+                       "lives under RIG → Firmware — this view is for PC/USB operating systems.")
         intro.setObjectName("muted")
         intro.setWordWrap(True)
         root.addWidget(intro)

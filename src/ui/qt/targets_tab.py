@@ -495,7 +495,7 @@ class TargetsTab(QWidget):
         The pooled object carries extra['index'] (and the live device_source), which the
         row-reconstructed Target omits. Without this, index-gated actions (e.g. the BW16
         'Deauth (this index)' -> AT+DEAUTHIDX=n) were silently dropped in the context menu even
-        though the Network tab offered them (it resolves against the real pool objects)."""
+        though the Graph view (HUNT) offered them (it resolves against the real pool objects)."""
         target = self._target_from_row(row)
         if target is None:
             return None

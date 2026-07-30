@@ -1,4 +1,4 @@
-"""Flash tab — firmware flashing UI with progress and batch queue."""
+"""FlashTab — the RIG → Firmware sub-view: firmware flashing UI with progress and batch queue."""
 
 from __future__ import annotations
 
