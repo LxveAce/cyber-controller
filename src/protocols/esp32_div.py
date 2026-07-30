@@ -134,10 +134,12 @@ class Esp32DivProtocol(BaseProtocol):
 
     capabilities = frozenset({"ble", "nrf24", "wifi"})
 
-    # Stock cifertech ESP32-DIV is TOUCH/button-operated and speaks nothing over serial (verified
-    # vs the firmware; the serial CLI is the separate ESP32-DIV *serial fork*, esp32_div_serial.py).
-    # So model stock as a no-CLI "controlmap" node: CC neither probes it nor offers phantom serial
-    # buttons. It still parses any lines the board prints (parse_line) and is still identified.
+    # Stock cifertech ESP32-DIV is TOUCH/button-operated and speaks nothing STRUCTURED over serial
+    # (verified vs the firmware; re-verified 2026-07-30 vs cifertech/ESP32-DIV wifi.cpp — its Serial
+    # output is debug/status only, e.g. [PCAP]/[CP]/init-failed, no AP:/STA:/BLE: scan lines). The
+    # serial CLI is the separate ESP32-DIV *serial fork*, esp32_div_serial.py. So model stock as a
+    # no-CLI "controlmap" node: CC neither probes it nor offers phantom serial buttons. It still
+    # parses any lines the board prints (parse_line) and is still identified.
     driver_type = "controlmap"
 
     # ── Parsing ──────────────────────────────────────────────────────
