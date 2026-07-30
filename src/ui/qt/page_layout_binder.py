@@ -1,43 +1,33 @@
 """Bind a PageLayout frame's live slots to the CrossCommHub (GUI rebuild, Wave-10 Phase B2/B3).
 
 Additive adapter: reads the hub's existing surface (pool / captures / dm / bus) and pushes it into
-the frame's badge + status slots, and gates the posture-escalation boundary via a host authorizer.
+the frame's badge + status slots, and mirrors the shell's display posture into src.core.posture.
 The frame stays app-agnostic and the hub is untouched; this is the only object that knows both.
 Nothing here mutates the hub or main_window — it just observes and updates the shell.
 """
 from __future__ import annotations
 
-import logging
-from typing import Callable, Optional
-
 from src.core import posture as posture_state
-from src.ui.qt.page_layout import POSTURE_OFFENSE, PageLayout
+from src.ui.qt.page_layout import PageLayout
 from src.ui.qt.theme import colors as C
-
-log = logging.getLogger(__name__)
 
 
 class PageLayoutBinder:
     """Push live hub/bus data into a PageLayout's slots + gate posture escalation to Offense."""
 
-    def __init__(self, layout: PageLayout, hub,
-                 authorize_offense: "Optional[Callable[[], bool]]" = None) -> None:
+    def __init__(self, layout: PageLayout, hub) -> None:
         self._layout = layout
         self._hub = hub
-        # Host authorizer for escalating global posture to Offense. None = always DENY (safe):
-        # the shell can never arm Offense unless the host explicitly grants it.
-        self._authorize = authorize_offense
         bus = getattr(hub, "bus", None)
         if bus is not None:
             for t in ("target.added", "target.updated", "target.removed", "target.cleared"):
                 bus.subscribe(t, self._on_target_event)
             for t in ("capture.added", "capture.removed", "capture.cleared", "capture.cracked"):
                 bus.subscribe(t, self._on_capture_event)
-        layout.posture_escalation_requested.connect(self._on_escalation_requested)
-        # Mirror the shell's VISIBLE posture into the core posture gate (src.core.posture) so the
-        # send paths' master gate can never disagree with what the toggle shows. Sync the initial
-        # state now, then track every change (both host-authorized escalate + immediate de-escalate
-        # route through PageLayout.set_posture -> posture_changed).
+        # Mirror the shell's VISIBLE display posture into src.core.posture so any surface can read
+        # the current indicator. Sync the initial state now, then track every host-driven change
+        # (which routes through PageLayout.set_posture -> posture_changed). Display only — the real
+        # send-path floor is safety.classify + the OPERATE two-factor arm, which this never touches.
         layout.posture_changed.connect(posture_state.set_posture)
         posture_state.set_posture(layout.posture)
         self.refresh()
@@ -86,12 +76,3 @@ class PageLayoutBinder:
             self._layout.set_status("armed", "ARMING", color=C.WARNING)
         else:
             self._layout.set_status("armed", "")
-
-    # ── posture escalation gate (completes the B1 boundary) ──────────
-    def _on_escalation_requested(self, target: str) -> None:
-        if target != POSTURE_OFFENSE:
-            return
-        granted = bool(self._authorize()) if callable(self._authorize) else False
-        log.info("PageLayout posture escalation to Offense: %s", "GRANTED" if granted else "DENIED")
-        if granted:
-            self._layout.set_posture(POSTURE_OFFENSE)

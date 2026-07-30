@@ -79,10 +79,7 @@ class PageLayout(QWidget):
     """The shared shell frame: sidebar + status bar + posture toggle + omnibar + content."""
 
     destination_selected = pyqtSignal(str)  # a sidebar destination key was chosen
-    posture_changed = pyqtSignal(str)       # posture ACTUALLY changed (after any auth) -> new value
-    # Escalating to Offense is a BOUNDARY: the click emits this REQUEST and does NOT flip. The host
-    # runs the authorization confirm/log, then calls set_posture(POSTURE_OFFENSE) to actually apply.
-    posture_escalation_requested = pyqtSignal(str)
+    posture_changed = pyqtSignal(str)       # display posture changed (host-driven) -> new value
     omnibar_submitted = pyqtSignal(str)     # the operator entered a command / search
 
     def __init__(self, parent: "Optional[QWidget]" = None) -> None:
@@ -137,13 +134,14 @@ class PageLayout(QWidget):
         self._collapse_btn.setCursor(Qt.PointingHandCursor)
         self._collapse_btn.clicked.connect(self.toggle_sidebar)
         h.addWidget(self._collapse_btn)
-        # posture toggle
-        self._posture_btn = QPushButton()
-        self._posture_btn.setCheckable(True)
-        self._posture_btn.setCursor(Qt.PointingHandCursor)
-        self._posture_btn.clicked.connect(self._on_posture_clicked)
+        # posture indicator (display-only: a plain chip mirroring the global recon/offense state).
+        # It gates nothing; the real floor is safety.classify + the OPERATE two-factor arm. It was
+        # a checkable "escalate to Offense" toggle whose click emitted an auth request that
+        # production ALWAYS denied (no authorizer wired), so it armed nothing while implying a
+        # safety boundary that doesn't exist. Spade v2 (D3/D4) makes it an honest label.
+        self._posture_lbl = QLabel()
         self._render_posture()
-        h.addWidget(self._posture_btn)
+        h.addWidget(self._posture_lbl)
         # device-truth status fields (slots; wired in B2)
         for key in ("link", "battery", "sd", "gps", "task", "armed"):
             lbl = QLabel("")
@@ -328,7 +326,7 @@ class PageLayout(QWidget):
         return self._posture
 
     def set_posture(self, posture: str) -> None:
-        """Set the global posture programmatically (host use, e.g. after an auth confirm)."""
+        """Set the display posture (host-driven; a plain indicator that gates nothing)."""
         if posture not in (POSTURE_RECON, POSTURE_OFFENSE) or posture == self._posture:
             return
         self._posture = posture
@@ -344,24 +342,12 @@ class PageLayout(QWidget):
         return self._nav_mode
 
     # ── internals ────────────────────────────────────────────────────
-    def _on_posture_clicked(self) -> None:
-        if self._posture == POSTURE_OFFENSE:
-            # De-escalating to Recon (dropping to passive) is always safe -> apply immediately.
-            self.set_posture(POSTURE_RECON)
-            return
-        # Escalating Recon -> Offense is a BOUNDARY: emit a REQUEST and DO NOT flip. The host runs
-        # the auth confirm/log, then calls set_posture(POSTURE_OFFENSE). Revert the checkable button
-        # to the still-current Recon state so one click can never silently arm Offense.
-        self._render_posture()
-        self.posture_escalation_requested.emit(POSTURE_OFFENSE)
-
     def _render_posture(self) -> None:
         offense = self._posture == POSTURE_OFFENSE
-        self._posture_btn.setChecked(offense)
-        self._posture_btn.setText("Offense" if offense else "Recon / Defense")
+        self._posture_lbl.setText("Offense" if offense else "Recon / Defense")
         col = C.ALERT if offense else C.SUCCESS
-        self._posture_btn.setStyleSheet(
-            f"QPushButton{{color:{col}; border:1px solid {col}; border-radius:4px;"
+        self._posture_lbl.setStyleSheet(
+            f"QLabel{{color:{col}; border:1px solid {col}; border-radius:4px;"
             f" padding:2px 8px;}}")
 
     def _on_omnibar(self) -> None:

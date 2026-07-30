@@ -59,7 +59,7 @@ def test_binder_mirrors_the_visible_posture_into_the_state(qapp):
     from src.ui.qt.page_layout import PageLayout
     from src.ui.qt.page_layout_binder import PageLayoutBinder
     layout = PageLayout()
-    PageLayoutBinder(layout, hub=None, authorize_offense=lambda: True)
+    PageLayoutBinder(layout, hub=None)
     assert P.get_posture() == P.POSTURE_RECON           # initial sync
     layout.set_posture(P.POSTURE_OFFENSE)                # emits posture_changed -> state follows
     assert P.get_posture() == P.POSTURE_OFFENSE

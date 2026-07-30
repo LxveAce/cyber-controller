@@ -83,24 +83,19 @@ def test_no_devices_clears_armed_and_link(qapp):
     assert p._status["link"].isHidden()
 
 
-def test_posture_escalation_denied_by_default(qapp):
-    # No authorizer -> a click's escalation request is DENIED; posture never reaches Offense.
+def test_binder_mirrors_display_posture_into_core(qapp):
+    # Spade v2 (D3/D4): the binder no longer gates an escalation boundary — that machinery is gone
+    # (the toggle was display-only theater whose click was always DENIED, arming nothing). It DOES
+    # mirror the shell's display posture into src.core.posture so any surface can read the current
+    # indicator; core.posture gates nothing either. Real floor = safety.classify + the OPERATE arm.
+    import src.core.posture as P
+    P.set_posture(P.POSTURE_RECON)
     p = _framed()
     PageLayoutBinder(p, _fake_hub())
-    p._on_posture_clicked()                # emits posture_escalation_requested
-    assert p.posture == POSTURE_RECON      # denied -> stays Recon
-
-
-def test_posture_escalation_applied_when_host_authorizes(qapp):
-    p = _framed()
-    PageLayoutBinder(p, _fake_hub(), authorize_offense=lambda: True)
-    p._on_posture_clicked()
-    assert p.posture == POSTURE_OFFENSE     # host granted -> applied
-    # a refused authorizer keeps it safe
-    p2 = _framed()
-    PageLayoutBinder(p2, _fake_hub(), authorize_offense=lambda: False)
-    p2._on_posture_clicked()
-    assert p2.posture == POSTURE_RECON
+    assert P.get_posture() == POSTURE_RECON      # initial sync
+    p.set_posture(POSTURE_OFFENSE)               # host-driven display update mirrors through
+    assert P.get_posture() == POSTURE_OFFENSE
+    P.set_posture(P.POSTURE_RECON)               # reset the process-global for other tests
 
 
 def test_binder_without_a_bus_degrades(qapp):

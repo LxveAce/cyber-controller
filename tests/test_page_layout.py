@@ -71,28 +71,28 @@ def test_status_fields_set_and_hide(qapp):
     p.set_status("bogus", "x")          # unknown field is a safe no-op
 
 
-def test_posture_escalation_is_a_boundary_not_a_one_click_flip(qapp):
-    # Security-relevant: escalating to Offense must NOT flip on one click. It emits a request;
-    # only the host's post-auth set_posture applies it (mirrors domain_view's active boundary).
+def test_posture_is_a_display_only_indicator(qapp):
+    # Spade v2 (P2c, D3/D4): the posture chip is a plain DISPLAY mirror — it gates nothing and has
+    # no click-to-escalate path. The old checkable "escalate to Offense" toggle emitted an auth
+    # request that production ALWAYS denied (no authorizer wired), arming nothing while implying a
+    # safety boundary that doesn't exist. Real floor = safety.classify + the OPERATE two-factor arm.
+    # A host still sets the display posture programmatically.
     p = PageLayout()
-    requests, changes = [], []
-    p.posture_escalation_requested.connect(requests.append)
+    changes = []
     p.posture_changed.connect(changes.append)
+    assert p.posture == POSTURE_RECON
 
-    p._on_posture_clicked()             # click to escalate
-    assert p.posture == POSTURE_RECON   # did NOT flip — still Recon
-    assert requests == [POSTURE_OFFENSE]  # emitted the authorization request
-    assert changes == []                # nothing actually changed yet
-
-    p.set_posture(POSTURE_OFFENSE)      # host authorised -> apply
+    p.set_posture(POSTURE_OFFENSE)      # host-driven display update
     assert p.posture == POSTURE_OFFENSE and changes == [POSTURE_OFFENSE]
-
-    p._on_posture_clicked()             # de-escalating to Recon is safe -> applies directly
+    p.set_posture(POSTURE_RECON)
     assert p.posture == POSTURE_RECON and changes == [POSTURE_OFFENSE, POSTURE_RECON]
-    assert requests == [POSTURE_OFFENSE]  # no escalation request on a de-escalation
-
     p.set_posture(POSTURE_RECON)        # idempotent (no duplicate emit for the same state)
     assert changes == [POSTURE_OFFENSE, POSTURE_RECON]
+
+    # The arm-theater is gone: no escalation signal, no click handler; a QLabel, not a button.
+    assert not hasattr(p, "posture_escalation_requested")
+    assert not hasattr(p, "_on_posture_clicked")
+    assert not hasattr(p, "_posture_btn") and hasattr(p, "_posture_lbl")
 
 
 def test_sidebar_collapses(qapp):

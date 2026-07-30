@@ -90,7 +90,7 @@ def test_global_chrome_lives_once_on_the_app_shell(win):
     # area, not duplicated per-tab. The Operate Home tab no longer carries its own copy.
     assert isinstance(win._app_shell, PageLayout)
     assert "armed" in win._app_shell._status               # the device-truth status slot exists
-    assert win._app_shell._posture_btn is not None          # the global posture toggle exists
+    assert win._app_shell._posture_lbl is not None          # the global posture indicator exists
 
 
 def test_operate_home_grid_navigates_domains(win):

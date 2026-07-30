@@ -76,6 +76,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
 
 ### Changed
+- **Spade v2 P2c2c — made the shell posture toggle display-only + deleted the dead escalation path (D3/D4).**
+  The `PageLayout` header "Recon/Defense ↔ Offense" control was a *checkable* button whose click emitted a
+  `posture_escalation_requested` that `PageLayoutBinder` gated behind a host `authorize_offense` — but production
+  never wired an authorizer, so the request was **ALWAYS DENIED**: Offense was unreachable, the click armed
+  nothing, and the toggle implied a safety boundary that does not exist. It is now a plain `QLabel` indicator
+  (D3), and the escalation machinery is gone (D4): removed `PageLayout.posture_escalation_requested` +
+  `_on_posture_clicked`, and the binder's `authorize_offense` param + `_on_escalation_requested`. Posture stays a
+  pure **display mirror** (`set_posture`/`posture_changed` → `src.core.posture`, which itself gates nothing). The
+  REAL consent floor (`safety.classify` + the OPERATE two-factor arm in `operate_tab._send`) is untouched.
 - **Spade v2 P2c2b — dropped the placeholder radio tiles (D8) + the dead `domain_shown` signal (D5).** The
   Operate-Home domain grid no longer carries the `nrf` ("2.4 GHz") and `nfc` tiles — both only ever rendered a
   "coming soon" placeholder for a screen that does not exist, so the grid now shows only domains that genuinely
