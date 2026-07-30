@@ -82,8 +82,8 @@ _SURFACES: tuple[NavNode, ...] = (
         _n("graph", "Graph", "graph"),
     )),
     _n("operate", "OPERATE", "console", primary_action="operate", children=(
-        _n("console", "Console", "terminal"),
-        _n("broadcast", "Broadcast", "broadcast"),
+        _n("home", "Home", "operate"),        # the dual-axis launcher (leads the surface)
+        _n("control", "Control", "console"),  # QA-1 (owner #9): fan-out Broadcast + single-device Console, merged
         _n("macros", "Macros", "macro"),
     )),
     _n("crack", "CRACK", "key", primary_action="crack", children=(
@@ -91,7 +91,8 @@ _SURFACES: tuple[NavNode, ...] = (
     )),
     _n("map", "MAP", "map", primary_action="drive", children=(
         _n("wardrive", "Wardrive", "route"),
-        _n("flock", "Flock / ALPR", "camera"),
+        _n("multi_wardrive", "Multi-Wardrive", "route"),
+        _n("flock", "Flock Map", "camera"),
     )),
     # Reserved 6th surface — designed into the IA now, hidden until a real counter-surveil provider
     # (node firmware) registers "sense". Until then it renders as an orchid filter/layer

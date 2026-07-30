@@ -22,6 +22,17 @@ from src.ui.qt.theme.colors import ACCENT  # brand accent — single source of t
 # Tab / surface label -> icon basename (from the wiring kit's 1:1 map). Used both for direct wiring and for the
 # detached-tab restore path, so a tab keeps its icon after being popped out and back in.
 TAB_ICONS = {
+    # Spade v2 verb surfaces (Axis 1). Reuse the existing glyph assets that already ship + render, so a
+    # verb label never falls back to a blank tab (the owner-reported "some tabs dont have symbols").
+    "RIG": "connect",
+    "HUNT": "analyze",
+    "OPERATE": "operate",
+    "CRACK": "crack-lab",
+    "MAP": "survey",
+    "Home": "operate",             # the OPERATE launcher sub-view
+    "Mesh": "cross-comm",          # Cross-Comm re-homed to RIG as "Mesh"
+    "Wi-Fi": "network",            # HUNT Wi-Fi analyzer sub-view
+    "BLE": "ble",                  # HUNT BLE analyzer sub-view
     "Connect": "connect",
     "Operate": "operate",
     "Network": "network",

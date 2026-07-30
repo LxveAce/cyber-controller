@@ -56,15 +56,15 @@ def test_apply_loadout_hides_unused_tabs(qapp, isolated_settings):
         lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
         win.apply_loadout(lo, persist=False)
         labels = _labels(win)
-        # WS-6 A + capstone fix: post-reorg every surface is ALWAYS (Analyze is now always shown because it
-        # holds the offline Crack Lab + BLE Analyzer), so a mesh-only loadout hides no top-level SURFACE — it
-        # only ever grouped the sub-views. This test now locks the grouping invariant: sub-views are never
-        # top-level, and all six surfaces stay reachable. ("Network" is gone entirely — replaced by "Analyze".)
-        assert "Network" not in labels
-        for subview in ("Devices", "Health", "Software OS", "Targets", "All Devices", "Macros",
-                        "Wardrive", "Cross-Comm", "Crack Lab", "Flock Map"):
-            assert subview not in labels  # grouped into a surface, never a top-level label post-regroup
-        for core in ("Flash", "Connect", "Operate", "Survey", "Analyze", "Settings"):
+        # P2.5 verb IA: every top-level surface is a job-verb, and all verbs are ALWAYS (fail-open), so a
+        # mesh-only loadout hides no top-level SURFACE — the loadout only ever grouped the sub-views. This
+        # locks the grouping invariant: sub-views are never top-level, and all 5 verbs + Settings stay
+        # reachable. ("Analyze"/"Network" are gone — dissolved into HUNT/CRACK/RIG.)
+        assert "Network" not in labels and "Analyze" not in labels
+        for subview in ("Devices", "Health", "Software OS", "Targets", "Control", "Macros",
+                        "Wardrive", "Cross-Comm", "Crack Lab", "Flock Map", "Graph"):
+            assert subview not in labels  # grouped into a verb surface, never a top-level label
+        for core in ("RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
             assert core in labels
         # Full Stack restores everything
         win.apply_loadout(L.full_stack_loadout(), persist=False)
@@ -80,9 +80,9 @@ def test_loadout_gps_and_usb_os_gates(qapp, isolated_settings):
               "firmwares": ["marauder"], "hardware": ["esp32", "gps", "usb_os"]}
         win.apply_loadout(lo, persist=False)
         labels = _labels(win)
-        # S4 regroup: Wardrive/Targets are Operate sub-views and Software OS is a Flash sub-view now, so at top
-        # level we assert the always-shown "Operate" + "Flash" surfaces (which hold them) are present.
-        assert "Operate" in labels and "Flash" in labels
+        # P2.5: Wardrive is a MAP sub-view, Targets a HUNT sub-view, Software OS a RIG sub-view. At top level
+        # we assert the always-shown verbs that hold them (MAP / HUNT / RIG) are present.
+        assert "MAP" in labels and "HUNT" in labels and "RIG" in labels
         for sub in ("Wardrive", "Targets", "Software OS"):
             assert sub not in labels  # sub-views, not top-level
     finally:

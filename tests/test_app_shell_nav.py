@@ -56,7 +56,7 @@ def win(qapp):
     qapp.processEvents()
 
 
-_SURFACES = {"flash", "connect", "operate", "operate-home", "survey", "analyze", "settings"}
+_SURFACES = {"rig", "hunt", "operate", "crack", "map", "settings"}
 
 
 def test_app_shell_is_the_splitter_top_widget(win):
@@ -68,7 +68,7 @@ def test_app_shell_is_the_splitter_top_widget(win):
 def test_tabs_live_inside_the_shell_content(win):
     # the whole top area (sidebar + tabs) is the shell's content; _tabs is unchanged + reachable
     assert win._app_shell._content is not None
-    assert win._tabs.count() == 7                            # all 7 top-level tabs still present
+    assert win._tabs.count() == 6                            # the 5 verb surfaces + pinned Settings
 
 
 def test_shell_sidebar_has_a_destination_per_surface(win):
@@ -77,23 +77,23 @@ def test_shell_sidebar_has_a_destination_per_surface(win):
 
 
 def test_shell_nav_selects_the_surface_in_the_tabs(win):
-    # dual nav: selecting a shell destination drives _tabs.setCurrentWidget to that surface
-    win._app_shell.select_destination("connect")
-    assert win._tabs.currentWidget() is win._connect_surface
-    win._app_shell.select_destination("analyze")
-    assert win._tabs.currentWidget() is win._network_surface
-    win._app_shell.select_destination("operate-home")
-    assert win._tabs.currentWidget() is win._operate_home
+    # selecting a shell destination drives _tabs.setCurrentWidget to that verb surface
+    win._app_shell.select_destination("rig")
+    assert win._tabs.currentWidget() is win._rig_surface
+    win._app_shell.select_destination("hunt")
+    assert win._tabs.currentWidget() is win._hunt_surface
+    win._app_shell.select_destination("crack")
+    assert win._tabs.currentWidget() is win._crack_surface
 
 
 def test_tab_bar_is_hidden_sidebar_is_sole_nav(win):
     # Slice C: the flat tab strip is hidden — the app-shell sidebar is now the sole visible nav.
     assert win._tabs.tabBar().isHidden()
     # every surface is still reachable via the sidebar (setCurrentWidget drives the hidden tabs).
-    win._app_shell.select_destination("survey")
-    assert win._tabs.currentWidget() is win._survey_surface
-    win._app_shell.select_destination("flash")
-    assert win._tabs.currentWidget() is win._flash_surface
+    win._app_shell.select_destination("map")
+    assert win._tabs.currentWidget() is win._map_surface
+    win._app_shell.select_destination("rig")
+    assert win._tabs.currentWidget() is win._rig_surface
 
 
 def test_tab_bar_stays_hidden_after_a_loadout_change(win):
@@ -125,11 +125,11 @@ def test_shell_sidebar_mirrors_the_visible_tab_set(win):
 
 def test_shell_sidebar_highlights_the_current_tab(win):
     # Switching via the tab-bar updates the sidebar highlight (currentChanged -> _sync_shell_nav).
-    win._tabs.setCurrentWidget(win._connect_surface)
-    assert win._app_shell._destinations["connect"].isChecked()
+    win._tabs.setCurrentWidget(win._rig_surface)
+    assert win._app_shell._destinations["rig"].isChecked()
     win._tabs.setCurrentWidget(win._settings_tab)
     assert win._app_shell._destinations["settings"].isChecked()
-    assert not win._app_shell._destinations["connect"].isChecked()   # only one active
+    assert not win._app_shell._destinations["rig"].isChecked()   # only one active
 
 
 def test_device_sidebar_folded_into_the_app_shell(win):
@@ -181,3 +181,16 @@ def test_armed_state_reaches_the_app_shell_end_to_end(win):
     dev.connected = False
     win._refresh_sidebar_devices()
     assert win._app_shell._status["armed"].text() == ""        # cleared on disconnect
+
+
+def test_rail_is_driven_by_nav_model(win):
+    # P2.5 regression guard (the "missing consumer"): the top-level rail is built FROM
+    # nav_model.visible_nav() — NOT a hardcoded noun list. The visible labels must equal the nav_model verb
+    # surfaces + the pinned Settings, in that order, and the capability-gated Sense surface (no provider yet)
+    # must be ABSENT from both the rail and the sidebar. Wire-it-or-it-doesn't-appear is structural.
+    import src.core.nav_model as nav
+    titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
+    expected = [n.label for n in nav.visible_nav(win._nav_capabilities())] + [nav.settings_node().label]
+    assert titles == expected
+    assert "SENSE" not in titles
+    assert "sense" not in win._app_shell._destinations   # reserved surface stays out until a provider lands

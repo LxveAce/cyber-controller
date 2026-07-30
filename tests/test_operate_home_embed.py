@@ -38,10 +38,12 @@ def _tab_labels(win):
 
 
 def test_operate_home_tab_is_embedded_additively(window):
+    # P2.5: Operate Home is no longer a peer top-level tab — it is the launcher sub-view of the ONE OPERATE
+    # verb surface (the double-Operate is gone). The 5 verb surfaces + the pinned Settings are all present.
     labels = _tab_labels(window)
-    assert "Operate Home" in labels
-    # every existing top-level tab is still present — the embed is additive, not a disruption
-    for existing in ("Flash", "Connect", "Operate", "Survey", "Analyze", "Settings"):
+    assert "OPERATE" in labels
+    assert window._operate_surface.widget(0) is window._operate_home   # Home leads the OPERATE sub-views
+    for existing in ("RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
         assert existing in labels
 
 
@@ -54,11 +56,11 @@ def test_operate_home_has_no_duplicate_analyzers(window):
 
 
 def test_operate_home_wifi_tile_navigates_to_the_real_analyzer(window):
-    # tapping the Wi-Fi tile routes to the Analyze surface's ONE real analyzer, not an embedded dupe
+    # tapping the Wi-Fi tile routes to HUNT's ONE real analyzer (re-homed from Analyze), not an embedded dupe
     if window._wifi_analyzer is None:
         pytest.skip("no Wi-Fi analyzer in this build")
     window._operate_home._grid.domain_selected.emit("wifi")
-    assert window._network_surface.currentWidget() is window._wifi_analyzer
+    assert window._hunt_surface.currentWidget() is window._wifi_analyzer
 
 
 def test_the_one_real_wifi_analyzer_is_fed_by_the_shared_tap(window):

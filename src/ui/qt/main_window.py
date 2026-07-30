@@ -519,12 +519,12 @@ class CyberControllerWindow(QMainWindow):
         self._build_tabs()
         # Apply the saved loadout (hide unused tabs) before choosing the default tab.
         self.apply_loadout(self._load_loadout(), persist=False)
-        # Land on the dual-axis Operate Home instrument — the primary surface post-rebuild. Fall
-        # back to the Connect/Devices surface only if Operate Home isn't mounted (hidden/popped).
-        if self._tabs.indexOf(self._operate_home) >= 0:
-            self._tabs.setCurrentWidget(self._operate_home)
+        # Land on OPERATE -> Home (the dual-axis launcher, now the first OPERATE sub-view). Fall back to
+        # RIG / Devices only if OPERATE isn't mounted (hidden by a loadout / popped out).
+        if self._tabs.indexOf(self._operate_surface) >= 0:
+            self._show_subtab(self._operate_surface, self._operate_home)
         else:
-            self._show_subtab(self._connect_surface, self._device_tab)
+            self._show_subtab(self._rig_surface, self._device_tab)
         self._refresh_sidebar_devices()
         self._build_command_palette()
         # Wave-10 Phase C (Phase D polish): fuse the app-shell omnibar with the command palette —
@@ -561,21 +561,19 @@ class CyberControllerWindow(QMainWindow):
     # ── Tabs ─────────────────────────────────────────────────────────
 
     def _build_tabs(self) -> None:
-        # Flash surface (S4 GUI regroup) — the flashing hub: Firmware (the FlashTab: ESP32/Flipper/RTL firmware +
-        # vault) leads, with Software OS (bootable PC/USB images: Kali/Tails/Arch) alongside it. Both are
-        # RE-PARENTED into one inner QTabWidget, never recreated, so every self._flash_tab / self._software_tab
-        # reference keeps working. Navigate via _show_subtab(self._flash_surface, <widget>).
+        # Spade v2 verb IA (P2.5). Every leaf tab below is created ONCE, then re-parented into one of the
+        # 5 verb surfaces (RIG · HUNT · OPERATE · CRACK · MAP) built at the end of this method + mounted
+        # FROM src/core/nav_model.visible_nav() — the "missing consumer" the design's #1 move needed. So
+        # every self._<tab> reference + the palette + tests keep working; only which verb QTabWidget each
+        # leaf sits in changed from the old WS-6 noun grouping. safety.py is untouched by any of this.
+
+        # RIG leaves — Firmware (the FlashTab: ESP32/Flipper/RTL firmware + vault) + Software OS (bootable
+        # PC/USB images: Kali/Tails/Arch).
         self._flash_tab = FlashTab(self._dm, self._fe, self._vault)
         self._software_tab = SoftwareTab()
-        self._flash_surface = QTabWidget()
-        self._flash_surface.addTab(self._flash_tab, label_icon("Firmware"), "Firmware")
-        self._flash_surface.addTab(self._software_tab, label_icon("Software OS"), "Software OS")
-        self._tabs.addTab(self._flash_surface, label_icon("Flash"), "Flash")
 
-        # Connect surface (S4 GUI regroup) — the landing surface: Devices (device control + serial terminal)
-        # leads, with Health (host + device-health gauges) alongside it. Both are RE-PARENTED into one inner
-        # QTabWidget here, never recreated, so every self._device_tab / self._health_tab reference (dual-depth
-        # fan-out, the serial-mirror path, palette, tests) keeps working. Navigate via _show_subtab().
+        # RIG leaves — Devices (device control + serial terminal) + Health (host + device-health gauges) +
+        # Nodes (W1.1 wireless-node key management).
         self._device_tab = DeviceTab(self._dm, self._pool, self._ingestor, recorder=self._macro)
         self._device_tab._dms_auth = self._dms_auth
         # Teach the Devices tab to echo a device's serial RETURNS into the app-wide bus too — but only for
@@ -586,13 +584,8 @@ class CyberControllerWindow(QMainWindow):
         # device_tab._on_line_received.
         self._device_tab._pterm_owns_port = lambda port: port in self._pterm_conns
         self._health_tab = HealthTab(self._health)
-        self._connect_surface = QTabWidget()
-        self._connect_surface.addTab(self._device_tab, label_icon("Devices"), "Devices")
-        self._connect_surface.addTab(self._health_tab, label_icon("Health"), "Health")
         # Wireless nodes (W1.1): manage provisioned per-node keys — gate-locked + key-free.
         self._nodes_tab = NodesTab(self._dm)
-        self._connect_surface.addTab(self._nodes_tab, label_icon("Nodes"), "Nodes")
-        self._tabs.addTab(self._connect_surface, label_icon("Connect"), "Connect")
 
         # Operate surface (S4 GUI regroup) — the action surface: discover Targets, fan a verb to every radio
         # (Broadcast), record/replay Macros, and GPS-log (Wardrive). All four are RE-PARENTED into one inner
@@ -660,70 +653,98 @@ class CyberControllerWindow(QMainWindow):
         self._operate_action.setStretchFactor(0, 0)
         self._operate_action.setStretchFactor(1, 1)
 
-        # Operate — the live action loop.
-        self._operate_surface = QTabWidget()
-        self._operate_surface.addTab(self._targets_tab, label_icon("Targets"), "Targets")
-        self._operate_surface.addTab(self._operate_action, label_icon("Control"), "Control")
-        self._operate_surface.addTab(self._macro_tab, label_icon("Macros"), "Macros")
-        self._tabs.addTab(self._operate_surface, label_icon("Operate"), "Operate")
+        # The OPERATE verb surface is assembled at the end of this method: Home launcher + the QA-1 merged
+        # Control (preserved verbatim — re-splitting it would reverse owner decision #9) + Macros. Targets
+        # re-homes to HUNT (nav_model), so it is no longer an OPERATE sub-view.
 
-        # OPERATE HOME (dual-axis shell). Spade v2 P2c: Wi-Fi/BLE/Tools/Settings are external —
-        # a tap navigates to the real tab (Analyze's analyzers, Crack Lab, Settings) instead of
-        # embedding a duplicate. No more _oh_wifi/_oh_ble clones double-fed from the event taps
-        # (transmit-nothing dupes + an orphan-tap crash risk); the shell routes navigate_requested.
+        # OPERATE HOME (dual-axis launcher). Spade v2 P2c: Wi-Fi/BLE/Tools/Settings are external — a tap
+        # navigates to the real surface (HUNT's analyzers, CRACK's Crack Lab, Settings) instead of embedding
+        # a duplicate. No more _oh_wifi/_oh_ble clones double-fed from the event taps (transmit-nothing dupes
+        # + an orphan-tap crash risk); the shell routes navigate_requested. P2.5 kills the double-Operate: the
+        # launcher is now the FIRST sub-view of the ONE OPERATE surface (was a peer top-level "Operate Home"),
+        # so OperateHome's OWN domain grid is the Operate content nav — the radio axis of the two-level IA.
         from src.ui.qt.operate_home import build_operate_home
         self._operate_home = build_operate_home(external_domains={"tools", "settings"})
         self._operate_home.navigate_requested.connect(self._on_home_navigate)
-        # Wave-10 Phase C (slice D): the Operate Home tab holds the OperateHome directly. The global
-        # chrome (status bar / posture / omnibar) is owned once by the app-shell (_app_shell) that
-        # wraps the whole top area, so the old per-tab PageLayout wrapper (_home_frame) + its binder
-        # + its duplicate domain-nav rail were redundant and are gone. OperateHome's OWN domain grid
-        # (⇄ its domain-screen stack + the "← Domains" back button) stays as the Operate content nav
-        # — the radio axis of the two-level IA (shell sidebar = surfaces; grid = radios).
-        self._tabs.addTab(self._operate_home, label_icon("Operate"), "Operate Home")
 
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its MAC/SSID/channel
         # into the Macro tab's variable fields, so a discovery in one surface is reusable in another.
         self._targets_tab.fill_macro_requested.connect(self._on_use_target_as_macro)
 
-        # Survey (NEW, WS-6 A) — the GPS-tagged field-survey group: drive around and map what's out there.
-        self._survey_surface = QTabWidget()
-        self._survey_surface.addTab(self._wardrive_tab, label_icon("Wardrive"), "Wardrive")
-        self._survey_surface.addTab(self._wardrive_multi_tab, label_icon("Multi-Wardrive"), "Multi-Wardrive")
-        self._survey_surface.addTab(self._flock_heatmap, label_icon("Flock Map"), "Flock Map")
-        self._tabs.addTab(self._survey_surface, label_icon("Survey"), "Survey")
-
-        # Analyze (WS-6 A; the surface previously labelled "Network") — situational awareness + offline
-        # post-processing: the node graph leads, with Cross-Comm routing, the offline Crack Lab, and the BLE
-        # Analyzer view alongside. The attribute stays self._network_surface (many refs/tests key off it);
-        # only its displayed label + loadout key are "Analyze". Widgets are re-parented, never recreated.
+        # Mesh + Graph leaves (from the dissolved Analyze bundle): the node Graph re-homes to HUNT; Cross-Comm
+        # routing re-homes to RIG (labelled "Mesh"). Created once, re-parented into their verb surface below.
         self._cross_comm_tab = CrossCommTab(self._bus, self._pool, self._router, self._dm)
         from src.ui.qt.network_tab import NetworkTab
         self._network_tab = NetworkTab(self._dm, self._pool, self._action_resolver, self._send_to_port,
                                        event_bus=self._bus)
-        self._network_surface = QTabWidget()
-        self._network_surface.addTab(self._network_tab, label_icon("Graph"), "Graph")
-        self._network_surface.addTab(self._cross_comm_tab, label_icon("Cross-Comm"), "Cross-Comm")
-        self._network_surface.addTab(self._crack_lab_tab, label_icon("Crack Lab"), "Crack Lab")
+
+        # Settings (persisted) — the pinned utility surface, rendered apart from the 5 job-verbs.
+        self._settings_tab = SettingsTab()
+        # The Settings tab's "Check now" button asks the window to run a manual (forced) update check.
+        self._settings_tab.check_updates_requested.connect(lambda: self.check_for_updates(force=True))
+
+        # ── Spade v2 verb surfaces (Axis 1). Each is ONE inner QTabWidget grouping the leaves nav_model
+        # assigns to that verb; the WS-6 noun surfaces (Flash/Connect/Survey/Analyze) are dissolved into
+        # these. An optional analyzer that is None is skipped (never an empty tab). Icons via label_icon.
+        def _verb_surface(*panes) -> QTabWidget:
+            w = QTabWidget()
+            for _label, _widget in panes:
+                if _widget is not None:
+                    w.addTab(_widget, label_icon(_label), _label)
+            return w
+
+        # RIG — "get a rig ready": Devices · Health · Nodes · Firmware · Software OS · Mesh.
+        self._rig_surface = _verb_surface(
+            ("Devices", self._device_tab), ("Health", self._health_tab), ("Nodes", self._nodes_tab),
+            ("Firmware", self._flash_tab), ("Software OS", self._software_tab), ("Mesh", self._cross_comm_tab),
+        )
+        # HUNT — "see what's out there, passively": Wi-Fi · BLE analyzers · Targets · node Graph.
+        self._hunt_surface = _verb_surface(
+            ("Wi-Fi", self._wifi_analyzer), ("BLE", self._ble_analyzer),
+            ("Targets", self._targets_tab), ("Graph", self._network_tab),
+        )
+        # OPERATE — the ONE action surface (kills the double-Operate): Home launcher · merged Control · Macros.
+        # Control is the QA-1 splitter (fan-out Broadcast + single-device Console), preserved verbatim.
+        self._operate_surface = _verb_surface(
+            ("Home", self._operate_home), ("Control", self._operate_action), ("Macros", self._macro_tab),
+        )
+        # CRACK — "capture -> key": the offline Crack Lab.
+        self._crack_surface = _verb_surface(("Crack Lab", self._crack_lab_tab))
+        # MAP — one canvas: Wardrive · Multi-Wardrive · Flock / ALPR.
+        self._map_surface = _verb_surface(
+            ("Wardrive", self._wardrive_tab), ("Multi-Wardrive", self._wardrive_multi_tab),
+            ("Flock Map", self._flock_heatmap),
+        )
+
+        # Tap the analyzer event feeds now the analyzers exist + are mounted under HUNT. The taps key off the
+        # widget (not its container), so the Analyze -> HUNT move keeps every feed live — nothing goes dark.
         if self._ble_analyzer is not None:
-            self._network_surface.addTab(self._ble_analyzer, label_icon("BLE Analyzer"), "BLE Analyzer")
-            self._wire_ble_analyzer()   # tap ble_found events now the tab exists (see the method)
+            self._wire_ble_analyzer()   # tap ble_found events (see the method)
         if self._wifi_analyzer is not None:
-            self._network_surface.addTab(self._wifi_analyzer, label_icon("Wi-Fi Analyzer"), "Wi-Fi Analyzer")
-            self._wire_wifi_analyzer()  # tap ap_found/handshake events now the tab exists (see the method)
-        self._tabs.addTab(self._network_surface, label_icon("Analyze"), "Analyze")
+            self._wire_wifi_analyzer()  # tap ap_found/handshake events (see the method)
+
+        # verb-key -> surface (the nav_model keys). Settings is the pinned utility node.
+        self._verb_surfaces: "dict[str, object]" = {
+            "rig": self._rig_surface, "hunt": self._hunt_surface, "operate": self._operate_surface,
+            "crack": self._crack_surface, "map": self._map_surface, "settings": self._settings_tab,
+        }
+
+        # ── Mount the top-level rail FROM nav_model.visible_nav() — the "missing consumer" P2.5 wires. A
+        # capability-gated surface with no provider (Sense, until node firmware) is dropped by the tree, not
+        # by a hardcoded list, so "wire-it-or-it-doesn't-appear" is structural. Then the pinned Settings gear.
+        import src.core.nav_model as _nav
+        for _node in _nav.visible_nav(self._nav_capabilities()):
+            _vsurface = self._verb_surfaces.get(_node.key)
+            if _vsurface is not None:
+                self._tabs.addTab(_vsurface, label_icon(_node.label), _node.label)
+        _settings_node = _nav.settings_node()
+        self._tabs.addTab(self._settings_tab, label_icon(_settings_node.label), _settings_node.label)
 
         # (Mission Planner tab removed — was a non-functional "coming soon" placeholder; tracked as a
         # real future feature in the internal roadmap notes. Don't ship dead tabs.)
 
-        # Settings (persisted)
-        self._settings_tab = SettingsTab()
-        # The Settings tab's "Check now" button asks the window to run a manual (forced) update check.
-        self._settings_tab.check_updates_requested.connect(lambda: self.check_for_updates(force=True))
-        self._tabs.addTab(self._settings_tab, label_icon("Settings"), "Settings")
-
         # How-To lives under the Help menu (see _on_howto), not the tab strip — keeps the top level at the
-        # 6 working surfaces (Flash / Connect / Operate / Survey / Analyze / Settings) + Help.
+        # 5 verb surfaces (RIG / HUNT / OPERATE / CRACK / MAP) + the pinned Settings + Help.
 
         # Wave-10 Phase C slice A: wire the app-shell sidebar as top-level nav now that the surfaces
         # exist. Each destination selects its surface in _tabs (dual with the tab-bar this slice).
@@ -831,33 +852,37 @@ class CyberControllerWindow(QMainWindow):
         surface.setCurrentWidget(widget)
 
     def _on_home_navigate(self, key: str) -> None:
-        """An Operate-Home 'external' tile (Tools / Settings) asks to open its real tab — route
-        there, not a placeholder. Crack Lab is in the Analyze surface; Settings is top-level."""
+        """An Operate-Home 'external' tile asks to open its real surface — route there, not a placeholder.
+        Post-P2.5: Crack Lab is under CRACK; the Wi-Fi/BLE analyzers under HUNT; Settings is the pinned tab."""
         if key == "tools":
-            self._show_subtab(self._network_surface, self._crack_lab_tab)
+            self._show_subtab(self._crack_surface, self._crack_lab_tab)
         elif key == "wifi" and getattr(self, "_wifi_analyzer", None) is not None:
-            self._show_subtab(self._network_surface, self._wifi_analyzer)
+            self._show_subtab(self._hunt_surface, self._wifi_analyzer)
         elif key == "ble" and getattr(self, "_ble_analyzer", None) is not None:
-            self._show_subtab(self._network_surface, self._ble_analyzer)
+            self._show_subtab(self._hunt_surface, self._ble_analyzer)
         elif key == "settings" and self._tabs.indexOf(self._settings_tab) >= 0:
             self._tabs.setCurrentWidget(self._settings_tab)
 
     def _tab_registry(self) -> "list[tuple[str, object]]":
-        """Canonical (label, widget) tabs in order — the source of truth for loadout show/hide."""
-        return [
-            ("Flash", self._flash_surface), ("Connect", self._connect_surface),
-            # WS-6 A: each surface is ONE loadout-toggleable unit. Flash (Firmware + Software OS), Connect
-            # (Devices + Health + Nodes), Operate (Targets + Broadcast + Console + Macros), Survey (Wardrive +
-            # Multi-Wardrive + Flock Map), Analyze (Graph + Cross-Comm + Crack Lab + BLE Analyzer). The Analyze
-            # widget is still self._network_surface internally; only its label + loadout key changed.
-            # Operate Home (the dual-axis domain grid) is the PRIMARY Operate surface post-rebuild,
-            # so it leads the flat Operate (Targets/Control/Macros) action group in the strip.
-            ("Operate Home", self._operate_home),
-            ("Operate", self._operate_surface),
-            ("Survey", self._survey_surface),
-            ("Analyze", self._network_surface),
-            ("Settings", self._settings_tab),
-        ]
+        """Canonical (label, widget) top-level surfaces in nav_model order — the source of truth for the
+        loadout show/hide + the app-shell sidebar. Verb IA (P2.5): RIG · HUNT · OPERATE · CRACK · MAP +
+        the pinned Settings. Labels MUST match src/config/loadout.TAB_ORDER (apply_loadout maps by label);
+        the keys the shell derives (label.lower().replace(' ','-')) match the nav_model keys."""
+        import src.core.nav_model as _nav
+        reg: "list[tuple[str, object]]" = []
+        for _node in _nav.visible_nav(self._nav_capabilities()):
+            _vsurface = self._verb_surfaces.get(_node.key)
+            if _vsurface is not None:
+                reg.append((_node.label, _vsurface))
+        reg.append((_nav.settings_node().label, self._settings_tab))
+        return reg
+
+    def _nav_capabilities(self) -> "set[str]":
+        """Capabilities a real provider backs — gates the capability-keyed nav nodes (nav_model.visible_nav).
+        Today only 'sense' (counter-surveillance) is gated and no provider exists yet (node firmware, P4), so
+        this is empty and Sense stays ABSENT from the rail rather than shipped as an inert tab. When a real
+        sense provider lands, add 'sense' here and the reserved surface appears with zero rail rework."""
+        return set()
 
     def _load_loadout(self) -> dict:
         from src.config import loadout as L
@@ -887,8 +912,8 @@ class CyberControllerWindow(QMainWindow):
         # Restore the selection, or fall back to the Connect surface (a core surface, always present).
         if cur is not None and self._tabs.indexOf(cur) >= 0:
             self._tabs.setCurrentWidget(cur)
-        elif self._tabs.indexOf(self._connect_surface) >= 0:
-            self._tabs.setCurrentWidget(self._connect_surface)
+        elif self._tabs.indexOf(self._rig_surface) >= 0:
+            self._tabs.setCurrentWidget(self._rig_surface)
         self._loadout = L.normalize(lo)
         self._sync_shell_nav()   # the visible tab set changed -> mirror it in the shell sidebar
         if persist:
@@ -1765,7 +1790,7 @@ class CyberControllerWindow(QMainWindow):
         if tab is None or not port:
             return
         if tab.select_port(port):
-            self._show_subtab(self._connect_surface, self._device_tab)
+            self._show_subtab(self._rig_surface, self._device_tab)
 
     def _on_sidebar_scan(self) -> None:
         """Scan ports off the GUI thread, then register + refresh the sidebar when it reports back.
@@ -1850,28 +1875,31 @@ class CyberControllerWindow(QMainWindow):
         self._palette = CommandPalette(self)
         # Navigate by WIDGET, not a hardcoded index — immune to tab reordering (the old fixed indices
         # had drifted and pointed at the wrong tabs).
-        self._palette.add_command("Flash Firmware", lambda: self._show_subtab(self._flash_surface, self._flash_tab))
-        self._palette.add_command("Flash Software OS", lambda: self._show_subtab(self._flash_surface, self._software_tab))
-        self._palette.add_command("Connect to Device", lambda: self._show_subtab(self._connect_surface, self._device_tab))
-        self._palette.add_command("View Health", lambda: self._show_subtab(self._connect_surface, self._health_tab))
-        self._palette.add_command("Manage Nodes", lambda: self._show_subtab(self._connect_surface, self._nodes_tab))
+        # RIG sub-views (Spade v2 verb IA): firmware/OS + devices/health/nodes all re-home to RIG.
+        self._palette.add_command("Flash Firmware", lambda: self._show_subtab(self._rig_surface, self._flash_tab))
+        self._palette.add_command("Flash Software OS", lambda: self._show_subtab(self._rig_surface, self._software_tab))
+        self._palette.add_command("Connect to Device", lambda: self._show_subtab(self._rig_surface, self._device_tab))
+        self._palette.add_command("View Health", lambda: self._show_subtab(self._rig_surface, self._health_tab))
+        self._palette.add_command("Manage Nodes", lambda: self._show_subtab(self._rig_surface, self._nodes_tab))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)
-        # Operate surface sub-views: focus the surface, then the sub-tab (re-parented under _operate_surface).
-        # QA-1: Broadcast + Console are one merged Operate screen (self._operate_action), so both
-        # the single-device and fan-out palette entries land on it.
+        # OPERATE sub-views: Control (the QA-1 merged Broadcast + Console screen) + Macros. Both the
+        # single-device and fan-out palette entries land on the one merged Control (self._operate_action).
         self._palette.add_command("Control Device", lambda: self._show_subtab(self._operate_surface, self._operate_action))
-        self._palette.add_command("View Targets", lambda: self._show_subtab(self._operate_surface, self._targets_tab))
         self._palette.add_command("Broadcast Actions", lambda: self._show_subtab(self._operate_surface, self._operate_action))
         self._palette.add_command("View Macros", lambda: self._show_subtab(self._operate_surface, self._macro_tab))
-        self._palette.add_command("Wardrive", lambda: self._show_subtab(self._survey_surface, self._wardrive_tab))
-        # Network surface sub-views: focus the surface, then the sub-tab (re-parented under _network_surface).
-        self._palette.add_command("Network Graph", lambda: self._show_subtab(self._network_surface, self._network_tab))
-        self._palette.add_command("Cross-Comm Dashboard", lambda: self._show_subtab(self._network_surface, self._cross_comm_tab))
-        self._palette.add_command("Crack Lab", lambda: self._show_subtab(self._network_surface, self._crack_lab_tab))
+        # HUNT sub-views: Targets discovery + the node Graph + the Wi-Fi/BLE analyzers (re-homed from Analyze).
+        self._palette.add_command("View Targets", lambda: self._show_subtab(self._hunt_surface, self._targets_tab))
+        self._palette.add_command("Network Graph", lambda: self._show_subtab(self._hunt_surface, self._network_tab))
+        # MAP sub-view.
+        self._palette.add_command("Wardrive", lambda: self._show_subtab(self._map_surface, self._wardrive_tab))
+        # RIG sub-view: Cross-Comm routing is re-homed to RIG as "Mesh".
+        self._palette.add_command("Cross-Comm Dashboard", lambda: self._show_subtab(self._rig_surface, self._cross_comm_tab))
+        # CRACK sub-view: the offline Crack Lab.
+        self._palette.add_command("Crack Lab", lambda: self._show_subtab(self._crack_surface, self._crack_lab_tab))
         if self._ble_analyzer is not None:
-            self._palette.add_command("BLE Analyzer", lambda: self._show_subtab(self._network_surface, self._ble_analyzer))
+            self._palette.add_command("BLE Analyzer", lambda: self._show_subtab(self._hunt_surface, self._ble_analyzer))
         if self._wifi_analyzer is not None:
-            self._palette.add_command("Wi-Fi Analyzer", lambda: self._show_subtab(self._network_surface, self._wifi_analyzer))
+            self._palette.add_command("Wi-Fi Analyzer", lambda: self._show_subtab(self._hunt_surface, self._wifi_analyzer))
         self._palette.add_command("Open Settings", lambda: self._tabs.setCurrentWidget(self._settings_tab))
         # Slice C hides the tab-bar, so the bar's double-click/context-menu detach is gone — expose
         # detach here (+ the Ctrl+Shift+D shortcut) so popping a surface out stays discoverable.
@@ -2481,7 +2509,7 @@ class CyberControllerWindow(QMainWindow):
 
         The map used to open as a standalone Tools window; since WS-6 A it's a sub-tab of the Survey surface,
         so this menu / palette action just navigates to it."""
-        self._show_subtab(self._survey_surface, self._flock_heatmap)
+        self._show_subtab(self._map_surface, self._flock_heatmap)
 
     # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
     # These MUST equal the real BaseProtocol.protocol_name values (ghost_esp.py -> "ghost-esp",

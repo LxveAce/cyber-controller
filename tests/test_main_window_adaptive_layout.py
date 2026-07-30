@@ -100,14 +100,14 @@ def test_touch_deck_collapses_to_rail_and_undocks_terminal(qapp):
 
 
 def test_operate_home_external_tiles_route_to_their_real_tabs(qapp):
-    # The Operate-Home Tools / Settings tiles have no in-place screen — a tap must open the real tab
-    # (Crack Lab inside Analyze; Settings top-level), NOT a "coming soon" placeholder for a shipped
+    # The Operate-Home Tools / Settings tiles have no in-place screen — a tap must open the real surface
+    # (Crack Lab inside CRACK; Settings the pinned tab), NOT a "coming soon" placeholder for a shipped
     # feature. Drive the same navigate_requested signal the tile emits.
     win = _make_window()
     try:
         win._operate_home.navigate_requested.emit("tools")
-        assert win._tabs.currentWidget() is win._network_surface
-        assert win._network_surface.currentWidget() is win._crack_lab_tab
+        assert win._tabs.currentWidget() is win._crack_surface
+        assert win._crack_surface.currentWidget() is win._crack_lab_tab
 
         win._operate_home.navigate_requested.emit("settings")
         assert win._tabs.currentWidget() is win._settings_tab

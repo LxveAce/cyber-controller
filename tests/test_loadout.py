@@ -25,51 +25,48 @@ def test_empty_configured_fails_open():
 
 
 def test_core_tabs_always_visible():
-    # S4 regroup: Devices+Health folded into the always-shown "Connect" surface and Macros into "Operate", so
-    # the core always-visible top-level tabs are the surfaces (Connect/Operate), not their members.
+    # Spade v2 verb IA (P2.5): every top-level surface is a job-verb; a leaf like Devices/Health is a RIG
+    # sub-view, never a top-level tab. All verbs are ALWAYS (fail-open), so any configured loadout shows them.
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    for core in ("Flash", "Connect", "Operate", "Settings"):
+    for core in ("RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
         assert core in vis
     for sub in ("Devices", "Health"):
-        assert sub not in vis  # Connect sub-views now, never top-level
+        assert sub not in vis  # RIG sub-views now, never top-level
 
 
-def test_analyze_surface_always_shown_holds_offline_tools():
-    # WS-6 A + capstone fix: "Analyze" (the surface previously labelled "Network") is now ALWAYS shown, not
-    # wifi-gated. Unlike the old Network (Graph + Cross-Comm only), Analyze also holds the OFFLINE Crack Lab
-    # (cracks a saved .pcap/.hc22000, no radio) and the BLE Analyzer (BLE, not wifi_scanning) — gating the
-    # whole surface on wifi would hide those functional, hardware-independent tools from a mesh-only loadout.
-    # So no top-level surface is wifi-gated anymore; real de-bloat is firmware-level + a per-sub-tab follow-up.
+def test_offline_tools_live_under_always_shown_verbs():
+    # P2.5 dissolved the wifi-gated "Analyze" bundle: the OFFLINE Crack Lab is now its own CRACK verb, and the
+    # BLE Analyzer + node Graph are HUNT sub-views. CRACK/HUNT are ALWAYS (fail-open) — gating them on a radio
+    # would hide radio-free tools (a saved-.pcap crack, the BLE view) from a mesh-only loadout. No verb is wifi-gated.
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    assert "Analyze" in vis                # always shown now — holds the offline Crack Lab + BLE Analyzer
-    assert "Network" not in vis            # the old label is gone
-    for sub in ("Targets", "All Devices", "Cross-Comm", "Crack Lab", "Graph"):
-        assert sub not in vis              # sub-views now, never top-level
-    # Every surface shows for any configured loadout (all surfaces are ALWAYS post-reorg).
+    assert "CRACK" in vis and "HUNT" in vis     # always shown — hold the offline Crack Lab + BLE/Graph
+    assert "Analyze" not in vis and "Network" not in vis   # both old labels are gone
+    for sub in ("Targets", "Control", "Cross-Comm", "Crack Lab", "Graph"):
+        assert sub not in vis                   # sub-views now, never top-level
+    # Every verb surface shows for any configured loadout (all are ALWAYS post-reorg).
     assert set(vis) == set(L.TAB_ORDER)
 
 
-def test_operate_surface_always_shown_holds_wardrive():
-    # S4 regroup: Wardrive (gps-gated) is now a sub-view of the always-shown "Operate" surface, so gps no
-    # longer gates a *top-level* tab. Per-sub-tab gps gating inside Operate is a tracked follow-up (loadout is
-    # surface-granularity today). Operate itself is always present because Macros (ALWAYS) anchors it.
+def test_map_surface_always_shown_holds_wardrive():
+    # P2.5: Wardrive (gps-gated) is a sub-view of the always-shown MAP verb, so gps no longer gates a
+    # top-level tab. Per-sub-view gps gating inside MAP is a tracked follow-up (loadout is surface-
+    # granularity today). MAP itself is always present; Wardrive is never a top-level label.
     no_gps = {"full_stack": False, "configured": True, "firmwares": ["marauder"], "hardware": ["esp32"]}
-    assert "Operate" in L.visible_tabs(no_gps)
-    assert "Wardrive" not in L.visible_tabs(no_gps)  # not a top-level tab — it's an Operate sub-view
+    assert "MAP" in L.visible_tabs(no_gps)
+    assert "Wardrive" not in L.visible_tabs(no_gps)  # a MAP sub-view, not a top-level tab
     with_gps = {**no_gps, "hardware": ["esp32", "gps"]}
-    assert "Operate" in L.visible_tabs(with_gps)
+    assert "MAP" in L.visible_tabs(with_gps)
 
 
-def test_software_os_is_a_flash_subview():
-    # S4 regroup: Software OS folded into the always-shown "Flash" surface, so it is no longer a usb_os-gated
-    # top-level tab. Per-sub-tab gating (hide Software OS inside Flash when no usb_os hardware) is a documented
-    # follow-up — same tradeoff as Wardrive/gps inside the Operate surface.
+def test_software_os_is_a_rig_subview():
+    # P2.5: Software OS folded into the always-shown RIG verb (alongside Firmware), so it is no longer a
+    # usb_os-gated top-level tab. Per-sub-view gating is a documented follow-up (surface granularity today).
     no_os = {"full_stack": False, "configured": True, "firmwares": ["marauder"], "hardware": ["esp32"]}
     vis = L.visible_tabs(no_os)
-    assert "Software OS" not in vis   # not a top-level tab anymore (it's a Flash sub-view)
-    assert "Flash" in vis            # the surface that holds it is always shown
+    assert "Software OS" not in vis   # not a top-level tab anymore (it's a RIG sub-view)
+    assert "RIG" in vis              # the surface that holds it is always shown
 
 
 def test_firmware_filtering():

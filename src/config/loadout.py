@@ -36,38 +36,25 @@ ALWAYS = "*"  # a tab that is always shown (core)
 
 # Tab -> the capability tokens that make it relevant (any match -> visible). ALWAYS = core, never hidden.
 # Capability tokens are firmware ids, hardware ids, or the derived groups below.
+#
+# Spade v2 verb IA (P2.5): the top-level surfaces are the 5 job-verbs + pinned Settings. Every verb
+# surface groups hardware-independent tools alongside hardware-gated ones (e.g. RIG holds the offline
+# firmware vault + host Health; HUNT holds the offline analyzers; MAP holds Flock's saved map; CRACK is
+# the fully-offline cracker). Gating a whole verb on one radio would hide those functional, radio-free
+# tools — exactly the functionality-hiding the fail-open rule forbids — so every verb is ALWAYS (per-
+# sub-view loadout gating inside a surface stays the documented follow-up).
 TAB_REQUIREMENTS: "dict[str, object]" = {
-    # S4 regroup: "Flash" is the flashing surface (Firmware + Software OS sub-views); Firmware is ALWAYS-core, so
-    # the surface is always shown. (Software OS was usb_os-gated as a top-level tab; per-sub-tab gating inside a
-    # surface is a documented follow-up — same tradeoff as Wardrive/gps inside Operate.)
-    "Flash": ALWAYS,
-    # S4 regroup: "Connect" is the landing surface (Devices + Health sub-views). Both members are ALWAYS-core,
-    # so the surface is always shown.
-    "Connect": ALWAYS,
-    # S4 regroup: "Operate" is the grouped action surface (Targets + Broadcast + Macros + Wardrive sub-views).
-    # It gates as ONE unit at its most-permissive member: Macros is ALWAYS-available, so the surface is always
-    # shown. (Per-sub-tab loadout gating — e.g. hiding Targets/Broadcast/Wardrive inside Operate for a
-    # non-wifi/non-gps loadout — is a tracked follow-up; today loadout hides/shows at surface granularity.)
-    "Operate": ALWAYS,
-    # Operate Home: the dual-axis shell rebuild (domain grid -> per-domain views). ALWAYS-core.
-    "Operate Home": ALWAYS,
-    # WS-6 A: "Survey" is the GPS-tagged field-survey group (Wardrive + Multi-Wardrive + Flock Map). Kept
-    # ALWAYS (fail-open): Wardrive was always visible as part of the old Operate, and Flock Map loads a saved
-    # map with no hardware, so hiding the surface could remove reachable functionality.
-    "Survey": ALWAYS,
-    # WS-6 A: "Analyze" is the surface previously labelled "Network" (Graph + Cross-Comm + Crack Lab + BLE
-    # Analyzer). Kept ALWAYS (fail-open): unlike the old wifi-gated "Network" (Graph + Cross-Comm only), this
-    # surface now also holds the **offline** Crack Lab (cracks a saved .pcap/.hc22000 — no radio needed) and
-    # the BLE Analyzer (BLE, not wifi_scanning). Gating the whole surface on wifi_scanning would hide those
-    # functional, hardware-independent tools from a Flipper-only / mesh-only / BLE-only loadout — exactly the
-    # functionality-hiding the fail-open rule forbids (same reasoning that keeps Survey/Flock-Map ALWAYS).
-    "Analyze": ALWAYS,
+    "RIG": ALWAYS,       # Devices + Health + Nodes + Firmware + Software OS + Mesh
+    "HUNT": ALWAYS,      # Wi-Fi + BLE analyzers + Targets + Graph (passive awareness)
+    "OPERATE": ALWAYS,   # Home launcher + Control (merged fan-out + console) + Macros
+    "CRACK": ALWAYS,     # the offline Crack Lab (no radio needed)
+    "MAP": ALWAYS,       # Wardrive + Multi-Wardrive + Flock Map (Flock loads a saved map hardware-free)
     "Settings": ALWAYS,
 }
 
-# Canonical tab order (matches main_window._tab_registry); used to re-insert tabs in order.
+# Canonical tab order (matches main_window._tab_registry / nav_model.visible_nav); re-inserts tabs in order.
 TAB_ORDER = (
-    "Flash", "Connect", "Operate Home", "Operate", "Survey", "Analyze", "Settings",
+    "RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings",
 )
 
 

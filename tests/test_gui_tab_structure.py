@@ -33,32 +33,25 @@ from PyQt5.QtWidgets import (  # noqa: E402
 )
 
 
-# (tab title, the CyberControllerWindow attribute that holds that tab's widget) — in add order.
-# Source of truth: src/ui/qt/main_window.py (addTab calls). Keep this list in lockstep with the code;
-# a diff here is the intended signal that the tab IA changed.
+# (tab title, the CyberControllerWindow attribute that holds that tab's widget) — in nav_model order.
+# Source of truth: src/core/nav_model.py (the verb IA) + main_window._build_tabs (the addTab calls). Keep
+# this list in lockstep; a diff here is the intended signal that the tab IA changed. Spade v2 verb IA (P2.5):
+# the rail is driven by nav_model.visible_nav() — RIG · HUNT · OPERATE · CRACK · MAP + the pinned Settings.
 EXPECTED_TABS = [
-    # S4 regroup: Flash is a grouped *surface* holding Firmware (the FlashTab) + Software OS as sub-views.
-    ("Flash", "_flash_surface"),
-    # Connect surface: Devices/Health/Nodes sub-views. See test_connect_surface_subtabs.
-    ("Connect", "_connect_surface"),
-    # OPERATE HOME: the dual-axis shell rebuild (domain grid -> per-domain three-panel). PROMOTED to
-    # the PRIMARY Operate surface (2026-07-25 flat->dual-axis migration). Wave-10 Phase C slice D
-    # reconciled the nested frame away: the app-shell (_app_shell) owns the global chrome, so the
-    # tab holds the OperateHome (_operate_home) DIRECTLY — its own domain grid is the content nav.
-    # See test_operate_home_is_primary + test_operate_home_tab.
-    ("Operate Home", "_operate_home"),
-    # WS-6 A (2026-07-21): the legacy flat Operate action loop — Targets/Broadcast/Console/Macros.
-    # Still present (its tools become the ACTIVE posture later). See test_operate_surface_subtabs.
-    ("Operate", "_operate_surface"),
-    # WS-6 A: Survey is the NEW GPS-tagged field-survey group — Wardrive/Multi-Wardrive/Flock Map. See
-    # test_survey_surface_subtabs.
-    ("Survey", "_survey_surface"),
-    # WS-6 A: Analyze is the surface previously labelled "Network" — Graph/Cross-Comm/Crack Lab/BLE Analyzer.
-    # The widget attribute is still _network_surface (many refs key off it); only its label changed. See
-    # test_analyze_surface_subtabs.
-    ("Analyze", "_network_surface"),
+    # RIG — get a rig ready: Devices/Health/Nodes/Firmware/Software OS/Mesh. See test_rig_surface_subtabs.
+    ("RIG", "_rig_surface"),
+    # HUNT — passive discovery: Wi-Fi/BLE analyzers/Targets/Graph. See test_hunt_surface_subtabs.
+    ("HUNT", "_hunt_surface"),
+    # OPERATE — the ONE action surface (the double-Operate died): Home launcher/merged Control/Macros.
+    # Operate Home is now the launcher SUB-view here, not a peer top-level tab. See test_operate_surface_subtabs.
+    ("OPERATE", "_operate_surface"),
+    # CRACK — the offline Crack Lab. See test_crack_surface_subtabs.
+    ("CRACK", "_crack_surface"),
+    # MAP — one canvas: Wardrive/Multi-Wardrive/Flock Map. See test_map_surface_subtabs.
+    ("MAP", "_map_surface"),
+    # Settings — the pinned utility surface.
     ("Settings", "_settings_tab"),
-    # How-To moved to the Help menu (CC-6) — no longer a top-level tab. See test_howto_available_via_help.
+    # How-To is in the Help menu (CC-6); Operate Home is an OPERATE sub-view (P2.5) — neither is top-level.
 ]
 
 
@@ -85,89 +78,77 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_tab_count_is_7(qapp, isolated_settings):
-    # 7 top-level surfaces: Flash, Connect, Operate Home, Operate, Survey, Analyze, Settings.
-    # WS-6 A split the old 8-tab Operate; the rebuild added Operate Home, which the flat->dual-axis
-    # migration then PROMOTED ahead of the flat Operate — a reviewed structure change gated here.
+def test_tab_count_is_6(qapp, isolated_settings):
+    # 6 top-level surfaces: the 5 Spade verbs (RIG/HUNT/OPERATE/CRACK/MAP) + the pinned Settings. P2.5 wired
+    # the rail from nav_model.visible_nav(), collapsing the old 7 noun tabs (which included the double-Operate).
     win = _make_window()
-    assert win._tabs.count() == len(EXPECTED_TABS) == 7
+    assert win._tabs.count() == len(EXPECTED_TABS) == 6
 
 
-def test_operate_home_is_primary(qapp, isolated_settings):
-    # Flat->dual-axis migration (2026-07-25): the dual-axis Operate Home surface is the PRIMARY
-    # Operate entry — it LEADS the flat Operate in the strip, and the window lands on it by default.
+def test_lands_on_operate_home_launcher(qapp, isolated_settings):
+    # P2.5: the double-Operate is gone — Operate Home is the launcher sub-view of the ONE OPERATE surface, and
+    # the window lands on it (OPERATE selected + its Home sub-view current).
     win = _make_window()
-    titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    assert titles.index("Operate Home") < titles.index("Operate")   # leads the flat surface
-    assert win._tabs.currentWidget() is win._operate_home           # the landing view
+    assert win._tabs.currentWidget() is win._operate_surface
+    assert win._operate_surface.currentWidget() is win._operate_home
 
 
-def test_flash_surface_subtabs(qapp, isolated_settings):
-    # The Flash surface holds two sub-views — Firmware (the FlashTab, leads) then Software OS — and the
-    # re-parented widgets are the SAME objects the window still exposes on _flash_tab / _software_tab.
+def test_rig_surface_subtabs(qapp, isolated_settings):
+    # P2.5 folds the old Flash + Connect surfaces into RIG — Devices (leads), Health, Nodes, Firmware,
+    # Software OS, and Mesh (Cross-Comm re-homed here from the dissolved Analyze bundle). The re-parented
+    # widgets are the SAME objects the window still exposes on named attrs.
     win = _make_window()
-    surface = win._flash_surface
+    surface = win._rig_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Firmware", "Software OS"]
-    assert surface.widget(0) is win._flash_tab, "Firmware sub-tab must be the FlashTab object"
-    assert surface.widget(1) is win._software_tab, "Software OS sub-tab must be the SoftwareTab object"
-    # Software OS is no longer a direct top-level tab.
-    toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    assert "Software OS" not in toplevel and "Flash" in toplevel
-
-
-def test_connect_surface_subtabs(qapp, isolated_settings):
-    # The Connect landing surface holds three sub-views — Devices (leads), Health, then Nodes (W1.1
-    # wireless-node management) — and the re-parented widgets are the SAME objects the window exposes.
-    win = _make_window()
-    surface = win._connect_surface
-    titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Devices", "Health", "Nodes"]
+    assert titles == ["Devices", "Health", "Nodes", "Firmware", "Software OS", "Mesh"]
     assert surface.widget(0) is win._device_tab, "Devices sub-tab must be the DeviceTab object"
     assert surface.widget(1) is win._health_tab, "Health sub-tab must be the HealthTab object"
     assert surface.widget(2) is win._nodes_tab, "Nodes sub-tab must be the NodesTab object"
-    # Neither is a direct top-level tab anymore.
+    assert surface.widget(3) is win._flash_tab, "Firmware sub-tab must be the FlashTab object"
+    assert surface.widget(4) is win._software_tab, "Software OS sub-tab must be the SoftwareTab object"
+    assert surface.widget(5) is win._cross_comm_tab, "Mesh sub-tab must be the CrossCommTab object"
+    # None of these are direct top-level tabs anymore (the old Flash/Connect labels are gone too).
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Devices", "Health"):
-        assert gone not in toplevel, f"{gone!r} should be a Connect sub-tab, not top-level"
-    assert "Connect" in toplevel
+    for gone in ("Devices", "Health", "Software OS", "Firmware", "Flash", "Connect", "Cross-Comm"):
+        assert gone not in toplevel, f"{gone!r} should be a RIG sub-tab, not top-level"
+    assert "RIG" in toplevel
 
 
 def test_operate_surface_subtabs(qapp, isolated_settings):
-    # QA-1 (decision #9): Broadcast (fan-out) + Console (single-device) merge into one "Control"
-    # Operate screen (a vertical splitter of both re-parented widgets) — Operate = Targets/Control/
-    # Macros. The widgets stay the SAME objects the window exposes on named attrs.
+    # P2.5 kills the double-Operate: OPERATE = Home launcher (leads) + Control + Macros. Targets re-homes to
+    # HUNT. Control is the QA-1 (decision #9) merged screen — the fan-out Broadcast + single-device Console in
+    # ONE vertical splitter, preserved verbatim. The widgets stay the SAME objects the window exposes.
     win = _make_window()
     surface = win._operate_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Targets", "Control", "Macros"]
-    assert surface.widget(0) is win._targets_tab, "Targets sub-tab must be the TargetsTab object"
+    assert titles == ["Home", "Control", "Macros"]
+    assert surface.widget(0) is win._operate_home, "Home sub-view must be the OperateHome launcher"
     assert surface.widget(1) is win._operate_action, "Control must be the merged Operate splitter"
     assert surface.widget(2) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
-    # The merged Control screen holds BOTH the fan-out bar and the single-device console.
+    # The merged Control screen still holds BOTH the fan-out bar and the single-device console.
     merged = {win._operate_action.widget(i) for i in range(win._operate_action.count())}
-    assert win._broadcast_bar in merged, "fan-out BroadcastBar must live in the merged screen"
-    assert win._operate_console in merged, "single-device console must live in the merged screen"
-    # None of the sub-views are direct top-level tabs anymore.
+    assert win._broadcast_bar in merged, "fan-out BroadcastBar must live in the merged Control screen"
+    assert win._operate_console in merged, "single-device console must live in the merged Control screen"
+    # Targets moved to HUNT; none of the sub-views are direct top-level tabs.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Targets", "Control", "Macros", "All Devices"):
-        assert gone not in toplevel, f"{gone!r} should be inside Operate, not top-level"
-    assert "Operate" in toplevel
+    for gone in ("Targets", "Control", "Macros", "Home", "Operate Home"):
+        assert gone not in toplevel, f"{gone!r} should be inside OPERATE, not top-level"
+    assert "OPERATE" in toplevel
 
 
-def test_survey_surface_subtabs(qapp, isolated_settings):
-    # WS-6 A: Survey is the new GPS-tagged field-survey group — Wardrive (leads), Multi-Wardrive, Flock Map.
+def test_map_surface_subtabs(qapp, isolated_settings):
+    # P2.5: MAP is the one map canvas (was Survey) — Wardrive (leads), Multi-Wardrive, Flock Map.
     win = _make_window()
-    surface = win._survey_surface
+    surface = win._map_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
     assert titles == ["Wardrive", "Multi-Wardrive", "Flock Map"]
     assert surface.widget(0) is win._wardrive_tab, "Wardrive sub-tab must be the WardriveTab object"
     assert surface.widget(1) is win._wardrive_multi_tab, "Multi-Wardrive must be the WardriveMultiTab object"
     assert surface.widget(2) is win._flock_heatmap, "Flock Map must be the FlockHeatmapTab object"
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Wardrive", "Multi-Wardrive", "Flock Map"):
-        assert gone not in toplevel, f"{gone!r} should be a Survey sub-tab, not top-level"
-    assert "Survey" in toplevel
+    for gone in ("Wardrive", "Multi-Wardrive", "Flock Map", "Survey"):
+        assert gone not in toplevel, f"{gone!r} should be a MAP sub-tab, not top-level"
+    assert "MAP" in toplevel
 
 
 def test_ble_analyzer_fed_by_ingestor_events(qapp, isolated_settings):
@@ -200,30 +181,44 @@ def test_ble_analyzer_fed_by_ingestor_events(qapp, isolated_settings):
     assert dev.rssi == -44 and dev.name == "Fitbit"
 
 
-def test_analyze_surface_subtabs(qapp, isolated_settings):
-    # WS-6 A: the Analyze surface (previously labelled "Network"; attribute still _network_surface) holds
-    # Graph (the NetworkTab, leads), Cross-Comm, Crack Lab, and BLE Analyzer — re-parented, never recreated.
+def test_hunt_surface_subtabs(qapp, isolated_settings):
+    # P2.5 dissolves the Analyze bundle into verbs. HUNT holds the passive-awareness views: the Wi-Fi + BLE
+    # analyzers (re-homed from Analyze), Targets (re-homed from Operate), and the node Graph (from Analyze).
+    # Optional analyzers that are None are simply absent (never shown as an empty tab). Same widget objects.
     win = _make_window()
-    surface = win._network_surface
+    surface = win._hunt_surface
+    members = {surface.widget(i) for i in range(surface.count())}
     titles = [surface.tabText(i) for i in range(surface.count())]
-    expected = ["Graph", "Cross-Comm", "Crack Lab"]
-    if win._ble_analyzer is not None:
-        expected.append("BLE Analyzer")
+    expected = []
     if win._wifi_analyzer is not None:
-        expected.append("Wi-Fi Analyzer")
+        expected.append("Wi-Fi")
+        assert win._wifi_analyzer in members, "Wi-Fi analyzer must live in HUNT"
+    if win._ble_analyzer is not None:
+        expected.append("BLE")
+        assert win._ble_analyzer in members, "BLE analyzer must live in HUNT"
+    expected += ["Targets", "Graph"]
     assert titles == expected
-    assert surface.widget(0) is win._network_tab, "Graph sub-tab must be the NetworkTab object"
-    assert surface.widget(1) is win._cross_comm_tab, "Cross-Comm sub-tab must be the CrossCommTab object"
-    assert surface.widget(2) is win._crack_lab_tab, "Crack Lab sub-tab must be the CrackLabTab object"
-    if win._ble_analyzer is not None:
-        assert surface.widget(3) is win._ble_analyzer, "BLE Analyzer must be the BleAnalyzerTab object"
-    if win._wifi_analyzer is not None:
-        assert surface.widget(4) is win._wifi_analyzer, "Wi-Fi Analyzer must be the WifiAnalyzerTab"
-    # These are sub-views now, not top-level; the old "Network" label is gone, replaced by "Analyze".
+    assert win._targets_tab in members, "Targets sub-tab must be the TargetsTab object, in HUNT"
+    assert win._network_tab in members, "Graph sub-tab must be the NetworkTab object, in HUNT"
+    # These are sub-views now, not top-level; the old "Analyze"/"Network" labels are gone.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Cross-Comm", "Crack Lab", "Graph", "Network"):
+    for gone in ("Graph", "Targets", "Analyze", "Network"):
         assert gone not in toplevel
-    assert "Analyze" in toplevel
+    assert "HUNT" in toplevel
+
+
+def test_crack_surface_subtabs(qapp, isolated_settings):
+    # P2.5: Crack Lab is its own CRACK verb (re-homed from the dissolved Analyze bundle); Cross-Comm (Mesh)
+    # re-homed to RIG, not CRACK.
+    win = _make_window()
+    surface = win._crack_surface
+    titles = [surface.tabText(i) for i in range(surface.count())]
+    assert titles == ["Crack Lab"]
+    assert surface.widget(0) is win._crack_lab_tab, "Crack Lab sub-tab must be the CrackLabTab object"
+    rig_members = {win._rig_surface.widget(i) for i in range(win._rig_surface.count())}
+    assert win._cross_comm_tab in rig_members, "Cross-Comm (Mesh) re-homes to RIG, not CRACK"
+    toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
+    assert "Crack Lab" not in toplevel and "CRACK" in toplevel
 
 
 def test_tab_titles_and_order(qapp, isolated_settings):
@@ -242,12 +237,12 @@ def test_each_tab_widget_identity(qapp, isolated_settings):
         )
 
 
-def test_analyze_precedes_settings(qapp, isolated_settings):
-    # WS-6 A: Analyze (was Network) still sits just before Settings; characterize its position.
+def test_verb_order_is_the_mission_arc(qapp, isolated_settings):
+    # P2.5: the rail reads left-to-right as the mission arc RIG -> HUNT -> OPERATE -> CRACK -> MAP, with the
+    # pinned Settings last — mirroring nav_model.visible_nav() order (the single source that drives the rail).
     win = _make_window()
     titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    assert titles.index("Analyze") < titles.index("Settings")
-    assert titles.index("Survey") < titles.index("Analyze")   # Survey slots between Operate and Analyze
+    assert titles == ["RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"]
 
 
 # ── Per-tab widget inventory (S4 characterization) ───────────────────

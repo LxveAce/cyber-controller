@@ -58,8 +58,9 @@ def win(qapp):
     qapp.processEvents()
 
 
-# The top-level tabs that must all survive the reconcile (parity set).
-_EXPECTED_TABS = {"Flash", "Connect", "Operate", "Operate Home", "Survey", "Analyze", "Settings"}
+# The top-level verb surfaces that must all survive the P2.5 rewire (parity set). Operate Home is no
+# longer a peer top-level tab — it's the launcher sub-view of OPERATE (asserted separately below).
+_EXPECTED_TABS = {"RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"}
 
 
 def test_all_top_level_tabs_survive_the_reconcile(win):
@@ -69,12 +70,15 @@ def test_all_top_level_tabs_survive_the_reconcile(win):
 
 def test_operate_home_tab_is_the_operate_home_directly(win):
     from src.ui.qt.operate_home import OperateHome
-    # the tab widget IS the real OperateHome — no per-tab PageLayout wrapper anymore.
+    # the widget IS the real OperateHome — no per-tab PageLayout wrapper anymore.
     assert isinstance(win._operate_home, OperateHome)
-    assert win._tabs.indexOf(win._operate_home) >= 0        # resolvable as a tab widget
     assert not isinstance(win._operate_home, PageLayout)    # the frame wrapper is gone
-    win._tabs.setCurrentWidget(win._operate_home)            # the focus reference still works
-    assert win._tabs.currentWidget() is win._operate_home
+    # P2.5: Operate Home is the launcher sub-view of the ONE OPERATE surface (the double-Operate died),
+    # so it resolves inside _operate_surface, and focusing it via _show_subtab still works.
+    assert win._operate_surface.indexOf(win._operate_home) >= 0
+    win._show_subtab(win._operate_surface, win._operate_home)
+    assert win._tabs.currentWidget() is win._operate_surface
+    assert win._operate_surface.currentWidget() is win._operate_home
     # Spade v2 P2c: no duplicate analyzer clones — wifi/ble navigate to the real analyzer instead.
     assert not hasattr(win, "_oh_wifi") and not hasattr(win, "_oh_ble")
 
