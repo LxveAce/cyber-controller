@@ -125,6 +125,10 @@ class TargetsTab(QWidget):
     # main_window connects this to fill the Macro tab's variable fields. Same tab-signal → window-
     # connects pattern as SettingsTab.check_updates_requested; no global / new transport.
     fill_macro_requested = pyqtSignal(object)
+    # P3 flow C (target->OPERATE): "Operate this device" opens the OPERATE console with the
+    # target's discovering device pre-selected. Emits the Target; main_window hands off via a
+    # FlowIntent (NAVIGATION-only - the picker combo is set, nothing is armed or sent).
+    operate_device_requested = pyqtSignal(object)
 
     _COLUMNS = ["Type", "SSID", "MAC", "RSSI", "Ch", "Source", "Enc", "Last Seen"]
     # Abbreviated / technical columns hidden in Simple mode (kept in Pro). Indices into _COLUMNS.
@@ -604,6 +608,12 @@ class TargetsTab(QWidget):
         use_macro = menu.addAction("Use as macro target")
         use_macro.setToolTip("Fill the Macros tab's MAC / SSID / channel fields from this target.")
         use_macro.triggered.connect(lambda: self.fill_macro_requested.emit(target))
+        if target.device_source:
+            # P3 flow C: open OPERATE with this target's discovering device pre-selected.
+            op = menu.addAction("Operate this device")
+            op.setToolTip("Open OPERATE with this target's device pre-selected "
+                          "(navigation only - nothing is armed or sent).")
+            op.triggered.connect(lambda: self.operate_device_requested.emit(target))
         copy_mac = menu.addAction("Copy MAC")
         copy_mac.triggered.connect(lambda: self._copy_to_clipboard(target.mac))
         copy_ssid = menu.addAction("Copy SSID")

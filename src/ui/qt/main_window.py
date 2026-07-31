@@ -673,6 +673,8 @@ class CyberControllerWindow(QMainWindow):
         # Fill-from-target (Track B UX #3): a target selected in the Targets tab pushes its MAC/SSID/channel
         # into the Macro tab's variable fields, so a discovery in one surface is reusable in another.
         self._targets_tab.fill_macro_requested.connect(self._on_use_target_as_macro)
+        # P3 flow C: Targets/HUNT "Operate this device" -> OPERATE console, device pre-selected.
+        self._targets_tab.operate_device_requested.connect(self._on_operate_device_requested)
 
         # Mesh + Graph leaves (from the dissolved Analyze bundle): the node Graph re-homes to HUNT; Cross-Comm
         # routing re-homes to RIG (labelled "Mesh"). Created once, re-parented into their verb surface below.
@@ -906,6 +908,17 @@ class CyberControllerWindow(QMainWindow):
         # Prefer a record with a crackable artifact (a pcap/hc22000 file or a complete inline line).
         rec = next((r for r in recs if r.pcap_path or r.hc22000_path or r.hc22000_line), recs[0])
         self.dispatch_intent(FlowIntent("crack", "load_capture", rec, sub_view="crack_lab"))
+
+    def _on_operate_device_requested(self, target) -> None:
+        """P3 flow C (target->OPERATE): the Targets/HUNT list opens the OPERATE console with this
+        target's discovering device pre-selected. Hands off via a FlowIntent to select_device -
+        NAVIGATION-only: it just drives the picker combo; the two-factor arm gate stays the single
+        arming point, so this can never one-tap a send."""
+        from src.core.flow_intent import FlowIntent
+        port = getattr(target, "device_source", "") or ""
+        if not port:
+            return
+        self.dispatch_intent(FlowIntent("operate", "select_device", port, sub_view="control"))
 
     def _on_home_navigate(self, key: str) -> None:
         """An Operate-Home 'external' tile asks to open its real surface — route there, not a placeholder.
