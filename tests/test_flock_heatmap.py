@@ -976,3 +976,21 @@ def test_osm_import_failure_is_honest_not_a_silent_empty(qapp):
     w._on_osm_failed(got[0])
     assert w.camera_count == 2                  # existing cameras NOT cleared by a failed import
     assert "Overpass" in w._legend.text()       # an honest error is surfaced
+
+
+def test_provider_picker_defaults_to_carto_dark(qapp):
+    # S3 step-3b: picker + tile cache both default to carto-dark (owner-call #1), CARTO-credited.
+    w = FlockHeatmapTab()
+    assert w._provider_combo.currentData() == "carto-dark"
+    assert w._tile_cache.provider.key == "carto-dark"
+    assert "CARTO" in w._attribution.text()
+
+
+def test_provider_picker_switches_provider_and_attribution(qapp):
+    # Picking a different provider repoints the tile cache + updates the on-map attribution.
+    w = FlockHeatmapTab()
+    i = w._provider_combo.findData("osm")
+    assert i >= 0
+    w._provider_combo.setCurrentIndex(i)                   # user picks OpenStreetMap
+    assert w._tile_cache.provider.key == "osm"             # tile cache repointed to the new source
+    assert "OpenStreetMap" in w._attribution.text() and "CARTO" not in w._attribution.text()

@@ -756,6 +756,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                         "offline (cached tiles only, no network).")
             self._chk_online.setChecked(False)     # airgapped-by-default (owner 2026-07-21): no network unless asked
             self._chk_online.stateChanged.connect(lambda _s: self._schedule_tiles())
+            self._provider_combo = QComboBox()
+            self._provider_combo.setToolTip("Basemap style. CARTO's muted maps read cleanest; "
+                                            "the map stays offline unless 'Online tiles' is on.")
+            for _pkey, _prov in map_tiles.PROVIDERS.items():
+                self._provider_combo.addItem(_prov.label, _pkey)
             self._chk_mylocation = QCheckBox("My location (GPS)")
             self._chk_mylocation.setToolTip("When a GPS is streaming (during a live scan), drop a 'you are here' "
                                             "marker at your real-world position. Off by default; needs a GPS fix.")
@@ -777,6 +782,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             map_row.addWidget(self._btn_reset_view)
             map_row.addWidget(self._chk_streetmap)
             map_row.addWidget(self._chk_online)
+            map_row.addWidget(self._provider_combo)
             map_row.addWidget(self._chk_basemap)
             map_row.addWidget(self._chk_flock)
             map_row.addWidget(self._chk_wardrive)
@@ -819,6 +825,12 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._attribution.setStyleSheet("color:#6e7681;font-size:8pt;")
             self._attribution.setVisible(self._chk_streetmap.isChecked())
             root.addWidget(self._attribution)
+            # Sync the picker to the active provider (carto-dark), THEN connect -- so this initial
+            # selection doesn't fire the change handler during construction.
+            _pidx = self._provider_combo.findData(self._tile_cache.provider.key)
+            if _pidx >= 0:
+                self._provider_combo.setCurrentIndex(_pidx)
+            self._provider_combo.currentIndexChanged.connect(lambda _i: self._on_provider_changed())
 
             # Live-scan diagnostics surface. The worker emits every notice (start/stop, per-camera, and
             # the failure paths — pyserial-missing / busy-or-denied COM port) on its `line` signal; without
@@ -981,6 +993,19 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self._schedule_tiles()
             else:
                 self._clear_tiles()
+
+        def _on_provider_changed(self) -> None:
+            """Switch the basemap provider: repoint the tile cache, refresh its attribution, drop
+            old tiles, and reload the view. Cache-first -- the airgap "Online tiles" stance is
+            unchanged, so nothing is fetched from the new provider unless that toggle is on."""
+            key = self._provider_combo.currentData()
+            if not key:
+                return
+            self._tile_cache.provider = map_tiles.get_provider(key)
+            self._attribution.setText(self._tile_cache.provider.attribution)
+            self._clear_tiles()
+            if self._chk_streetmap.isChecked():
+                self._schedule_tiles()
 
         def _stop_tile_worker(self) -> None:
             """Ask the current tile fetcher to stop, but KEEP it referenced (in _tile_workers) until it
