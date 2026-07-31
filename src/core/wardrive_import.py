@@ -91,3 +91,62 @@ def iter_wigle_rows(text: str) -> Iterator[Dict[str, str]]:
         if header is not None:
             idx = header
         # a pre-header line / junk / an unusable header: ignore it and keep the current mapping
+
+
+def netxml_to_points(text: str) -> "list[tuple[float, float, str, str]]":
+    """Parse a Kismet ``.netxml`` (its legacy XML export) into map points ``[(lat, lon, ssid, bssid)]``,
+    one per network — the same 4-tuple shape :func:`~src.core.wardrive.wigle_csv_to_points` returns, so
+    the map's AP layer plots both the same way.
+
+    Mirrors the CSV path's guarantees: only a network with a real, in-range, non-Null-Island fix is
+    emitted, deduped by BSSID. Kismet pre-aggregates each network's sightings, so the position is read
+    from ``<gps-info>`` — preferring ``avg-`` (then ``peak-``, then ``min-``); a ``0/0`` aggregate is
+    Kismet's no-fix sentinel and is skipped. Parsed with ``defusedxml`` (no external-entity or
+    entity-expansion exposure). Tolerant: a malformed file yields ``[]`` rather than raising.
+    Awareness-only: reads captured metadata, transmits nothing.
+    """
+    import math
+    import re
+
+    from defusedxml import ElementTree as ET  # safe parse: forbids entities + external resolution
+
+    # ElementTree rejects a `str` still carrying an `<?xml encoding=...?>` declaration (the caller
+    # already decoded the bytes, so the declared encoding is moot); drop the declaration so it parses.
+    body = re.sub(r"<\?xml[^>]*\?>", "", text, count=1)
+    try:
+        root = ET.fromstring(body)
+    except Exception:  # noqa: BLE001 — a malformed / hostile file imports as no points, never crashes
+        return []
+
+    best: Dict[str, tuple] = {}
+    for net in root.iter("wireless-network"):
+        bssid = (net.findtext("BSSID") or "").strip()
+        if not _MAC_RE.fullmatch(bssid):
+            continue
+        gps = net.find("gps-info")
+        if gps is None:
+            continue
+        lat: Optional[float] = None
+        lon: Optional[float] = None
+        for la, lo in (("avg-lat", "avg-lon"), ("peak-lat", "peak-lon"), ("min-lat", "min-lon")):
+            a, o = gps.findtext(la), gps.findtext(lo)
+            if not (a and o):
+                continue
+            try:
+                fa, fo = float(a), float(o)
+            except ValueError:
+                continue
+            if fa == 0.0 and fo == 0.0:
+                continue  # Kismet's no-fix sentinel for this aggregate — try the next one
+            lat, lon = fa, fo
+            break
+        if lat is None or lon is None:
+            continue
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            continue
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            continue
+        b = bssid.upper()
+        ssid = (net.findtext("SSID/essid") or "").strip()
+        best.setdefault(b, (lat, lon, ssid, b))  # one point per network (Kismet pre-aggregates)
+    return list(best.values())
