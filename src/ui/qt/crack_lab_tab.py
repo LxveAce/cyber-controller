@@ -626,6 +626,15 @@ class CrackLabTab(QWidget):
         if self._captures is None or not (0 <= row < len(self._cap_row_keys)):
             return
         rec = self._captures.get(self._cap_row_keys[row])
+        if rec is not None:
+            self.load_capture(rec)
+
+    def load_capture(self, rec) -> None:
+        """Stage a ``CaptureRecord`` into the cracker (the capture field + BSSID), or explain
+        honestly if it has no crackable file yet. Public so a cross-surface hand-off (P3 FlowIntent:
+        the HUNT Wi-Fi analyzer's "Send to Crack Lab") reuses the EXACT same, already-tested load path
+        a double-click uses. **LOADS ONLY** — it never starts a crack; the per-run consent gate in
+        :meth:`_on_run` stays the single arming point."""
         if rec is None:
             return
         path = rec.pcap_path or rec.hc22000_path

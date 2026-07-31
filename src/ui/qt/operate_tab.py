@@ -276,6 +276,22 @@ class OperateTab(QWidget):
         self._last_arm_state = None  # force a lamp repaint for the newly-selected device
         self._refresh()
 
+    def select_device(self, port: str) -> bool:
+        """Pre-select a device in the console by *port* — the receive side of a cross-surface hand-off
+        (P3 FlowIntent: HUNT/Targets "Operate this device"). **NAVIGATION-ONLY:** it touches ONLY the
+        picker combo, driving the normal read-only :meth:`_on_device_changed` refresh + lamp repaint.
+        It never sends, never sets ``arm_state``, never touches the arm token or the TX buttons — the
+        SAFE/ARMED two-factor arm stays the single arming gate, so a hand-off can never one-tap a send.
+        Returns True iff *port* was found + selected."""
+        if not port:
+            return False
+        self._reload_devices()
+        idx = self._device_combo.findData(port)
+        if idx < 0:
+            return False
+        self._device_combo.setCurrentIndex(idx)   # fires _on_device_changed -> read-only refresh only
+        return True
+
     def _on_fw_changed(self, _idx: int) -> None:
         """Force (or clear the force on) the active device's firmware — the single-device deep
         control that used to live on Broadcast's per-device section. set_firmware fires

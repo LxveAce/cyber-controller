@@ -729,6 +729,16 @@ class CyberControllerWindow(QMainWindow):
             "crack": self._crack_surface, "map": self._map_surface, "settings": self._settings_tab,
         }
 
+        # P3 flow-spine: cross-surface hand-off targets, (surface_key, sub_view) -> (nav_surface,
+        # nav_widget, receive_widget). dispatch_intent navigates to nav_widget then calls the intent's
+        # action on receive_widget. Slice A ships the two backed by real receive methods (Crack Lab's
+        # load_capture, the Operate console's select_device); the per-surface EMITTERS + a map target are
+        # later P3 slices. safety.py untouched — the receive methods load / pre-select only, never arm.
+        self._flow_targets: "dict[tuple, tuple]" = {
+            ("crack", "crack_lab"): (self._crack_surface, self._crack_lab_tab, self._crack_lab_tab),
+            ("operate", "control"): (self._operate_surface, self._operate_action, self._operate_console),
+        }
+
         # ── Mount the top-level rail FROM nav_model.visible_nav() — the "missing consumer" P2.5 wires. A
         # capability-gated surface with no provider (Sense, until node firmware) is dropped by the tree, not
         # by a hardcoded list, so "wire-it-or-it-doesn't-appear" is structural. Then the pinned Settings gear.
@@ -846,10 +856,36 @@ class CyberControllerWindow(QMainWindow):
     # ── Loadout (which firmwares/hardware → which tabs are shown) ─────
     def _show_subtab(self, surface, widget) -> None:
         """Focus a sub-view inside a grouped surface: select the surface at top level, then the sub-tab.
-        Used for by-widget navigation into the Network surface (Graph / Cross-Comm) after the S4 regroup."""
+        Used for by-widget navigation into a verb surface's sub-views (P2.5 verb IA)."""
         if self._tabs.indexOf(surface) >= 0:
             self._tabs.setCurrentWidget(surface)
         surface.setCurrentWidget(widget)
+
+    def dispatch_intent(self, intent) -> bool:
+        """Route a :class:`src.core.flow_intent.FlowIntent` — the P3 cross-surface hand-off dispatcher.
+        Resolves the destination from ``_flow_targets`` (unknown / loadout-hidden -> log + no-op, never
+        crashes), navigates there via ``_show_subtab``, then hands ``object_ref`` to the destination's
+        ``action`` receive method. Any device send a receive method makes still routes through the
+        EXISTING guarded path — this dispatcher never introduces a send and never arms. Returns True iff
+        the intent was routed. Substrate only: the per-surface EMITTERS (later P3 slices) build + pass
+        the intents; this method already backs the Crack Lab + Operate-console targets."""
+        key = (getattr(intent, "surface_key", None), getattr(intent, "sub_view", None))
+        tgt = self._flow_targets.get(key)
+        if tgt is None:
+            log.debug("dispatch_intent: no flow target for %r", key)
+            return False
+        surface, nav_widget, receive_widget = tgt
+        if self._tabs.indexOf(surface) < 0:
+            log.debug("dispatch_intent: surface for %r not mounted (loadout-hidden)", key)
+            return False
+        self._show_subtab(surface, nav_widget)
+        action = getattr(intent, "action", "") or ""
+        if action and getattr(intent, "object_ref", None) is not None and hasattr(receive_widget, action):
+            try:
+                getattr(receive_widget, action)(intent.object_ref)
+            except Exception:  # noqa: BLE001 — a receive method must never take the app down
+                log.exception("dispatch_intent: %s.%s failed", type(receive_widget).__name__, action)
+        return True
 
     def _on_home_navigate(self, key: str) -> None:
         """An Operate-Home 'external' tile asks to open its real surface — route there, not a placeholder.
