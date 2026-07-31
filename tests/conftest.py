@@ -28,6 +28,21 @@ if str(_REPO_ROOT) not in sys.path:
 PROFILES_DIR = _REPO_ROOT / "src" / "config" / "profiles"
 
 
+@pytest.fixture(autouse=True)
+def _isolate_captures_dir(tmp_path, monkeypatch):
+    """Keep EVERY test off the real ``~/.cyber-controller/captures``.
+
+    Window/hub-based tests build the hub with ``captures_persist_path = captures_dir()/captures.json``
+    (``main_window.py``), so without this they write placeholder captures into the user's ACTUAL data
+    dir — which pollutes app data and flaked ``test_home_summary`` (it reads that same real file). This
+    points ``CC_CAPTURES_DIR`` at a fresh per-test tmp dir through ``captures_dir``'s own env-override
+    path, so no test touches app data and each test starts with an empty capture store. Tests that
+    specifically exercise ``captures_dir`` itself (``test_install``) re-set or clear the env in their own
+    body, so this fixture is transparent to them.
+    """
+    monkeypatch.setenv("CC_CAPTURES_DIR", str(tmp_path / "captures"))
+
+
 @pytest.fixture(scope="session")
 def repo_root() -> Path:
     """Absolute path to the repository root (contains the ``src`` package)."""
