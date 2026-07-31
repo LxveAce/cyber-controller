@@ -182,9 +182,8 @@ def wardrive_points(text: str) -> "list[tuple[float, float, str, str]]":
     """
     from src.core.wardrive import wigle_csv_to_points  # lazy: keeps the module import acyclic
 
-    fmt = sniff_wardrive_format(text)
-    if fmt == "netxml":
+    if sniff_wardrive_format(text) == "netxml":
         return netxml_to_points(text)
-    if fmt == "wigle":
-        return wigle_csv_to_points(text)
-    return []
+    # WiGLE CSV is the tolerant default (Biscuit + Kismet .wiglecsv ride it, and it already returns []
+    # for anything unparseable — so a stray non-log file imports as no points, never raises).
+    return wigle_csv_to_points(text)
