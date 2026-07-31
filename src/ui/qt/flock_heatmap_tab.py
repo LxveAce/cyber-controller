@@ -227,6 +227,45 @@ def _as_count(props: Any) -> int:
         return 1
 
 
+# ── Drive trail (wardriving-v2 S3) ────────────────────────────────────
+# A breadcrumb of accepted GPS fixes, drawn behind the "you are here" pin. Append + decimate logic
+# is PURE + Qt-free (unit-testable headless, like world_px); the _TrailLayer projects each stored
+# (lat, lon) through world_px at paint, into the same shared plane as the cameras + AP dots.
+_TRAIL_MIN_MOVE_DEG = 3.0e-5    # ~3.3 m at the equator: coarse enough to skip a parked cloud,
+_TRAIL_MAX_POINTS = 5000        # fine enough to trace a street. Cap a long drive, then decimate.
+
+
+def trail_accept(last: "Optional[Tuple[float, float]]", lat: float, lon: float,
+                 min_move_deg: float = _TRAIL_MIN_MOVE_DEG) -> bool:
+    """Whether a GPS fix (lat, lon) should be the next trail breadcrumb, given the trail's current
+    *last* point (or None when empty). False for a non-finite / out-of-range fix, for Null-Island
+    (0, 0) (the "no fix" sentinel), or a fix within *min_move_deg* (Chebyshev -- max |dlat|,|dlon|,
+    no trig) of *last*, so standing still never grows the trail. Pure + Qt-free."""
+    if not (math.isfinite(lat) and math.isfinite(lon)):
+        return False
+    if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+        return False
+    if lat == 0.0 and lon == 0.0:
+        return False
+    if last is None:
+        return True
+    return max(abs(lat - last[0]), abs(lon - last[1])) >= min_move_deg
+
+
+def trail_decimate(trail: "List[Tuple[float, float]]",
+                   max_points: int = _TRAIL_MAX_POINTS) -> "List[Tuple[float, float]]":
+    """Down-sample *trail* to <= *max_points*: keep every k-th point (k = ceil(n / max_points)) so a
+    very long drive stays bounded in memory + paint while keeping the trail's shape (the live pin,
+    drawn separately, still marks the exact current position). Pure; unchanged when within the cap;
+    a max_points < 1 is treated as 1."""
+    n = len(trail)
+    cap = max(1, int(max_points))
+    if n <= cap:
+        return trail
+    k = (n + cap - 1) // cap          # ceil(n / cap): the stride that brings len down to <= cap
+    return trail[::k]
+
+
 def _flock_pump(session: Any, gps_line: str, dev_line: str, checkpoint_path: str = "") -> bool:
     """One live-capture step — shared by the driving worker and unit-testable with no Qt or serial.
 
