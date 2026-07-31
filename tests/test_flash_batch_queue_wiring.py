@@ -57,8 +57,22 @@ def _stub_worker(monkeypatch, flashed):
     monkeypatch.setattr(FT._FlashWorker, "start", lambda self: self.finished.emit(True))
 
 
-def test_flash_queue_flashes_every_queued_job(qapp, isolated_settings, monkeypatch):
-    tab = FT.FlashTab(DeviceManager(), FlashEngine())
+@pytest.fixture
+def tab(qapp, isolated_settings, monkeypatch):
+    # FlashTab.__init__ starts a _VariantLoader QThread (hits the network via list_variants). Stub it
+    # to return instantly (the convention other flash test files use), and shut the tab down in
+    # teardown so the QThread is JOINED before GC drops it (destroyed-while-running -> a C++ abort,
+    # EXIT=127, no traceback, in some orderings). Teardown fires even on an assert-fail, so no leak.
+    # (Atlas-characterized; joins via the existing shutdown(), touches no connections.)
+    monkeypatch.setattr(FlashEngine, "list_variants", lambda self, profile: [])
+    t = FT.FlashTab(DeviceManager(), FlashEngine())
+    yield t
+    t.shutdown()
+    t.deleteLater()
+    qapp.processEvents()
+
+
+def test_flash_queue_flashes_every_queued_job(tab, monkeypatch):
     tab._profiles["marauder"] = resource_path("src", "config", "profiles", "marauder.json")
     _queue(tab, ("COM3", "marauder"), ("COM4", "marauder"))
 
@@ -77,8 +91,7 @@ def test_flash_queue_flashes_every_queued_job(qapp, isolated_settings, monkeypat
     assert tab._batch_jobs == [], "batch state must reset after completion"
 
 
-def test_empty_queue_flashes_nothing(qapp, isolated_settings, monkeypatch):
-    tab = FT.FlashTab(DeviceManager(), FlashEngine())
+def test_empty_queue_flashes_nothing(tab, monkeypatch):
     flashed: list[str] = []
     _stub_worker(monkeypatch, flashed)
 
