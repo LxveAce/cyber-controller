@@ -298,8 +298,17 @@ class SoftwareTab(QWidget):
         self._drive_scan = _DriveScanWorker()
         self._drive_scan.done.connect(self._on_drives_scanned)
         # Clear the ref only once the thread has truly finished, so a fresh scan can't drop a running worker.
-        self._drive_scan.finished.connect(lambda: setattr(self, "_drive_scan", None))
+        # BOUND METHOD, not a lambda: a lambda receiver has no QObject lifetime, so if this tab is destroyed
+        # while the drive-scan's finished signal is still QUEUED (the PowerShell scan can outlive a fast test),
+        # the queued call fires against a deleted C++ tab -> segfault. A bound-method slot ties the connection
+        # to this tab, so Qt drops the pending call when the tab dies. (Fixes an order-dependent test segfault.)
+        self._drive_scan.finished.connect(self._clear_drive_scan)
         self._drive_scan.start()
+
+    def _clear_drive_scan(self) -> None:
+        """`QThread.finished` slot for the drive-scan worker — a bound method so the connection is tied to
+        this tab's lifetime (see `_refresh_drives`)."""
+        self._drive_scan = None
 
     def _on_drives_scanned(self, drives, error: str) -> None:
         self._drive_combo.clear()
@@ -358,8 +367,13 @@ class SoftwareTab(QWidget):
         self._resolver.done.connect(self._on_resolved)
         # Clear the reference only once the thread has truly finished (QThread.finished fires after run()
         # returns), so a fresh resolve can start without ever dropping a running worker.
-        self._resolver.finished.connect(lambda: setattr(self, "_resolver", None))
+        self._resolver.finished.connect(self._clear_resolver)   # bound method, not a lambda — see _clear_drive_scan
         self._resolver.start()
+
+    def _clear_resolver(self) -> None:
+        """`QThread.finished` slot for the resolve worker — a bound method so the connection is tied to this
+        tab's lifetime (same deleted-tab-segfault fix as `_clear_drive_scan`)."""
+        self._resolver = None
 
     def _on_resolved(self, resolved, log_text: str) -> None:
         self._btn_check.setEnabled(True)
