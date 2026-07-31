@@ -132,6 +132,10 @@ _WORLD_PX = 40_075_016.0
 _GPS_LIVE_FILL = "#22d3ee"
 _GPS_STALE_FILL = "#6e7681"
 
+# Wi-Fi AP dots for the wardrive layer (Slice D): flat green, off the cameras' blue->red heat scale
+# so the two layers on the one map read as distinct sources at a glance.
+_AP_FILL = "#3fb950"
+
 # Max view span (degrees) for a one-shot OSM import — refuses whole-planet queries so the shared
 # free Overpass API is never asked for the world; the user zooms to a real area first.
 _OSM_MAX_SPAN_DEG = 2.0
@@ -554,6 +558,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._features: "List[dict]" = []
             self._camera_layer = None             # the single QGraphicsItem holding every camera dot (or None)
             self._camera_bounds = QRectF()        # full extent of the camera set, for reset_view/render framing
+            # Slice D wardrive AP layer: (lat, lon, ssid, bssid) points from a WiGLE CSV, a second
+            # _CameraLayer in the SAME world_px plane; retained like _features across unload/reload.
+            self._wardrive_points: "List[tuple]" = []
+            self._wardrive_layer = None           # every AP dot in one QGraphicsItem (or None)
+            self._wardrive_bounds = QRectF()      # full extent of the AP set, for framing/render
             self._live_worker = None
             self._latest_gj: "Optional[dict]" = None
             self._visible = False
@@ -647,6 +656,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                          "in real-world context. Zoom/pan out to see it; toggle off for a plain map.")
             self._chk_basemap.setChecked(True)
             self._chk_basemap.stateChanged.connect(lambda _s: self._rebuild())
+            self._chk_wardrive = QCheckBox("Wi-Fi APs")
+            self._chk_wardrive.setToolTip("Show wardrive Wi-Fi APs (from a WiGLE CSV) as a green layer "
+                                          "over the cameras. Awareness-only: maps APs, drives no device.")
+            self._chk_wardrive.setChecked(True)   # a loaded wardrive shows at once
+            self._chk_wardrive.stateChanged.connect(lambda _s: self._rebuild())
             self._chk_streetmap = QCheckBox("Street map")
             self._chk_streetmap.setToolTip("Show a real street basemap (OpenStreetMap tiles) under the cameras, "
                                            "so a scan sits on actual roads. Offline-first: cached tiles render "
@@ -682,6 +696,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             map_row.addWidget(self._chk_streetmap)
             map_row.addWidget(self._chk_online)
             map_row.addWidget(self._chk_basemap)
+            map_row.addWidget(self._chk_wardrive)
             map_row.addWidget(self._chk_mylocation)
             map_row.addWidget(self._chk_follow)
             map_row.addWidget(self._btn_center)
@@ -794,9 +809,47 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self.reset_view()                               # frame the freshly-loaded cameras
             return len(self._features)
 
+        def load_wardrive_csv(self, path: str) -> int:
+            """Load a wardrive CSV from *path* as a Wi-Fi AP layer on the Flock map (Slice D).
+            Returns the AP count (0 on any error). Awareness-only: plots located APs in the shared
+            plane as the cameras (stays aligned), driving no device -- a map, not a send."""
+            from src.core.wardrive import wigle_csv_to_points
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    self._wardrive_points = wigle_csv_to_points(fh.read())
+            except Exception:  # noqa: BLE001 — a bad/missing/hostile file must not crash the tab
+                self._wardrive_points = []
+                self._rebuild()
+                self._legend.setText("Could not read that wardrive CSV.")
+                return 0
+            self._chk_wardrive.setChecked(True)             # make the freshly-loaded APs visible
+            self._rebuild()                                 # setChecked may already have; 2nd is a no-op
+            self.reset_view()                               # frame cameras + APs together
+            return len(self._wardrive_points)
+
         @property
         def camera_count(self) -> int:
             return len(self._features)
+
+        @property
+        def wardrive_count(self) -> int:
+            return len(self._wardrive_points)
+
+        def _wardrive_dots(self):
+            """Project the loaded wardrive points into the shared world_px plane as AP dots, reusing
+            _CameraLayer's (x, y, radius, QColor) format, a green palette; returns (dots, bounds).
+            The radius scales with the AP set's own extent so dots stay visible at any scan size."""
+            if not self._wardrive_points:
+                return [], QRectF()
+            proj = [world_px(lat, lon) for lat, lon, _ssid, _bssid in self._wardrive_points]
+            xs = [p[0] for p in proj]
+            ys = [p[1] for p in proj]
+            span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)
+            radius = span * 0.010
+            color = QColor(_AP_FILL)
+            dots = [(x, y, radius, color) for x, y in proj]
+            return dots, QRectF(min(xs) - radius, min(ys) - radius,
+                                (max(xs) - min(xs)) + 2 * radius, (max(ys) - min(ys)) + 2 * radius)
 
         # ── render ────────────────────────────────────────────────────
         def _draw_basemap(self) -> None:
@@ -1063,6 +1116,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._scene.clear()
             self._camera_layer = None
             self._camera_bounds = QRectF()
+            self._wardrive_layer = None                        # scene.clear() freed it; a handle
+            self._wardrive_bounds = QRectF()                   # would dangle if not nulled here
             self._basemap_group = None
             self._location_marker = None                       # scene.clear() dropped it; redraw below
             self._tile_group = None                            # scene.clear() dropped the tiles too
@@ -1073,7 +1128,52 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             world_scene = show_base or self._chk_streetmap.isChecked()
             if show_base:
                 self._draw_basemap()
-            if not self._features:
+            # Camera (Flock) layer -- the blue->red density heatmap, projected into the ONE shared
+            # world_px plane so the basemap + wardrive AP layer stay aligned at every zoom.
+            maxc = 0
+            if self._features:
+                counts = [_as_count(f.get("properties")) for f in self._features]
+                maxc = max(counts)
+                proj: "List[Tuple[float, float, float]]" = []
+                for feat, c in zip(self._features, counts):
+                    lon = feat["geometry"]["coordinates"][0]
+                    lat = feat["geometry"]["coordinates"][1]
+                    x, y = world_px(lat, lon)
+                    t = (c - 1) / (maxc - 1) if maxc > 1 else 0.0     # normalized density
+                    proj.append((x, y, t))
+                xs = [p[0] for p in proj]
+                ys = [p[1] for p in proj]
+                span = max(max(xs) - min(xs), max(ys) - min(ys), 1.0)  # floor avoids a 0-size dot
+                # Position is absolute (world_px); the dot RADIUS scales with the set's extent so a dot
+                # stays visible whether the scan spans a city block or a continent. Hotter -> larger.
+                dots = []
+                minx = miny = float("inf")
+                maxx = maxy = float("-inf")
+                for x, y, t in proj:
+                    r8, g8, b8 = heat_color(t)
+                    radius = span * (0.010 + 0.014 * t)
+                    dots.append((x, y, radius, QColor(r8, g8, b8)))
+                    minx = min(minx, x - radius); miny = min(miny, y - radius)
+                    maxx = max(maxx, x + radius); maxy = max(maxy, y + radius)
+                # ONE item for the whole set: a single BSP entry + a float list (not N items);
+                # _CameraLayer.paint() draws only the dots in the exposed viewport, so off-screen
+                # cameras cost nothing on pan/zoom. Radius keys off the FULL span so dots don't resize.
+                self._camera_bounds = QRectF(minx, miny, maxx - minx, maxy - miny)
+                self._camera_layer = _CameraLayer(dots, self._camera_bounds)
+                self._scene.addItem(self._camera_layer)
+
+            # Wardrive (Wi-Fi AP) layer -- Slice D: a SECOND _CameraLayer in the plane, above cameras.
+            # Additive + awareness-only; the projection math (world_px) is shared + byte-unchanged.
+            if self._chk_wardrive.isChecked() and self._wardrive_points:
+                ap_dots, ap_bounds = self._wardrive_dots()
+                if ap_dots:
+                    self._wardrive_bounds = ap_bounds
+                    self._wardrive_layer = _CameraLayer(ap_dots, ap_bounds)
+                    self._wardrive_layer.setZValue(1)              # above cameras (default z 0)
+                    self._scene.addItem(self._wardrive_layer)
+
+            content = self._content_bounds()                       # union of the drawn layers
+            if content.isEmpty():
                 if world_scene:
                     self._scene.setSceneRect(0, 0, _WORLD_PX, _WORLD_PX)   # whole world, pannable
                     self._legend.setText("Street basemap · no detections loaded. Blue = few · red = many.")
@@ -1084,64 +1184,43 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self._draw_location_marker()                   # marker can show over an empty/basemap-only map
                 self._schedule_tiles()
                 return
-            counts = [_as_count(f.get("properties")) for f in self._features]
-            maxc = max(counts)
-            # Project every camera into the ONE shared global-mercator plane (world_px), so the (Phase B)
-            # world basemap will align with these dots at every zoom. Then find the set's extent.
-            proj: "List[Tuple[float, float, float]]" = []
-            for feat, c in zip(self._features, counts):
-                lon = feat["geometry"]["coordinates"][0]
-                lat = feat["geometry"]["coordinates"][1]
-                x, y = world_px(lat, lon)
-                t = (c - 1) / (maxc - 1) if maxc > 1 else 0.0     # normalized density
-                proj.append((x, y, t))
-            xs = [p[0] for p in proj]
-            ys = [p[1] for p in proj]
-            spanx, spany = max(xs) - min(xs), max(ys) - min(ys)
-            span = max(spanx, spany, 1.0)                          # floor avoids a zero-size dot/rect
-            # Position is absolute (world_px); the dot RADIUS scales with the set's extent so cameras stay
-            # visible whether the scan spans a city block or a continent. Hotter -> larger.
-            dots = []
-            minx = miny = float("inf")
-            maxx = maxy = float("-inf")
-            for x, y, t in proj:
-                r8, g8, b8 = heat_color(t)
-                radius = span * (0.010 + 0.014 * t)
-                dots.append((x, y, radius, QColor(r8, g8, b8)))
-                minx = min(minx, x - radius); miny = min(miny, y - radius)
-                maxx = max(maxx, x + radius); maxy = max(maxy, y + radius)
-            # ONE item for the whole set: a single BSP entry + a float list in memory (not N QGraphicsItems),
-            # and _CameraLayer.paint() draws only the dots in the exposed viewport, so off-screen cameras cost
-            # nothing on pan/zoom. Radius still keys off the FULL set's span (computed above) so dots don't
-            # resize as you pan.
-            self._camera_bounds = QRectF(minx, miny, maxx - minx, maxy - miny)
-            self._camera_layer = _CameraLayer(dots, self._camera_bounds)
-            self._scene.addItem(self._camera_layer)
-            # Scene rect: with the basemap on, the whole world is the scene so you can pan/zoom out to it
-            # (reset_view still re-frames the cameras). Without it, just the cameras' extent + a margin so
-            # pan/zoom has room and edge dots aren't clipped.
+            # Scene rect: with a global layer on, the whole world is the scene so you can pan/zoom out
+            # to it (reset_view still re-frames the content). Without it, just the content extent + a
+            # margin so pan/zoom has room and edge dots aren't clipped.
             if world_scene:
                 self._scene.setSceneRect(0, 0, _WORLD_PX, _WORLD_PX)
             else:
-                margin = span * (0.05 + 0.024)
-                self._scene.setSceneRect(min(xs) - margin, min(ys) - margin,
-                                         spanx + 2 * margin, spany + 2 * margin)
+                cspan = max(content.width(), content.height(), 1.0)
+                margin = cspan * (0.05 + 0.024)
+                self._scene.setSceneRect(content.adjusted(-margin, -margin, margin, margin))
             base_note = (" · street basemap" if self._chk_streetmap.isChecked()
                          else " · world basemap" if show_base else "")
-            self._legend.setText(
-                f"{len(self._features)} camera(s) · blue = few sightings · red = many (up to {maxc}){base_note}. "
-                f"Drag to pan · scroll to zoom.")
+            parts = []
+            if self._camera_layer is not None:
+                parts.append(f"{len(self._features)} cameras · blue few · red many (up to {maxc})")
+            if self._wardrive_layer is not None:
+                parts.append(f"{len(self._wardrive_points)} Wi-Fi AP(s) · green")
+            self._legend.setText(" · ".join(parts) + f"{base_note}. Drag to pan · scroll to zoom.")
             self._draw_location_marker()                       # keep the "you are here" pin above the redraw
             self._schedule_tiles()                             # paint street tiles under the cameras
 
+        def _content_bounds(self) -> "QRectF":
+            """Union of the on-map layers' extents (cameras + wardrive APs), for framing/sizing.
+            Skips an empty layer so a lone empty QRectF at the origin can't drag the frame to 0,0."""
+            cam, ap = self._camera_bounds, self._wardrive_bounds
+            if cam.isEmpty():
+                return QRectF(ap)
+            if ap.isEmpty():
+                return QRectF(cam)
+            return cam.united(ap)
+
         def reset_view(self) -> None:
-            """Re-frame the CAMERAS: drop any pan/zoom and fit the whole camera set into the view (so the
-            world basemap, which spans the globe, doesn't hijack the framing). Falls back to the scene rect
-            when there are no cameras; safe on an empty scene (nothing valid to fit → view left as-is)."""
+            """Re-frame the CONTENT: drop any pan/zoom and fit the whole detection set -- cameras AND
+            the wardrive AP layer -- into the view (so the world basemap, which spans the globe,
+            doesn't hijack the framing). Falls back to the scene rect when empty; safe on empty."""
             self._view.resetTransform()
-            if self._camera_layer is not None and not self._camera_bounds.isEmpty():
-                rect = self._camera_bounds
-            else:
+            rect = self._content_bounds()
+            if rect.isEmpty():
                 rect = self._scene.sceneRect()
             if rect.isValid() and not rect.isEmpty():
                 self._view.fit(rect)
@@ -1277,6 +1356,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._scene.clear()
             self._camera_layer = None
             self._camera_bounds = QRectF()
+            self._wardrive_layer = None
+            self._wardrive_bounds = QRectF()
             self._basemap_group = None
             self._location_marker = None
             self._reset_tile_state()               # drop tile refs + stop the fetch worker (scene.clear() freed them)

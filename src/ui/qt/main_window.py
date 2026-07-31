@@ -675,6 +675,9 @@ class CyberControllerWindow(QMainWindow):
         self._targets_tab.fill_macro_requested.connect(self._on_use_target_as_macro)
         # P3 flow C: Targets/HUNT "Operate this device" -> OPERATE console, device pre-selected.
         self._targets_tab.operate_device_requested.connect(self._on_operate_device_requested)
+        # P3 flow D: Wardrive "View on map" -> the finished CSV opens on the MAP as an AP layer.
+        if self._wardrive_tab is not None:
+            self._wardrive_tab.view_wardrive_on_map_requested.connect(self._on_view_wardrive_on_map)
 
         # Mesh + Graph leaves (from the dissolved Analyze bundle): the node Graph re-homes to HUNT; Cross-Comm
         # routing re-homes to RIG (labelled "Mesh"). Created once, re-parented into their verb surface below.
@@ -736,12 +739,13 @@ class CyberControllerWindow(QMainWindow):
 
         # P3 flow-spine: cross-surface hand-off targets, (surface_key, sub_view) -> (nav_surface,
         # nav_widget, receive_widget). dispatch_intent navigates to nav_widget then calls the intent's
-        # action on receive_widget. Slice A ships the two backed by real receive methods (Crack Lab's
-        # load_capture, the Operate console's select_device); the per-surface EMITTERS + a map target are
-        # later P3 slices. safety.py untouched — the receive methods load / pre-select only, never arm.
+        # action on receive_widget. Each receive method LOADS / PRE-SELECTS only, never arms; safety
+        # stays untouched. Crack Lab load_capture (B), Operate console select_device (C), Flock Map
+        # load_wardrive_csv (D) -- the awareness-only map layer, which drives no device.
         self._flow_targets: "dict[tuple, tuple]" = {
             ("crack", "crack_lab"): (self._crack_surface, self._crack_lab_tab, self._crack_lab_tab),
             ("operate", "control"): (self._operate_surface, self._operate_action, self._operate_console),
+            ("map", "flock"): (self._map_surface, self._flock_heatmap, self._flock_heatmap),
         }
 
         # ── Mount the top-level rail FROM nav_model.visible_nav() — the "missing consumer" P2.5 wires. A
@@ -919,6 +923,17 @@ class CyberControllerWindow(QMainWindow):
         if not port:
             return
         self.dispatch_intent(FlowIntent("operate", "select_device", port, sub_view="control"))
+
+    def _on_view_wardrive_on_map(self, csv_path: str) -> bool:
+        """P3 flow D (wardrive->MAP): a finished wardrive's "View on map" opens its CSV on the MAP
+        as a Wi-Fi AP layer. Routes FlowIntent("map","load_wardrive_csv", path, sub_view="flock") ->
+        FlockHeatmapTab.load_wardrive_csv (returns 0 on a bad file, so it never crashes).
+        Awareness-only: the map plots located APs; nothing is armed or sent."""
+        from src.core.flow_intent import FlowIntent
+        if not csv_path:
+            return False
+        intent = FlowIntent("map", "load_wardrive_csv", csv_path, sub_view="flock")
+        return self.dispatch_intent(intent)
 
     def _on_home_navigate(self, key: str) -> None:
         """An Operate-Home 'external' tile asks to open its real surface — route there, not a placeholder.

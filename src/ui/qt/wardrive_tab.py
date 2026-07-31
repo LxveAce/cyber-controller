@@ -312,11 +312,17 @@ class _UploadWorker(QThread):
 class WardriveTab(QWidget):
     """Live GPS-tagged Wi-Fi capture -> WiGLE CSV."""
 
+    # P3 flow D (->MAP): after a drive completes, "View on map" asks the host to open the finished
+    # CSV on the MAP as a Wi-Fi AP layer. Explicit tap only (no surprise surface-jump mid-drive);
+    # carries the actual written CSV path. main_window routes it (awareness-only, no send).
+    view_wardrive_on_map_requested = pyqtSignal(str)
+
     def __init__(self, device_manager=None) -> None:
         super().__init__()
         self._dm = device_manager                       # when present, capture routes through it (no COM clash)
         self._worker = None
         self._last_wd_size: "str | None" = None          # Wave-3: size class (debounce)
+        self._last_csv_path = ""                          # finished drive's CSV, for "View on map"
         self._build_ui()
         self._refresh_ports()
 
@@ -403,6 +409,12 @@ class WardriveTab(QWidget):
         self._btn_stop.setEnabled(False)
         self._btn_stop.clicked.connect(self._on_stop)
         ctrl.addWidget(self._btn_stop)
+        self._btn_view_map = QPushButton("View on map")
+        self._btn_view_map.setToolTip("Show this drive's Wi-Fi APs on the MAP, over the Flock "
+                                      "cameras (awareness-only -- plots APs, drives no device).")
+        self._btn_view_map.setEnabled(False)   # enabled once a drive has written a CSV
+        self._btn_view_map.clicked.connect(self._emit_view_on_map)
+        ctrl.addWidget(self._btn_view_map)
         root.addLayout(ctrl)
 
         self._status = QLabel("GPS: —    APs logged: 0")
@@ -544,6 +556,19 @@ class WardriveTab(QWidget):
     def _on_stopped(self) -> None:
         self._btn_start.setEnabled(True)
         self._btn_stop.setEnabled(False)
+        # P3 flow D: remember this drive's finished CSV (the worker's ACTUAL path — it may have been
+        # non-clobbered from the requested name), so "View on map" can open its APs. The worker has
+        # closed the file by the time this fires; the parse happens later, at the explicit tap.
+        path = getattr(self._worker, "_out_path", "") or ""
+        if path and os.path.isfile(path):
+            self._last_csv_path = path
+            self._btn_view_map.setEnabled(True)
+
+    def _emit_view_on_map(self) -> None:
+        """Explicit tap: hand the finished drive's CSV to the host to open on the MAP (P3 flow D).
+        Awareness-only — the map plots the drive's located APs; nothing is armed or sent."""
+        if self._last_csv_path:
+            self.view_wardrive_on_map_requested.emit(self._last_csv_path)
 
     def shutdown(self) -> None:
         """Stop an in-progress capture on app teardown.
