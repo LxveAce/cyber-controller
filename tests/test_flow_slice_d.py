@@ -146,3 +146,40 @@ def test_slice_d_view_on_map_no_path_is_a_noop(win):
     win._wardrive_tab._last_csv_path = ""
     win._wardrive_tab._emit_view_on_map()
     assert win._tabs.currentWidget() is before
+
+
+# ── S1 file-import: load_wardrive_log dispatches WiGLE CSV + Kismet netxml onto the AP layer ──
+
+_NETXML = (
+    '<?xml version="1.0"?>\n<detection-run kismet-version="2016.01.R1" start-time="x">\n'
+    '  <wireless-network number="1" type="infrastructure">\n'
+    '    <SSID><essid cloaked="false">KismetNet</essid></SSID>\n'
+    "    <BSSID>00:11:22:33:44:01</BSSID><channel>6</channel>\n"
+    "    <gps-info><avg-lat>47.62</avg-lat><avg-lon>-122.35</avg-lon></gps-info>\n"
+    "  </wireless-network>\n</detection-run>\n"
+)
+
+
+def test_import_wardrive_csv_onto_map(qapp, tmp_path):
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    w = FlockHeatmapTab()
+    n = w.load_wardrive_log(_wardrive_csv(tmp_path / "d.csv", n=2))   # dispatcher -> WiGLE parser
+    assert n == 2 and w.wardrive_count == 2
+    assert w._wardrive_layer is not None
+
+
+def test_import_wardrive_netxml_onto_map(qapp, tmp_path):
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    p = tmp_path / "scan.netxml"
+    p.write_text(_NETXML)
+    w = FlockHeatmapTab()
+    n = w.load_wardrive_log(str(p))                       # dispatcher sniffs XML -> netxml parser
+    assert n == 1 and w.wardrive_count == 1              # the net with a real avg-fix plots
+    assert w._wardrive_layer is not None
+
+
+def test_import_wardrive_bad_file_is_safe(qapp, tmp_path):
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    w = FlockHeatmapTab()
+    assert w.load_wardrive_log(str(tmp_path / "nope.netxml")) == 0   # missing -> 0, no crash
+    assert w.wardrive_count == 0

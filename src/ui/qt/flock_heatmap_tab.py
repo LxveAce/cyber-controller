@@ -679,10 +679,15 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 "Import crowdsourced ALPR camera locations for the current view from OpenStreetMap "
                 "(DeFlock/Overpass). Awareness-only; © OpenStreetMap (ODbL). Zoom in first.")
             self._btn_import_osm.clicked.connect(self._on_import_osm)
+            self._btn_import_wd = QPushButton("Import wardrive log…")
+            self._btn_import_wd.setToolTip("Load a wardrive log (WiGLE, Kismet .netxml, Biscuit) "
+                                           "onto the map as located Wi-Fi APs. Awareness-only.")
+            self._btn_import_wd.clicked.connect(self._on_import_wardrive)
             file_row.addWidget(self._btn_load)
             file_row.addWidget(self._btn_folder)
             file_row.addWidget(self._btn_export)
             file_row.addWidget(self._btn_import_osm)
+            file_row.addWidget(self._btn_import_wd)
             file_row.addStretch(1)
             root.addLayout(file_row)
 
@@ -909,23 +914,46 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self.reset_view()                               # frame the freshly-loaded cameras
             return len(self._features)
 
+        def _show_wardrive_points(self, points) -> int:
+            """Plot *points* [(lat,lon,ssid,bssid)] as the Wi-Fi AP layer: store, show the layer,
+            rebuild, and frame with the cameras. Returns the count. The ONE place a wardrive import
+            lands on the map (both load_wardrive_csv and load_wardrive_log route through here)."""
+            self._wardrive_points = points
+            self._chk_wardrive.setChecked(True)             # make the freshly-loaded APs visible
+            self._rebuild()                                 # setChecked may have; 2nd is a no-op
+            self.reset_view()                               # frame cameras + APs together
+            return len(self._wardrive_points)
+
         def load_wardrive_csv(self, path: str) -> int:
-            """Load a wardrive CSV from *path* as a Wi-Fi AP layer on the Flock map (Slice D).
-            Returns the AP count (0 on any error). Awareness-only: plots located APs in the shared
-            plane as the cameras (stays aligned), driving no device -- a map, not a send."""
+            """Load a wardrive WiGLE CSV from *path* as a Wi-Fi AP layer on the Flock map (Slice D's
+            "View on map"). Returns the AP count (0 on any error). Awareness-only: plots located APs
+            in the shared plane as the cameras, driving no device -- a map, not a send."""
             from src.core.wardrive import wigle_csv_to_points
             try:
                 with open(path, "r", encoding="utf-8") as fh:
-                    self._wardrive_points = wigle_csv_to_points(fh.read())
+                    text = fh.read()
             except Exception:  # noqa: BLE001 — a bad/missing/hostile file must not crash the tab
                 self._wardrive_points = []
                 self._rebuild()
                 self._legend.setText("Could not read that wardrive CSV.")
                 return 0
-            self._chk_wardrive.setChecked(True)             # make the freshly-loaded APs visible
-            self._rebuild()                                 # setChecked may already have; 2nd is a no-op
-            self.reset_view()                               # frame cameras + APs together
-            return len(self._wardrive_points)
+            return self._show_wardrive_points(wigle_csv_to_points(text))
+
+        def load_wardrive_log(self, path: str) -> int:
+            """Import ANY wardrive log (WiGLE CSV, Kismet .netxml, a Biscuit export) as the Wi-Fi AP
+            layer (S1). Dispatches by content sniff via wardrive_points; 0 on a bad or unknown file
+            (never crashes). Awareness-only: plots located APs, drives no device."""
+            from src.core.wardrive_import import wardrive_points
+            try:
+                with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                    text = fh.read()
+            except Exception:  # noqa: BLE001 — a bad/missing/hostile file must not crash the tab
+                self._legend.setText("Could not read that wardrive log.")
+                return 0
+            n = self._show_wardrive_points(wardrive_points(text))
+            if n == 0:
+                self._legend.setText("No mappable points in that wardrive log.")
+            return n
 
         @property
         def camera_count(self) -> int:
@@ -1576,6 +1604,17 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 self._legend.setText(f"Could not write CSV: {exc}")
 
         # ── load button (dialog; not unit-tested) ─────────────────────
+        def _on_import_wardrive(self) -> None:
+            """File-import UI (S1): pick a wardrive log and plot its APs. The dialog is the only
+            non-testable bit; it delegates to load_wardrive_log, which dispatches by format
+            (WiGLE CSV / Kismet .netxml / Biscuit). Awareness-only -- drives no device."""
+            from PyQt5.QtWidgets import QFileDialog
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Import wardrive log", "",
+                "Wardrive logs (*.csv *.wiglecsv *.netxml);;All files (*)")
+            if path:
+                self.load_wardrive_log(path)
+
         def _on_load(self) -> None:
             from PyQt5.QtCore import Qt
             from PyQt5.QtWidgets import QApplication, QFileDialog
