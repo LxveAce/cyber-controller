@@ -906,12 +906,40 @@ class CyberControllerWindow(QMainWindow):
         if store is None or not bssid:
             return
         b = bssid.strip().lower()
-        recs = [r for r in store.all() if (getattr(r, "bssid", "") or "").lower() == b]
+        all_recs = list(store.all())
+        recs = [r for r in all_recs if (getattr(r, "bssid", "") or "").lower() == b]
         if not recs:
-            return
+            # The analyzer ticks "HS" on every AP sharing an ESSID, but a BSSID-less capture (e.g. a
+            # LxveOS `hs`) is logged under ONE bssid — so a sibling AP can show the tick yet have no
+            # record under ITS bssid. Fall back to matching by SSID; if still nothing, tell the operator
+            # (a non-blocking toast) rather than a SILENT no-op on a tick that promised a capture.
+            ssid = self._ssid_for_bssid(bssid)
+            if ssid:
+                recs = [r for r in all_recs if (getattr(r, "ssid", "") or "").strip() == ssid]
+            if not recs:
+                self.toast("No handshake is in the capture store under this BSSID yet — a network-wide "
+                           "capture can be logged under a different AP. Open Crack Lab to check.", "warning")
+                return
         # Prefer a record with a crackable artifact (a pcap/hc22000 file or a complete inline line).
         rec = next((r for r in recs if r.pcap_path or r.hc22000_path or r.hc22000_line), recs[0])
         self.dispatch_intent(FlowIntent("crack", "load_capture", rec, sub_view="crack_lab"))
+
+    def _ssid_for_bssid(self, bssid: str) -> str:
+        """Best-effort SSID for a BSSID from the Wi-Fi analyzer's model (fully guarded — returns '' if
+        the analyzer/model/AP is absent). Broadens the capture match past a strict BSSID so a
+        network-wide handshake still resolves from a sibling AP row (P3 flow B silent-no-op fix)."""
+        b = (bssid or "").strip().lower()
+        model = getattr(getattr(self, "_wifi_analyzer", None), "model", None)
+        if model is None or not b:
+            return ""
+        try:
+            aps = model.access_points()
+        except Exception:  # noqa: BLE001 — a lookup helper must never break the hand-off
+            return ""
+        for ap in aps:
+            if (getattr(ap, "bssid", "") or "").strip().lower() == b:
+                return (getattr(ap, "ssid", "") or "").strip()
+        return ""
 
     def _on_operate_device_requested(self, target) -> None:
         """P3 flow C (target->OPERATE): the Targets/HUNT list opens the OPERATE console with this
