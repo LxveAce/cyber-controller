@@ -976,13 +976,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             from src.core.wardrive import wigle_csv_to_points
             try:
                 with open(path, "r", encoding="utf-8") as fh:
-                    text = fh.read()
-            except Exception:  # noqa: BLE001 — a bad/missing/hostile file must not crash the tab
+                    points = wigle_csv_to_points(fh.read())   # parse in the try
+            except Exception:  # noqa: BLE001 — huge field/binary file; an escaped raise aborts the app
                 self._wardrive_points = []
                 self._rebuild()
                 self._legend.setText("Could not read that wardrive CSV.")
                 return 0
-            return self._show_wardrive_points(wigle_csv_to_points(text))
+            return self._show_wardrive_points(points)
 
         def load_wardrive_log(self, path: str) -> int:
             """Import ANY wardrive log (WiGLE CSV, Kismet .netxml, a Biscuit export) as the Wi-Fi AP
@@ -991,11 +991,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             from src.core.wardrive_import import wardrive_points
             try:
                 with open(path, "r", encoding="utf-8", errors="replace") as fh:
-                    text = fh.read()
-            except Exception:  # noqa: BLE001 — a bad/missing/hostile file must not crash the tab
+                    points = wardrive_points(fh.read())       # parse in the try
+            except Exception:  # noqa: BLE001 — huge field/binary file; an escaped raise aborts the app
                 self._legend.setText("Could not read that wardrive log.")
                 return 0
-            n = self._show_wardrive_points(wardrive_points(text))
+            n = self._show_wardrive_points(points)
             if n == 0:
                 self._legend.setText("No mappable points in that wardrive log.")
             return n
@@ -1024,10 +1024,14 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             except (OSError, ValueError):
                 self._legend.setText("Could not read that trail file.")
                 return 0
-            self._trail = trail_from_geojson(gj)
+            points = trail_from_geojson(gj)
+            if not points:
+                self._legend.setText("No drive trail in that file.")   # keep the current trail
+                return 0
+            self._trail = points
             self._chk_trail.setChecked(True)                # make the replayed trail visible
-            self._update_trail_layer()
-            self.reset_view()                               # frame it (trail bounds now in content)
+            self._rebuild()                                 # rebuild so the rect frames the trail
+            self.reset_view()
             return len(self._trail)
 
         @property
@@ -1422,7 +1426,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                     self._wardrive_layer.setZValue(1)              # above cameras (default z 0)
                     self._scene.addItem(self._wardrive_layer)
 
-            content = self._content_bounds()                       # union of the drawn layers
+            self._update_trail_layer()             # build the trail HERE so its extent is in the
+            content = self._content_bounds()       # framed content + scene rect (trail-only replay)
             if content.isEmpty():
                 if world_scene:
                     self._scene.setSceneRect(0, 0, _WORLD_PX, _WORLD_PX)   # whole world, pannable

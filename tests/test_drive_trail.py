@@ -156,3 +156,27 @@ def test_load_trail_bad_file_is_safe(tab, tmp_path):
     assert tab.load_trail(str(tmp_path / "nope.geojson")) == 0        # missing -> 0
     (tmp_path / "junk.geojson").write_text("not json {{{")
     assert tab.load_trail(str(tmp_path / "junk.geojson")) == 0        # junk -> 0, no crash
+
+
+def test_load_trail_no_points_keeps_the_current_trail(tab, tmp_path):
+    # A valid-JSON-but-no-trail file must NOT wipe the current (possibly unsaved) drive.
+    _drive(tab, 4)
+    assert len(tab._trail) == 4
+    p = tmp_path / "notrail.geojson"
+    p.write_text('{"type": "FeatureCollection", "features": []}')
+    assert tab.load_trail(str(p)) == 0
+    assert len(tab._trail) == 4                     # the current drive is preserved
+
+
+def test_load_trail_frames_the_trail_with_world_layers_off(tab, tmp_path):
+    import json
+
+    from src.ui.qt.flock_heatmap_tab import trail_to_geojson, world_px
+    tab._chk_basemap.setChecked(False)              # both world layers off, no cameras: the rect
+    tab._chk_streetmap.setChecked(False)            # must still enclose the replayed trail
+    trail = [(37.77, -122.42), (37.80, -122.40)]
+    p = tmp_path / "t.geojson"
+    p.write_text(json.dumps(trail_to_geojson(trail)))
+    assert tab.load_trail(str(p)) == 2
+    x, y = world_px(37.785, -122.41)                # trail midpoint
+    assert tab._scene.sceneRect().contains(x, y)    # enclosed by the scene rect (MEDIUM fix)

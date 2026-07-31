@@ -183,3 +183,14 @@ def test_import_wardrive_bad_file_is_safe(qapp, tmp_path):
     w = FlockHeatmapTab()
     assert w.load_wardrive_log(str(tmp_path / "nope.netxml")) == 0   # missing -> 0, no crash
     assert w.wardrive_count == 0
+
+
+def test_import_oversized_field_is_safe_not_a_crash(qapp, tmp_path):
+    # A field over csv's 128 KB limit makes csv.reader raise -- the import must CATCH it (return 0),
+    # not let it escape the clicked slot and abort the app (regression guard for 04e9aaa).
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    p = tmp_path / "huge.csv"
+    p.write_text("AA:BB:CC:DD:EE:FF," + "x" * 200000)
+    w = FlockHeatmapTab()
+    assert w.load_wardrive_log(str(p)) == 0        # dispatcher/CSV parse error caught, not crashed
+    assert w.load_wardrive_csv(str(p)) == 0        # WiGLE parse error caught, not crashed
