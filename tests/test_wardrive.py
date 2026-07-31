@@ -285,6 +285,41 @@ def test_wardrive_summary_cli(tmp_path, capsys):
     assert "no such file" in capsys.readouterr().out
 
 
+def test_wigle_csv_to_points():
+    # 4 networks in _SUMMARY_CSV, but EE:03 (WEP) has no lat/lon -> no position -> no point.
+    pts = wd.wigle_csv_to_points(_SUMMARY_CSV)
+    by_bssid = {bssid: (lat, lon, ssid) for lat, lon, ssid, bssid in pts}
+    assert set(by_bssid) == {"AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02", "AA:BB:CC:DD:EE:04"}
+    assert by_bssid["AA:BB:CC:DD:EE:04"] == (48.2, 11.6, "Fast4")   # (lat, lon, ssid) preserved
+    # every point is a real (finite, non-null-island) location
+    assert all(lat != 0.0 or lon != 0.0 for lat, lon, _s, _b in pts)
+
+
+def test_wigle_csv_to_points_plots_at_the_strongest_positioned_sighting():
+    # The RSSI winner (-40) has no GPS; a weaker sighting (-70) does. summarize reads GPS off the
+    # winner and loses it; for a MAP we still plot the AP at the positioned sighting's location.
+    text = (
+        wd.WIGLE_HEADER + "\n"
+        "AA:BB:CC:DD:EE:10,Roam,[WPA2][ESS],t,6,2437,-70,48.1,11.5,0.0,0,,,WIFI\n"
+        "AA:BB:CC:DD:EE:10,Roam,[WPA2][ESS],t,6,2437,-40,,,0.0,0,,,WIFI\n"
+    )
+    pts = wd.wigle_csv_to_points(text)
+    assert pts == [(48.1, 11.5, "Roam", "AA:BB:CC:DD:EE:10")]   # one point, at the heard fix
+
+
+def test_wigle_csv_to_points_tolerates_headers_and_garbage():
+    # Pre-header, column header, short/garbled/null-island rows all drop; only positioned rows plot.
+    text = (
+        "WigleWifi-1.6,x\n" + wd.WIGLE_HEADER + "\n"
+        "not,enough,cols\n"                                             # too few columns
+        "NOTAMAC,x,[ESS],t,6,2437,-40,48.1,11.5,0.0,0,,,WIFI\n"        # field 0 isn't a MAC
+        "AA:BB:CC:DD:EE:20,NullIsle,[ESS],t,6,2437,-40,0.0,0.0,0.0,0,,,WIFI\n"  # (0,0) sentinel
+        "AA:BB:CC:DD:EE:21,Real,[ESS],t,6,2437,-40,48.1,11.5,0.0,0,,,WIFI\n"    # the one real point
+    )
+    assert wd.wigle_csv_to_points(text) == [(48.1, 11.5, "Real", "AA:BB:CC:DD:EE:21")]
+    assert wd.wigle_csv_to_points("") == []                    # totally empty must not crash
+
+
 # ── real-hardware Marauder scanall format (regression: found on COM16, 2026-07-08) ──
 # These are VERBATIM lines captured from a physical Marauder v1.12.3 `scanall`. The RSSI is a bare leading
 # signed int with NO "RSSI:" label; before the _RSSI_LEAD_RE fix the accumulator saw no RSSI and emitted 0

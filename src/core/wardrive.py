@@ -673,6 +673,52 @@ def summarize_wigle_csv(text: str) -> dict:
     return summary
 
 
+def wigle_csv_to_points(text: str) -> "list[tuple[float, float, str, str]]":
+    """Parse a WiGLE CSV (as written by :class:`WardriveSession`) into map points
+    ``[(lat, lon, ssid, bssid), ...]``, one per unique BSSID (strongest-RSSI sighting wins, like
+    :func:`summarize_wigle_csv`). Pure + Qt-free, so the map's AP layer is unit-testable headless.
+
+    Tolerant like the summarizer: the pre-header, the column header and any short/garbled row are
+    skipped (only a real MAC in field 0 on a full 14-column row counts). A row with no usable
+    position -- unparseable, non-finite, or Null-Island ``(0, 0)`` (the "no fix" sentinel) -- is
+    dropped, so every point has a real location. Awareness-only: reads metadata, transmits nothing.
+    """
+    import csv
+    import io
+    import math
+
+    def _row_rssi(r: list) -> Optional[int]:
+        try:
+            v = int(r[6])
+        except (ValueError, IndexError):
+            return None
+        return v if v != 0 else None  # 0 is the "no reading" sentinel, not a real strength
+
+    # De-dup by MAC like summarize, but a MAP point needs a LOCATION: keep the strongest-RSSI
+    # sighting THAT HAS a usable position, so an AP whose loudest sighting lacked a fix still plots
+    # at a weaker positioned one (summarize instead reads GPS off the RSSI winner). No positioned
+    # sighting for a BSSID -> no point.
+    best: dict = {}  # mac -> (rssi_or_None, lat, lon, ssid)
+    for row in csv.reader(io.StringIO(text)):
+        if len(row) < 14 or not _MAC_RE.fullmatch(row[0].strip()):
+            continue  # skips the pre-header (too few cols), the "MAC,..." header, and non-data rows
+        try:
+            lat, lon = float(row[7]), float(row[8])
+        except (ValueError, IndexError):
+            continue
+        if not (math.isfinite(lat) and math.isfinite(lon)):
+            continue
+        if lat == 0.0 and lon == 0.0:   # Null Island -> the "no fix" sentinel, not a place
+            continue
+        mac = row[0].strip().upper()
+        rssi = _row_rssi(row)
+        prev = best.get(mac)
+        if prev is None or (rssi is not None and (prev[0] is None or rssi > prev[0])):
+            best[mac] = (rssi, lat, lon, row[1])
+
+    return [(lat, lon, ssid, mac) for mac, (_r, lat, lon, ssid) in best.items()]
+
+
 def wardrive_summary_cli(csv_path: str) -> int:
     """CLI for ``--wardrive-summary``: print headline stats for a WiGLE CSV, then exit (0 on success, 1 if
     the file is missing). Read-only, ASCII-only output for console safety."""
