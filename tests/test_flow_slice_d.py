@@ -78,6 +78,20 @@ def test_slice_d_toggle_hides_and_restores_the_ap_layer(qapp, tmp_path):
     assert w._wardrive_layer is not None                        # ...and restored
 
 
+def test_slice_d_flock_toggle_gives_wifi_only(qapp, tmp_path):
+    # owner-call #3: a Wi-Fi / Flock / both control. Hiding Flock cameras leaves only the AP layer.
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    w = FlockHeatmapTab()
+    w.set_geojson(_TWO_CAMS)
+    w.load_wardrive_csv(_wardrive_csv(tmp_path / "w.csv", n=2))
+    assert w._camera_layer is not None and w._wardrive_layer is not None   # both (default)
+    w._chk_flock.setChecked(False)                             # Wi-Fi only
+    assert w._camera_layer is None and w._wardrive_layer is not None
+    assert w.camera_count == 2                                 # cameras retained, just hidden
+    w._chk_flock.setChecked(True)
+    assert w._camera_layer is not None                         # ...and restored
+
+
 def test_slice_d_bad_wardrive_csv_is_safe(qapp, tmp_path):
     from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
     w = FlockHeatmapTab()

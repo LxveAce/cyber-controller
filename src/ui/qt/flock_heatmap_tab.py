@@ -656,6 +656,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                          "in real-world context. Zoom/pan out to see it; toggle off for a plain map.")
             self._chk_basemap.setChecked(True)
             self._chk_basemap.stateChanged.connect(lambda _s: self._rebuild())
+            # Slice D layer toggles (owner-call #3: a Wi-Fi / Flock / both control). Cameras + APs
+            # show/hide independently; both default on, so the pre-Slice-D behavior is unchanged.
+            self._chk_flock = QCheckBox("Flock cameras")
+            self._chk_flock.setToolTip("Show the located Flock ALPR cameras (blue->red heatmap). "
+                                       "Turn off to see only the Wi-Fi APs.")
+            self._chk_flock.setChecked(True)
+            self._chk_flock.stateChanged.connect(lambda _s: self._rebuild())
             self._chk_wardrive = QCheckBox("Wi-Fi APs")
             self._chk_wardrive.setToolTip("Show wardrive Wi-Fi APs (from a WiGLE CSV) as a green layer "
                                           "over the cameras. Awareness-only: maps APs, drives no device.")
@@ -696,6 +703,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             map_row.addWidget(self._chk_streetmap)
             map_row.addWidget(self._chk_online)
             map_row.addWidget(self._chk_basemap)
+            map_row.addWidget(self._chk_flock)
             map_row.addWidget(self._chk_wardrive)
             map_row.addWidget(self._chk_mylocation)
             map_row.addWidget(self._chk_follow)
@@ -1131,7 +1139,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             # Camera (Flock) layer -- the blue->red density heatmap, projected into the ONE shared
             # world_px plane so the basemap + wardrive AP layer stay aligned at every zoom.
             maxc = 0
-            if self._features:
+            if self._chk_flock.isChecked() and self._features:
                 counts = [_as_count(f.get("properties")) for f in self._features]
                 maxc = max(counts)
                 proj: "List[Tuple[float, float, float]]" = []
