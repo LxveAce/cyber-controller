@@ -348,6 +348,13 @@ class CyberControllerWindow(QMainWindow):
         act_flock_map.triggered.connect(self._on_flock_heatmap)
         tools_menu.addAction(act_flock_map)
 
+        # P3 flow D (->MAP): pick a saved Flock scan and open it on the MAP from anywhere.
+        act_open_scan = QAction("Open Flock scan on the &map…", self)
+        act_open_scan.setStatusTip(
+            "Pick a saved Flock scan (cameras.geojson) and open it on the MAP — awareness-only.")
+        act_open_scan.triggered.connect(self._on_open_flock_scan_on_map)
+        tools_menu.addAction(act_open_scan)
+
         # Help
         help_menu = mb.addMenu("&Help")
 
@@ -736,12 +743,13 @@ class CyberControllerWindow(QMainWindow):
 
         # P3 flow-spine: cross-surface hand-off targets, (surface_key, sub_view) -> (nav_surface,
         # nav_widget, receive_widget). dispatch_intent navigates to nav_widget then calls the intent's
-        # action on receive_widget. Slice A ships the two backed by real receive methods (Crack Lab's
-        # load_capture, the Operate console's select_device); the per-surface EMITTERS + a map target are
-        # later P3 slices. safety.py untouched — the receive methods load / pre-select only, never arm.
+        # action on receive_widget. Each receive method LOADS / PRE-SELECTS only, never arms; safety
+        # stays untouched. Crack Lab load_capture (B), Operate console select_device (C), Flock Map
+        # load_geojson_file (D) - the awareness-only ALPR map, which drives no device.
         self._flow_targets: "dict[tuple, tuple]" = {
             ("crack", "crack_lab"): (self._crack_surface, self._crack_lab_tab, self._crack_lab_tab),
             ("operate", "control"): (self._operate_surface, self._operate_action, self._operate_console),
+            ("map", "flock"): (self._map_surface, self._flock_heatmap, self._flock_heatmap),
         }
 
         # ── Mount the top-level rail FROM nav_model.visible_nav() — the "missing consumer" P2.5 wires. A
@@ -2595,6 +2603,34 @@ class CyberControllerWindow(QMainWindow):
         The map used to open as a standalone Tools window; since the verb-IA rewire it's a sub-view of MAP,
         so this menu / palette action just navigates to it."""
         self._show_subtab(self._map_surface, self._flock_heatmap)
+
+    def _on_open_flock_scan_on_map(self) -> None:
+        """Tools action (P3 flow D): pick a saved Flock scan, then open it on the MAP.
+
+        The file dialog is the only non-testable bit; it delegates to _open_flock_scan_on_map, which
+        builds the FlowIntent + dispatches. Awareness-only: the Flock Map renders WHERE ALPR cameras
+        were seen and drives no device; nothing is armed or sent."""
+        from PyQt5.QtWidgets import QFileDialog
+        start = ""
+        try:
+            start = self._flock_heatmap._flock_data_dir() or ""
+        except Exception:  # noqa: BLE001 - start dir is a nicety; "" opens at the default
+            start = ""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open Flock scan on the map", start,
+            "GeoJSON (*.geojson *.json);;All files (*)")
+        if path:
+            self._open_flock_scan_on_map(path)
+
+    def _open_flock_scan_on_map(self, path: str) -> bool:
+        """Dispatch a saved Flock scan at *path* to the MAP / Flock canvas (P3 flow D, ->MAP).
+        Load only: routes FlowIntent("map", "load_geojson_file", path, sub_view="flock") through
+        dispatch_intent -> FlockHeatmapTab.load_geojson_file (returns 0 on a bad file, so it never
+        crashes). No device send, nothing armed. Returns True iff the intent routed."""
+        from src.core.flow_intent import FlowIntent
+        if not path:
+            return False
+        return self.dispatch_intent(FlowIntent("map", "load_geojson_file", path, sub_view="flock"))
 
     # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
     # These MUST equal the real BaseProtocol.protocol_name values (ghost_esp.py -> "ghost-esp",
