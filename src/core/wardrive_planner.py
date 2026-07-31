@@ -11,12 +11,10 @@ transmits nothing and touches no hardware. Pure + unit-tested (tests/test_wardri
 """
 from __future__ import annotations
 
-import csv
-import io
 import os
 from typing import Dict, List, Tuple
 
-from src.core.wardrive import _MAC_RE  # reuse the WiGLE MAC-row validator
+from src.core.wardrive_import import iter_wigle_rows  # the shared header-aware WiGLE reader
 
 
 def channel_yield(csv_text: str) -> Dict[int, int]:
@@ -30,16 +28,14 @@ def channel_yield(csv_text: str) -> Dict[int, int]:
     Returns ``{channel: distinct_network_count}``; channel <= 0 (a missing/unknown reading) is excluded.
     """
     channel_of: Dict[str, int] = {}
-    for row in csv.reader(io.StringIO(csv_text)):
-        if len(row) < 14 or not _MAC_RE.fullmatch(row[0].strip()):
-            continue  # pre-header, the "MAC,..." header, or a non-data row
+    for r in iter_wigle_rows(csv_text):
         try:
-            ch = int(row[4])  # WIGLE_HEADER: MAC,SSID,AuthMode,FirstSeen,Channel,...
-        except (ValueError, IndexError):
+            ch = int(r["channel"])
+        except (ValueError, TypeError):
             continue
         if ch <= 0:
             continue  # 0 / negative = no real channel reading
-        channel_of.setdefault(row[0].strip().upper(), ch)
+        channel_of.setdefault(r["mac"].strip().upper(), ch)
     counts: Dict[int, int] = {}
     for ch in channel_of.values():
         counts[ch] = counts.get(ch, 0) + 1

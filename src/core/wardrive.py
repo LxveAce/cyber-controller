@@ -605,9 +605,9 @@ def summarize_wigle_csv(text: str) -> dict:
     row are skipped (only rows whose first field is a real MAC count), so a partial or hand-edited CSV can't
     crash it. The RSSI 0 sentinel (a missing reading) is excluded from the strongest/weakest range.
     """
-    import csv
-    import io
     from collections import Counter
+
+    from src.core.wardrive_import import iter_wigle_rows  # lazy: keeps the module import acyclic
 
     summary: dict = {
         "networks": 0, "open": 0, "wpa": 0, "wep": 0,
@@ -617,10 +617,10 @@ def summarize_wigle_csv(text: str) -> dict:
     channels: "Counter[int]" = Counter()
     rssis = []
 
-    def _row_rssi(r: list) -> Optional[int]:
+    def _rssi(s: str) -> Optional[int]:
         try:
-            v = int(r[6])
-        except (ValueError, IndexError):
+            v = int(s)
+        except (ValueError, TypeError):
             return None
         return v if v != 0 else None  # 0 is the "no reading" sentinel, not a real strength
 
@@ -628,27 +628,26 @@ def summarize_wigle_csv(text: str) -> dict:
     # a STRONGER RSSI, so one network can own several rows. Counting raw rows over-reports EVERY headline
     # stat on any normal drive (RSSI improves as you approach an AP), contradicting the module's own
     # "de-duplicated by BSSID" contract. De-dup by MAC first — strongest-RSSI row wins, mirroring the
-    # session's in-memory dedup — then tally over the unique networks.
+    # session's in-memory dedup — then tally over the unique networks. Rows come from the header-aware
+    # reader, so a 1.4 (11-col) or reordered file resolves each field by name, not a fixed position.
     best: dict = {}
     gps_macs: set = set()
-    for row in csv.reader(io.StringIO(text)):
-        if len(row) < 14 or not _MAC_RE.fullmatch(row[0].strip()):
-            continue  # skips the pre-header (too few cols), the "MAC,..." header, and non-data rows
-        mac = row[0].strip().upper()
+    for r in iter_wigle_rows(text):
+        mac = r["mac"].strip().upper()
         # with_gps counts a BSSID sighted with a GPS fix on ANY row, not just the RSSI winner.
-        if row[7].strip():
+        if r["lat"].strip():
             gps_macs.add(mac)
         prev = best.get(mac)
         if prev is None:
-            best[mac] = row
+            best[mac] = r
             continue
-        cur_r, prev_r = _row_rssi(row), _row_rssi(prev)
+        cur_r, prev_r = _rssi(r["rssi"]), _rssi(prev["rssi"])
         if cur_r is not None and (prev_r is None or cur_r > prev_r):
-            best[mac] = row  # a real, stronger reading beats the 0 sentinel / a weaker one
+            best[mac] = r  # a real, stronger reading beats the 0 sentinel / a weaker one
 
-    for mac, row in best.items():
+    for mac, r in best.items():
         summary["networks"] += 1
-        auth = row[2].upper()
+        auth = r["auth"].upper()
         if "WEP" in auth:
             summary["wep"] += 1
         elif "WPA" in auth:
@@ -656,13 +655,13 @@ def summarize_wigle_csv(text: str) -> dict:
         else:
             summary["open"] += 1
         try:
-            ch = int(row[4])
-        except ValueError:
+            ch = int(r["channel"])
+        except (ValueError, TypeError):
             ch = 0
         if ch:
             channels[ch] += 1
             summary["band_24ghz" if ch <= 14 else "band_5ghz"] += 1
-        rssi = _row_rssi(row)
+        rssi = _rssi(r["rssi"])
         if rssi is not None:
             rssis.append(rssi)
         if mac in gps_macs:  # this BSSID had a GPS fix on at least one sighting
@@ -683,28 +682,27 @@ def wigle_csv_to_points(text: str) -> "list[tuple[float, float, str, str]]":
     position -- unparseable, non-finite, or Null-Island ``(0, 0)`` (the "no fix" sentinel) -- is
     dropped, so every point has a real location. Awareness-only: reads metadata, transmits nothing.
     """
-    import csv
-    import io
     import math
 
-    def _row_rssi(r: list) -> Optional[int]:
+    from src.core.wardrive_import import iter_wigle_rows  # lazy: keeps the module import acyclic
+
+    def _rssi(s: str) -> Optional[int]:
         try:
-            v = int(r[6])
-        except (ValueError, IndexError):
+            v = int(s)
+        except (ValueError, TypeError):
             return None
         return v if v != 0 else None  # 0 is the "no reading" sentinel, not a real strength
 
     # De-dup by MAC like summarize, but a MAP point needs a LOCATION: keep the strongest-RSSI
     # sighting THAT HAS a usable position, so an AP whose loudest sighting lacked a fix still plots
     # at a weaker positioned one (summarize instead reads GPS off the RSSI winner). No positioned
-    # sighting for a BSSID -> no point.
+    # sighting for a BSSID -> no point. Rows come from the header-aware reader, so a 1.4 (11-col)
+    # file's lat/lon at index 6/7 resolve correctly instead of being dropped.
     best: dict = {}  # mac -> (rssi_or_None, lat, lon, ssid)
-    for row in csv.reader(io.StringIO(text)):
-        if len(row) < 14 or not _MAC_RE.fullmatch(row[0].strip()):
-            continue  # skips the pre-header (too few cols), the "MAC,..." header, and non-data rows
+    for r in iter_wigle_rows(text):
         try:
-            lat, lon = float(row[7]), float(row[8])
-        except (ValueError, IndexError):
+            lat, lon = float(r["lat"]), float(r["lon"])
+        except (ValueError, TypeError):
             continue
         if not (math.isfinite(lat) and math.isfinite(lon)):
             continue
@@ -712,11 +710,11 @@ def wigle_csv_to_points(text: str) -> "list[tuple[float, float, str, str]]":
             continue  # out-of-range (garbled): world_px would blow the map extent to a speck
         if lat == 0.0 and lon == 0.0:   # Null Island -> the "no fix" sentinel, not a place
             continue
-        mac = row[0].strip().upper()
-        rssi = _row_rssi(row)
+        mac = r["mac"].strip().upper()
+        rssi = _rssi(r["rssi"])
         prev = best.get(mac)
         if prev is None or (rssi is not None and (prev[0] is None or rssi > prev[0])):
-            best[mac] = (rssi, lat, lon, row[1])
+            best[mac] = (rssi, lat, lon, r["ssid"])
 
     return [(lat, lon, ssid, mac) for mac, (_r, lat, lon, ssid) in best.items()]
 
