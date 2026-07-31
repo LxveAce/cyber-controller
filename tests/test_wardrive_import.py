@@ -9,7 +9,12 @@ back to 1.6 positions (what the callers assumed before). Pure, Qt-free, headless
 from __future__ import annotations
 
 from src.core.wardrive import summarize_wigle_csv, wigle_csv_to_points
-from src.core.wardrive_import import iter_wigle_rows, netxml_to_points
+from src.core.wardrive_import import (
+    iter_wigle_rows,
+    netxml_to_points,
+    sniff_wardrive_format,
+    wardrive_points,
+)
 from src.core.wardrive_planner import channel_yield
 
 # --- Real-shape fixtures -------------------------------------------------------------------------
@@ -190,3 +195,21 @@ def test_netxml_refuses_xml_entities_defusedxml():
             "<gps-info><avg-lat>1.0</avg-lat><avg-lon>2.0</avg-lon></gps-info>"
             "</wireless-network></detection-run>")
     assert netxml_to_points(bomb) == []
+
+
+# --- Format sniff + the one-entry-point dispatcher (the import seam) ------------------------------
+
+def test_sniff_recognizes_netxml_wigle_and_unknown():
+    assert sniff_wardrive_format(NETXML) == "netxml"
+    assert sniff_wardrive_format(CSV_14) == "wigle"                        # WigleWifi- pre-header
+    assert sniff_wardrive_format(_HDR_11 + "\n") == "wigle"                # bare MAC-first column header
+    assert sniff_wardrive_format("AA:BB:CC:DD:EE:01,X,[OPEN],2020,6,-40,1.0,2.0,0,0,WIFI\n") == "wigle"
+    assert sniff_wardrive_format("just some text\n") == "unknown"
+    assert sniff_wardrive_format("") == "unknown"
+
+
+def test_dispatcher_routes_each_format_to_the_right_parser():
+    # Both parsers return the same 4-tuple, so the UI plots either through one entry point.
+    assert sorted(wardrive_points(CSV_14)) == sorted(wigle_csv_to_points(CSV_14))
+    assert sorted(wardrive_points(NETXML)) == sorted(netxml_to_points(NETXML))
+    assert wardrive_points("not a wardrive log") == []

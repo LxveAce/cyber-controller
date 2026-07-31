@@ -150,3 +150,41 @@ def netxml_to_points(text: str) -> "list[tuple[float, float, str, str]]":
         ssid = (net.findtext("SSID/essid") or "").strip()
         best.setdefault(b, (lat, lon, ssid, b))  # one point per network (Kismet pre-aggregates)
     return list(best.values())
+
+
+def sniff_wardrive_format(text: str) -> str:
+    """Best-effort format of a wardrive log by its content: ``"netxml"`` | ``"wigle"`` | ``"unknown"``.
+
+    Content, not extension — the operator's file may be misnamed, and Biscuit/Kismet both export plain
+    WiGLE CSVs. Kismet ``.netxml`` is XML (``<detection-run>`` / ``<wireless-network>``); a WiGLE CSV
+    opens with a ``WigleWifi-`` pre-header or a MAC-first column-header / data row.
+    """
+    head = text[:4096]
+    if "<detection-run" in head or "<wireless-network" in head:
+        return "netxml"
+    for line in io.StringIO(head):
+        s = line.strip().lstrip("﻿").strip()
+        if not s:
+            continue
+        if s.startswith("WigleWifi-"):
+            return "wigle"
+        first = s.split(",", 1)[0].strip().strip('"')
+        if first.upper() == "MAC" or _MAC_RE.fullmatch(first):
+            return "wigle"
+        break  # the first non-empty line settles it
+    return "unknown"
+
+
+def wardrive_points(text: str) -> "list[tuple[float, float, str, str]]":
+    """Import ANY supported wardrive log — a WiGLE CSV (incl. Biscuit + Kismet ``.wiglecsv``) or a Kismet
+    ``.netxml`` — into map points ``[(lat, lon, ssid, bssid)]``, dispatching by a content sniff. One entry
+    point for the file-import UI; an unrecognized file yields ``[]`` (never raises). Awareness-only.
+    """
+    from src.core.wardrive import wigle_csv_to_points  # lazy: keeps the module import acyclic
+
+    fmt = sniff_wardrive_format(text)
+    if fmt == "netxml":
+        return netxml_to_points(text)
+    if fmt == "wigle":
+        return wigle_csv_to_points(text)
+    return []
