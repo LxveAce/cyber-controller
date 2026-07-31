@@ -407,6 +407,15 @@ def bssid_from_hashline(text: str) -> str:
     return ":".join(ap[i:i + 2] for i in range(0, 12, 2))
 
 
+def essid_from_hashline(text: str) -> str:
+    """The ESSID (network name, field 5, hex-decoded) of a 22000 hashline, or ``""`` if malformed. Lets
+    an inline handshake carry its real network name even when the AP was never separately scanned — the
+    name lives inside the hashline, so it survives a capture the pool never saw a beacon for."""
+    if not is_wpa_hashline(text):
+        return ""
+    return _essid_from_hashline(text.strip())[1]
+
+
 def hashline_from_capture(rec: Any) -> Optional[str]:
     """The directly-crackable hashcat-22000 line a capture carries inline (``rec.hc22000_line``,
     e.g. the LxveOS ``hs`` artifact), or ``None`` when it has none.

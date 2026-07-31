@@ -14,7 +14,7 @@ import logging
 from typing import Any, Callable
 
 from src.core import oui
-from src.core.crack_pipeline import bssid_from_hashline, is_wpa_hashline
+from src.core.crack_pipeline import bssid_from_hashline, essid_from_hashline, is_wpa_hashline
 from src.models.capture import CaptureRecord
 from src.models.target import Target, TargetType
 
@@ -469,6 +469,12 @@ class TargetIngestor:
                                 hc22000_line=line if valid_line else "",
                                 device_source=port, raw=raw)
             self._join_from_pool(rec)
+            if not rec.ssid and valid_line:
+                # The pool never saw a beacon for this AP (a `hs` on an un-scanned BSSID), but the ESSID
+                # is baked into the hashline. Lift it so the record carries its real network name — that
+                # lets the Crack Lab hand-off resolve this capture from a sibling AP row by SSID instead
+                # of silently finding nothing (P3 flow B silent-no-op fix, ingest half).
+                rec.ssid = essid_from_hashline(line)
             self._recent_capture[port] = rec.key
             return rec
 

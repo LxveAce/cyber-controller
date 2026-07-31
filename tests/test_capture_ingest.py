@@ -114,6 +114,24 @@ def test_ghostesp_credential_capture_is_not_logged_as_handshake():
     assert store.count == 0
 
 
+def test_handshake_lifts_essid_from_hashline_when_pool_never_saw_the_ap():
+    # A LxveOS `hs` on an AP the pool never scanned: the ESSID is baked into the hashline (field 5), so
+    # the record must still carry its network name (not ""), even with no pool join. That name is what
+    # lets the Crack Lab hand-off resolve this capture from a sibling AP row (P3 flow B silent-no-op fix).
+    pool = TargetPool(EventBus())                                  # empty — the AP was never scanned
+    store = CaptureStore()
+    ing = TargetIngestor(pool, captures=store)
+    # WPA*02*<mic>*<ap>*<sta>*<essid_hex="SharedNet">*...  — no `bssid` in data, so it's read from field 3.
+    line = "WPA*02*0123456789abcdef0123456789abcdef*aabbccddeeff*112233445566*5368617265644e6574***"
+    hs = ParsedEvent(event_type="handshake_captured", data={"line": line}, raw="HS")
+    conn = _Conn("COM9")
+    ing.attach(conn, _Proto({"L": hs}))
+    conn.feed("L")
+
+    c = store.get("eapol:aa:bb:cc:dd:ee:ff")
+    assert c is not None and c.ssid == "SharedNet"                 # lifted from the hashline, not the pool
+
+
 def test_ingestor_without_captures_is_backward_compatible():
     # The Devices-tab constructs TargetIngestor(pool) with no store — a capture line must not crash.
     pool = TargetPool(EventBus())
