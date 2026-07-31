@@ -136,6 +136,10 @@ _GPS_STALE_FILL = "#6e7681"
 # so the two layers on the one map read as distinct sources at a glance.
 _AP_FILL = "#3fb950"
 
+# Drive-trail polyline (wardriving-v2 S3): amber, distinct from the AP green, the pin cyan, and the
+# cameras' blue->red heat -- so the breadcrumb behind you reads as its own layer at a glance.
+_TRAIL_FILL = "#f59e0b"
+
 # Max view span (degrees) for a one-shot OSM import — refuses whole-planet queries so the shared
 # free Overpass API is never asked for the world; the user zooms to a real area first.
 _OSM_MAX_SPAN_DEG = 2.0
@@ -404,6 +408,33 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 x, y, r, color = self._dots[i]
                 painter.setBrush(color)
                 painter.drawEllipse(QRectF(x - r, y - r, 2 * r, 2 * r))
+
+    class _TrailLayer(QGraphicsItem):
+        """The drive trail as ONE scene item: a polyline through the GPS breadcrumbs in the shared
+        world_px plane (a float list + a cosmetic-pen path, not N line items). points = list of
+        (x, y) world_px; bounds = the full extent. A COSMETIC pen keeps the line a fixed on-screen
+        width at any zoom, so it reads the same framed on a block or a whole drive."""
+
+        def __init__(self, points, bounds) -> None:
+            super().__init__()
+            self._points = points
+            self._bounds = bounds
+
+        def boundingRect(self):  # noqa: N802 (Qt override)
+            return self._bounds
+
+        def paint(self, painter, option, widget=None) -> None:  # noqa: N802 (Qt override)
+            if len(self._points) < 2:
+                return
+            pen = QPen(QColor(_TRAIL_FILL))
+            pen.setCosmetic(True)                                # fixed on-screen width at any zoom
+            pen.setWidthF(2.5)
+            painter.setPen(pen)
+            path = QPainterPath()
+            path.moveTo(self._points[0][0], self._points[0][1])
+            for x, y in self._points[1:]:
+                path.lineTo(x, y)
+            painter.drawPath(path)
 
     class _FlockWorker(QThread):
         """Drive a live Flock scan on its own thread: read GPS + the Flock-You device serial, feed them
@@ -707,6 +738,11 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                           "over the cameras. Awareness-only: maps APs, drives no device.")
             self._chk_wardrive.setChecked(True)   # a loaded wardrive shows at once
             self._chk_wardrive.stateChanged.connect(lambda _s: self._rebuild())
+            self._chk_trail = QCheckBox("Trail")
+            self._chk_trail.setToolTip("Draw a drive trail behind the live GPS position as you go "
+                                       "(session-only). Awareness-only -- traces where you went.")
+            self._chk_trail.setChecked(True)
+            self._chk_trail.stateChanged.connect(lambda _s: self._update_trail_layer())
             self._chk_streetmap = QCheckBox("Street map")
             self._chk_streetmap.setToolTip("Show a real street basemap (OpenStreetMap tiles) under the cameras, "
                                            "so a scan sits on actual roads. Offline-first: cached tiles render "
@@ -744,6 +780,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             map_row.addWidget(self._chk_basemap)
             map_row.addWidget(self._chk_flock)
             map_row.addWidget(self._chk_wardrive)
+            map_row.addWidget(self._chk_trail)
             map_row.addWidget(self._chk_mylocation)
             map_row.addWidget(self._chk_follow)
             map_row.addWidget(self._btn_center)
@@ -805,6 +842,10 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._my_location = None
             self._location_marker = None
             self._gps_live = True
+            # Drive trail (S3): breadcrumb of (lat, lon) fixes behind the pin, session-only.
+            # Data retained across unload; the layer (a polyline in world_px) is rebuilt on demand.
+            self._trail: "List[Tuple[float, float]]" = []
+            self._trail_layer = None
             self._gps_worker = None      # standalone NMEA reader (F3) — GPS tracking without a full scan
 
             self.set_geojson({"type": "FeatureCollection", "features": []})
@@ -1065,7 +1106,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             """Record the live GPS position, mark the fix live, and (if the toggle is on) draw/move the
             'you are here' marker — recentring on it when Follow is on. Public so the live worker's
             `location` signal and tests can drive it without a serial port."""
-            self._my_location = (float(lat), float(lon))
+            lat, lon = float(lat), float(lon)
+            # Extend the drive trail past the move-threshold (pure gate), then cap it.
+            # _draw_location_marker rebuilds the layer from self._trail below.
+            if trail_accept(self._trail[-1] if self._trail else None, lat, lon):
+                self._trail.append((lat, lon))
+                self._trail = trail_decimate(self._trail)
+            self._my_location = (lat, lon)
             self._gps_live = True
             self._draw_location_marker()
             if self._chk_follow.isChecked():
@@ -1143,6 +1190,9 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             no-op if the toggle is off or no fix is known. Uses ItemIgnoresTransformations so the marker stays
             a fixed on-screen size (a real map pin) at any zoom, drawn above the dots + basemap. Cyan while the
             fix is live, grey once it's stale (scan stopped)."""
+            # The drive trail travels with the pin: fires on each per-location redraw (a new
+            # fix and each _rebuild); _update_trail_layer has its own toggle, run before the pin's.
+            self._update_trail_layer()
             if self._location_marker is not None:
                 self._scene.removeItem(self._location_marker)
                 self._location_marker = None
@@ -1159,12 +1209,34 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             item.setPos(x, y)
             self._location_marker = item
 
+        def _update_trail_layer(self) -> None:
+            """Rebuild the drive-trail layer from self._trail (one polyline in the world_px plane,
+            above cameras/APs, below the pin). Cheap: removes + re-adds a single item; projects the
+            capped list. No-op when the "Trail" toggle is off or the trail has < 2 points -- the
+            DATA is retained either way, so toggling or an unload/reload keeps the drive so far."""
+            if self._trail_layer is not None:
+                try:
+                    self._scene.removeItem(self._trail_layer)
+                except RuntimeError:
+                    pass                                    # already dropped by a scene.clear()
+                self._trail_layer = None
+            if not self._chk_trail.isChecked() or len(self._trail) < 2:
+                return
+            pts = [world_px(lat, lon) for lat, lon in self._trail]
+            xs = [p[0] for p in pts]
+            ys = [p[1] for p in pts]
+            bounds = QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+            self._trail_layer = _TrailLayer(pts, bounds)
+            self._trail_layer.setZValue(2)     # above cameras (0) + APs (1); the pin is on top
+            self._scene.addItem(self._trail_layer)
+
         def _rebuild(self) -> None:
             self._scene.clear()
             self._camera_layer = None
             self._camera_bounds = QRectF()
             self._wardrive_layer = None                        # scene.clear() freed it; a handle
             self._wardrive_bounds = QRectF()                   # would dangle if not nulled here
+            self._trail_layer = None                           # ditto; re-added below
             self._basemap_group = None
             self._location_marker = None                       # scene.clear() dropped it; redraw below
             self._tile_group = None                            # scene.clear() dropped the tiles too
@@ -1405,6 +1477,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._camera_bounds = QRectF()
             self._wardrive_layer = None
             self._wardrive_bounds = QRectF()
+            self._trail_layer = None               # scene.clear() freed it; self._trail survives
             self._basemap_group = None
             self._location_marker = None
             self._reset_tile_state()               # drop tile refs + stop the fetch worker (scene.clear() freed them)

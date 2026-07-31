@@ -1,7 +1,13 @@
-"""Pure drive-trail helpers (wardriving-v2 S3): trail_accept (append threshold + fix validation) and
-trail_decimate (bounded down-sampling). Qt-free -- they live in the pure core, so the
-append/threshold/decimate logic is unit-testable headless, like world_px."""
+"""Drive-trail (wardriving-v2 S3). The pure helpers -- trail_accept (append + fix check) and
+trail_decimate (bounded down-sampling) -- are Qt-free and tested headless, like world_px. The
+_TrailLayer + set_my_location wiring is exercised via a real (offscreen) FlockHeatmapTab below."""
 from __future__ import annotations
+
+import os
+
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+import pytest
 
 from src.ui.qt.flock_heatmap_tab import _TRAIL_MIN_MOVE_DEG, trail_accept, trail_decimate
 
@@ -40,3 +46,60 @@ def test_trail_decimate_edge_caps():
     assert len(trail_decimate(trail, 1)) == 1
     assert trail_decimate(trail, 100) is trail                  # exactly at cap -> same object
     assert trail_decimate(trail, 1000) is trail                 # over capacity -> unchanged
+
+
+# ── the _TrailLayer + set_my_location wiring, through a real offscreen FlockHeatmapTab ──
+
+@pytest.fixture(scope="module")
+def qapp():
+    pytest.importorskip("PyQt5.QtWidgets")           # widget tests skip without Qt; pure tests run
+    from PyQt5.QtWidgets import QApplication
+    return QApplication.instance() or QApplication([])
+
+
+@pytest.fixture
+def tab(qapp):
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    w = FlockHeatmapTab()
+    yield w
+    w.shutdown()
+    w.deleteLater()
+    qapp.processEvents()
+
+
+def _drive(w, n, step=0.001):
+    for i in range(n):
+        w.set_my_location(37.77 + i * step, -122.42)   # each step is well past the threshold
+
+
+def test_trail_layer_grows_with_gps_fixes(tab):
+    _drive(tab, 5)
+    assert len(tab._trail) == 5                          # every moved fix recorded
+    assert tab._trail_layer is not None
+    assert len(tab._trail_layer._points) == 5            # projected into a world_px polyline
+
+
+def test_trail_ignores_sub_threshold_moves(tab):
+    d = _TRAIL_MIN_MOVE_DEG
+    tab.set_my_location(37.77, -122.42)                  # first breadcrumb
+    tab.set_my_location(37.77 + d / 3, -122.42)          # tiny move -> skipped
+    tab.set_my_location(37.77 + d * 2 / 3, -122.42)      # still within threshold of last -> skipped
+    assert len(tab._trail) == 1                          # standing still doesn't grow the trail
+
+
+def test_trail_toggle_hides_and_restores(tab):
+    _drive(tab, 4)
+    assert tab._trail_layer is not None
+    tab._chk_trail.setChecked(False)                     # hide the trail
+    assert tab._trail_layer is None                      # layer dropped...
+    assert len(tab._trail) == 4                          # ...but the drive data is retained
+    tab._chk_trail.setChecked(True)
+    assert tab._trail_layer is not None                  # ...and restored
+
+
+def test_trail_survives_rebuild_and_renders(tab):
+    _drive(tab, 4)
+    tab._rebuild()                                       # a basemap/AP toggle clears + redraws
+    assert tab._trail_layer is not None
+    assert len(tab._trail_layer._points) == 4            # re-added from the retained trail
+    tab.render_native()                                  # a trail + pin must not crash the render
