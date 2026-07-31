@@ -125,3 +125,34 @@ def test_trail_from_geojson_is_tolerant():
     gj = {"features": [{"geometry": {"type": "LineString", "coordinates": [
         [-122.4, 37.7], ["x", 1], [200.0, 10.0], [float("nan"), 5.0], [-122.5, 37.8]]}}]}
     assert trail_from_geojson(gj) == [(37.7, -122.4), (37.8, -122.5)]   # bad coords dropped
+
+
+# ── persist/replay through the map: save_trail -> load_trail (owner-call #2 option A) ──
+
+def test_trail_save_load_roundtrip(tab, tmp_path):
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    _drive(tab, 5)
+    assert len(tab._trail) == 5
+    p = tmp_path / "drive.geojson"
+    assert tab.save_trail(str(p)) == 5           # persisted
+    assert p.exists()
+    w2 = FlockHeatmapTab()                        # a fresh session
+    try:
+        assert w2.load_trail(str(p)) == 5        # replayed
+        assert w2._trail == tab._trail           # exact points round-trip
+        assert w2._trail_layer is not None       # ...and drawn on the map
+    finally:
+        w2.shutdown()
+        w2.deleteLater()
+
+
+def test_save_trail_empty_is_a_noop(tab, tmp_path):
+    p = tmp_path / "empty.geojson"
+    assert tab.save_trail(str(p)) == 0           # nothing to save
+    assert not p.exists()
+
+
+def test_load_trail_bad_file_is_safe(tab, tmp_path):
+    assert tab.load_trail(str(tmp_path / "nope.geojson")) == 0        # missing -> 0
+    (tmp_path / "junk.geojson").write_text("not json {{{")
+    assert tab.load_trail(str(tmp_path / "junk.geojson")) == 0        # junk -> 0, no crash

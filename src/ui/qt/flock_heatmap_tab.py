@@ -718,11 +718,20 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._btn_import_wd.setToolTip("Load a wardrive log (WiGLE, Kismet .netxml, Biscuit) "
                                            "onto the map as located Wi-Fi APs. Awareness-only.")
             self._btn_import_wd.clicked.connect(self._on_import_wardrive)
+            self._btn_save_trail = QPushButton("Save trail…")
+            self._btn_save_trail.setToolTip("Save the drive trail as GeoJSON, to replay later "
+                                            "or open in a GIS tool. Awareness-only.")
+            self._btn_save_trail.clicked.connect(self._on_save_trail)
+            self._btn_load_trail = QPushButton("Load trail…")
+            self._btn_load_trail.setToolTip("Replay a saved drive trail (GeoJSON) on the map.")
+            self._btn_load_trail.clicked.connect(self._on_load_trail)
             file_row.addWidget(self._btn_load)
             file_row.addWidget(self._btn_folder)
             file_row.addWidget(self._btn_export)
             file_row.addWidget(self._btn_import_osm)
             file_row.addWidget(self._btn_import_wd)
+            file_row.addWidget(self._btn_save_trail)
+            file_row.addWidget(self._btn_load_trail)
             file_row.addStretch(1)
             root.addLayout(file_row)
 
@@ -898,6 +907,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             # Data retained across unload; the layer (a polyline in world_px) is rebuilt on demand.
             self._trail: "List[Tuple[float, float]]" = []
             self._trail_layer = None
+            self._trail_bounds = QRectF()   # extent of the trail, unioned into the framed content
             self._gps_worker = None      # standalone NMEA reader (F3) — GPS tracking without a full scan
 
             self.set_geojson({"type": "FeatureCollection", "features": []})
@@ -989,6 +999,36 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             if n == 0:
                 self._legend.setText("No mappable points in that wardrive log.")
             return n
+
+        def save_trail(self, path: str) -> int:
+            """Persist the current drive trail to *path* as GeoJSON (owner-call #2). Returns the
+            count written; 0 (nothing written) when the trail is empty or the file can't be written.
+            Never raises. The saved file replays via load_trail or opens in any GIS tool."""
+            if not self._trail:
+                return 0
+            try:
+                with open(path, "w", encoding="utf-8") as fh:
+                    json.dump(trail_to_geojson(self._trail), fh)
+            except OSError:
+                self._legend.setText("Could not save the trail.")
+                return 0
+            return len(self._trail)
+
+        def load_trail(self, path: str) -> int:
+            """Replay a saved drive trail from *path* (GeoJSON): parse -> set self._trail -> render.
+            Returns the point count (0 on a bad/unreadable file, never crashes). Awareness-only:
+            it draws a past drive; it touches no device."""
+            try:
+                with open(path, "r", encoding="utf-8") as fh:
+                    gj = json.load(fh)
+            except (OSError, ValueError):
+                self._legend.setText("Could not read that trail file.")
+                return 0
+            self._trail = trail_from_geojson(gj)
+            self._chk_trail.setChecked(True)                # make the replayed trail visible
+            self._update_trail_layer()
+            self.reset_view()                               # frame it (trail bounds now in content)
+            return len(self._trail)
 
         @property
         def camera_count(self) -> int:
@@ -1308,12 +1348,14 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 except RuntimeError:
                     pass                                    # already dropped by a scene.clear()
                 self._trail_layer = None
+            self._trail_bounds = QRectF()
             if not self._chk_trail.isChecked() or len(self._trail) < 2:
                 return
             pts = [world_px(lat, lon) for lat, lon in self._trail]
             xs = [p[0] for p in pts]
             ys = [p[1] for p in pts]
             bounds = QRectF(min(xs), min(ys), max(xs) - min(xs), max(ys) - min(ys))
+            self._trail_bounds = bounds
             self._trail_layer = _TrailLayer(pts, bounds)
             self._trail_layer.setZValue(2)     # above cameras (0) + APs (1); the pin is on top
             self._scene.addItem(self._trail_layer)
@@ -1325,6 +1367,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._wardrive_layer = None                        # scene.clear() freed it; a handle
             self._wardrive_bounds = QRectF()                   # would dangle if not nulled here
             self._trail_layer = None                           # ditto; re-added below
+            self._trail_bounds = QRectF()
             self._basemap_group = None
             self._location_marker = None                       # scene.clear() dropped it; redraw below
             self._tile_group = None                            # scene.clear() dropped the tiles too
@@ -1412,14 +1455,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._schedule_tiles()                             # paint street tiles under the cameras
 
         def _content_bounds(self) -> "QRectF":
-            """Union of the on-map layers' extents (cameras + wardrive APs), for framing/sizing.
-            Skips an empty layer so a lone empty QRectF at the origin can't drag the frame to 0,0."""
-            cam, ap = self._camera_bounds, self._wardrive_bounds
-            if cam.isEmpty():
-                return QRectF(ap)
-            if ap.isEmpty():
-                return QRectF(cam)
-            return cam.united(ap)
+            """Union of on-map layer extents (cameras + wardrive APs + trail), for framing/sizing.
+            Skips empty layers so a lone empty QRectF at the origin can't drag the frame to 0,0."""
+            out = QRectF()
+            for b in (self._camera_bounds, self._wardrive_bounds, self._trail_bounds):
+                if not b.isEmpty():
+                    out = QRectF(b) if out.isEmpty() else out.united(b)
+            return out
 
         def reset_view(self) -> None:
             """Re-frame the CONTENT: drop any pan/zoom and fit the whole detection set -- cameras AND
@@ -1566,6 +1608,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._wardrive_layer = None
             self._wardrive_bounds = QRectF()
             self._trail_layer = None               # scene.clear() freed it; self._trail survives
+            self._trail_bounds = QRectF()
             self._basemap_group = None
             self._location_marker = None
             self._reset_tile_state()               # drop tile refs + stop the fetch worker (scene.clear() freed them)
@@ -1649,6 +1692,26 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 "Wardrive logs (*.csv *.wiglecsv *.netxml);;All files (*)")
             if path:
                 self.load_wardrive_log(path)
+
+        def _on_save_trail(self) -> None:
+            """Persist (owner-call #2): save the current trail to a GeoJSON file for later replay.
+            The dialog is the only non-testable bit; it delegates to save_trail."""
+            from PyQt5.QtWidgets import QFileDialog
+            if not self._trail:
+                self._legend.setText("No trail to save yet -- drive with GPS on first.")
+                return
+            path, _ = QFileDialog.getSaveFileName(self, "Save drive trail", "trail.geojson",
+                                                  "GeoJSON (*.geojson *.json);;All files (*)")
+            if path:
+                self.save_trail(path)
+
+        def _on_load_trail(self) -> None:
+            """Replay a saved drive trail: pick a GeoJSON and draw it. Delegates to load_trail."""
+            from PyQt5.QtWidgets import QFileDialog
+            path, _ = QFileDialog.getOpenFileName(self, "Load drive trail", "",
+                                                  "GeoJSON (*.geojson *.json);;All files (*)")
+            if path:
+                self.load_trail(path)
 
         def _on_load(self) -> None:
             from PyQt5.QtCore import Qt
