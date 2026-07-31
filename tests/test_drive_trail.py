@@ -103,3 +103,25 @@ def test_trail_survives_rebuild_and_renders(tab):
     assert tab._trail_layer is not None
     assert len(tab._trail_layer._points) == 4            # re-added from the retained trail
     tab.render_native()                                  # a trail + pin must not crash the render
+
+
+# ── trail persist/replay serialization (owner-call #2) — pure, headless ──
+
+def test_trail_geojson_roundtrip():
+    from src.ui.qt.flock_heatmap_tab import trail_from_geojson, trail_to_geojson
+    trail = [(37.77, -122.42), (37.78, -122.41), (37.79, -122.40)]
+    gj = trail_to_geojson(trail)
+    assert gj["features"][0]["geometry"]["type"] == "LineString"
+    assert gj["features"][0]["geometry"]["coordinates"][0] == [-122.42, 37.77]   # [lon, lat] order
+    assert trail_from_geojson(gj) == trail                        # round-trips exactly
+
+
+def test_trail_from_geojson_is_tolerant():
+    from src.ui.qt.flock_heatmap_tab import trail_from_geojson
+    assert trail_from_geojson({}) == []                          # empty / no features
+    assert trail_from_geojson("not a dict") == []               # junk
+    assert trail_from_geojson({"features": [{"geometry": {"type": "Point",
+                                             "coordinates": [1, 2]}}]}) == []   # not a LineString
+    gj = {"features": [{"geometry": {"type": "LineString", "coordinates": [
+        [-122.4, 37.7], ["x", 1], [200.0, 10.0], [float("nan"), 5.0], [-122.5, 37.8]]}}]}
+    assert trail_from_geojson(gj) == [(37.7, -122.4), (37.8, -122.5)]   # bad coords dropped

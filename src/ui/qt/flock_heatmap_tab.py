@@ -270,6 +270,41 @@ def trail_decimate(trail: "List[Tuple[float, float]]",
     return trail[::k]
 
 
+def trail_to_geojson(trail: "List[Tuple[float, float]]") -> dict:
+    """Serialize a drive trail [(lat, lon), ...] as a GeoJSON LineString FeatureCollection (coords
+    [lon, lat] per the GeoJSON spec) so a saved drive can be reloaded + replayed, or opened
+    in any GIS tool. Pure + Qt-free (owner-call #2's persist/replay foundation)."""
+    coords = [[lon, lat] for lat, lon in trail]
+    return {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "properties": {"kind": "drive-trail"},
+         "geometry": {"type": "LineString", "coordinates": coords}}]}
+
+
+def trail_from_geojson(gj: Any) -> "List[Tuple[float, float]]":
+    """Parse a GeoJSON (as :func:`trail_to_geojson` writes) back to [(lat, lon), ...]: reads every
+    LineString's coordinates ([lon, lat]) across the collection. Tolerant -- a non-dict feature,
+    a missing/short/non-finite or out-of-range coord is skipped; returns [] on anything unusable,
+    never raises. Pure + Qt-free, so replay is unit-testable headless."""
+    out: "List[Tuple[float, float]]" = []
+    feats = gj.get("features", []) if isinstance(gj, dict) else []
+    for feat in (feats if isinstance(feats, list) else []):
+        if not isinstance(feat, dict):
+            continue
+        geom = feat.get("geometry") or {}
+        if not isinstance(geom, dict) or geom.get("type") != "LineString":
+            continue
+        for c in (geom.get("coordinates") or []):
+            if not (isinstance(c, (list, tuple)) and len(c) >= 2):
+                continue
+            lon, lat = c[0], c[1]
+            if not all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+                       for v in (lat, lon)):
+                continue
+            if -90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0:
+                out.append((float(lat), float(lon)))
+    return out
+
+
 def _flock_pump(session: Any, gps_line: str, dev_line: str, checkpoint_path: str = "") -> bool:
     """One live-capture step — shared by the driving worker and unit-testable with no Qt or serial.
 
