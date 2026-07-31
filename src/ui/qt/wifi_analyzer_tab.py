@@ -92,7 +92,7 @@ _WIFI_HELP = {
 
 # ── Qt widget (the pure core above stays Qt-free) ──
 try:
-    from PyQt5.QtCore import QRectF, Qt, QTimer
+    from PyQt5.QtCore import QRectF, Qt, QTimer, pyqtSignal
     from PyQt5.QtGui import QBrush, QColor, QImage, QPainter, QPen
     from PyQt5.QtWidgets import (
         QAbstractItemView,
@@ -100,6 +100,7 @@ try:
         QHBoxLayout,
         QHeaderView,
         QLabel,
+        QMenu,
         QPushButton,
         QTableWidget,
         QTableWidgetItem,
@@ -199,6 +200,11 @@ try:
         event_type, data) folds one event in. Passive —
         it has no scan control and transmits nothing."""
 
+        # P3 flow B: right-clicking an AP with a captured handshake asks the host to send it to
+        # Crack Lab. Emits the AP's BSSID; main_window resolves the CaptureRecord + hands it off via
+        # a FlowIntent (LOAD-only; Crack Lab never auto-starts a crack).
+        crack_capture_requested = pyqtSignal(str)
+
         _COLS = ("Signal", "SSID", "BSSID", "Vendor", "Ch", "Enc", "Clients", "HS")
         _ACTIVE_WINDOW_S = 10.0   # a Wi-Fi event within this many seconds = actively feeding
 
@@ -207,6 +213,7 @@ try:
             self._model = WifiAnalyzerModel()
             self._now_fn = time.monotonic
             self._sort = "rssi"
+            self._row_aps: list = []   # APs in table-row order (for the right-click context menu)
             self._paused = False
             self._last_event_ts: "Optional[float]" = None  # when we last folded in a Wi-Fi event
             self._last_wifi_size: "Optional[str]" = None    # Wave-3: size class (debounce)
@@ -258,6 +265,9 @@ try:
             self._table.setItemDelegateForColumn(0, SignalBarsDelegate(self._table))
             hdr = self._table.horizontalHeader()
             hdr.setSectionResizeMode(1, QHeaderView.Stretch)  # let SSID take the slack
+            # P3 flow B: right-click a row to send a captured handshake to Crack Lab.
+            self._table.setContextMenuPolicy(Qt.CustomContextMenu)
+            self._table.customContextMenuRequested.connect(self._on_context_menu)
             root.addWidget(self._table, 2)
 
             self._timer = QTimer(self)
@@ -377,6 +387,7 @@ try:
 
         def _fill_table(self, now: float) -> None:
             aps = self._model.access_points(sort=self._sort)
+            self._row_aps = aps   # keep row→AP order for the right-click context menu
             self._table.setRowCount(len(aps))
             for row, ap in enumerate(aps):
                 fresh = ap.freshness(now)
@@ -410,6 +421,28 @@ try:
                     if fresh < 1.0 and col != 0:
                         item.setForeground(QColor(139, 148, 158, int(90 + 165 * fresh)))
                     self._table.setItem(row, col, item)
+
+        def _on_context_menu(self, pos) -> None:
+            """Right-click an AP row (flow B): a captured handshake can be sent to Crack Lab.
+            Emits ``crack_capture_requested(bssid)``; the host resolves the record + hands it off
+            (LOAD-only; nothing is armed or cracked here)."""
+            item = self._table.itemAt(pos)
+            if item is None or not (0 <= item.row() < len(self._row_aps)):
+                return
+            ap = self._row_aps[item.row()]
+            menu = QMenu(self)
+            header = menu.addAction(f'"{ap.display_ssid() or ap.bssid or "AP"}" ({ap.bssid})')
+            header.setEnabled(False)
+            menu.addSeparator()
+            if ap.has_capture():
+                send = menu.addAction("Send capture to Crack Lab")
+                send.setToolTip("Load this AP's captured handshake into Crack Lab "
+                                "(navigates + loads; does not start a crack).")
+                send.triggered.connect(lambda: self.crack_capture_requested.emit(ap.bssid))
+            else:
+                none = menu.addAction("No handshake captured for this AP yet")
+                none.setEnabled(False)
+            menu.exec_(self._table.viewport().mapToGlobal(pos))
 
         def render_native(self, width: int = 800, height: int = 200) -> "QImage":
             """Render the channel graph to a QImage — offscreen, no window needed

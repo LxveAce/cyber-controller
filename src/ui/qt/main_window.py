@@ -640,6 +640,9 @@ class CyberControllerWindow(QMainWindow):
         # scan control of its own, so it lives in Analyze next to the BLE Analyzer.
         from src.ui.qt.wifi_analyzer_tab import WifiAnalyzerTab
         self._wifi_analyzer = WifiAnalyzerTab() if WifiAnalyzerTab is not None else None
+        if self._wifi_analyzer is not None:
+            # P3 flow B: HUNT Wi-Fi analyzer hands a captured handshake to Crack Lab.
+            self._wifi_analyzer.crack_capture_requested.connect(self._on_crack_capture_requested)
 
         # QA-1 (decision #9, reverses the 07-21 Option-B split): merge Broadcast (fan-out) + Console
         # (single-device) into ONE Operate screen — a vertical splitter with the fan-out verb bar on
@@ -886,6 +889,23 @@ class CyberControllerWindow(QMainWindow):
             except Exception:  # noqa: BLE001 — a receive method must never take the app down
                 log.exception("dispatch_intent: %s.%s failed", type(receive_widget).__name__, action)
         return True
+
+    def _on_crack_capture_requested(self, bssid: str) -> None:
+        """P3 flow B: the Wi-Fi analyzer asks to send an AP's handshake to Crack Lab. Resolve the
+        CaptureRecord for this BSSID from the store + hand it off via a FlowIntent - LOAD-only
+        (load_capture never starts a crack; the per-run consent gate stays the single arming point)
+        and this never touches the guarded send path."""
+        from src.core.flow_intent import FlowIntent
+        store = getattr(self._hub, "captures", None)
+        if store is None or not bssid:
+            return
+        b = bssid.strip().lower()
+        recs = [r for r in store.all() if (getattr(r, "bssid", "") or "").lower() == b]
+        if not recs:
+            return
+        # Prefer a record with a crackable artifact (a pcap/hc22000 file or a complete inline line).
+        rec = next((r for r in recs if r.pcap_path or r.hc22000_path or r.hc22000_line), recs[0])
+        self.dispatch_intent(FlowIntent("crack", "load_capture", rec, sub_view="crack_lab"))
 
     def _on_home_navigate(self, key: str) -> None:
         """An Operate-Home 'external' tile asks to open its real surface — route there, not a placeholder.
