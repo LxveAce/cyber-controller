@@ -59,8 +59,8 @@ def _stub_worker(monkeypatch, flashed):
 
 @pytest.fixture
 def tab(qapp, isolated_settings, monkeypatch):
-    # FlashTab.__init__ starts a _VariantLoader QThread (hits the network via list_variants). Stub it
-    # to return instantly (the convention other flash test files use), and shut the tab down in
+    # FlashTab.__init__ starts a _VariantLoader QThread (hits the network via list_variants). Stub
+    # it to return instantly (the convention other flash test files use), and shut the tab down in
     # teardown so the QThread is JOINED before GC drops it (destroyed-while-running -> a C++ abort,
     # EXIT=127, no traceback, in some orderings). Teardown fires even on an assert-fail, so no leak.
     # (Atlas-characterized; joins via the existing shutdown(), touches no connections.)
