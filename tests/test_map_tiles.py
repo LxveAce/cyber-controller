@@ -140,7 +140,8 @@ def test_get_or_fetch_is_cache_first_and_offline_safe(tmp_path, monkeypatch):
 
 
 def test_fetch_downloads_and_caches(tmp_path, monkeypatch):
-    c = mt.TileCache(root=tmp_path)
+    # explicit provider so the asserted URL is fixed, independent of DEFAULT_PROVIDER
+    c = mt.TileCache(provider="osm", root=tmp_path)
 
     class _Resp:
         status = 200
@@ -200,3 +201,30 @@ def test_fetch_is_offline_safe(tmp_path, monkeypatch):
 
     monkeypatch.setattr(mt.urllib.request, "urlopen", boom)
     assert c.fetch(3, 3, 3) is None                 # a network error is swallowed, never raised
+
+
+def test_provider_url_substitutes_subdomain_and_retina():
+    # CARTO: {s} rotates a-d, {r} (retina) -> empty for standard tiles, {z}/{x}/{y} filled.
+    u = mt.get_provider("carto-dark").url(1, 2, 3)
+    assert u == "https://d.basemaps.cartocdn.com/dark_all/3/1/2.png"   # (1+2)%4=3 -> 'd'
+    assert "{" not in u                                # every placeholder substituted
+    # a template without {s}/{r} (OSM) is unaffected by the new substitutions
+    assert mt.get_provider("osm").url(1, 2, 3) == "https://tile.openstreetmap.org/3/1/2.png"
+    # the subdomain always lands in CARTO's a-d set (url[8] is the char right after "https://")
+    assert {mt.get_provider("carto-dark").url(x, 0, 0)[8] for x in range(8)} <= set("abcd")
+
+
+def test_carto_dark_is_the_default_basemap():
+    assert mt.DEFAULT_PROVIDER == "carto-dark"           # owner-call #1
+    p = mt.get_provider("carto-dark")
+    assert "CARTO" in p.attribution and "OpenStreetMap" in p.attribution
+    assert p.host == "a.basemaps.cartocdn.com"           # url(0,0,0) -> subdomain 'a'
+    assert mt.TileCache().provider.key == "carto-dark"   # the Flock map's default provider
+
+
+def test_carto_provider_set():
+    for key, style in [("carto-dark", "dark_all"), ("carto-light", "light_all"),
+                       ("carto-voyager", "rastertiles/voyager")]:
+        assert style in mt.get_provider(key).url_template
+        assert mt.get_provider(key).url(0, 0, 0).lower().startswith("https://")
+    assert mt.get_provider("osm").key == "osm"           # OSM providers still available

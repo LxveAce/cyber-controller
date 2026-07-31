@@ -51,16 +51,36 @@ class Provider:
         self.max_zoom = max_zoom
 
     def url(self, x: int, y: int, z: int) -> str:
+        # {s} = a rotating CDN subdomain (CARTO serves a-d); {r} = the retina @2x suffix, left empty
+        # for standard tiles. Both are no-ops on a template (e.g. OSM's) that lacks them.
         return (self.url_template
+                .replace("{s}", "abcd"[(x + y) % 4]).replace("{r}", "")
                 .replace("{z}", str(z)).replace("{x}", str(x)).replace("{y}", str(y)))
 
     @property
     def host(self) -> str:
+        # Resolve a real URL first, so a {s}-subdomain template yields its true host, not "{s}...".
         from urllib.parse import urlparse
-        return urlparse(self.url_template).hostname or ""
+        return urlparse(self.url(0, 0, 0)).hostname or ""
 
 
+# CARTO basemaps are OSM-derived raster XYZ tiles from a-d CDN subdomains; the license requires
+# crediting both OpenStreetMap (data) and CARTO (style). (Grounded on CARTO's basemap-styles docs.)
+_CARTO_ATTR = "© OpenStreetMap contributors © CARTO"
 PROVIDERS: Dict[str, Provider] = {
+    # CARTO's muted basemaps give the "Apple-Maps feel" (dark_all ~ CC's #0d1117). Default = dark.
+    "carto-dark": Provider(
+        "carto-dark", "CARTO Dark Matter",
+        "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",
+        _CARTO_ATTR),
+    "carto-light": Provider(
+        "carto-light", "CARTO Positron",
+        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        _CARTO_ATTR),
+    "carto-voyager": Provider(
+        "carto-voyager", "CARTO Voyager",
+        "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+        _CARTO_ATTR),
     "osm": Provider(
         "osm", "OpenStreetMap",
         "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
@@ -70,7 +90,7 @@ PROVIDERS: Dict[str, Provider] = {
         "https://tile.openstreetmap.de/{z}/{x}/{y}.png",
         "© OpenStreetMap contributors"),
 }
-DEFAULT_PROVIDER = "osm"
+DEFAULT_PROVIDER = "carto-dark"    # owner-call #1 (wardriving-v2): a clean muted basemap by default
 
 
 def get_provider(key: str) -> Provider:
