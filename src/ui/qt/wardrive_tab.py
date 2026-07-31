@@ -526,6 +526,8 @@ class WardriveTab(QWidget):
             return
         self._btn_start.setEnabled(False)
         self._btn_stop.setEnabled(True)
+        self._btn_view_map.setEnabled(False)   # a new drive supersedes the last "View on map"
+        self._last_csv_path = ""
         gps = self._gps_combo.currentData()
         if self._dm is not None:
             # Route through the shared DeviceManager so a board also open in the Devices tab is shared,

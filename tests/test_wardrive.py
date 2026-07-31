@@ -320,6 +320,18 @@ def test_wigle_csv_to_points_tolerates_headers_and_garbage():
     assert wd.wigle_csv_to_points("") == []                    # totally empty must not crash
 
 
+def test_wigle_csv_to_points_rejects_out_of_range_coords():
+    # A finite-but-out-of-range coordinate (garbled / misparsed) passes isfinite but would blow the
+    # map extent to millions of world-widths (world_px doesn't clamp longitude). It must be dropped.
+    text = (
+        wd.WIGLE_HEADER + "\n"
+        "AA:BB:CC:DD:EE:30,Wild,[ESS],t,6,2437,-40,37.77,1e9,0.0,0,,,WIFI\n"     # lon out of range
+        "AA:BB:CC:DD:EE:31,Polar,[ESS],t,6,2437,-40,120.0,11.5,0.0,0,,,WIFI\n"   # lat > 90
+        "AA:BB:CC:DD:EE:32,Real,[ESS],t,6,2437,-40,37.77,-122.4,0.0,0,,,WIFI\n"  # real
+    )
+    assert wd.wigle_csv_to_points(text) == [(37.77, -122.4, "Real", "AA:BB:CC:DD:EE:32")]
+
+
 # ── real-hardware Marauder scanall format (regression: found on COM16, 2026-07-08) ──
 # These are VERBATIM lines captured from a physical Marauder v1.12.3 `scanall`. The RSSI is a bare leading
 # signed int with NO "RSSI:" label; before the _RSSI_LEAD_RE fix the accumulator saw no RSSI and emitted 0

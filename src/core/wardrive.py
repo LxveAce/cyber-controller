@@ -708,6 +708,8 @@ def wigle_csv_to_points(text: str) -> "list[tuple[float, float, str, str]]":
             continue
         if not (math.isfinite(lat) and math.isfinite(lon)):
             continue
+        if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+            continue  # out-of-range (garbled): world_px would blow the map extent to a speck
         if lat == 0.0 and lon == 0.0:   # Null Island -> the "no fix" sentinel, not a place
             continue
         mac = row[0].strip().upper()
