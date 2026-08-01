@@ -45,6 +45,15 @@ def test_corrected_verbs_present():
     assert any(n.startswith("badusb run_from_file") for n in names)
 
 
+def test_subghz_tx_from_file_declares_its_file_arg():
+    # Operate's OpPanel + the Devices terminal show an arg field (and prompt for the file) only when
+    # CommandInfo.args is set — operate_tab does `if getattr(ci, "args", "")`. Without it this
+    # replay-from-file verb fired the bare, incomplete `subghz tx_from_file` (no file), even though
+    # device_menus already marks it needs_arg. Pin the arg so both surfaces prompt.
+    ci = {c.name: c for c in BruceProtocol().get_commands()}["subghz tx_from_file"]
+    assert ci.args, "subghz tx_from_file must declare a file arg so Operate/Devices prompt for it"
+
+
 def test_kept_system_commands_present():
     names = _command_names()
     for keep in ("info", "free", "uptime", "reboot"):

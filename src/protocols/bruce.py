@@ -148,7 +148,7 @@ class BruceProtocol(BaseProtocol):
                         "start stop"),
             CommandInfo("subghz tx", "Offensive", "Transmit a SubGHz signal", danger="lab-only"),
             CommandInfo("subghz tx_from_file", "Offensive", "Replay a saved SubGHz capture",
-                        danger="lab-only"),
+                        "path", danger="lab-only"),
             # RF emitters (rf_commands.cpp: txp->rfTransmitCode, keeloqtx->rf_tx_keeloq,
             # tx_from_buffer->txSubFile, RfSend->rfTransmitCode — all transmit). Explicit gate.
             CommandInfo("subghz txp", "Offensive", "TX a SubGHz signal by protocol name",
