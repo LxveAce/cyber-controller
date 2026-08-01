@@ -702,6 +702,12 @@ def wigle_csv_to_points(text: str) -> "list[tuple[float, float, str, str]]":
     # file's lat/lon at index 6/7 resolve correctly instead of being dropped.
     best: dict = {}  # mac -> (rssi_or_None, lat, lon, ssid)
     for r in iter_wigle_rows(text):
+        # The map's AP layer is labelled "Wi-Fi APs" (green dots); a WiGLE wardrive also logs BLE/BT and
+        # cellular rows (Type=BLE/BT/GSM/LTE/…), which mislabel if plotted there. Drop an EXPLICIT non-Wi-Fi
+        # Type; keep "WIFI" and an empty/unknown Type (never drop on missing data — a Type-less or headerless
+        # CSV still plots). Mirrors kismet_db_to_points' AP-type filter, so both readers agree on the layer.
+        if r["type"].strip().upper() not in ("", "WIFI"):
+            continue
         try:
             lat, lon = float(r["lat"]), float(r["lon"])
         except (ValueError, TypeError):

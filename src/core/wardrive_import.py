@@ -51,7 +51,8 @@ _HEADER_NAME: Dict[str, str] = {
 _REQUIRED = ("mac", "channel", "rssi", "lat", "lon")
 
 # The keys every yielded row carries (a field the active layout lacks — e.g. no Frequency in 1.4 — is "").
-_YIELD = ("mac", "ssid", "auth", "first_seen", "channel", "rssi", "lat", "lon")
+# `type` (WIFI/BLE/BT/cellular) lets a Wi-Fi-only consumer drop non-Wi-Fi rows a wardrive also logs.
+_YIELD = ("mac", "ssid", "auth", "first_seen", "channel", "rssi", "lat", "lon", "type")
 
 
 def _map_from_header(fields: List[str]) -> Optional[Dict[str, int]]:

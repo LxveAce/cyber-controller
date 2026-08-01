@@ -332,6 +332,27 @@ def test_wigle_csv_to_points_rejects_out_of_range_coords():
     assert wd.wigle_csv_to_points(text) == [(37.77, -122.4, "Real", "AA:BB:CC:DD:EE:32")]
 
 
+def test_wigle_csv_to_points_keeps_only_wifi_for_the_wifi_layer():
+    # The map's AP layer is labelled "Wi-Fi APs"; a WiGLE wardrive also logs BLE/BT/cellular rows (the
+    # Type column). Drop an EXPLICIT non-Wi-Fi Type so they don't mislabel on the green layer; keep WIFI.
+    text = (
+        wd.WIGLE_HEADER + "\n"
+        "AA:BB:CC:DD:EE:40,WifiNet,[WPA2],t,6,2437,-40,47.6,-122.3,0,0,,,WIFI\n"    # kept
+        "AA:BB:CC:DD:EE:41,,[BLE],t,0,0,-50,47.61,-122.31,0,0,,,BLE\n"             # dropped (BLE)
+        "AA:BB:CC:DD:EE:42,,,t,0,0,-60,47.62,-122.32,0,0,,,BT\n"                    # dropped (BT)
+    )
+    assert wd.wigle_csv_to_points(text) == [(47.6, -122.3, "WifiNet", "AA:BB:CC:DD:EE:40")]
+
+
+def test_wigle_csv_to_points_keeps_rows_with_no_type_column():
+    # Never drop on MISSING data: a Type-less / older CSV must still plot (only an EXPLICIT non-Wi-Fi
+    # Type is dropped, not an empty/absent one). This is the 11-column WigleWifi-1.4 layout.
+    text = ("MAC,SSID,AuthMode,FirstSeen,Channel,RSSI,CurrentLatitude,CurrentLongitude,"
+            "AltitudeMeters,AccuracyMeters,Type\n"
+            "AA:BB:CC:DD:EE:43,NoType,[OPEN],t,6,-40,10.0,20.0,0,0,\n")
+    assert wd.wigle_csv_to_points(text) == [(10.0, 20.0, "NoType", "AA:BB:CC:DD:EE:43")]
+
+
 # ── real-hardware Marauder scanall format (regression: found on COM16, 2026-07-08) ──
 # These are VERBATIM lines captured from a physical Marauder v1.12.3 `scanall`. The RSSI is a bare leading
 # signed int with NO "RSSI:" label; before the _RSSI_LEAD_RE fix the accumulator saw no RSSI and emitted 0

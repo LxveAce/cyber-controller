@@ -49,6 +49,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   Device Views stay. `safety.py` untouched. Reversible in a single commit if the skin surface is ever wanted.
 
 ### Fixed
+- **The map's "Wi-Fi APs" layer no longer plots BLE/BT/cellular rows.** A WiGLE wardrive also logs BLE,
+  Bluetooth, and cellular sightings (the CSV `Type` column); those were plotting as green Wi-Fi-AP dots.
+  `wigle_csv_to_points` now drops an explicit non-Wi-Fi `Type` (keeping `WIFI` and an empty/unknown Type,
+  so a Type-less or older CSV still plots) — matching the kismet reader's Wi-Fi-AP filter, so both agree
+  on the layer. The kismet reader also now accepts `Wi-Fi WDS AP` + `Wi-Fi Ad-Hoc` (real 802.11 APs a
+  strict `Wi-Fi AP` match had dropped).
 - **Marauder "capture handshakes" did the wrong operation** (grounded against JustCallMeKoko's real ESP32
   Marauder v1.14.1 source). The `CAPTURE_HANDSHAKES` broadcast verb routed to `sniffpwn` — his
   Pwnagotchi-*beacon* monitor, not a handshake capture — so a broadcast "capture handshakes" caught
