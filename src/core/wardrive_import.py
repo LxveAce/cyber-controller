@@ -267,12 +267,19 @@ def _kismet_ssid(device_json: str) -> str:
         return ""
 
 
+# Kismet ``devices.type`` strings that denote a real, mappable 802.11 access point. Grounded vs
+# ``kismet/phy_80211.cc``: an infra AP, a WDS/backhaul AP, and an Ad-Hoc/IBSS cell are all APs; an
+# exact ``== "Wi-Fi AP"`` match silently dropped the last two (a WDS AP *is* an AP).
+_KISMET_AP_TYPES = frozenset({"Wi-Fi AP", "Wi-Fi WDS AP", "Wi-Fi Ad-Hoc"})
+
+
 def kismet_db_to_points(path: str) -> "list[tuple[float, float, str, str]]":
     """Parse a Kismet ``.kismet`` SQLite log (its native format) into map points ``[(lat, lon, ssid,
     bssid)]`` — the same 4-tuple the CSV/netxml readers return. Kismet aggregates one row per device, so
     one AP -> one point; read READ-ONLY and streamed (a multi-GB log never loads whole), with the same
-    guarantees as :func:`wigle_csv_to_points` (Wi-Fi APs only, dedup by BSSID, drop Null-Island /
-    out-of-range / non-finite). Tolerant: a non-Kismet / corrupt / locked / missing file yields ``[]``.
+    guarantees as :func:`wigle_csv_to_points` (AP-type networks only, see :data:`_KISMET_AP_TYPES`;
+    dedup by BSSID; drop Null-Island / out-of-range / non-finite). Tolerant: a
+    non-Kismet / corrupt / locked / missing file yields ``[]``.
 
     ⚠️ **HW-UNVERIFIED** (see :data:`KISMET_READER_HW_VERIFIED`) — grounded on the documented schema + a
     synthetic fixture, not a real capture; the v4 int-decode and the SSID JSON nesting are unproven until a
@@ -305,7 +312,7 @@ def kismet_db_to_points(path: str) -> "list[tuple[float, float, str, str]]":
             if r is None:
                 break
             devmac, raw_lat, raw_lon, dtype, blob = r
-            if (dtype or "") != "Wi-Fi AP":
+            if (dtype or "") not in _KISMET_AP_TYPES:
                 continue
             mac = (devmac or "").strip()
             if not _MAC_RE.fullmatch(mac):

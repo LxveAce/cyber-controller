@@ -31,9 +31,9 @@ CREATE TABLE devices (
 """
 
 
-def _make_kismet(path, rows):
+def _make_kismet(path, rows, dtype="Wi-Fi AP"):
     """rows = [(devmac, avg_lat, avg_lon, ssid)]; writes a v8 (REAL-coords) synthetic .kismet DB
-    matching the kismet_db_to_points schema (one Wi-Fi AP per row, SSID in the device JSON)."""
+    with each device typed *dtype* (default Wi-Fi AP), matching the kismet_db_to_points schema."""
     con = sqlite3.connect(str(path))
     con.executescript(_DDL)
     con.execute("INSERT INTO KISMET VALUES ('synthetic', 8, 'kismetlog')")
@@ -43,8 +43,8 @@ def _make_kismet(path, rows):
         con.execute(
             "INSERT INTO devices (first_time,last_time,devkey,phyname,devmac,strongest_signal,"
             "min_lat,min_lon,max_lat,max_lon,avg_lat,avg_lon,bytes_data,type,device) "
-            "VALUES (0,0,?,'IEEE802.11',?,-40,?,?,?,?,?,?,0,'Wi-Fi AP',?)",
-            (mac.replace(":", ""), mac, lat, lon, lat, lon, lat, lon, json.dumps(dev)))
+            "VALUES (0,0,?,'IEEE802.11',?,-40,?,?,?,?,?,?,0,?,?)",
+            (mac.replace(":", ""), mac, lat, lon, lat, lon, lat, lon, dtype, json.dumps(dev)))
     con.commit()
     con.close()
 
@@ -115,3 +115,16 @@ def test_load_wardrive_log_bad_sqlite_is_safe(qapp, tmp_path):
     finally:
         w.shutdown()
         w.deleteLater()
+
+
+def test_kismet_accepts_wds_and_adhoc_aps(tmp_path):
+    # Gap 2 (grounded vs kismet/phy_80211.cc): a WDS AP + an Ad-Hoc cell ARE real GPS APs -- the old
+    # exact ``== "Wi-Fi AP"`` match dropped them. They must import now; a non-AP type still drops.
+    from src.core.wardrive_import import kismet_db_to_points
+    for i, dtype in enumerate(("Wi-Fi AP", "Wi-Fi WDS AP", "Wi-Fi Ad-Hoc")):
+        p = tmp_path / f"t{i}.kismet"
+        _make_kismet(p, [(f"AA:BB:CC:DD:EE:0{i}", 47.6, -122.3, "Net")], dtype=dtype)
+        assert len(kismet_db_to_points(str(p))) == 1, dtype
+    p = tmp_path / "client.kismet"
+    _make_kismet(p, [("AA:BB:CC:DD:EE:09", 47.6, -122.3, "Net")], dtype="Wi-Fi Client")
+    assert kismet_db_to_points(str(p)) == []   # a non-AP type is still dropped

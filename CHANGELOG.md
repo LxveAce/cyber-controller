@@ -10,8 +10,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   (`wardrive_import.kismet_db_to_points`) parses Kismet's native `.kismet` log — the `devices` table,
   one AP per row, opened read-only and streamed so a multi-GB log never loads whole — into the same map
   points the WiGLE/`.netxml` importers produce, handling the v4→v5 coordinate-encoding drift
-  (degrees×100000 int → REAL doubles) and the device-JSON SSID nesting. Grounded on the documented
-  kismetdb schema + a synthetic fixture; flagged `KISMET_READER_HW_VERIFIED = False` until a real
+  (degrees×100000 int → REAL doubles) and the device-JSON SSID nesting. Accepts every AP-type network
+  (`Wi-Fi AP` / `Wi-Fi WDS AP` / `Wi-Fi Ad-Hoc`, grounded vs `kismet/phy_80211.cc` — an exact
+  `== "Wi-Fi AP"` match had silently dropped WDS + Ad-Hoc APs that other formats emit). Grounded on the
+  documented kismetdb schema + a synthetic fixture; flagged `KISMET_READER_HW_VERIFIED = False` until a real
   GPS-tagged capture confirms the decode + SSID key paths. The Flock-map file-import UI now routes a
   `.kismet` to it — `load_wardrive_log` sniffs the 16-byte SQLite header magic (pure `_is_sqlite_db`) and
   calls `kismet_db_to_points` by path, while a text WiGLE CSV / `.netxml` still rides the `wardrive_points`
