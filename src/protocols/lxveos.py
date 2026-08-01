@@ -80,7 +80,7 @@ _EVENT_MAP: dict[str, tuple[str, "frozenset[str]", "frozenset[str]"]] = {
     # `line` (field 5) and lifted out below — no separate `essid=` field on the wire, so no hex_fields.
     "hs":       ("handshake_captured", frozenset(),                                  frozenset()),
     "pcap":     ("pcap_saved",         frozenset({"bytes"}),                         frozenset()),
-    "arm":      ("arm_state",          frozenset({"token", "window", "idle"}),       frozenset()),
+    "arm":      ("arm_state",          frozenset({"token", "window"}),               frozenset()),
     # `tracker/flock/meta/flipper/skimmer` are the kind=surveil sweep subcounts; `handshakes` is the
     # kind=pwnagotchi tally and `likely` the kind=flock subset — all typed int here (not str), per
     # docs/EVENT-PROTOCOL.md alert kind-specific fields.
@@ -240,6 +240,15 @@ class LxveOSProtocol(BaseProtocol):
         """Dispatch one `LXVEOS/<version> <etype> <rest>` line to a typed event."""
         kv = dict(_RE_KV.findall(rest))
 
+        if version > 1:
+            # Forward-compat contract (the firmware's EVENT-PROTOCOL.md "Versioning"): additive changes
+            # (new type / new key) stay LXVEOS/1; the major only bumps on a BREAKING change to an existing
+            # field. So a newer major means CC can't trust the v1 field layout — surface it as benign info
+            # rather than mis-typing it (e.g. a repurposed key coerced to the wrong type). Refuse, don't guess.
+            return ParsedEvent(event_type="info",
+                               data={"lxveos_event": etype, "fields": kv, "proto_version": version,
+                                     "unsupported_major": True}, raw=raw)
+
         if etype == "status":
             data: dict = {"proto_version": version, "source": "status_line"}
             for key, val in kv.items():
@@ -300,7 +309,8 @@ class LxveOSProtocol(BaseProtocol):
             C("features", "System", "Operation catalog (ready/planned/attachable/unavailable per op)"),
             C("sysinfo", "System", "Chip / reset-reason / heap system details"),
             C("loglevel", "System", "Set ESP-IDF log verbosity", args="<tag|*> <level>"),
-            C("nvs", "System", "Operator key/value store", args="get|set <key> [value]"),
+            C("nvs", "System", "Operator key/value store",
+              args="get | set <key> [value] | export | import <blob>"),
             C("reboot", "System", "Reboot the device"),
             # Recon — Wi-Fi (passive, listen-only)
             C("scan", "Recon-WiFi", "Passive Wi-Fi AP scan"),
@@ -319,9 +329,9 @@ class LxveOSProtocol(BaseProtocol):
             C("blescan", "Recon-BLE", "BLE device scan (+vendor/appearance/service-UUIDs)", args="[seconds]"),
             C("blewardrive", "Recon-BLE", "BLE wardrive CSV (addr,name,rssi,vendor,tracker)", stream=True),
             C("subghz", "Recon-Radio", "CC1101 sub-GHz (add-on module)",
-              args="begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] | replay <gdo0> | end"),
+              args="begin <sclk> <miso> <mosi> <cs> | rssi <mhz> | capture <gdo0> <mhz> [s] | replay <gdo0> | decode | end"),
             C("nrf24", "Recon-Radio", "nRF24 2.4GHz (add-on module)",
-              args="begin <sck> <miso> <mosi> <csn> <ce> | scan | sniff | mousejack <text> | end"),
+              args="begin <sck> <miso> <mosi> <csn> <ce> | scan [sweeps] | sniff | mousejack <text> | end"),
             C("nfc", "Recon-Radio", "PN532 NFC (add-on module)",
               args="begin <sda> <scl> | read [seconds] | clone <8hexUID> | end"),
             C("ir", "Recon-Radio", "IR capture + replay (universal remote)",

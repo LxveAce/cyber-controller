@@ -485,3 +485,21 @@ def test_event_map_covers_the_firmware_types_at_the_map_level():
     mapped = set(_EVENT_MAP) | {"status"}
     missing = _FIRMWARE_EMITTED_TYPES - mapped
     assert not missing, f"firmware-emitted LXVEOS/1 types with no parser mapping: {sorted(missing)}"
+
+
+def test_newer_major_version_is_refused_not_misparsed():
+    # Forward-compat contract (EVENT-PROTOCOL.md Versioning, source-confirmed 2026-08-01): additive changes
+    # stay LXVEOS/1; the major only bumps on a BREAKING field change. CC must NOT apply v1 typing to a
+    # newer major it can't understand — surface it as benign info, never mis-type a repurposed field.
+    p = LxveOSProtocol()
+    assert p.parse_line("LXVEOS/1 ap bssid=aa:bb:cc:dd:ee:01 ssid=4d79 ch=6 rssi=-42 auth=wpa2"
+                        ).event_type == "ap_found"
+    ev = p.parse_line("LXVEOS/2 ap bssid=aa:bb:cc:dd:ee:01 repurposed=x")
+    assert ev.event_type == "info"
+    assert ev.data.get("unsupported_major") is True and ev.data.get("proto_version") == 2
+
+
+def test_arm_event_has_no_phantom_idle_field():
+    # The firmware's arm event emits state / token / window — never an 'idle' key. Keep it out of the
+    # typed field set (source-confirmed vs lxveos_cli.c cmd_arm/cmd_disarm).
+    assert "idle" not in _EVENT_MAP["arm"][1]
