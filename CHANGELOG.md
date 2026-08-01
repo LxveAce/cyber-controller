@@ -16,6 +16,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   `.kismet` to it — `load_wardrive_log` sniffs the 16-byte SQLite header magic (pure `_is_sqlite_db`) and
   calls `kismet_db_to_points` by path, while a text WiGLE CSV / `.netxml` still rides the `wardrive_points`
   dispatcher; the file dialog accepts `*.kismet`. Both paths return the same points → same render.
+- **Wi-Fi CSI sensing — P0 pure core (`src/core/sensing.py`), no hardware.** The honesty spine of the
+  planned "Sense" (occupancy/motion) feature: a `SENSING_TIERS` table that fixes what commodity Wi-Fi CSI
+  can (PROVEN: presence/motion), might in-domain (EXPERIMENTAL: zone/breathing/people-count/gesture), and
+  physically **cannot** (NOT_SUPPORTED: imaging/pose/through-wall/gait-ID/metric-tracking) do — so the UI can
+  label every capability truthfully and hard-refuse the impossible ones (`is_supported` fails closed on an
+  unknown key). Plus the compact node-verdict schema + tolerant parser (`csi presence=1 motion=0.42 conf=…`)
+  and the `verdict_fits_nodelink` ≤219 B assertion (a node emits only the verdict, never raw CSI — it can't
+  ride the sealed NodeLink frame). Pure + Qt-free, 12 tests; not wired into any UI yet. Occupancy/motion
+  SENSING, **not a camera** — no pixels, no images of people. Design: `WIFI-CAMERA-DESIGN-BRIEF-2026-07-29.md`.
 
 ### Removed
 - **WS5 debloat — the per-firmware GUI pop-outs (Device View skins + Cardputer Remote).** Removed the
