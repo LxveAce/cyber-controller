@@ -12,8 +12,10 @@ All notable changes to Cyber Controller are documented here. This project adhere
   points the WiGLE/`.netxml` importers produce, handling the v4→v5 coordinate-encoding drift
   (degrees×100000 int → REAL doubles) and the device-JSON SSID nesting. Grounded on the documented
   kismetdb schema + a synthetic fixture; flagged `KISMET_READER_HW_VERIFIED = False` until a real
-  GPS-tagged capture confirms the decode + SSID key paths. File-import UI wiring (sniff the SQLite magic →
-  call it) still pending.
+  GPS-tagged capture confirms the decode + SSID key paths. The Flock-map file-import UI now routes a
+  `.kismet` to it — `load_wardrive_log` sniffs the 16-byte SQLite header magic (pure `_is_sqlite_db`) and
+  calls `kismet_db_to_points` by path, while a text WiGLE CSV / `.netxml` still rides the `wardrive_points`
+  dispatcher; the file dialog accepts `*.kismet`. Both paths return the same points → same render.
 
 ## [1.9.0] — 2026-08-01
 

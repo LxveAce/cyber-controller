@@ -270,6 +270,17 @@ def trail_decimate(trail: "List[Tuple[float, float]]",
     return trail[::k]
 
 
+def _is_sqlite_db(path: str) -> bool:
+    """True if *path* starts with the 16-byte SQLite header magic. Kismet's native ``.kismet`` is
+    a SQLite DB that can't ride the text ``wardrive_points`` dispatcher, so the import handler
+    sniffs this to route it to ``kismet_db_to_points`` (by path). Any read error -> False. Pure."""
+    try:
+        with open(path, "rb") as fh:
+            return fh.read(16) == b"SQLite format 3\x00"
+    except Exception:  # noqa: BLE001 — a missing/unreadable file simply isn't a SQLite DB
+        return False
+
+
 def trail_to_geojson(trail: "List[Tuple[float, float]]") -> dict:
     """Serialize a drive trail [(lat, lon), ...] as a GeoJSON LineString FeatureCollection (coords
     [lon, lat] per the GeoJSON spec) so a saved drive can be reloaded + replayed, or opened
@@ -985,14 +996,19 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             return self._show_wardrive_points(points)
 
         def load_wardrive_log(self, path: str) -> int:
-            """Import ANY wardrive log (WiGLE CSV, Kismet .netxml, a Biscuit export) as the Wi-Fi AP
-            layer (S1). Dispatches by content sniff via wardrive_points; 0 on a bad or unknown file
-            (never crashes). Awareness-only: plots located APs, drives no device."""
-            from src.core.wardrive_import import wardrive_points
+            """Import ANY wardrive log (WiGLE CSV, Kismet .netxml, Kismet .kismet SQLite, a Biscuit
+            export) as the Wi-Fi AP layer (S1). A binary .kismet SQLite DB routes to
+            kismet_db_to_points BY PATH; every text format dispatches by content sniff via
+            wardrive_points. 0 on a bad/unknown file (never crashes). Awareness-only; drives no
+            device."""
+            from src.core.wardrive_import import kismet_db_to_points, wardrive_points
             try:
-                with open(path, "r", encoding="utf-8", errors="replace") as fh:
-                    points = wardrive_points(fh.read())       # parse in the try
-            except Exception:  # noqa: BLE001 — huge field/binary file; an escaped raise aborts the app
+                if _is_sqlite_db(path):
+                    points = kismet_db_to_points(path)        # binary .kismet -> by path, not text
+                else:
+                    with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                        points = wardrive_points(fh.read())   # parse in the try
+            except Exception:  # noqa: BLE001 — huge field/binary/locked file; an escaped raise aborts the app
                 self._legend.setText("Could not read that wardrive log.")
                 return 0
             n = self._show_wardrive_points(points)
@@ -1690,11 +1706,12 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
         def _on_import_wardrive(self) -> None:
             """File-import UI (S1): pick a wardrive log and plot its APs. The dialog is the only
             non-testable bit; it delegates to load_wardrive_log, which dispatches by format
-            (WiGLE CSV / Kismet .netxml / Biscuit). Awareness-only -- drives no device."""
+            (WiGLE CSV / Kismet .netxml / Kismet .kismet SQLite / Biscuit). Awareness-only -- drives
+            no device."""
             from PyQt5.QtWidgets import QFileDialog
             path, _ = QFileDialog.getOpenFileName(
                 self, "Import wardrive log", "",
-                "Wardrive logs (*.csv *.wiglecsv *.netxml);;All files (*)")
+                "Wardrive logs (*.csv *.wiglecsv *.netxml *.kismet);;All files (*)")
             if path:
                 self.load_wardrive_log(path)
 
