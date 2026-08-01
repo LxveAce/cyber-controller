@@ -340,7 +340,9 @@ def to_wigle_row(obs: ApObservation, fix: GpsFix, first_seen: str) -> str:
         f"{fix.lat:.6f}",
         f"{fix.lon:.6f}",
         f"{fix.alt:.1f}",
-        "0",          # AccuracyMeters (unknown from beacon-only capture)
+        # AccuracyMeters: the WiGLE accuracy-estimate convention (2.5 × HDOP), matching Marauder's own
+        # wardrive output — using the GPS fix's parsed HDOP we already have. "0" when HDOP is unknown.
+        f"{2.5 * fix.hdop:.1f}" if fix.hdop > 0 else "0",
         "",           # RCOIs
         "",           # MfgrId
         obs.kind,

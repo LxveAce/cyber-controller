@@ -37,6 +37,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   only the redundant skin chrome. The shared Qt-free menu model (`src/core/device_menus.py`) and the web/tk
   Device Views stay. `safety.py` untouched. Reversible in a single commit if the skin surface is ever wanted.
 
+### Fixed
+- **Marauder "capture handshakes" did the wrong operation** (grounded against JustCallMeKoko's real ESP32
+  Marauder v1.14.1 source). The `CAPTURE_HANDSHAKES` broadcast verb routed to `sniffpwn` — his
+  Pwnagotchi-*beacon* monitor, not a handshake capture — so a broadcast "capture handshakes" caught
+  nothing. It now routes to `sniffpmkid` (his PMKID-from-EAPOL capture), matching the intent our own
+  Targets "Sniff PMKID" action already used. Also added the missing `gpstracker -c <start|stop>` GPS verb,
+  and the WiGLE writer now emits a real `AccuracyMeters` (2.5 × the parsed HDOP, the WiGLE convention
+  Marauder itself uses) instead of a hardcoded `0`.
+
 ## [1.9.0] — 2026-08-01
 
 The 1.9 stable release. Consolidates the work previously staged under the `2.0.0-beta` prerelease — that

@@ -5,9 +5,6 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from src.models.action import ActionCategory, TargetAction
-from src.models.target import TargetType
-from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 # Reuse the ONE tolerant AP-line extractor. The real Marauder v1.12.3 `scanall` prints each AP as a single
 # line with a BARE leading RSSI + mid-line BSSID + trailing metadata columns; that format was fixed in the
 # wardrive parser (commit 81a6896) but never here, so this parser emitted `info` (not `ap_found`) for live
@@ -15,6 +12,9 @@ from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 # Sharing the extractor keeps the pool feed and the wardrive CSV on ONE parser so they can't drift again.
 # (wardrive imports only stdlib — no import cycle.)
 from src.core.wardrive import _RSSI_LEAD_RE, _extract_ap_fields
+from src.models.action import ActionCategory, TargetAction
+from src.models.target import TargetType
+from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for Marauder serial output ---
 
@@ -435,6 +435,9 @@ class MarauderProtocol(BaseProtocol):
                         "field"),
             CommandInfo("gpspoi -s", "GPS", "GPS POI marker: -s start / -m mark / -e end", "s|m|e"),
             CommandInfo("wardrivepoi <label>", "GPS", "Tag a GPS POI during a wardrive", "label"),
+            # gpstracker logs the DEVICE's own path to GPX (distinct from the POI markers above).
+            CommandInfo("gpstracker -c <start|stop>", "GPS",
+                        "Start/stop a GPX track log of the device's own path", "start|stop"),
             # ---- BLE ----
             CommandInfo("sniffbt", "BLE", "Scan / sniff for BLE devices"),
             CommandInfo("sniffbt -t airtag", "BLE", "Sniff for AirTag / tracker beacons"),
@@ -562,7 +565,7 @@ BROADCAST_CAPABILITIES = {
     BroadcastVerb.FIND_APS:           ((), "scanall"),
     BroadcastVerb.SCAN_STATIONS:      ((), "scanall"),
     BroadcastVerb.BLE_SCAN:           ((), "sniffbt"),
-    BroadcastVerb.CAPTURE_HANDSHAKES: ((), "sniffpwn"),
+    BroadcastVerb.CAPTURE_HANDSHAKES: ((), "sniffpmkid"),
     BroadcastVerb.DEAUTH_ALL:         (("select -a all",), "attack -t deauth"),
     BroadcastVerb.BEACON_SPAM:        ((), "attack -t beacon -r"),
     BroadcastVerb.BLE_SPAM:           ((), "blespam -t all"),
