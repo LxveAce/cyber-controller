@@ -46,7 +46,6 @@ TAB_ICONS = {
     "BLE Analyzer": "ble",
     "Settings": "settings",
     "Devices": "devices",
-    "Device View": "device-view",
     "Firmware": "firmware",
     "Flash": "flash",
     "Software OS": "software-os",

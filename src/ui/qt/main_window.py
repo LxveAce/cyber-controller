@@ -328,21 +328,6 @@ class CyberControllerWindow(QMainWindow):
         act_suicide.triggered.connect(self._on_suicide_setup)
         tools_menu.addAction(act_suicide)
 
-        dv_menu = tools_menu.addMenu("Device &View (skin)")
-        dv_menu.setStatusTip("Open an on-screen reconstruction of a firmware's on-board menu (preview).")
-        from src.ui.qt.device_view import SKINS
-        for _key, (_title, _factory) in SKINS.items():
-            _act = QAction(f"{_title}…", self)
-            _act.triggered.connect(lambda _checked=False, k=_key: self._on_device_view(k))
-            dv_menu.addAction(_act)
-
-        cr_menu = tools_menu.addMenu("Cardputer &Remote")
-        cr_menu.setStatusTip("A Cardputer-shaped Device View + a raw CLI console — two lanes, one guarded send.")
-        for _key, (_title, _factory) in SKINS.items():
-            _act = QAction(f"{_title}…", self)
-            _act.triggered.connect(lambda _checked=False, k=_key: self._on_cardputer_remote(k))
-            cr_menu.addAction(_act)
-
         act_flock_map = QAction("Flock &Heatmap…", self)
         act_flock_map.setStatusTip("Map located ALPR-camera detections from a saved Flock scan (cameras.geojson).")
         act_flock_map.triggered.connect(self._on_flock_heatmap)
@@ -2589,96 +2574,12 @@ class CyberControllerWindow(QMainWindow):
         import os
         os._exit(0)
 
-    def _on_device_view(self, firmware: str = "marauder") -> None:
-        """Open a Device View — an on-screen reconstruction of a firmware's on-board UI.
-
-        P2/P3 scope: a faithful, navigable TFT *skin* (model-driven; runs with no hardware) for Marauder
-        and GhostESP. Live serial drive + the gate/Dead-Man panel are later phases (see the Device-View
-        plan). Honest framing: this is a reconstruction, not a pixel mirror (only Flipper can be a true
-        mirror).
-        """
-        try:
-            from src.ui.qt.device_view import SKINS, DeviceScreenModel, DeviceView
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Device View", f"Could not open the Device View: {exc}")
-            return
-        title, factory = SKINS.get(firmware, SKINS["marauder"])
-        skin_id = firmware if firmware in SKINS else "marauder"
-        model = DeviceScreenModel(title, factory(), skin=skin_id)   # DV3: selects the per-firmware SkinSpec
-        # Keep a reference so the top-level window isn't garbage-collected. Wire it to actually drive the
-        # connected device when its firmware matches the skin (else it stays a preview).
-        self._device_view = DeviceView(model, send=lambda c, fw=firmware: self._device_view_send(fw, c))
-        self._device_view.setWindowTitle(f"Device View — {title} (reconstructed skin · preview)")
-        self._device_view.show()
-        self._device_view.raise_()
-        self._device_view.activateWindow()
-
-    def _on_cardputer_remote(self, firmware: str = "marauder") -> None:
-        """Open a Cardputer Remote (CP2) — the same skin shaped to the Cardputer's 240x135 PLUS a raw CLI
-        console, both driving the connected device through the identical guarded send as the Device View."""
-        try:
-            from src.ui.qt.cardputer_remote import CardputerRemote
-        except Exception as exc:  # noqa: BLE001
-            QMessageBox.critical(self, "Cardputer Remote", f"Could not open the Cardputer Remote: {exc}")
-            return
-        from src.ui.qt.device_view import SKINS
-        title = SKINS.get(firmware, SKINS["marauder"])[0]
-        # Same send lambda the Device View uses -> same firmware-match + safety + write validation.
-        self._cardputer_remote = CardputerRemote(
-            firmware, send=lambda c, fw=firmware: self._device_view_send(fw, c))
-        self._cardputer_remote.setWindowTitle(f"Cardputer Remote — {title} (reconstructed skin · preview)")
-        self._cardputer_remote.resize(320, 520)
-        self._cardputer_remote.show()
-        self._cardputer_remote.raise_()
-        self._cardputer_remote.activateWindow()
-
     def _on_flock_heatmap(self) -> None:
         """Focus the Flock Map tab (FL F5) — located ALPR-camera detections from a scan's GeoJSON.
 
         The map used to open as a standalone Tools window; since the verb-IA rewire it's a sub-view of MAP,
         so this menu / palette action just navigates to it."""
         self._show_subtab(self._map_surface, self._flock_heatmap)
-
-    # Device-View skin id -> serial protocol_name (for matching a connected device to the skin).
-    # These MUST equal the real BaseProtocol.protocol_name values (ghost_esp.py -> "ghost-esp",
-    # esp32_div.py -> "esp32-div"), or _device_view_send() never matches and silently refuses to write.
-    _SKIN_PROTOCOL = {"marauder": "marauder", "ghostesp": "ghost-esp", "esp32div": "esp32-div",
-                      "bruce": "bruce"}
-
-    def _device_view_send(self, firmware: str, cmd: str) -> bool:
-        """Send a Device-View command to the active device IFF its selected firmware matches the skin.
-
-        Routes through the same safety classifier as the Devices tab (destructive commands prompt for
-        confirmation). Returns True only if the command was actually written — so the skin shows "sent"
-        vs "preview" honestly, and one firmware's commands are never sent to a different device.
-        """
-        dt = getattr(self, "_device_tab", None)
-        conn = getattr(dt, "_active_conn", None) if dt is not None else None
-        if conn is None:
-            return False
-        try:
-            proto = dt._selected_protocol()
-        except Exception:  # noqa: BLE001
-            return False
-        if getattr(proto, "protocol_name", None) != self._SKIN_PROTOCOL.get(firmware, firmware):
-            return False  # don't send a Marauder command to a GhostESP, etc.
-        from src.config.settings import load_settings
-        from src.core import safety
-        info = next((ci for ci in proto.cached_commands() if ci.name == cmd), None)
-        danger = safety.classify(cmd, info)
-        if safety.should_confirm(danger, load_settings()):
-            reply = QMessageBox.warning(
-                self, "Confirm dangerous command", safety.lab_only_warning_text(cmd, danger),
-                QMessageBox.Yes | QMessageBox.No, QMessageBox.No,
-            )
-            if reply != QMessageBox.Yes:
-                return False
-        try:
-            conn.write(cmd)
-            return True
-        except Exception:  # noqa: BLE001
-            log.exception("Device View send failed")
-            return False
 
     def _on_suicide_setup(self) -> None:
         """Open the Dead Man's Switch host-side password & duress setup dialog."""

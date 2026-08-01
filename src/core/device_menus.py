@@ -2,9 +2,10 @@
 
 The ESP32 firmwares render their TFT menu locally and only expose a serial CLI, so Cyber Controller
 *reconstructs* each firmware's on-board menu as a tree of :class:`MenuNode` and binds every leaf to the
-firmware's real serial command. This model was extracted from the Qt Device View so BOTH the Qt view
-(`src/ui/qt/device_view.py`) and the web Device View (`src/ui/web`) render the SAME reconstruction — an
-honest skin, not a pixel mirror.
+firmware's real serial command. The web Device View (`src/ui/web`) and the tk Device View
+(`src/ui/tk/device_view.py`) both render from this ONE model, so every front-end shows the SAME
+reconstruction — an honest skin, not a pixel mirror. (The Qt pop-out skins were removed in the WS5
+debloat; their operator capability now lives in the Operate console + the Devices terminal.)
 
 `menu_tree(firmware)` serializes a skin to a JSON-able tree with a per-leaf `danger` label (via the shared
 :mod:`src.core.safety` classifier) so any front-end can label/confirm dangerous commands without re-deriving
@@ -116,44 +117,6 @@ def esp32div_stock_menu() -> "list[MenuNode]":
     ]
 
 
-# ── the ESP32-DIV SERIAL FORK menu (leaves are real serial-fork commands) ──
-def esp32div_serial_menu() -> "list[MenuNode]":
-    M = MenuNode
-    return [
-        M("WiFi", children=[
-            M("Scan APs", command="scanwifi"),
-            M("Scan Stations", command="scansta"),
-            M("Capture", children=[
-                M("Sniff", command="sniff start"),
-                M("PMKID", command="pmkid start"),
-                M("Handshake", command="handshake start"),
-            ]),
-            M("Attacks", children=[
-                M("Deauth", command="deauth"),
-                M("Deauth All", command="deauth all"),
-                M("Beacon", command="beacon"),
-                M("Rick Roll", command="rickroll"),
-            ]),
-            M("Channel", command="getch"),
-        ]),
-        M("Bluetooth", children=[
-            M("BLE Scan", command="scanble"),
-            M("BLE Spam", command="blespam"),
-        ]),
-        M("2.4GHz", children=[
-            M("NRF Scan", command="nrf scan"),
-            M("NRF Sniff", command="nrf sniff"),
-            M("NRF Jam", command="nrf jam"),
-        ]),
-        M("Device", children=[
-            M("Status", command="status"),
-            M("SD Info", command="sd info"),
-            M("Settings", command="settings"),
-            M("Reboot", command="reboot"),
-        ]),
-    ]
-
-
 # ── a faithful Bruce menu (leaves are real Bruce serial commands — see src/protocols/bruce.py) ──
 def bruce_menu() -> "list[MenuNode]":
     # Every leaf's command is a REAL Bruce command from BruceProtocol().get_commands(); the three that take
@@ -184,16 +147,15 @@ def bruce_menu() -> "list[MenuNode]":
     ]
 
 
-# firmware -> (display title, menu factory) for the Device View chooser
+# firmware -> (display title, menu factory) for the web/tk Device View
 SKINS = {
     "marauder": ("ESP32 Marauder", marauder_menu),
     "ghostesp": ("GhostESP", ghostesp_menu),
     "esp32div": ("ESP32-DIV", esp32div_stock_menu),   # stock = touch-only note (no serial CLI)
     "bruce": ("Bruce", bruce_menu),
 }
-# NOTE: the ESP32-DIV *serial fork* is driven through the Operate/Console command grid (its full
-# get_commands catalog), not a device-view skin — so `esp32div_serial_menu` above is defined +
-# leaf-locked against the fork's verbs (test_device_view), ready to wire as a fork skin later.
+# NOTE: the ESP32-DIV *serial fork* is driven through the Operate console command grid (its full
+# get_commands catalog), not a menu skin here.
 
 
 def resolve_skin(firmware: "Optional[str]") -> "Optional[str]":

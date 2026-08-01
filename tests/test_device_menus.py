@@ -2,7 +2,7 @@
 per-leaf danger tags via the shared safety classifier. Pure Python (no Qt)."""
 from __future__ import annotations
 
-from src.core.device_menus import SKINS, MenuNode, menu_tree, resolve_skin
+from src.core.device_menus import SKINS, menu_tree, resolve_skin
 
 
 def _leaves(nodes):
@@ -50,14 +50,6 @@ def test_danger_tags_flag_offensive_not_passive():
     assert ghost["attack -d"] == "lab-only"            # offensive deauth flagged (was phantom "probe")
     assert ghost["startportal"] == "lab-only"          # danger via the protocol's CommandInfo/category
     assert ghost["stopportal"] == "" and ghost["scanap"] == ""   # cease + scan stay safe
-
-
-def test_reexported_from_device_view_for_qt_importers():
-    # device_view re-exports the moved names so cardputer_remote / main_window / tests keep working.
-    import importlib
-    dv = importlib.import_module("src.ui.qt.device_view")
-    assert dv.MenuNode is MenuNode and dv.SKINS is SKINS
-    assert callable(dv.marauder_menu) and callable(dv.bruce_menu)
 
 
 def test_menu_tree_command_parity_with_builders():

@@ -17,6 +17,17 @@ All notable changes to Cyber Controller are documented here. This project adhere
   calls `kismet_db_to_points` by path, while a text WiGLE CSV / `.netxml` still rides the `wardrive_points`
   dispatcher; the file dialog accepts `*.kismet`. Both paths return the same points → same render.
 
+### Removed
+- **WS5 debloat — the per-firmware GUI pop-outs (Device View skins + Cardputer Remote).** Removed the
+  `Tools → Device View (skin)` and `Tools → Cardputer Remote` pop-out windows + their per-firmware skin
+  palettes (`device_view.py`, `cardputer_remote.py`, `skins/*.json`, the two menu handlers, `_SKIN_PROTOCOL`
+  + `_device_view_send`). They were a redundant, skin-only reconstruction of a firmware's on-board menu whose
+  entire operator capability already lives — and better — in the **Operate console** (a firmware-adaptive
+  command grid behind the two-factor arm gate + the guarded send) and the **Devices terminal** (free-text +
+  command palette): every curated command was already in the protocol catalogs, so no command reach is lost,
+  only the redundant skin chrome. The shared Qt-free menu model (`src/core/device_menus.py`) and the web/tk
+  Device Views stay. `safety.py` untouched. Reversible in a single commit if the skin surface is ever wanted.
+
 ## [1.9.0] — 2026-08-01
 
 The 1.9 stable release. Consolidates the work previously staged under the `2.0.0-beta` prerelease — that

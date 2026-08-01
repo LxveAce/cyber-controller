@@ -8,9 +8,9 @@ shows everything, so a missing or broken config never hides functionality.
 This module is pure (no Qt) so it unit-tests without a display. The GUI consumes ``visible_tabs()``
 (tab-level de-bloat — see ``main_window.apply_loadout``) and persists the loadout in ``settings.json``
 under ``interface.loadout``. Firmware-level filtering (``firmware_visible()`` / ``filter_firmwares()``)
-is pure logic that no picker consumes yet: wiring it into the Flash firmware list, the Device View
-firmware chooser and the command-palette firmware entries is a tracked follow-up (the same
-surface-granularity tradeoff as the per-sub-tab gating noted in ``TAB_REQUIREMENTS``).
+is pure logic that no picker consumes yet: wiring it into the Flash firmware list and the
+command-palette firmware entries is a tracked follow-up (the same surface-granularity tradeoff as
+the per-sub-tab gating noted in ``TAB_REQUIREMENTS``).
 See the internal loadout design notes.
 """
 
@@ -122,8 +122,8 @@ def visible_tabs(loadout: "dict | None") -> "list[str]":
 
 
 def firmware_visible(fw_id: str, loadout: "dict | None") -> bool:
-    """Pure predicate: whether a firmware *should* appear in pickers (Flash list, Device View chooser,
-    command palette). Helper for the not-yet-wired firmware-level filtering follow-up — see the module
+    """Pure predicate: whether a firmware *should* appear in pickers (Flash list, command palette).
+    Helper for the not-yet-wired firmware-level filtering follow-up — see the module
     docstring; no GUI picker consumes it today. Fail-open: Full-Stack/unconfigured shows every firmware."""
     if is_full_stack(loadout):
         return True

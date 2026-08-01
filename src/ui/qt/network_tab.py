@@ -573,8 +573,8 @@ class NetworkTab(QWidget):
         if self._send_cmd is None or not port:
             return
         # This is a real send surface, so dangerous commands (deauth / jam / spam) must clear the same
-        # safety gate as the Devices tab (_on_send) and Device View — otherwise the experimental Network
-        # tab is a silent bypass that fires attack commands with no confirmation.
+        # safety gate as the Devices tab (_on_send) and the Operate console — otherwise the experimental
+        # Network tab is a silent bypass that fires attack commands with no confirmation.
         from src.config.settings import load_settings
         from src.core import safety
         danger = safety.classify(cmd, ci)
