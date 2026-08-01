@@ -5,6 +5,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [1.9.0] — 2026-08-01
+
+The 1.9 stable release. Consolidates the work previously staged under the `2.0.0-beta` prerelease — that
+2.0 label was cut early; **2.0 is now reserved for the full feature set + the GUI overhaul** (built and
+integrated first, overhaul last). Backend/serial control only: CC issues firmware CLI commands and never
+authors radio frames.
+
 ### Added
 - **Spade v2 P2b — `OpPanel` (`src/ui/qt/op_panel.py`): the OperationDetail-backed op atom wired to the
   guarded send.** Given a firmware command + a `(cmd, ci)` send callable (operate_tab's guarded `_send`) +
@@ -745,9 +752,9 @@ All notable changes to Cyber Controller are documented here. This project adhere
   present (they become the ACTIVE posture in the dual-axis end-state); nothing was removed. Last-used tab
   persistence is unchanged. The tab-structure gate was updated deliberately to record the new order + default.
 
-## [2.0.0-beta] — prerelease
+### Consolidated from the 2.0.0-beta prerelease
 
-_Version cut from `src/version.py` (`2.0.0-beta`). Everything below ships in 2.0.0-beta._
+_These shipped under the `2.0.0-beta` prerelease and are re-cut into 1.9.0 (the 2.0 label was premature)._
 
 - **Offline wardrive channel-coverage planner (`--wardrive-plan`).** Point it at a WiGLE CSV and it reports the
   distinct-network yield per Wi-Fi channel, the coverage curve (how few channels cover most networks), and — for
