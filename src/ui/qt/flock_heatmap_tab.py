@@ -1705,13 +1705,13 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
         # ── load button (dialog; not unit-tested) ─────────────────────
         def _on_import_wardrive(self) -> None:
             """File-import UI (S1): pick a wardrive log and plot its APs. The dialog is the only
-            non-testable bit; it delegates to load_wardrive_log, which dispatches by format
-            (WiGLE CSV / Kismet .netxml / Kismet .kismet SQLite / Biscuit). Awareness-only -- drives
-            no device."""
+            non-testable bit; load_wardrive_log dispatches by CONTENT (not extension) -- WiGLE CSV /
+            .netxml / .kismet SQLite / Biscuit. Marauder writes WigleWifi to `wardrive_N.log`, so
+            `*.log` is listed too (content still routes it). Awareness-only -- drives no device."""
             from PyQt5.QtWidgets import QFileDialog
             path, _ = QFileDialog.getOpenFileName(
                 self, "Import wardrive log", "",
-                "Wardrive logs (*.csv *.wiglecsv *.netxml *.kismet);;All files (*)")
+                "Wardrive logs (*.csv *.wiglecsv *.log *.netxml *.kismet);;All files (*)")
             if path:
                 self.load_wardrive_log(path)
 

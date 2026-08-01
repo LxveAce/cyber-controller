@@ -194,3 +194,13 @@ def test_import_oversized_field_is_safe_not_a_crash(qapp, tmp_path):
     w = FlockHeatmapTab()
     assert w.load_wardrive_log(str(p)) == 0        # dispatcher/CSV parse error caught, not crashed
     assert w.load_wardrive_csv(str(p)) == 0        # WiGLE parse error caught, not crashed
+
+
+def test_import_wardrive_dot_log_extension(qapp, tmp_path):
+    # koko's ESP32 Marauder writes WigleWifi output to `wardrive_N.log` (.log, not .csv). Routing
+    # is by CONTENT not extension, so a .log-named WiGLE file imports the same; the dialog lists
+    # *.log (grounded vs the real Marauder firmware). Extension-independence guard.
+    from src.ui.qt.flock_heatmap_tab import FlockHeatmapTab
+    p = _wardrive_csv(tmp_path / "wardrive_1.log", n=2)   # WiGLE content in a .log file
+    w = FlockHeatmapTab()
+    assert w.load_wardrive_log(p) == 2 and w.wardrive_count == 2

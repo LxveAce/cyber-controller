@@ -16,6 +16,8 @@ All notable changes to Cyber Controller are documented here. This project adhere
   `.kismet` to it — `load_wardrive_log` sniffs the 16-byte SQLite header magic (pure `_is_sqlite_db`) and
   calls `kismet_db_to_points` by path, while a text WiGLE CSV / `.netxml` still rides the `wardrive_points`
   dispatcher; the file dialog accepts `*.kismet`. Both paths return the same points → same render.
+  The dialog also lists `*.log` — koko's real ESP32 Marauder writes its WigleWifi-1.4 output to
+  `wardrive_N.log` (grounded vs the firmware), and the content-sniff import handles it identically.
 - **Wi-Fi CSI sensing — P0 pure core (`src/core/sensing.py`), no hardware.** The honesty spine of the
   planned "Sense" (occupancy/motion) feature: a `SENSING_TIERS` table that fixes what commodity Wi-Fi CSI
   can (PROVEN: presence/motion), might in-domain (EXPERIMENTAL: zone/breathing/people-count/gesture), and
