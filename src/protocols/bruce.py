@@ -120,7 +120,10 @@ class BruceProtocol(BaseProtocol):
             CommandInfo("settings <key> <value>", "Config", "Read or change a setting", "key,value"),
             # ---- WiFi (real serial CLI — wifi_commands.cpp; the docstring's "WiFi is menu-only"
             # note is only true of the deauth/beacon ATTACK verbs, not these connect/recon ones).
-            # ----
+            # RE-CONFIRMED 2026-08-01: wifi_commands.cpp + rfid_commands.cpp DO exist in the real
+            # BruceDevices/firmware serial_commands/ tree — a docs/wiki grounding pass missed them (the
+            # wiki Serial page under-documents the registered serial commands), so these are real, not
+            # speculative. Do not remove on a wiki-only "not documented" claim. ----
             CommandInfo("wifi on", "WiFi", "Connect to a known network (else start AP mode)"),
             CommandInfo("wifi off", "WiFi", "Disconnect from the current WiFi network"),
             CommandInfo("wifi add <ssid> <pwd>", "WiFi", "Save a WiFi credential", "ssid pwd"),
@@ -130,7 +133,9 @@ class BruceProtocol(BaseProtocol):
             # ---- IR ----
             CommandInfo("ir rx", "IR", "Receive (decode) an IR signal"),
             CommandInfo("ir rx raw", "IR", "Capture raw (unparsed) IR timing"),
-            CommandInfo("ir tx", "Offensive", "Transmit an IR signal", danger="lab-only"),
+            CommandInfo("ir tx", "Offensive",
+                        "Transmit a decoded IR signal (args: protocol address value, e.g. NEC 04000000 08000000)",
+                        "protocol address value", danger="lab-only"),
             CommandInfo("ir tx_from_file <path>", "Offensive", "Replay a saved .ir capture", "path",
                         danger="lab-only"),
             # IR emitters (ir_commands.cpp: tx_raw->sendIRCommand, tx_from_buffer->txIrFile,
@@ -146,7 +151,9 @@ class BruceProtocol(BaseProtocol):
             CommandInfo("subghz rx raw", "SubGHz", "Capture raw (unparsed) SubGHz samples"),
             CommandInfo("subghz scan <start> <stop>", "SubGHz", "Scan a SubGHz range (RX)",
                         "start stop"),
-            CommandInfo("subghz tx", "Offensive", "Transmit a SubGHz signal", danger="lab-only"),
+            CommandInfo("subghz tx", "Offensive",
+                        "Transmit a decoded SubGHz signal (args: value freq te count, e.g. 445533 433920000 174 10)",
+                        "value freq te count", danger="lab-only"),
             CommandInfo("subghz tx_from_file", "Offensive", "Replay a saved SubGHz capture",
                         "path", danger="lab-only"),
             # RF emitters (rf_commands.cpp: txp->rfTransmitCode, keeloqtx->rf_tx_keeloq,

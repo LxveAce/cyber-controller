@@ -54,6 +54,24 @@ def test_subghz_tx_from_file_declares_its_file_arg():
     assert ci.args, "subghz tx_from_file must declare a file arg so Operate/Devices prompt for it"
 
 
+def test_bruce_tx_verbs_carry_their_documented_args():
+    # ir tx + subghz tx are confirmed-real serial verbs (ir_commands.cpp / rf_commands.cpp); their arg
+    # spec (grounded 2026-08-01 vs the real BruceDevices/firmware) drives the Operate/Devices prompt.
+    c = {x.name: x for x in BruceProtocol().get_commands()}
+    assert c["ir tx"].args == "protocol address value"
+    assert c["subghz tx"].args == "value freq te count"
+
+
+def test_bruce_wifi_and_rfid_serial_blocks_are_real_do_not_remove():
+    # GUARD a verify-first near-miss: a docs/wiki-only grounding pass proposed removing Bruce's wifi +
+    # rfid serial blocks as "speculative", but wifi_commands.cpp + rfid_commands.cpp DO exist in the
+    # real BruceDevices/firmware serial_commands/ tree (re-confirmed 2026-08-01) — the wiki just
+    # under-documents them. These are source-verified serial verbs; they must NOT be removed.
+    names = _command_names()
+    for v in ("wifi on", "wifi off", "arp", "sniffer", "rfid read [timeout]", "rfid clone [timeout]"):
+        assert v in names, f"source-verified Bruce serial verb wrongly removed: {v}"
+
+
 def test_kept_system_commands_present():
     names = _command_names()
     for keep in ("info", "free", "uptime", "reboot"):
