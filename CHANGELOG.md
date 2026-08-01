@@ -74,6 +74,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   but `activity_log.LEVELS` only recognizes `"warn"`, so `emit_line` coerced them to `info` — the failed
   network-tool / target-attack lines (and the new force-firmware line) rendered in the muted default instead of
   the warning colour. Corrected all three to `"warn"`. Caught by running the code, not just reading it.
+- **Operate console sent a malformed line for any parameterized firmware verb.** `op_spec.op_command`
+  APPENDED the operator's argument (`f"{name} {arg}"`), but most catalog verbs carry the argument
+  placeholder IN the name (`ir tx_from_file <path>`, `add -c -b <mac> -ap <idx>`), so the Operate grid sent
+  the literal `<path>` on the wire, or shoved the value past a mid-string placeholder
+  (`add -c -b -ap AA:BB 3`). `op_command` now RESOLVES `<...>` tokens in place — byte-identical to the
+  Devices terminal, which already did (both now share `src/core/placeholders.py`); an under-filled arg returns
+  `""` so the guarded send no-ops, mirroring the terminal's blank-field cancel. `safety.py` + the guarded send
+  are byte-untouched — only the string built changed. Flagged by Atlas's WS5 sweep; fixed behind a fresh-agent
+  DEBUG pass with a cross-surface equality test.
 
 ### Changed
 - **Spade v2 D6c-2 — Operate-Home is a pure LAUNCHER; the read-only domain-browser scaffold is deleted (D6 +

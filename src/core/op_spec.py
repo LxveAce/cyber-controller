@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Any
 
 from src.core import safety
+from src.core.placeholders import placeholder_tokens, sanitize_arg, substitute_tokens
 
 
 def op_help_spec(ci: Any) -> dict:
@@ -45,14 +46,39 @@ def op_modes(ci: Any) -> list[str]:
 
 
 def op_command(ci: Any, arg: str = "") -> str:
-    """Resolve the command string to send: the bare verb, or ``"verb <arg>"`` when an arg is given.
+    """Resolve the command string to send from a catalog verb + the operator's argument input.
 
-    This is the one place the ``operate_tab`` QInputDialog string-building lives, so the widget can
-    stop hand-splicing verbs. If the operator's *arg* already begins with the verb (they retyped it,
-    as the old dialog seeded), it is used verbatim — the verb is never doubled.
+    Two shapes, matching how the catalog names commands:
+
+    * **Templated verb** — the name carries ``<...>`` placeholders (``add -c -b <mac> -ap <idx>``).
+      The arg is split into one value per placeholder occurrence and substituted IN PLACE, exactly
+      as the Devices terminal's :func:`~src.core.placeholders.substitute_tokens` does — so both
+      surfaces send the byte-identical line (the invariant pinned by the cross-surface test). A
+      single placeholder takes the whole arg (so a spaced value survives); the last of several
+      absorbs any remainder. If the arg does not fill EVERY placeholder, ``""`` is returned so the
+      guarded send no-ops — mirroring the terminal's blank-field cancel, an incomplete templated
+      verb is never sent (no literal ``<mac>`` on the wire, no dangling half-command).
+    * **Plain verb** — no placeholders: the bare verb, or ``"verb arg"`` when an arg is given. If
+      the operator's *arg* already begins with the verb (they retyped it), it is used verbatim so
+      the verb is never doubled.
+
+    Pure string-building only — the guarded send (``safety.classify`` + ``tx_hard_block`` two-factor
+    arm + confirm) still authorizes the write in ``operate_tab._send``; this only shapes the string.
     """
     name = (getattr(ci, "name", "") or "").strip()
     arg = (arg or "").strip()
+    tokens = placeholder_tokens(name)
+    if tokens:
+        n = len(tokens)
+        # One arg field -> one value per placeholder occurrence (the last absorbs any remainder).
+        parts = arg.split(None, n - 1) if arg else []
+        values = [sanitize_arg(v) for v in parts]
+        if len(values) < n or any(v == "" for v in values):
+            # Not every placeholder is filled -> "" so the guarded send no-ops, mirroring the
+            # Devices terminal's blank-field cancel. Never emit a literal "<path>" or a dangling
+            # half-command, and never StopIteration in substitute_tokens (values are complete here).
+            return ""
+        return substitute_tokens(name, values)
     if not arg:
         return name
     if arg == name or arg.startswith(name + " "):

@@ -5,7 +5,6 @@ from __future__ import annotations
 import html
 import logging
 import os
-import re
 import threading
 from collections import deque
 
@@ -40,6 +39,7 @@ from src.core.bluejammer_control import (
     Mode,
 )
 from src.core.device_manager import DeviceManager
+from src.core.placeholders import placeholder_tokens, sanitize_arg, substitute_tokens
 from src.core.serial_handler import SerialConnection
 from src.protocols import (
     PROTOCOL_DISPLAY_NAMES,
@@ -57,10 +57,6 @@ log = logging.getLogger(__name__)
 # Firmware options for the per-device protocol selector: "Auto-detect" plus every
 # registered protocol's display name (de-duplicated, generic/raw last).
 _AUTO_DETECT = "Auto-detect"
-
-# Argument placeholders embedded in a CommandInfo.name, e.g. "scanap -c <ch>" / "led -r <v> -g <v> -b <v>".
-# Matched by occurrence (duplicates kept) so each <...> becomes its own form field and substitution slot.
-_PLACEHOLDER_RE = re.compile(r"<([^>]+)>")
 
 
 def _firmware_choices() -> list[str]:
@@ -1449,24 +1445,12 @@ class DeviceTab(QWidget):
                 return ci
         return None
 
-    @staticmethod
-    def _placeholder_tokens(cmd: str) -> "list[str]":
-        """The <...> placeholder names in *cmd*, in order, duplicates kept (e.g. ['v','v','v'])."""
-        return _PLACEHOLDER_RE.findall(cmd)
-
-    @staticmethod
-    def _sanitize_arg(value: str) -> str:
-        """Clean a user-entered argument: strip, drop control chars + DEL, strip angle brackets (so a value
-        can't smuggle a new <token>), cap at 64 chars (mirrors action_resolver._safe_sub)."""
-        value = value.strip()
-        value = "".join(ch for ch in value if ch >= " " and ch != "\x7f")
-        return value.replace("<", "").replace(">", "")[:64]
-
-    @staticmethod
-    def _substitute_tokens(cmd: str, values: "list[str]") -> str:
-        """Occurrence-ordered substitution: replace each <...> with the next value (handles repeated <v>)."""
-        it = iter(values)
-        return _PLACEHOLDER_RE.sub(lambda _m: next(it), cmd)
+    # The <...> placeholder primitives live in src.core.placeholders so the Operate console
+    # (op_spec.op_command) resolves a templated verb to the byte-identical string this terminal
+    # sends. These stay as thin delegators to keep the call sites (and their tests) unchanged.
+    _placeholder_tokens = staticmethod(placeholder_tokens)
+    _sanitize_arg = staticmethod(sanitize_arg)
+    _substitute_tokens = staticmethod(substitute_tokens)
 
     def _resolve_placeholders(self, cmd: str, ci) -> "str | None":
         """If *cmd* has <...> placeholders, prompt a small form (one field per occurrence) and return the
