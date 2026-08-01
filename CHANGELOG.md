@@ -47,6 +47,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   Targets "Sniff PMKID" action already used. Also added the missing `gpstracker -c <start|stop>` GPS verb,
   and the WiGLE writer now emits a real `AccuracyMeters` (2.5 × the parsed HDOP, the WiGLE convention
   Marauder itself uses) instead of a hardcoded `0`.
+- **GhostESP catalog grounded against the real firmware** (GhostESP-Revival/GhostESP + docs.ghostesp.net).
+  Restored real `capture` modes the catalog had wrongly denied — `capture -ble`, `capture -wiresharkble`,
+  and `capture -skimmer` (a stale comment had claimed GhostESP does no skimmer detection; it does) — and
+  added the confirmed `attack -c` (Channel Switch Announcement) and `attack -g <ssid> <password>` (GTK)
+  offensive verbs (both independently gated lab-only by `safety.py`, unchanged). Fixed the WiGLE credential
+  verb to `wigle API <name>:<token>` — the real subcommand is case-sensitive (`API`) and takes
+  `APIName:APIToken`, so the old lowercase `wigle api <token>` would have failed on a real board.
 
 ## [1.9.0] — 2026-08-01
 

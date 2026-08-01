@@ -530,6 +530,8 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("attack -d", "Offensive", "Deauthentication attack (needs a prior select -a)", danger="lab-only"),
             CommandInfo("attack -e", "Offensive", "EAPOL logoff (works where 802.11w PMF blocks classic deauth)", danger="lab-only"),
             CommandInfo("attack -s <password>", "Offensive", "SAE flood vs WPA3 (needs ESP32-C5/C6 + target PSK)", "password", danger="lab-only"),
+            CommandInfo("attack -c", "Offensive", "Channel Switch Announcement (CSA) — forces clients off the AP's channel", danger="lab-only"),
+            CommandInfo("attack -g <ssid> <password>", "Offensive", "GTK abuse attack on the selected AP", "ssid password", danger="lab-only"),
             CommandInfo("saeflood <password>", "Offensive", "SAE association flood vs WPA3", "password", danger="lab-only"),
             CommandInfo("stopsaeflood", "Offensive", "Stop the SAE flood"),
             CommandInfo("beaconspam -r", "Offensive", "Beacon spam (random SSIDs)", danger="lab-only"),
@@ -590,7 +592,8 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("blescan -ds", "BLE", "Detect BLE-spam sources"),
             CommandInfo("blescan -r", "BLE", "Raw BLE traffic scan"),
             CommandInfo("trackgatt", "BLE", "Track a BLE (GATT) device by RSSI"),
-            # (removed phantom `bleskimmer`: skimmer detection is Marauder's sniffskim, not this fw)
+            # GhostESP DOES do BLE skimmer detection — via `capture -skimmer` (below); only the standalone
+            # `bleskimmer` verb name was phantom (corrected 2026-08-01 vs the real GhostESP-Revival source).
             CommandInfo("blewardriving", "BLE", "BLE wardriving (GPS-tagged beacons)"),
             CommandInfo("blewardriving -s", "BLE", "Stop BLE wardriving"),
             CommandInfo("blespam", "Offensive", "BLE advertisement spam (pairing popups)", danger="lab-only"),
@@ -624,12 +627,16 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("capture -raw", "Capture", "Capture raw 802.11 traffic"),
             CommandInfo("capture -wps", "Capture", "Capture WPS traffic"),
             CommandInfo("capture -pwn", "Capture", "Capture Pwnagotchi frames"),
+            CommandInfo("capture -ble", "Capture", "Capture BLE traffic to PCAP"),
+            CommandInfo("capture -wiresharkble", "Capture", "Stream BLE to Wireshark"),
+            CommandInfo("capture -skimmer", "Capture", "Detect BLE card skimmers (to PCAP)"),
             CommandInfo("capture -stop", "Capture", "Stop packet capture"),
             # Wardrive
             CommandInfo("startwd", "Wardrive", "Start wardriving"),
             CommandInfo("startwd -s", "Wardrive", "Stop wardriving"),
             # WiGLE upload integration (commandline.c @ Development-deki, all SAFE).
-            CommandInfo("wigle api <token>", "Wardrive", "Set the WiGLE API key", "token"),
+            CommandInfo("wigle API <name>:<token>", "Wardrive",
+                        "Set WiGLE creds — APIName:APIToken (the API subcommand is case-sensitive)", "name:token"),
             CommandInfo("wigle auto <on|off>", "Wardrive", "Toggle auto-upload at boot", "on|off"),
             CommandInfo("wigle donate <on|off>", "Wardrive", "Toggle donating to WiGLE", "on|off"),
             CommandInfo("wigle show", "Wardrive", "Show current WiGLE settings"),
@@ -751,6 +758,8 @@ BROADCAST_CAPABILITIES = {
     BroadcastVerb.CAPTURE_HANDSHAKES: ((), "capture -eapol"),
     BroadcastVerb.DEAUTH_ALL:         (("select -a all",), "attack -d"),
     BroadcastVerb.BEACON_SPAM:        ((), "beaconspam -r"),
+    # NB: BLE_SPAM is deliberately NOT mapped — CC exposes `blespam` via the command palette only, not as
+    # a broadcast/per-target fan-out action (2026-07-15 audit decision, pinned by test_fix_ghostesp).
     # `stop` is GhostESP's universal kill (stops attacks + scans + background tasks); `stopscan` only
     # halts a scan, so STOP ALL must NOT use it or an in-progress deauth/beacon flood keeps transmitting.
     BroadcastVerb.STOP_ALL:           ((), "stop"),
