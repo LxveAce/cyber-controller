@@ -132,7 +132,7 @@ class Esp32DivProtocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "esp32-div"
 
-    capabilities = frozenset({"ble", "nrf24", "wifi"})
+    capabilities = frozenset({"ble", "nrf24", "wifi", "gps"})  # gps: source-confirmed GPS Wardriver (gps.cpp)
 
     # Stock cifertech ESP32-DIV is TOUCH/button-operated and speaks nothing STRUCTURED over serial
     # (verified vs the firmware; re-verified 2026-07-30 vs cifertech/ESP32-DIV wifi.cpp — its Serial
@@ -295,8 +295,10 @@ class Esp32DivProtocol(BaseProtocol):
     # ── Commands ─────────────────────────────────────────────────────
 
     def get_commands(self) -> list[CommandInfo]:
-        # Stock DIV is touch/button-operated with no serial CLI (see the driver_type note).
-        # The sendable command catalog lives on the ESP32-DIV serial fork (esp32_div_serial.py).
+        # Stock DIV is touch/button-operated with no PERSISTENT/global serial CLI (see the driver_type
+        # note). The only host-serial verbs in the real source are 3 CONTEXTUAL BLE-Sniffer filters
+        # (FILTER MAC / FILTER SUSPICIOUS / RESET, bluetooth.cpp) parsed ONLY while that screen runs —
+        # not a sendable command surface. The catalog lives on the serial fork (esp32_div_serial.py).
         return []
 
     # ── Formatting ───────────────────────────────────────────────────

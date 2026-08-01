@@ -46,7 +46,7 @@ class Esp32DivSerialProtocol(BaseProtocol):
     """Parser + command catalog for the ESP32-DIV serial fork (keeps the ESP32-DIV name; original by
     cifertech, serial CLI added by LxveAce). Identity banner: ``ESP32-DIV serial/1``."""
 
-    capabilities: "frozenset[str]" = frozenset({"wifi", "ble", "nrf24"})
+    capabilities: "frozenset[str]" = frozenset({"wifi", "ble", "nrf24", "gps"})
     driver_type = "text-cli"
 
     @property
