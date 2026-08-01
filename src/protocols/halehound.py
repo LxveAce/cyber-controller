@@ -9,7 +9,12 @@ adapted to cyber-controller's BaseProtocol contract: it returns ParsedEvent
 objects (event_type, data, raw) in the same style as ghost_esp.py instead of
 Target objects.
 
-Example serial lines:
+Reconstructed event-line formats — SPECULATIVE / UNVERIFIED (2026-08-01, source-grounded vs
+Wontfallo/CYD-ESP32, the readable mirror of the binary-only JesseCHale/HaleHound-CYD): HaleHound is
+touchscreen-only and does NOT emit these bracketed lines over USB serial (its serial port is
+debug-output + a target-UART passthrough, not a recon stream). These formats are ported from the
+ESP32-DIV lineage; the parser below is best-effort/read-only and never fabricates a target — an
+unrecognized line falls through to a generic `info` event. Do not treat these as confirmed device output.
     [WIFI] SSID: NetworkName | BSSID: AA:BB:CC:DD:EE:FF | CH: 6 | RSSI: -42 | ENC: WPA2
     [WIFI_STA] MAC: AA:BB:CC:DD:EE:FF | RSSI: -55 | AP_BSSID: 11:22:33:44:55:66
     [BLE] Name: Device | ADDR: AA:BB:CC:DD:EE:FF | RSSI: -60 | Type: Random
@@ -102,14 +107,17 @@ class HaleHoundProtocol(BaseProtocol):
     def protocol_name(self) -> str:
         return "halehound"
 
-    capabilities = frozenset({"ble", "nfc", "nrf24", "subghz", "wifi"})
+    capabilities = frozenset({"ble", "nfc", "nrf24", "subghz", "wifi", "gps"})  # gps: real WiGLE Wardriver
 
     # HaleHound is a menu/touch-driven firmware (CYD touchscreen): it has NO scriptable serial
     # command shell. Text written to the port is not a control channel, so we must not present
     # "send" buttons that the device silently ignores. Control lives on the device itself; CC's
     # honest role here is flash + serial-monitor (read/parse the lines it prints). driver_type
-    # "controlmap" tells the UI there is no text command channel (no fake "sent"). See the coverage
-    # plan: cc-control-coverage-PLAN.md — "HaleHound … no scriptable CLI exists".
+    # "controlmap" tells the UI there is no text command channel (no fake "sent"). SOURCE-CONFIRMED
+    # 2026-08-01 vs Wontfallo/CYD-ESP32 (the readable mirror of binary-only JesseCHale/HaleHound-CYD):
+    # the main loop is `handleButtons(); delay(20)` — zero serial dispatcher, no verb parser anywhere;
+    # USB serial is debug-out + a target-UART passthrough only. Recon is written to SD as WiGLE-1.6 CSV
+    # (read by our importer), never streamed over serial. See also cc-control-coverage-PLAN.md.
     driver_type = "controlmap"
 
     # ── Parsing ──────────────────────────────────────────────────────
@@ -267,11 +275,10 @@ class HaleHoundProtocol(BaseProtocol):
     # ── Formatting ───────────────────────────────────────────────────
 
     def format_command(self, cmd: str, args: dict[str, str] | None = None) -> str:
-        """Format a command for HaleHound serial transmission."""
-        if args:
-            arg_str = " ".join(str(v) for v in args.values())
-            return f"{cmd} {arg_str}"
-        return cmd
+        """HaleHound has no serial command channel (``driver_type="controlmap"``, empty catalog), so
+        there is nothing to format — return ``""`` rather than build a serial string the device would
+        never parse. Guards against a future accidental feed fabricating a "sent" offensive command."""
+        return ""
 
     # ── Auto-detection ───────────────────────────────────────────────
 
