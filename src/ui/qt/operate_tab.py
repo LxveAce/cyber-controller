@@ -457,6 +457,25 @@ class OperateTab(QWidget):
             return (True, "")
         return ready
 
+    # Operate-Home delegation (WS3): thin wrappers so Home never re-implements the guarded core
+    def run_curated(self, ci: Any, arg: str = "") -> None:
+        """Fire a curated Operate-Home tile's command through the EXISTING guarded send. Same as an
+        OpPanel Start: op_command builds the string, then ``_send`` (classify -> tx_hard_block ->
+        confirm -> write). No new send path; ``safety.py`` untouched."""
+        from src.core import op_spec
+        self._send(op_spec.op_command(ci, arg), ci)
+
+    def ready_for(self, ci: Any):
+        """The zero-arg readiness callable for *ci* (see :meth:`_op_ready_fn`). Home calls
+        ``ready_for(ci)()`` -> ``(ok, reason)`` to render a tile enabled or disabled-with-reason."""
+        return self._op_ready_fn(ci)
+
+    def safe_state(self) -> None:
+        """STOP / return-to-SAFE for an arming firmware: ``disarm`` via the arm-flow send (same
+        as the Disarm button), so Home's STOP never duplicates the arm UI. Non-dangerous -> never
+        ``tx_hard_block``-gated."""
+        self._send("disarm")
+
     # ── arm toggle ────────────────────────────────────────────────────────
     def _on_confirm_token(self) -> None:
         token = self._token_edit.text().strip()

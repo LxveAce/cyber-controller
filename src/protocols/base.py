@@ -44,6 +44,11 @@ class CommandInfo:
             (see ``src.ui.qt.link_strip.stream_blocked``). Default False, so
             every non-streaming verb — and every firmware that never sets it —
             is unaffected; the flag is inert on a normal USB/Wi-Fi link.
+        featured: True to name this a PRIMARY verb for the Operate-Home one-tap
+            strip (``src.ui.qt.operate_featured``). Default False; when no verb
+            in a catalog sets it, Home derives its curated set from an intent
+            heuristic instead, so leaving it off never changes behaviour. Lets a
+            protocol later declare its own home actions the clean way.
     """
 
     name: str
@@ -52,6 +57,7 @@ class CommandInfo:
     args: str = ""
     danger: str = ""
     stream: bool = False
+    featured: bool = False
 
 
 class BaseProtocol(ABC):
