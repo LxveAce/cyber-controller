@@ -154,11 +154,11 @@ def netxml_to_points(text: str) -> "list[tuple[float, float, str, str]]":
 
 
 def sniff_wardrive_format(text: str) -> str:
-    """Best-effort format of a wardrive log by its content: ``"netxml"`` | ``"wigle"`` | ``"unknown"``.
+    """Format of a wardrive log by content: ``netxml`` | ``div_native`` | ``wigle`` | ``unknown``.
 
-    Content, not extension — the operator's file may be misnamed, and Biscuit/Kismet both export plain
-    WiGLE CSVs. Kismet ``.netxml`` is XML (``<detection-run>`` / ``<wireless-network>``); a WiGLE CSV
-    opens with a ``WigleWifi-`` pre-header or a MAC-first column-header / data row.
+    Content, not extension (a file may be misnamed; Biscuit/Kismet export plain WiGLE CSVs). Kismet
+    ``.netxml`` is XML (``<detection-run>``); an ESP32-DIV native SD log opens with an ``epoch_ms``
+    header (its own CSV); a WiGLE CSV opens with a ``WigleWifi-`` pre-header or a MAC-first row.
     """
     head = text[:4096]
     if "<detection-run" in head or "<wireless-network" in head:
@@ -170,6 +170,8 @@ def sniff_wardrive_format(text: str) -> str:
         if s.startswith("WigleWifi-"):
             return "wigle"
         first = s.split(",", 1)[0].strip().strip('"')
+        if first.lower().startswith("epoch_ms"):   # ESP32-DIV native SD log (its own CSV)
+            return "div_native"
         if first.upper() == "MAC" or _MAC_RE.fullmatch(first):
             return "wigle"
         break  # the first non-empty line settles it
@@ -183,11 +185,59 @@ def wardrive_points(text: str) -> "list[tuple[float, float, str, str]]":
     """
     from src.core.wardrive import wigle_csv_to_points  # lazy: keeps the module import acyclic
 
-    if sniff_wardrive_format(text) == "netxml":
+    fmt = sniff_wardrive_format(text)
+    if fmt == "netxml":
         return netxml_to_points(text)
+    if fmt == "div_native":
+        return div_native_to_points(text)   # ESP32-DIV's own on-SD CSV, not WiGLE — see below
     # WiGLE CSV is the tolerant default (Biscuit + Kismet .wiglecsv ride it, and it already returns []
     # for anything unparseable — so a stray non-log file imports as no points, never raises).
     return wigle_csv_to_points(text)
+
+
+def div_native_to_points(text: str) -> "list[tuple[float, float, str, str]]":
+    """Parse an ESP32-DIV **native** wardrive SD log into ``[(lat, lon, ssid, bssid)]``.
+
+    DIV's persistent on-SD log is its OWN CSV (``epoch_ms,utc,date,lat,lon,...,ssid,bssid,...`` --
+    cifertech/ESP32-DIV ``gps.cpp:3447``; the firmware keys on ``strncmp(line,"epoch_ms",8)``), NOT
+    WiGLE. Its WiGLE file is a transient ``SD.remove``'d temp, so the file a user pulls off the card
+    is THIS one, which the WiGLE reader (field 0 is a numeric epoch, not a MAC) drops entirely.
+    Columns resolve BY HEADER NAME. Same guards as the sibling readers (in-range, non-Null-Island,
+    valid BSSID, deduped by BSSID); tolerant -- a malformed file yields ``[]``, never raises.
+    """
+    import csv
+    import math
+
+    best: Dict[str, tuple] = {}
+    try:
+        reader = csv.reader(io.StringIO(text))
+        cols: Optional[Dict[str, int]] = None
+        for row in reader:
+            if not row:
+                continue
+            if cols is None:                      # skip until (and including) the epoch_ms header
+                if row[0].strip().lstrip("﻿").lower().startswith("epoch_ms"):
+                    cols = {name.strip().lower(): i for i, name in enumerate(row)}
+                continue
+            try:
+                lat = float(row[cols["lat"]])
+                lon = float(row[cols["lon"]])
+                bssid = row[cols["bssid"]].strip()
+                ssid = row[cols["ssid"]].strip()
+            except (KeyError, IndexError, ValueError):
+                continue
+            if not _MAC_RE.fullmatch(bssid):
+                continue
+            if not (math.isfinite(lat) and math.isfinite(lon)):
+                continue
+            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                continue
+            if lat == 0.0 and lon == 0.0:
+                continue                          # DIV's no-fix sentinel (0/0)
+            best[bssid.upper()] = (lat, lon, ssid, bssid.upper())
+    except Exception:  # noqa: BLE001 — a huge-field / hostile file imports as no points, never raises
+        pass
+    return list(best.values())
 
 
 # ── Kismet .kismet (SQLite) reader ───────────────────────────────────────────────────────────────

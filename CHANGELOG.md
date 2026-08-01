@@ -18,6 +18,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   dispatcher; the file dialog accepts `*.kismet`. Both paths return the same points → same render.
   The dialog also lists `*.log` — koko's real ESP32 Marauder writes its WigleWifi-1.4 output to
   `wardrive_N.log` (grounded vs the firmware), and the content-sniff import handles it identically.
+- **ESP32-DIV native SD-log import (`wardrive_import.div_native_to_points`).** Grounded vs the real
+  cifertech/ESP32-DIV firmware: the file a user pulls off the SD card is DIV's OWN CSV
+  (`epoch_ms,utc,date,lat,lon,…,ssid,bssid,…`, `gps.cpp:3447`), **not** WiGLE — DIV's WiGLE file is a
+  transient `SD.remove`'d upload temp. The WiGLE reader dropped 100% of it (field 0 is a numeric epoch,
+  not a MAC) → "No mappable points". `wardrive_points` now content-sniffs the `epoch_ms` header (the same
+  key the firmware uses) and routes to a tolerant, header-name-based native reader (same in-range /
+  non-Null-Island / valid-BSSID / dedupe guards as the WiGLE + Kismet readers). 7 tests.
 - **Wi-Fi CSI sensing — P0 pure core (`src/core/sensing.py`), no hardware.** The honesty spine of the
   planned "Sense" (occupancy/motion) feature: a `SENSING_TIERS` table that fixes what commodity Wi-Fi CSI
   can (PROVEN: presence/motion), might in-domain (EXPERIMENTAL: zone/breathing/people-count/gesture), and
