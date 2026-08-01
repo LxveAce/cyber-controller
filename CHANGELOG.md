@@ -5,6 +5,16 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Added
+- **Kismet `.kismet` (SQLite) wardrive import — HW-unverified.** A stdlib-only reader
+  (`wardrive_import.kismet_db_to_points`) parses Kismet's native `.kismet` log — the `devices` table,
+  one AP per row, opened read-only and streamed so a multi-GB log never loads whole — into the same map
+  points the WiGLE/`.netxml` importers produce, handling the v4→v5 coordinate-encoding drift
+  (degrees×100000 int → REAL doubles) and the device-JSON SSID nesting. Grounded on the documented
+  kismetdb schema + a synthetic fixture; flagged `KISMET_READER_HW_VERIFIED = False` until a real
+  GPS-tagged capture confirms the decode + SSID key paths. File-import UI wiring (sniff the SQLite magic →
+  call it) still pending.
+
 ## [1.9.0] — 2026-08-01
 
 The 1.9 stable release. Consolidates the work previously staged under the `2.0.0-beta` prerelease — that

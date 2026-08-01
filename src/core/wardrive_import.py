@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 from typing import Dict, Iterator, List, Optional
 
 from src.core.wardrive import (
@@ -187,3 +188,109 @@ def wardrive_points(text: str) -> "list[tuple[float, float, str, str]]":
     # WiGLE CSV is the tolerant default (Biscuit + Kismet .wiglecsv ride it, and it already returns []
     # for anything unparseable — so a stray non-log file imports as no points, never raises).
     return wigle_csv_to_points(text)
+
+
+# ── Kismet .kismet (SQLite) reader ───────────────────────────────────────────────────────────────
+#: The Kismet ``.kismet`` reader is built + unit-tested against a synthetic fixture on the grounded
+#: kismetdb schema, but NOT yet confirmed against a real GPS-tagged capture. The unproven parts are the
+#: coordinate-decode version drift (kismetdb v4 stores ``degrees × 100000`` as INT; v5+ store native REAL
+#: doubles) and the exact device-JSON SSID key nesting — a real ``.kismet`` from the operator's own Kismet
+#: build is the arbiter. Flip to ``True`` only after that confirmation.
+KISMET_READER_HW_VERIFIED = False
+
+
+def _kismet_ssid(device_json: str) -> str:
+    """Best-effort SSID from a Kismet device-record JSON blob: the newer nested
+    ``last_beaconed_ssid_record`` form, then the older flat ``last_beaconed_ssid``, then the first entry of
+    ``advertised_ssid_map``. Any failure -> ``""`` (a corrupt/oversized blob must never lose the AP's
+    location — only its name)."""
+    try:
+        d11 = (json.loads(device_json).get("dot11.device")) or {}
+        rec = d11.get("dot11.device.last_beaconed_ssid_record") or {}
+        ssid = rec.get("dot11.advertisedssid.ssid") or d11.get("dot11.device.last_beaconed_ssid")
+        if not ssid:
+            amap = d11.get("dot11.device.advertised_ssid_map")
+            if isinstance(amap, list) and amap:
+                ssid = (amap[0] or {}).get("dot11.advertisedssid.ssid")
+        return str(ssid).strip() if ssid else ""
+    except Exception:  # noqa: BLE001 — a bad blob blanks the name, never drops the point
+        return ""
+
+
+def kismet_db_to_points(path: str) -> "list[tuple[float, float, str, str]]":
+    """Parse a Kismet ``.kismet`` SQLite log (its native format) into map points ``[(lat, lon, ssid,
+    bssid)]`` — the same 4-tuple the CSV/netxml readers return. Kismet aggregates one row per device, so
+    one AP -> one point; read READ-ONLY and streamed (a multi-GB log never loads whole), with the same
+    guarantees as :func:`wigle_csv_to_points` (Wi-Fi APs only, dedup by BSSID, drop Null-Island /
+    out-of-range / non-finite). Tolerant: a non-Kismet / corrupt / locked / missing file yields ``[]``.
+
+    ⚠️ **HW-UNVERIFIED** (see :data:`KISMET_READER_HW_VERIFIED`) — grounded on the documented schema + a
+    synthetic fixture, not a real capture; the v4 int-decode and the SSID JSON nesting are unproven until a
+    real GPS-tagged ``.kismet`` confirms them. Awareness-only: opens the DB read-only, never writes it,
+    transmits nothing. (A ``.kismet`` is binary SQLite, so it takes a PATH — it can't ride the text
+    :func:`wardrive_points` dispatcher; the file-import UI sniffs the SQLite magic / extension and calls
+    this directly.)
+    """
+    import math
+    import sqlite3
+    from pathlib import Path
+
+    best: Dict[str, tuple] = {}
+    con = None
+    try:
+        con = sqlite3.connect(Path(path).resolve().as_uri() + "?mode=ro", uri=True, timeout=1.0)
+        try:
+            row = con.execute("SELECT db_version FROM KISMET LIMIT 1").fetchone()
+            db_version: Optional[int] = int(row[0]) if row and row[0] is not None else None
+        except Exception:  # noqa: BLE001 — absent/unknown version -> the magnitude heuristic below decodes
+            db_version = None
+        cur = con.execute(
+            "SELECT devmac, avg_lat, avg_lon, type, device FROM devices WHERE phyname = ?",
+            ("IEEE802.11",))
+        while True:
+            try:
+                r = cur.fetchone()
+            except sqlite3.DatabaseError:
+                break  # mid-stream corruption: keep the points read so far
+            if r is None:
+                break
+            devmac, raw_lat, raw_lon, dtype, blob = r
+            if (dtype or "") != "Wi-Fi AP":
+                continue
+            mac = (devmac or "").strip()
+            if not _MAC_RE.fullmatch(mac):
+                continue
+            try:
+                lat, lon = float(raw_lat), float(raw_lon)
+            except (TypeError, ValueError):
+                continue
+            if db_version is not None and db_version < 5:
+                lat, lon = lat / 100000.0, lon / 100000.0   # v4-: degrees×100000 INT
+            # One-way rescue when the version was unreadable: a scaled int read as a double is huge
+            # (deg×1e5), so ÷1e5 only rescues a scaled value — a genuine in-range double is never shrunk.
+            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0) and (abs(lat) >= 1000 or abs(lon) >= 1000):
+                slat, slon = lat / 100000.0, lon / 100000.0
+                if -90.0 <= slat <= 90.0 and -180.0 <= slon <= 180.0:
+                    lat, lon = slat, slon
+            if not (math.isfinite(lat) and math.isfinite(lon)):
+                continue
+            if not (-90.0 <= lat <= 90.0 and -180.0 <= lon <= 180.0):
+                continue
+            if lat == 0.0 and lon == 0.0:
+                continue  # Kismet no-fix sentinel (also covers a device whose location object is omitted)
+            b = mac.upper()
+            if b in best:
+                continue  # kismetdb UNIQUE(phyname,devmac) already gives one row/AP; first wins
+            ssid = _kismet_ssid(
+                bytes(blob).decode("utf-8", "replace") if isinstance(blob, (bytes, bytearray))
+                else str(blob)) if blob is not None else ""
+            best[b] = (lat, lon, ssid, b)
+    except Exception:  # noqa: BLE001 — bad/locked/non-kismet/missing file imports as [], never crashes
+        return list(best.values())
+    finally:
+        if con is not None:
+            try:
+                con.close()
+            except Exception:  # noqa: BLE001
+                pass
+    return list(best.values())
