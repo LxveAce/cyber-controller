@@ -1,12 +1,12 @@
-"""Operate-Home Zone B — QuickActionsStrip (WS3): the hero one-tap actions for the connected firmware.
+"""Operate-Home Zone B: QuickActionsStrip (WS3) - hero one-tap actions for the connected firmware.
 
 A row of curated action tiles (from ``operate_featured.featured_actions``) plus an always-present
-two-mode STOP. Every tap reuses CC's guarded send verbatim (the ``run_fn``/``send``/``ready_fn``/
-``safe_state_fn`` handed in from ``OperateTab``) — this widget never re-implements ``safety.py`` or the
-send path. A no-arg verb fires on tap (``run_fn``); an arg verb opens an inline ``OpPanel`` through the
-same guarded ``send``. Dangerous verbs are shown danger-labeled (red illegal-tx / amber lab-only) and
-readiness-gated (disabled-with-reason from ``ready_fn(ci)()`` on the host poll), never one-tap TX. STOP
-is never gated. Honest-empty: no curated verbs -> a hint + STOP only, no invented tiles.
+two-mode STOP. Every tap reuses CC's guarded send verbatim (the ``run_fn`` / ``send`` / ``ready_fn``
+/ ``safe_state_fn`` from ``OperateTab``); this widget never re-implements ``safety.py`` or the send
+path. A no-arg verb fires on tap; an arg verb opens an inline ``OpPanel`` via the same guarded
+``send``. Dangerous verbs are danger-labeled (red illegal-tx / amber lab-only) and readiness-gated
+(disabled-with-reason from ``ready_fn(ci)()`` on the poll), never one-tap TX. STOP is never gated.
+Honest-empty: no curated verbs -> a hint + STOP only, no invented tiles.
 """
 from __future__ import annotations
 
@@ -49,7 +49,8 @@ class QuickActionsStrip(QWidget):
         self._outer.addWidget(self._hint)
 
     def set_actions(self, cis: "list[Any]", run_fn: Callable, send: Callable, ready_fn: Callable,
-                    safe_state_fn: Callable, supports_arm: bool = False, stop_ci: Any = None) -> None:
+                    safe_state_fn: Callable, supports_arm: bool = False,
+                    stop_ci: Any = None) -> None:
         """Rebuild the strip for the connected firmware. Call ONLY on connect / disconnect /
         firmware-change — a rebuild on the poll would tear down an open OpPanel mid-interaction."""
         self._run_fn, self._send = run_fn, send
@@ -75,7 +76,7 @@ class QuickActionsStrip(QWidget):
         from src.ui.qt.widgets.responsive_grid import ResponsiveTileGrid
         self._grid_lay.addWidget(ResponsiveTileGrid(tiles))
         self._hint.setText(
-            "" if cis else "No one-tap actions for this firmware — use Go deeper or the Devices terminal.")
+            "" if cis else "No one-tap actions here; use Go deeper or the Devices terminal.")
         self._hint.setVisible(not cis)
         self.refresh_readiness()
 
@@ -97,8 +98,8 @@ class QuickActionsStrip(QWidget):
         return btn
 
     def _make_stop(self) -> QPushButton:
-        """STOP / safe-state, two-mode (never gated). Arming firmware -> disarm via safe_state_fn; else
-        a matched stop verb via run_fn; else a disabled 'no stop verb' chip (honest, not a fake button)."""
+        """STOP / safe-state, two-mode (never gated). Arming fw -> disarm via safe_state_fn; else a
+        matched stop verb via run_fn; else a disabled 'no stop verb' chip (honest, not fake)."""
         btn = QPushButton("STOP")
         btn.setMinimumHeight(44)
         btn.setStyleSheet("QPushButton { font-weight:bold; }")
@@ -116,17 +117,17 @@ class QuickActionsStrip(QWidget):
     # ── run ──────────────────────────────────────────────────────────────
     def _on_tile(self, ci: Any) -> None:
         self._close_panel()
-        if getattr(ci, "args", ""):                         # arg verb -> inline OpPanel (guarded send)
+        if getattr(ci, "args", ""):            # arg verb -> inline OpPanel (guarded send)
             from src.ui.qt.op_panel import OpPanel
             ready = self._ready_fn(ci) if self._ready_fn is not None else None
             self._open_panel = OpPanel(ci, self._send, ready_fn=ready)
             self._outer.addWidget(self._open_panel)
-        elif self._run_fn is not None:                      # no-arg verb -> one tap through run_curated
+        elif self._run_fn is not None:         # no-arg verb -> one tap via run_curated
             self._run_fn(ci)
 
     def refresh_readiness(self) -> None:
-        """Poll-safe: update each tile's enabled + disabled-reason from ``ready_fn(ci)()``. No rebuild,
-        no teardown (cheap enough for the 2 s poll). STOP is never gated."""
+        """Poll-safe: refresh each tile's enabled + disabled-reason from ``ready_fn(ci)()``. No
+        rebuild, no teardown (cheap on the 2 s poll). STOP is never gated."""
         if self._ready_fn is None:
             return
         for ci, btn in self._tiles:

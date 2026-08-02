@@ -1,9 +1,9 @@
-"""QuickActionsStrip (WS3 step 4) — the one-tap action strip stays guarded + honest.
+"""QuickActionsStrip (WS3 step 4) - the one-tap action strip stays guarded + honest.
 
 Builds a real strip driven by a live OperateTab (same fake-DM harness as the wrapper test): a no-arg
-tile fires run_curated, an arg tile opens an inline OpPanel, STOP is two-mode + never gated, readiness
-disables an arm-gated verb until armed, and an empty catalog yields the honest hint (only STOP). Every
-send still routes through the guarded path; safety.py is the authority.
+tile fires run_curated, an arg tile opens an inline OpPanel, STOP is two-mode + never gated,
+readiness disables an arm-gated verb until armed, and an empty catalog yields the honest hint (only
+STOP). Every send still routes through the guarded path; safety.py is the authority.
 """
 from __future__ import annotations
 
@@ -56,7 +56,8 @@ def _tab(dev, conn=None):
 def _strip(tab, cis, supports_arm=False, stop_ci=None):
     from src.ui.qt.quick_actions_strip import QuickActionsStrip
     s = QuickActionsStrip()
-    s.set_actions(cis, tab.run_curated, tab._send, tab.ready_for, tab.safe_state, supports_arm, stop_ci)
+    s.set_actions(cis, tab.run_curated, tab._send, tab.ready_for, tab.safe_state,
+                  supports_arm, stop_ci)
     return s
 
 
@@ -107,7 +108,7 @@ def test_stop_is_disabled_when_no_stop_verb(qapp):
     from src.protocols.base import CommandInfo
     tab = _tab(Device(port="COM23", firmware="marauder", connected=True), _FakeConn())
     s = _strip(tab, [CommandInfo("scanall", "WiFi")], supports_arm=False, stop_ci=None)
-    assert not s._stop_btn.isEnabled()                            # honest disabled chip, not a fake button
+    assert not s._stop_btn.isEnabled()     # honest disabled chip, not a fake button
 
 
 def test_readiness_gates_an_arm_verb_until_armed(qapp):
@@ -117,7 +118,7 @@ def test_readiness_gates_an_arm_verb_until_armed(qapp):
     dev.arm_state = "safe"
     tab = _tab(dev, _FakeConn())
     s = _strip(tab, [CommandInfo("evilportal", "Offensive", danger="lab-only")], supports_arm=True)
-    assert not s._tiles[0][1].isEnabled()                         # dangerous + not armed -> disabled
+    assert not s._tiles[0][1].isEnabled()     # dangerous + not armed -> disabled
     dev.arm_state = "armed"
     s.refresh_readiness()
     assert s._tiles[0][1].isEnabled()                             # armed -> tile enabled
