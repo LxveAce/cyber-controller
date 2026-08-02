@@ -16,6 +16,7 @@ pytest.importorskip("PyQt5.QtWidgets")
 from PyQt5.QtWidgets import QApplication  # noqa: E402
 
 from src.ui.qt.operate_home import OperateHome, build_operate_home  # noqa: E402
+from src.ui.qt.theme import colors as C  # noqa: E402
 
 
 @pytest.fixture(scope="module")
@@ -91,3 +92,59 @@ def test_build_operate_home_navigates_wifi_ble(qapp):
     home._grid.domain_selected.emit("wifi")
     assert seen == ["wifi"]
     assert home.current_domain() is None
+
+
+# ── WS3: the three-zone execution surface (status pill + one-tap strip + demoted grid) ──
+
+def test_connection_pill_reflects_connection_state(qapp):
+    # The pill is the survivor chip: grey disconnected, green connected, amber arming — all from
+    # the same set_summary inputs (no new data source).
+    h = OperateHome()
+    h.set_summary(0, 0, 0, "")
+    assert C.TEXT_MUTED in h._summary._pill.styleSheet()      # disconnected -> grey
+    h.set_summary(1, 0, 0, "safe")
+    assert C.SUCCESS in h._summary._pill.styleSheet()         # connected -> green
+    h.set_summary(1, 0, 0, "arming")
+    assert C.WARNING in h._summary._pill.styleSheet()         # arming -> amber
+
+
+def test_set_actions_builds_the_one_tap_strip(qapp):
+    from src.protocols.base import CommandInfo
+    h = OperateHome()
+    fired: list[str] = []
+    h.set_actions([CommandInfo("scanall", "WiFi"), CommandInfo("channel", "WiFi", args="ch")],
+                  run_fn=lambda ci: fired.append(ci.name), send=lambda *a, **k: None,
+                  ready_fn=lambda ci: (lambda: (True, "")), safe_state_fn=lambda: None)
+    assert [c.name for c, _ in h._strip._tiles] == ["scanall", "channel"]   # Zone B populated
+    h._strip._tiles[0][1].click()
+    assert fired == ["scanall"]                              # no-arg tap rides the host run_fn
+
+
+def test_empty_catalog_shows_honest_hint_not_invented_tiles(qapp):
+    h = OperateHome()
+    h.set_actions([], run_fn=lambda ci: None, send=lambda *a, **k: None,
+                  ready_fn=lambda ci: (lambda: (True, "")), safe_state_fn=lambda: None)
+    assert h._strip._tiles == []                             # no invented tiles
+    assert h._strip._stop_btn is not None                    # STOP still present
+    assert h._strip._hint.text() != ""                      # honest "no one-tap actions" hint
+
+
+def test_refresh_readiness_gates_a_disconnected_tile(qapp):
+    from src.protocols.base import CommandInfo
+    h = OperateHome()
+    h.set_actions([CommandInfo("scanall", "WiFi")], run_fn=lambda ci: None,
+                  send=lambda *a, **k: None,
+                  ready_fn=lambda ci: (lambda: (False, "connect the device first")),
+                  safe_state_fn=lambda: None)
+    h.refresh_readiness()
+    assert not h._strip._tiles[0][1].isEnabled()            # disabled-with-reason from ready_fn
+
+
+def test_go_deeper_grid_still_navigates_after_the_rework(qapp):
+    # The demote (Zone C under a "Go deeper" label) must not break the nav contract.
+    h = OperateHome()
+    assert h._deeper_lbl.text() == "Go deeper"
+    seen: list[str] = []
+    h.navigate_requested.connect(seen.append)
+    h._grid.domain_selected.emit("wifi")
+    assert seen == ["wifi"]
