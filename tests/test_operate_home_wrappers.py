@@ -72,8 +72,8 @@ def test_run_curated_builds_the_arg_string(qapp):
 
 
 def test_run_curated_dangerous_verb_still_hits_tx_hard_block(qapp, monkeypatch):
-    # THE guard regression: a dangerous verb, not-armed arming firmware -> NOTHING; armed -> the SAME
-    # verb lands. Home's one-tap never bypasses the safety floor, even for offensive verbs.
+    # THE guard regression: a dangerous verb, not-armed arming firmware -> NOTHING; armed -> lands
+    # (the SAME verb). Home's one-tap never bypasses the safety floor, even for offensive verbs.
     from src.models.device import Device
     from src.protocols.base import CommandInfo
     from src.ui.qt import operate_tab
