@@ -830,6 +830,75 @@ class CyberControllerWindow(QMainWindow):
             ctype = getattr(r, "capture_type", "")
             last_capture = f"{name} ({ctype})" if ctype else name
         home.set_summary(len(devs), targets, captures, armed, last_capture)
+        self._refresh_home_actions()
+
+    def _primary_operate_port(self) -> str:
+        """The port whose firmware drives Home's one-tap strip: the Operate console's already-active
+        device if still connected, else the first connected device. Empty string if none."""
+        dm = getattr(self._hub, "dm", None)
+        has = dm is not None and hasattr(dm, "list_connected")
+        connected = list(dm.list_connected()) if has else []
+        ports = [getattr(d, "port", "") for d in connected if getattr(d, "port", "")]
+        console = getattr(self, "_operate_console", None)
+        active = getattr(console, "_active_port", "") if console is not None else ""
+        if active and active in ports:
+            return active
+        return ports[0] if ports else ""
+
+    def _refresh_home_actions(self) -> None:
+        """Keep Home's Zone B strip live on the same cadence as the summary. Refresh tile readiness
+        every call (cheap, no teardown); REBUILD the strip only when the primary operate
+        (port, firmware) changes — connect / disconnect / firmware-change — so a steady-state poll
+        never tears down an open OpPanel (WS3 finding 2). The rebuild also primes the active
+        device (finding 1). The key is stored BEFORE the rebuild, so priming is re-entrant-safe."""
+        home = getattr(self, "_operate_home", None)
+        console = getattr(self, "_operate_console", None)
+        if home is None or console is None or not hasattr(home, "set_actions"):
+            return
+        port = self._primary_operate_port()
+        dm = getattr(self._hub, "dm", None)
+        has_dev = dm is not None and port and hasattr(dm, "get_device")
+        dev = dm.get_device(port) if has_dev else None
+        fw = (getattr(dev, "firmware", "") or "").strip().lower() if dev is not None else ""
+        key = (port, fw)
+        if key != getattr(self, "_home_actions_key", None):
+            self._home_actions_key = key
+            self._rebuild_home_actions(port, fw)
+        home.refresh_readiness()
+
+    def _rebuild_home_actions(self, port: str, fw: str) -> None:
+        """(Re)build Home's one-tap strip for *fw* on *port*. Prime the console's active device so
+        run_curated/ready_for act on THIS port even if the Control sub-view was never opened; then
+        derive the curated verbs + STOP mode, and hand them to the strip. Guarded send untouched."""
+        home, console = self._operate_home, self._operate_console
+        wiring = (console.run_curated, console._send, console.ready_for, console.safe_state)
+        if not port or not fw:
+            home.set_actions([], *wiring, supports_arm=False, stop_ci=None)
+            return
+        console.select_device(port)   # prime _active_port (finding 1); nav-only, never sends
+        from src.protocols import get_protocol
+        from src.ui.qt.operate_featured import featured_actions
+        proto = get_protocol(fw)
+        supports_arm = bool(getattr(proto, "supports_arm", False))
+        stop_ci = None if supports_arm else self._first_stop_verb(proto)
+        home.set_actions(featured_actions(proto), *wiring,
+                         supports_arm=supports_arm, stop_ci=stop_ci)
+
+    @staticmethod
+    def _first_stop_verb(proto):
+        """The first catalog verb matching stop|disarm|reset|off|halt, for a non-arming firmware's
+        STOP (Marauder/DIV/GhostESP have no arm concept). None if the catalog has no such verb, so
+        the strip shows a disabled 'no stop verb' chip, never a fake button."""
+        import re
+        try:
+            cmds = list(proto.cached_commands())
+        except Exception:   # noqa: BLE001 — a catalog-less protocol simply has no stop verb
+            return None
+        pat = re.compile(r"stop|disarm|reset|off|halt", re.I)
+        for ci in cmds:
+            if pat.search(getattr(ci, "name", "") or ""):
+                return ci
+        return None
 
     def _sync_shell_nav(self, *_args) -> None:
         """Keep the app-shell sidebar in step with the tabs: show only destinations whose surface
