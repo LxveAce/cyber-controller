@@ -15,6 +15,7 @@ import pytest
 pytest.importorskip("PyQt5.QtWidgets")
 from PyQt5.QtWidgets import QApplication  # noqa: E402
 
+from src.ui.qt.layout_profile import layout_profile, operate_home_layout  # noqa: E402
 from src.ui.qt.operate_home import OperateHome, build_operate_home  # noqa: E402
 from src.ui.qt.theme import colors as C  # noqa: E402
 
@@ -148,3 +149,42 @@ def test_go_deeper_grid_still_navigates_after_the_rework(qapp):
     h.navigate_requested.connect(seen.append)
     h._grid.domain_selected.emit("wifi")
     assert seen == ["wifi"]
+
+
+# ── WS3 step 8: the responsive collapse (chrome sheds on compact; pill + STOP never do) ──
+
+def test_apply_home_layout_sheds_chrome_on_compact(qapp):
+    from src.protocols.base import CommandInfo
+    h = OperateHome()
+    h.set_actions([CommandInfo("scanall", "WiFi")], lambda ci: None, lambda *a, **k: None,
+                  lambda ci: (lambda: (True, "")), lambda: None)
+    # expanded: metric chips + "Go deeper" label are shown
+    h._apply_home_layout(operate_home_layout(layout_profile(1440, 900, touch=False, dpi=96)))
+    assert not h._summary._metrics["devices"].isHidden()
+    assert not h._deeper_lbl.isHidden()
+    # compact: chips + label hide, but the connection pill + STOP never collapse (§5)
+    h._apply_home_layout(operate_home_layout(layout_profile(400, 800, touch=False, dpi=96)))
+    assert h._summary._metrics["devices"].isHidden()
+    assert h._deeper_lbl.isHidden()
+    assert not h._summary._pill.isHidden()          # pill is the survivor chip
+    assert not h._strip._stop_btn.isHidden()        # STOP never collapses
+
+
+def test_apply_home_layout_touch_hit_target(qapp):
+    from src.protocols.base import CommandInfo
+    h = OperateHome()
+    h.set_actions([CommandInfo("scanall", "WiFi")], lambda ci: None, lambda *a, **k: None,
+                  lambda ci: (lambda: (True, "")), lambda: None)
+    h._apply_home_layout(operate_home_layout(layout_profile(1440, 900, touch=True, dpi=96)))
+    assert h._strip._tiles[0][1].minimumHeight() == 44   # touch -> generous target
+    assert h._strip._stop_btn.minimumHeight() == 44
+
+
+def test_relayout_home_debounces_on_size_class(qapp):
+    h = OperateHome()
+    h.resize(400, 800)
+    qapp.processEvents()
+    h._relayout_home()
+    first = h._last_home_size
+    h._relayout_home()          # same size class -> no re-apply, same recorded class
+    assert h._last_home_size == first and first is not None

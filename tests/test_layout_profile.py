@@ -21,6 +21,7 @@ from src.ui.qt.layout_profile import (
     macro_layout,
     network_layout,
     nodes_layout,
+    operate_home_layout,
     operate_layout,
     settings_layout,
     wardrive_multi_layout,
@@ -176,7 +177,7 @@ def test_device_layout_is_size_driven_not_touch():
 
 
 # ── Batch C: the 7 operator/config-screen deciders share one contract ──
-_DECIDERS = [operate_layout, crack_layout, settings_layout, macro_layout,
+_DECIDERS = [operate_layout, operate_home_layout, crack_layout, settings_layout, macro_layout,
              network_layout, nodes_layout, wardrive_multi_layout]
 _SIZES = [(480, 800), (800, 600), (1440, 900)]  # compact / regular / expanded
 
@@ -196,6 +197,19 @@ def test_decider_contract(decide, w, h, touch):
         assert decide(dataclasses.replace(p, depth_hint=depth)) == out
     # the one universal field: every decision's chrome flag == profile.dense_chrome
     assert out.collapse_chrome is p.dense_chrome
+
+
+def test_operate_home_layout_sheds_chrome_on_compact_only():
+    # Zone A metric chips + the Zone C "Go deeper" label show on regular/expanded, hide on compact;
+    # the strip hit-target follows density (touch 44 / pointer 28). Pill + STOP never appear here
+    # (they are structural, never collapsed).
+    compact = operate_home_layout(layout_profile(480, 800))
+    regular = operate_home_layout(layout_profile(800, 600))
+    assert (compact.show_metric_chips, compact.show_go_deeper_label) == (False, False)
+    assert (regular.show_metric_chips, regular.show_go_deeper_label) == (True, True)
+    assert compact.stack is True and regular.stack is False
+    assert operate_home_layout(layout_profile(800, 600, touch=True)).hit_edge_pt == 44
+    assert operate_home_layout(layout_profile(800, 600, touch=False)).hit_edge_pt == 28
 
 
 def test_operate_layout_columns_stack_and_hit_edge():

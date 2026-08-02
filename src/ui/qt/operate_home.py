@@ -100,6 +100,14 @@ class _HomeSummary(QWidget):
         lc = (last_capture or "").strip()
         self._last.setText(f"·  Last capture: {lc}" if lc else "")
 
+    def set_compact(self, compact: bool) -> None:
+        """Densify Zone A on a cramped canvas: hide the metric chips + last-capture line, keeping
+        the connection pill + state line (which NEVER collapse, §5). A pure visibility toggle."""
+        show = not compact
+        for lbl in self._metrics.values():
+            lbl.setVisible(show)
+        self._last.setVisible(show)
+
 
 class OperateHome(QWidget):
     """The OPERATE HOME surface: a status header (Zone A) + the one-tap QuickActionsStrip (Zone B) +
@@ -127,6 +135,8 @@ class OperateHome(QWidget):
         outer.addWidget(self._deeper_lbl)
         outer.addWidget(self._grid)
         outer.addStretch(1)
+        self._last_home_size: "Optional[str]" = None   # last size class (relayout debounce)
+        self._relayout_home(force=True)   # seed density / label / hit-target before the first show
 
     def set_summary(self, devices: int, targets: int, captures: int, armed: str,
                     last_capture: str = "") -> None:
@@ -143,6 +153,32 @@ class OperateHome(QWidget):
     def refresh_readiness(self) -> None:
         """Poll-safe: refresh the strip tiles' enabled/disabled-reason (from the ~2 s poll)."""
         self._strip.refresh_readiness()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(event)
+        self._relayout_home()
+
+    def _relayout_home(self, force: bool = False) -> None:
+        """Re-apply the Home layout on a size-class change (debounced). ``force`` runs it once at
+        build so density / label / hit-target are seeded before the first show. Mirrors
+        ``OperateTab._relayout_operate``."""
+        from src.ui.qt.layout_profile import layout_profile, operate_home_layout
+        from src.ui.qt.touch_mode import touch_active
+        dpi = self.logicalDpiX() or 96
+        profile = layout_profile(max(1, self.width()), max(1, self.height()),
+                                 touch=touch_active(), dpi=dpi)
+        if not force and profile.size == self._last_home_size:   # debounce on the size class
+            return
+        self._last_home_size = profile.size
+        self._apply_home_layout(operate_home_layout(profile))
+
+    def _apply_home_layout(self, hl) -> None:
+        """Apply an :class:`OperateHomeLayout`: densify Zone A (hide the metric chips on compact),
+        collapse the Zone C "Go deeper" label, and lift the strip tiles + STOP to the hit-target.
+        The connection pill and STOP never collapse (§5)."""
+        self._summary.set_compact(not hl.show_metric_chips)
+        self._deeper_lbl.setVisible(hl.show_go_deeper_label)
+        self._strip.set_min_target(hl.hit_edge_pt)
 
     def show_domain(self, key: str) -> None:
         """A tile was chosen. Roadmap tiles (gps/subghz) are greyed and can't fire; every other tile

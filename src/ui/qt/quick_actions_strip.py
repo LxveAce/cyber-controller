@@ -32,6 +32,7 @@ class QuickActionsStrip(QWidget):
         self._safe_state_fn: "Optional[Callable]" = None
         self._supports_arm = False
         self._stop_ci: Any = None
+        self._min_target = 44               # tile/STOP hit-target (pt); bumped on touch
         self._tiles: "list[tuple[Any, QPushButton]]" = []
         self._stop_btn: "Optional[QPushButton]" = None
         self._open_panel: Any = None
@@ -84,7 +85,7 @@ class QuickActionsStrip(QWidget):
         from src.core import safety
         danger = safety.classify(getattr(ci, "name", "") or "", ci)
         btn = QPushButton(getattr(ci, "name", "") or "?")
-        btn.setMinimumHeight(44)
+        btn.setMinimumHeight(self._min_target)
         tip = getattr(ci, "description", "") or getattr(ci, "name", "") or ""
         if getattr(ci, "args", ""):
             tip += f"\nargs: {ci.args}"
@@ -101,7 +102,7 @@ class QuickActionsStrip(QWidget):
         """STOP / safe-state, two-mode (never gated). Arming fw -> disarm via safe_state_fn; else a
         matched stop verb via run_fn; else a disabled 'no stop verb' chip (honest, not fake)."""
         btn = QPushButton("STOP")
-        btn.setMinimumHeight(44)
+        btn.setMinimumHeight(self._min_target)
         btn.setStyleSheet("QPushButton { font-weight:bold; }")
         if self._supports_arm and self._safe_state_fn is not None:
             btn.setToolTip("Return the device to SAFE (disarm).")
@@ -140,6 +141,15 @@ class QuickActionsStrip(QWidget):
             btn.setToolTip(base + ("" if ok else f"\n{reason}"))
         if self._open_panel is not None:
             self._open_panel.refresh_ready()
+
+    def set_min_target(self, pt: int) -> None:
+        """Lift the tile + STOP hit-target to *pt* reference-points (touch density). Applied to the
+        live tiles + STOP now, and stored so the next :meth:`set_actions` rebuild re-applies it."""
+        self._min_target = max(1, int(pt))
+        for _ci, btn in self._tiles:
+            btn.setMinimumHeight(self._min_target)
+        if self._stop_btn is not None:
+            self._stop_btn.setMinimumHeight(self._min_target)
 
     def _close_panel(self) -> None:
         if self._open_panel is not None:

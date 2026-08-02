@@ -202,6 +202,32 @@ def operate_layout(profile: LayoutProfile) -> OperateLayout:
 
 
 @dataclass(frozen=True)
+class OperateHomeLayout:
+    """Operate Home (WS3): how the 3-zone execution surface sheds chrome on a cramped canvas."""
+
+    stack: bool               # compact -> single-column zones (the tile grids self-reflow too)
+    collapse_chrome: bool     # dense chrome
+    hit_edge_pt: int          # min hit-target for the strip tiles + STOP
+    show_metric_chips: bool   # Zone A: show the devices/targets/captures chips (hidden on compact)
+    show_go_deeper_label: bool  # Zone C: show the "Go deeper" header (hidden on compact)
+
+
+def operate_home_layout(profile: LayoutProfile) -> OperateHomeLayout:
+    """Operate Home: Zone A densifies to the pill + state line on compact (the metric chips hide);
+    Zone C's "Go deeper" label hides on compact; the strip tiles + STOP take a min hit-target. The
+    connection pill and STOP NEVER collapse (§5) — this decider only sheds secondary chrome, never
+    those two. Grid columns self-reflow (ResponsiveTileGrid has no set-columns API), so no `columns`
+    field. Size-driven; depth (Simple/Pro) is the user's separate choice and is NOT touched here."""
+    return OperateHomeLayout(
+        stack=profile.is_compact,
+        collapse_chrome=profile.dense_chrome,
+        hit_edge_pt=profile.min_target_pt,
+        show_metric_chips=not profile.is_compact,
+        show_go_deeper_label=not profile.is_compact,
+    )
+
+
+@dataclass(frozen=True)
 class CrackLayout:
     """Crack Lab panel split."""
 
