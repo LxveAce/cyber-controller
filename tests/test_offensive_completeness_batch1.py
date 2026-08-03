@@ -87,6 +87,12 @@ def test_esp_at_wire_strings():
                       "100 200 0 0 7") == "AT+BLEADVPARAM=100,200,0,0,7"
 
 
+def test_esp32_div_offensive_verbs_gated():
+    b = _by_name("esp32_div_serial")
+    _assert_lab_only(b, ["evilportal start", "evilportal clone <n>", "blespam sourapple"])
+    assert safety.classify("evilportal stop", b["evilportal stop"]) == ""  # stop is SAFE
+
+
 def test_offensive_verbs_emit_correct_wire_string():
     gb = _by_name("ghost_esp")
     assert op_command(gb["aerialspoof <id> <lat> <lon> <alt>"], "1 45.0 -70.0 100") == "aerialspoof 1 45.0 -70.0 100"

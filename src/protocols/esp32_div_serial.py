@@ -163,6 +163,10 @@ class Esp32DivSerialProtocol(BaseProtocol):
             CommandInfo("beacon target", "Offensive", "Clone the target AP's beacons", danger="lab-only"),
             CommandInfo("probe", "Offensive", "Probe-request flood", danger="lab-only"),
             CommandInfo("rickroll", "Offensive", "Rickroll beacon spam", danger="lab-only"),
+            # Captive-portal rogue AP + credential capture (wifi.cpp:2654). Explicit danger — no keyword.
+            CommandInfo("evilportal start", "Offensive", "Captive-portal rogue AP + credential capture", danger="lab-only"),
+            CommandInfo("evilportal clone <n>", "Offensive", "Clone the selected AP into the portal", "n", danger="lab-only"),
+            CommandInfo("evilportal stop", "Offensive", "Stop the captive portal"),
             CommandInfo("stopattack", "Offensive", "Stop the current attack"),
             # ── BLE (scan safe; spam lab-only) ────────────────────────
             CommandInfo("scanble", "BLE", "Scan for BLE devices"),
@@ -174,6 +178,7 @@ class Esp32DivSerialProtocol(BaseProtocol):
             CommandInfo("blespam google", "Offensive", "Google Fast Pair spam", danger="lab-only"),
             CommandInfo("blespam windows", "Offensive", "BLE spam (Windows Swift Pair)", danger="lab-only"),
             CommandInfo("blespam random", "Offensive", "BLE spam (random)", danger="lab-only"),
+            CommandInfo("blespam sourapple", "Offensive", "BLE spam (SourApple crash payload)", danger="lab-only"),
             # ── 2.4GHz / nRF24 ────────────────────────────────────────
             CommandInfo("nrf scan", "2.4GHz", "NRF24 device scan"),
             CommandInfo("nrf sniff", "2.4GHz", "NRF24 packet sniffing"),
