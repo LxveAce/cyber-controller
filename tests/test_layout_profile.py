@@ -23,6 +23,7 @@ from src.ui.qt.layout_profile import (
     nodes_layout,
     operate_home_layout,
     operate_layout,
+    page_screen_layout,
     settings_layout,
     wardrive_multi_layout,
 )
@@ -177,8 +178,8 @@ def test_device_layout_is_size_driven_not_touch():
 
 
 # ── Batch C: the 7 operator/config-screen deciders share one contract ──
-_DECIDERS = [operate_layout, operate_home_layout, crack_layout, settings_layout, macro_layout,
-             network_layout, nodes_layout, wardrive_multi_layout]
+_DECIDERS = [operate_layout, operate_home_layout, page_screen_layout, crack_layout, settings_layout,
+             macro_layout, network_layout, nodes_layout, wardrive_multi_layout]
 _SIZES = [(480, 800), (800, 600), (1440, 900)]  # compact / regular / expanded
 
 
@@ -197,6 +198,17 @@ def test_decider_contract(decide, w, h, touch):
         assert decide(dataclasses.replace(p, depth_hint=depth)) == out
     # the one universal field: every decision's chrome flag == profile.dense_chrome
     assert out.collapse_chrome is p.dense_chrome
+
+
+def test_page_screen_layout_stacks_on_compact_and_folds_actions_on_regular():
+    # The 3-region scaffold: side-by-side on regular/expanded, a vertical stack on compact; the
+    # actions region is inline on expanded, reachable (stacked) on compact, and FOLDS on regular.
+    compact = page_screen_layout(layout_profile(400, 800))
+    regular = page_screen_layout(layout_profile(800, 700))
+    expanded = page_screen_layout(layout_profile(1440, 900))
+    assert compact.stack is True and regular.stack is False and expanded.stack is False
+    assert compact.show_actions and not regular.show_actions and expanded.show_actions
+    assert page_screen_layout(layout_profile(800, 700, touch=True)).hit_edge_pt == 44
 
 
 def test_operate_home_layout_sheds_chrome_on_compact_only():

@@ -228,6 +228,31 @@ def operate_home_layout(profile: LayoutProfile) -> OperateHomeLayout:
 
 
 @dataclass(frozen=True)
+class PageScreenLayout:
+    """The shared master/detail/actions scaffold every WS4 screen mounts into (F1)."""
+
+    stack: bool           # compact -> stack master/detail/actions vertically (else side-by-side)
+    show_actions: bool    # the actions region shows inline; folded on the 'regular' mid width
+    collapse_chrome: bool
+    hit_edge_pt: int
+
+
+def page_screen_layout(profile: LayoutProfile) -> PageScreenLayout:
+    """PageScreen: the 3-region (master | detail | actions) shell reflows master/detail/actions from
+    side-by-side to a vertical stack on a compact canvas. The actions region is inline on the roomy
+    'expanded' width and stays reachable (stacked) on compact, but FOLDS on the mid 'regular' width
+    (a screen surfaces its primary action through the frame's docked action bar there) — so
+    ``show_actions`` is true everywhere except regular. Size-driven; depth is the user's separate
+    choice and is NOT touched here."""
+    return PageScreenLayout(
+        stack=profile.is_compact,
+        show_actions=not (profile.size == "regular"),
+        collapse_chrome=profile.dense_chrome,
+        hit_edge_pt=profile.min_target_pt,
+    )
+
+
+@dataclass(frozen=True)
 class CrackLayout:
     """Crack Lab panel split."""
 
