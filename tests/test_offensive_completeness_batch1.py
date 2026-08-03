@@ -65,6 +65,28 @@ def test_ghost_esp_chameleon_label_is_per_verb():
     assert safety.classify("ir dazzler stop", b["ir dazzler stop"]) == ""
 
 
+def test_esp_at_offensive_verbs_gated():
+    b = _by_name("esp_at")
+    _assert_lab_only(b, [
+        'AT+CWSAP="<ssid>","<pwd>",<chl>,<ecn>',
+        'AT+BLEADVDATA="<hex>"',
+        "AT+BLEADVSTART",
+        'AT+BLEADVDATAEX="<name>","<uuid>","<mfr_hex>",<incl_pwr>',
+        'AT+BLESCANRSPDATA="<hex>"',
+        'AT+BLEADDR=<type>,"<addr>"',
+        'AT+BLENAME="<name>"',
+        "AT+BLEADVPARAM=<int_min>,<int_max>,<adv_type>,<own_addr>,<chan_map>",
+    ])
+
+
+def test_esp_at_wire_strings():
+    b = _by_name("esp_at")
+    assert op_command(b['AT+CWSAP="<ssid>","<pwd>",<chl>,<ecn>'], "evil pass123 6 3") == 'AT+CWSAP="evil","pass123",6,3'
+    assert op_command(b['AT+BLENAME="<name>"'], "FakeTag") == 'AT+BLENAME="FakeTag"'
+    assert op_command(b["AT+BLEADVPARAM=<int_min>,<int_max>,<adv_type>,<own_addr>,<chan_map>"],
+                      "100 200 0 0 7") == "AT+BLEADVPARAM=100,200,0,0,7"
+
+
 def test_offensive_verbs_emit_correct_wire_string():
     gb = _by_name("ghost_esp")
     assert op_command(gb["aerialspoof <id> <lat> <lon> <alt>"], "1 45.0 -70.0 100") == "aerialspoof 1 45.0 -70.0 100"

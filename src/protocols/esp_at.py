@@ -9,11 +9,11 @@ prints a bare ``ready`` once the AT interface is up.
 
 Most of the AT command set is passive recon: pings, version/heap queries, AP
 scans, Wi-Fi/BLE state queries. Those are SAFE (danger=""). The firmware also
-exposes two active-transmit capabilities that CC keeps and labels rather than
-hides: bringing up the device's own SoftAP (``AT+CWSAP`` set form, a beaconing
-AP that can be used as a rogue/evil-twin) and BLE advertising (``AT+BLEADVDATA``
-+ ``AT+BLEADVSTART``, which broadcast attacker-controlled BLE frames). Those
-carry danger="lab-only" so the safety layer confirm-gates them. AT requires CRLF,
+exposes active-transmit capabilities that CC keeps and labels rather than hides:
+the device's own SoftAP (``AT+CWSAP`` set form, a rogue/evil-twin AP) and a BLE
+spoof/advertise chain (``AT+BLEADVDATA``/``AT+BLEADVDATAEX``/``AT+BLEADVSTART``
+to broadcast attacker frames, ``AT+BLEADDR``/``AT+BLENAME`` to spoof identity).
+Those carry danger="lab-only" so the safety layer confirm-gates them. AT requires CRLF,
 so ``line_ending`` is overridden to ``"\r\n"``.
 
 Source-verified against Espressif's AT command reference (Basic / Wi-Fi / BLE /
@@ -105,8 +105,10 @@ class EspAtProtocol(BaseProtocol):
             CommandInfo("AT+CWLIF", "Wi-Fi", "List stations (IP + MAC) joined to the device's own SoftAP"),
             CommandInfo("AT+CWSAP?", "Wi-Fi", "Query the device's SoftAP config (SSID/channel/encryption)"),
             # SET form stands up a beaconing SoftAP (usable as a rogue / evil-twin AP) — active TX.
-            CommandInfo("AT+CWSAP", "Offensive", "Configure/start the device's SoftAP (rogue AP)",
-                        args='"<ssid>","<pwd>",<chl>,<ecn>', danger="lab-only"),
+            # Placeholders carry the '=' + commas so op_command emits AT syntax (bare AT+CWSAP + space arg errored).
+            CommandInfo('AT+CWSAP="<ssid>","<pwd>",<chl>,<ecn>', "Offensive",
+                        "Start the device's SoftAP (rogue / evil-twin AP)",
+                        "ssid pwd chl ecn", danger="lab-only"),
             # ---- BLE ----
             # BLE requires an init first, and only exists on BLE-capable chips/builds (AT+CMD confirms).
             CommandInfo("AT+BLEINIT=<init>", "BLE",
@@ -114,11 +116,26 @@ class EspAtProtocol(BaseProtocol):
                         "init"),
             CommandInfo("AT+BLESCAN=<enable>", "BLE", "Passive BLE device scan (enable=1 start, 0 stop)",
                         "enable"),
-            # These two broadcast attacker-controlled BLE advertising frames — active TX.
-            CommandInfo("AT+BLEADVDATA", "Offensive", "Set the BLE advertising payload",
-                        args='"<hex adv data>"', danger="lab-only"),
+            # These broadcast/spoof attacker-controlled BLE advertising frames — active TX, lab-only.
+            CommandInfo('AT+BLEADVDATA="<hex>"', "Offensive",
+                        "Set the BLE advertising payload (legacy adv <=62 hex; longer truncates at the 64-char arg cap)",
+                        "hex", danger="lab-only"),
             CommandInfo("AT+BLEADVSTART", "Offensive", "Start BLE advertising / broadcasting",
                         danger="lab-only"),
+            # BLE spoof/adv chain (source: BLE_AT_Commands.rst). Commas in the name = AT syntax.
+            CommandInfo('AT+BLEADVDATAEX="<name>","<uuid>","<mfr_hex>",<incl_pwr>', "Offensive",
+                        "Set adv data by fields AND start advertising (name/uuid/mfr/include-power)",
+                        "name uuid mfr_hex incl_pwr", danger="lab-only"),
+            CommandInfo('AT+BLESCANRSPDATA="<hex>"', "Offensive",
+                        "Set the BLE scan-response payload (legacy <=62 hex)", "hex", danger="lab-only"),
+            CommandInfo('AT+BLEADDR=<type>,"<addr>"', "Offensive",
+                        "Set/spoof the BLE address (type 1 = random-static + <addr>)", "type addr",
+                        danger="lab-only"),
+            CommandInfo('AT+BLENAME="<name>"', "Offensive", "Set/spoof the BLE device name", "name",
+                        danger="lab-only"),
+            CommandInfo("AT+BLEADVPARAM=<int_min>,<int_max>,<adv_type>,<own_addr>,<chan_map>", "Offensive",
+                        "Set adv params (interval/type/channel; enabler before ADVDATA/ADVSTART)",
+                        "int_min int_max adv_type own_addr chan_map", danger="lab-only"),
             # ---- Network (TCP-IP) ----
             CommandInfo('AT+PING="<host>"', "Network", "Ping a remote host and report round-trip latency",
                         "host"),
