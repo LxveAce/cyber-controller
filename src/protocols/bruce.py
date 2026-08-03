@@ -181,8 +181,10 @@ class BruceProtocol(BaseProtocol):
                         "filename format"),
             CommandInfo("rfid loadfile [filepath]", "RFID", "Load a saved tag dump", "filepath"),
             CommandInfo("rfid reset", "RFID", "Reset the RFID / NFC reader"),
-            CommandInfo("rfid autotest [mode] [timeout]", "RFID", "Run the reader autotest",
-                        "mode timeout"),
+            # autotest's default mode WRITES a tag (rfid_commands.cpp:306-367), so label it lab-only
+            # for honesty even though the write path is also reachable via `rfid write` (Atlas audit).
+            CommandInfo("rfid autotest [mode] [timeout]", "Offensive", "Run the reader autotest (default mode writes a tag)",
+                        "mode timeout", danger="lab-only"),
             CommandInfo("rfid write [timeout]", "Offensive", "Write data to an RFID / NFC tag",
                         "timeout", danger="lab-only"),
             CommandInfo("rfid clone [timeout]", "Offensive", "Clone the read tag onto a new one",

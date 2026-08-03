@@ -87,6 +87,11 @@ def test_esp_at_wire_strings():
                       "100 200 0 0 7") == "AT+BLEADVPARAM=100,200,0,0,7"
 
 
+def test_bruce_autotest_labeled_lab_only():
+    b = _by_name("bruce")
+    assert safety.classify("rfid autotest [mode] [timeout]", b["rfid autotest [mode] [timeout]"]) == "lab-only"
+
+
 def test_esp32_div_offensive_verbs_gated():
     b = _by_name("esp32_div_serial")
     _assert_lab_only(b, ["evilportal start", "evilportal clone <n>", "blespam sourapple"])
