@@ -26,7 +26,6 @@ def test_site_data_derived_block_matches_code():
 
 
 def test_site_data_internally_consistent():
-    gen = _load_gen()
     data = json.loads((_ROOT / "site-data.json").read_text(encoding="utf-8"))
 
     # profile_count == JSONs on disk (same SSOT as test_profile_count)

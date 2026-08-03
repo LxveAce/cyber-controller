@@ -117,7 +117,6 @@ def test_download_firmware_honors_asset_match_excludes(vault, monkeypatch):
 
 
 # ── corrupt-but-valid-JSON index resilience ───────────────────────────────
-import json as _json
 
 
 @pytest.mark.parametrize("payload", ["null", "[1, 2, 3]", '"a string"', "42"])

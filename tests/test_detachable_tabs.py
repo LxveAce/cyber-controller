@@ -13,7 +13,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 import pytest
 
 pytest.importorskip("PyQt5.QtWidgets")
-from PyQt5.QtWidgets import QApplication, QLabel, QWidget  # noqa: E402
+from PyQt5.QtWidgets import QApplication, QLabel  # noqa: E402
 
 from src.ui.qt.detachable_tabs import DetachableTabWidget, PopoutWindow  # noqa: E402
 
@@ -55,7 +55,6 @@ def test_redock_restores_tab_in_place(qapp):
 
 def test_closing_popout_redocks_by_default(qapp):
     w = _tabs(qapp)
-    page = w.widget(2)
     win = w.detach_index(2)
     assert w.count() == 2
     win.close()  # OS close button -> closeEvent re-docks instead of destroying
@@ -82,7 +81,6 @@ def test_detach_invalid_index_is_noop(qapp):
 
 def test_double_detach_same_page_is_noop(qapp):
     w = _tabs(qapp)
-    page = w.widget(0)
     w.detach_index(0)
     # page is gone from the bar; trying to detach it again does nothing bad
     assert w.detach_index(0) is not None  # now index 0 is the NEXT tab, which is fine

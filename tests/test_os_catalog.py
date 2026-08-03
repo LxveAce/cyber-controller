@@ -6,7 +6,6 @@ Network + the destructive device write are mocked (monkeypatch), mirroring tests
 from __future__ import annotations
 
 import hashlib
-import json
 import os
 
 import pytest

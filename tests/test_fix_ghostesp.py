@@ -11,7 +11,6 @@ the old/wrong verbs are gone.
 from __future__ import annotations
 
 from src.core.broadcast import BroadcastVerb
-from src.models.target import TargetType
 from src.protocols.ghost_esp import (
     BROADCAST_CAPABILITIES,
     TARGET_ACTIONS,

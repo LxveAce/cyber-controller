@@ -2409,10 +2409,10 @@ class CyberControllerWindow(QMainWindow):
             ),
         }
 
-        for tab_name, html in guide_content.items():
+        for tab_name, html_body in guide_content.items():
             text_edit = QTextEdit()
             text_edit.setReadOnly(True)
-            text_edit.setHtml(html)
+            text_edit.setHtml(html_body)
             tabs.addTab(text_edit, tab_name)
 
         layout.addWidget(tabs)

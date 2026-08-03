@@ -1,0 +1,26 @@
+name: Lint
+
+# Scoped to Ruff's `F` rules only — the real-bug class (undefined names F821, unused imports F401,
+# unused locals F841, redefinitions F811, import shadowing F402). The repo carries a large historical
+# E501 line-length baseline that the team polices per-added-line, not repo-wide, so E501 is deliberately
+# NOT gated here (it would go red on the baseline). This gate exists because F-debt had accreted silently
+# with no CI running Ruff — e.g. a latent F821 (`Optional` used but not imported) hid behind
+# `from __future__ import annotations`. Keeping F green blocks that class from creeping back.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  ruff-f:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install Ruff
+        run: pip install ruff
+      - name: Ruff F-rules (undefined / unused / import bugs)
+        run: ruff check src tests --select F
