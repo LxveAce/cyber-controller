@@ -196,10 +196,19 @@ class BW16Protocol(BaseProtocol):
                 "Deauth all scanned networks",
                 danger="lab-only",
             ),
+            # Firmware's DEDICATED deauth-all command — a distinct token/handler in the shipped
+            # km0_km4_image2.bin (sha b279c98): literal "AT+DEAUTHALL" (no "="), own response
+            # "[DEAUTH] Deauthing ALL SSIDs" vs the index path's "Deauthing all targets...". Proven
+            # distinct (a startsWith("AT+DEAUTHIDX=") match can't catch a no-"=" token), so surfaced.
+            CommandInfo(
+                "AT+DEAUTHALL",
+                "Offensive",
+                "Deauth all networks (firmware's dedicated deauth-all command)",
+                danger="lab-only",
+            ),
             # Deauth by SSID NAME (distinct from the index/ALL forms). Grounded in the shipped
             # km0_km4_image2.bin: literal "AT+DEAUTH=" + handlers "[DEAUTH] Deauthing: " /
-            # "[ERROR] SSID not found". (AT+DEAUTHALL exists too but is redundant with
-            # AT+DEAUTHIDX=ALL above, so it is deliberately not surfaced.)
+            # "[ERROR] SSID not found".
             CommandInfo(
                 "AT+DEAUTH=<ssid>",
                 "Offensive",

@@ -87,6 +87,12 @@ def test_esp_at_wire_strings():
                       "100 200 0 0 7") == "AT+BLEADVPARAM=100,200,0,0,7"
 
 
+def test_bw16_deauthall_gated():
+    b = _by_name("bw16")
+    assert "AT+DEAUTHALL" in b, "AT+DEAUTHALL not surfaced"
+    assert safety.classify("AT+DEAUTHALL", b["AT+DEAUTHALL"]) == "lab-only"
+
+
 def test_bruce_autotest_labeled_lab_only():
     b = _by_name("bruce")
     assert safety.classify("rfid autotest [mode] [timeout]", b["rfid autotest [mode] [timeout]"]) == "lab-only"
