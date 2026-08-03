@@ -40,7 +40,37 @@ def test_marauder_offensive_verbs_gated():
     _assert_lab_only(b, ["attack -t funny", "findmy -t <idx>"])
 
 
+def test_ghost_esp_offensive_verbs_gated():
+    b = _by_name("ghost_esp")
+    _assert_lab_only(b, [
+        "blespam -random", "blespam -apple", "blespam -samsung", "blespam -google", "blespam -ms",
+        "attack -hsd",
+        "aerialspoof <id> <lat> <lon> <alt>",
+        "ir send <path> <button>", "ir inline", "ir universals send <index>",
+        "ir universals sendall <file> <button> <delay>", "ir dazzler",
+        "nfc emulate uid <uid>", "nfc emulate ndef url <url>", "nfc emulate file <path>",
+        "nfc hardnested known <blk> <ab> <key> target <tblk> <tab>", "nfctest",
+        "ethpoison start",
+        "chameleon emulator",
+    ])
+
+
+def test_ghost_esp_chameleon_label_is_per_verb():
+    # The critic's finding 1: chameleon emulator is protected ONLY by its explicit label (category "NFC"
+    # is not offensive, name has no keyword). Its sibling reads must classify SAFE — proving the gate is
+    # the explicit danger=, not the category.
+    b = _by_name("ghost_esp")
+    assert safety.classify("chameleon emulator", b["chameleon emulator"]) == "lab-only"
+    assert safety.classify("chameleon connect", b["chameleon connect"]) == ""
+    assert safety.classify("ir dazzler stop", b["ir dazzler stop"]) == ""
+
+
 def test_offensive_verbs_emit_correct_wire_string():
+    gb = _by_name("ghost_esp")
+    assert op_command(gb["aerialspoof <id> <lat> <lon> <alt>"], "1 45.0 -70.0 100") == "aerialspoof 1 45.0 -70.0 100"
+    assert op_command(gb["ir send <path> <button>"], "/ir/tv.ir POWER") == "ir send /ir/tv.ir POWER"
+    assert op_command(gb["nfc emulate uid <uid>"], "04AABBCC") == "nfc emulate uid 04AABBCC"
+    assert op_command(gb["attack -hsd"]) == "attack -hsd"
     fb = _by_name("flipper")
     assert op_command(fb["ir tx <protocol> <address> <command>"], "NEC 0x04 0x08") == "ir tx NEC 0x04 0x08"
     assert op_command(fb["rfid emulate <key_type> <key_data>"], "EM4100 1234567890") == "rfid emulate EM4100 1234567890"

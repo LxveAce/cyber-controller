@@ -532,6 +532,7 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("attack -s <password>", "Offensive", "SAE flood vs WPA3 (needs ESP32-C5/C6 + target PSK)", "password", danger="lab-only"),
             CommandInfo("attack -c", "Offensive", "Channel Switch Announcement (CSA) — forces clients off the AP's channel", danger="lab-only"),
             CommandInfo("attack -g <ssid> <password>", "Offensive", "GTK abuse attack on the selected AP", "ssid password", danger="lab-only"),
+            CommandInfo("attack -hsd", "Offensive", "Handshake capture + deauth (needs a prior select -a)", danger="lab-only"),
             CommandInfo("saeflood <password>", "Offensive", "SAE association flood vs WPA3", "password", danger="lab-only"),
             CommandInfo("stopsaeflood", "Offensive", "Stop the SAE flood"),
             CommandInfo("beaconspam -r", "Offensive", "Beacon spam (random SSIDs)", danger="lab-only"),
@@ -596,7 +597,12 @@ class GhostESPProtocol(BaseProtocol):
             # `bleskimmer` verb name was phantom (corrected 2026-08-01 vs the real GhostESP-Revival source).
             CommandInfo("blewardriving", "BLE", "BLE wardriving (GPS-tagged beacons)"),
             CommandInfo("blewardriving -s", "BLE", "Stop BLE wardriving"),
-            CommandInfo("blespam", "Offensive", "BLE advertisement spam (pairing popups)", danger="lab-only"),
+            # blespam takes a mode (cmd_ble.c L277-311); bare blespam only prints usage.
+            CommandInfo("blespam -random", "Offensive", "BLE pairing-popup spam (random)", danger="lab-only"),
+            CommandInfo("blespam -apple", "Offensive", "BLE pairing-popup spam (Apple)", danger="lab-only"),
+            CommandInfo("blespam -samsung", "Offensive", "BLE pairing-popup spam (Samsung)", danger="lab-only"),
+            CommandInfo("blespam -google", "Offensive", "BLE pairing-popup spam (Google)", danger="lab-only"),
+            CommandInfo("blespam -ms", "Offensive", "BLE pairing-popup spam (Microsoft Swift Pair)", danger="lab-only"),
             CommandInfo("blespam -s", "Offensive", "Stop BLE spam"),
             CommandInfo("aerialscan", "BLE", "Scan for AirTags / aerial trackers"),
             # Aerial (drone/tracker) detection — SAFE reads; aerialspoof is active TX (below).
@@ -605,8 +611,8 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("aerialstop", "BLE", "Stop the aerial track"),
             CommandInfo("aerialspoofstop", "BLE", "Stop the aerial spoof"),
             # aerialspoof broadcasts a forged aerial/RID frame (TX) — no keyword, explicit gate.
-            CommandInfo("aerialspoof [id lat lon alt]", "Offensive", "Spoof an aerial ID (TX)",
-                        "id lat lon", danger="lab-only"),
+            CommandInfo("aerialspoof <id> <lat> <lon> <alt>", "Offensive", "Spoof an aerial/RID ID (TX)",
+                        "id lat lon alt", danger="lab-only"),
             CommandInfo("listairtags", "BLE", "List detected AirTags"),
             CommandInfo("selectairtag <idx>", "BLE", "Select an AirTag by index", "idx"),
             CommandInfo("spoofairtag", "Offensive", "Spoof an AirTag advertisement",
@@ -704,6 +710,33 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("webuiap on", "System", "Restrict the Web UI to the AP interface"),
             CommandInfo("webuiap off", "System", "Allow the Web UI on all interfaces"),
             CommandInfo("webuiap status", "System", "Show whether the Web UI is AP-only"),
+            # ---- IR TX family (cmd_ir.c) — every emit is explicit lab-only (no keyword/category gate) ----
+            CommandInfo("ir send <path> <button>", "IR", "Transmit a saved/captured IR signal (replay)", "path button", danger="lab-only"),
+            CommandInfo("ir inline", "IR", "Enter inline IR-send mode", danger="lab-only"),
+            CommandInfo("ir universals send <index>", "IR", "Send a universal-remote IR code by index", "index", danger="lab-only"),
+            CommandInfo("ir universals sendall <file> <button> <delay>", "IR", "Send all universal codes for a button", "file button delay", danger="lab-only"),
+            # ir dazzler is a continuous IR STROBE (optical light, outside 47 U.S.C. §333's radio scope; epilepsy warning).
+            CommandInfo("ir dazzler", "IR", "Continuous IR strobe/dazzler (optical, epilepsy warning)", danger="lab-only"),
+            CommandInfo("ir dazzler stop", "IR", "Stop the IR dazzler"),
+            # ---- NFC emulate/attack family (nfc_cli.c) ----
+            CommandInfo("nfc emulate uid <uid>", "NFC", "Emulate an NFC tag by UID", "uid", danger="lab-only"),
+            CommandInfo("nfc emulate ndef url <url>", "NFC", "Emulate an NDEF URL tag", "url", danger="lab-only"),
+            CommandInfo("nfc emulate file <path>", "NFC", "Emulate a saved NFC tag file", "path", danger="lab-only"),
+            CommandInfo("nfc hardnested known <blk> <ab> <key> target <tblk> <tab>", "NFC",
+                        "MIFARE hardnested key-recovery attack", "blk ab key tblk tab", danger="lab-only"),
+            CommandInfo("nfctest", "NFC", "NDEF-emulate self-test (TX)", danger="lab-only"),
+            # ---- Ethernet ARP-poison MITM (cmd_ethernet.c) — start is TX/offensive; the rest are SAFE reads ----
+            CommandInfo("ethpoison start", "Offensive", "Ethernet ARP-poison MITM (harvests creds/cookies)", danger="lab-only"),
+            CommandInfo("ethpoison stop", "Network", "Stop the Ethernet ARP-poison"),
+            CommandInfo("ethpoison list", "Network", "List poisoned hosts"),
+            CommandInfo("ethpoison cookies", "Network", "Show harvested cookies"),
+            CommandInfo("ethpoison creds", "Network", "Show harvested credentials"),
+            CommandInfo("ethpoison status", "Network", "Ethernet ARP-poison status"),
+            # ---- Chameleon Ultra (external tag emulator) — emulator is TX; EXPLICIT danger (no keyword/category gate) ----
+            CommandInfo("chameleon emulator", "NFC", "Drive a Chameleon Ultra to emulate a tag (TX)", danger="lab-only"),
+            CommandInfo("chameleon connect", "NFC", "Connect to a Chameleon Ultra"),
+            CommandInfo("chameleon scanhf", "NFC", "Chameleon HF (13.56 MHz) scan"),
+            CommandInfo("chameleon scanlf", "NFC", "Chameleon LF (125 kHz) scan"),
             CommandInfo("help", "System", "Show help"),
             # (removed phantom `setch`/`getch`: GhostESP has no standalone channel verb)
             # Flipper bridge (list/select are in the BLE group; only a BT bridge verb exists)
