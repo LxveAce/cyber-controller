@@ -235,8 +235,9 @@ class FlipperProtocol(BaseProtocol):
             # ---- Bluetooth ----
             CommandInfo("bt hci_info", "Bluetooth", "HCI / adapter state (bt info was a no-op)"),
             # ---- GPIO ----
-            CommandInfo("gpio set", "GPIO", "Set GPIO pin state"),
-            CommandInfo("gpio read", "GPIO", "Read GPIO pin state"),
+            CommandInfo("gpio set <pin_name> <value>", "GPIO", "Set GPIO pin state (value 0 or 1)",
+                        "pin_name 0|1"),
+            CommandInfo("gpio read <pin_name>", "GPIO", "Read GPIO pin state", "pin_name"),
             # ---- Storage ----
             CommandInfo("storage list", "Storage", "List storage contents"),
             CommandInfo("storage read", "Storage", "Read file from storage"),
@@ -246,7 +247,9 @@ class FlipperProtocol(BaseProtocol):
             CommandInfo("info power", "Power", "Battery / charge / voltage info"),
             CommandInfo("power off", "Power", "Shut down the Flipper (drops the serial link)"),
             CommandInfo("power reboot", "Power", "Reboot Flipper"),
-            CommandInfo("update", "Power", "Start firmware update"),
+            CommandInfo("update install <path>", "Power",
+                        "Install a firmware update from a .tgz on the SD card (bare 'update' only prints help)",
+                        "path"),
         ]
 
     # ── Formatting ───────────────────────────────────────────────────

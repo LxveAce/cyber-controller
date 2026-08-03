@@ -42,7 +42,9 @@ _RE_MAC = re.compile(r"\bmac=([0-9a-fA-F:]{17})")
 _RE_SSID = re.compile(r'\bssid="((?:[^"\\]|\\.)*)"')
 _RE_RSSI = re.compile(r"\brssi=(-?\d+)")
 _RE_CH = re.compile(r"\bch=(\d+)")
-_RE_OUI = re.compile(r"\boui=([0-9a-fA-F]{6})")
+# Firmware's ouiFromMac() emits colon-hex ("%02x:%02x:%02x", e.g. oui=70:c9:4e), so accept the
+# colon-delimited form as well as the older no-separator 6-hex form (source: flock-you main.cpp).
+_RE_OUI = re.compile(r"\boui=([0-9a-fA-F:]{6,8})")
 # Any other "[flockyou] ..." line (heartbeat / boot / status) -> surfaced as info, not a target.
 _RE_STATUS = re.compile(r"\[flockyou\]\s*(.*)", re.IGNORECASE)
 

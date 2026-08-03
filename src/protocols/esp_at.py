@@ -18,7 +18,7 @@ so ``line_ending`` is overridden to ``"\r\n"``.
 
 Source-verified against Espressif's AT command reference (Basic / Wi-Fi / BLE /
 TCP-IP command pages). BLE and SoftAP verbs depend on the chip and the compiled
-build (e.g. the ESP32-S2 has no BLE); ``AT+CMD`` self-enumerates what the
+build (e.g. the ESP32-S2 has no BLE); ``AT+CMD?`` self-enumerates what the
 attached build actually supports.
 
 Example serial exchange:
@@ -90,14 +90,16 @@ class EspAtProtocol(BaseProtocol):
             # ---- System / Basic ----
             CommandInfo("AT", "System", "Ping the AT interface (expect OK)"),
             CommandInfo("AT+GMR", "System", "Show AT / SDK / compile version banner"),
-            CommandInfo("AT+CMD", "System", "List every AT command the current firmware build supports"),
+            CommandInfo("AT+CMD?", "System", "List every AT command the current firmware build supports"),
             CommandInfo("AT+RST", "System", "Restart / reboot the module"),
-            CommandInfo("AT+SYSRAM", "System", "Query free and minimum-ever heap memory"),
+            CommandInfo("AT+SYSRAM?", "System", "Query free and minimum-ever heap memory"),
             # ---- Wi-Fi ----
             CommandInfo("AT+CWLAP", "Wi-Fi", "List/scan nearby Wi-Fi access points"),
-            CommandInfo("AT+CWLAPOPT", "Wi-Fi", "Configure AT+CWLAP output (columns, RSSI filter, sort)"),
+            CommandInfo("AT+CWLAPOPT=<options>", "Wi-Fi",
+                        "Configure AT+CWLAP output (e.g. <sort_enable>,<print_mask>[,<rssi filter>])",
+                        "options"),
             CommandInfo("AT+CWMODE?", "Wi-Fi", "Query current Wi-Fi mode (STA / AP / STA+AP)"),
-            CommandInfo("AT+CWSTATE", "Wi-Fi", "Query Wi-Fi connection state and info"),
+            CommandInfo("AT+CWSTATE?", "Wi-Fi", "Query Wi-Fi connection state and info"),
             CommandInfo("AT+CWJAP?", "Wi-Fi", "Query the associated AP (SSID/BSSID/channel/RSSI)"),
             CommandInfo("AT+CIFSR", "Wi-Fi", "Show the assigned local IP and MAC address"),
             CommandInfo("AT+CWLIF", "Wi-Fi", "List stations (IP + MAC) joined to the device's own SoftAP"),
@@ -107,17 +109,22 @@ class EspAtProtocol(BaseProtocol):
                         args='"<ssid>","<pwd>",<chl>,<ecn>', danger="lab-only"),
             # ---- BLE ----
             # BLE requires an init first, and only exists on BLE-capable chips/builds (AT+CMD confirms).
-            CommandInfo("AT+BLEINIT", "BLE", "Initialize the BLE stack (required before BLE scan/advertise)"),
-            CommandInfo("AT+BLESCAN", "BLE", "Passive BLE device scan"),
+            CommandInfo("AT+BLEINIT=<init>", "BLE",
+                        "Initialize the BLE stack (init=1 client, required before BLE scan/advertise)",
+                        "init"),
+            CommandInfo("AT+BLESCAN=<enable>", "BLE", "Passive BLE device scan (enable=1 start, 0 stop)",
+                        "enable"),
             # These two broadcast attacker-controlled BLE advertising frames — active TX.
             CommandInfo("AT+BLEADVDATA", "Offensive", "Set the BLE advertising payload",
                         args='"<hex adv data>"', danger="lab-only"),
             CommandInfo("AT+BLEADVSTART", "Offensive", "Start BLE advertising / broadcasting",
                         danger="lab-only"),
             # ---- Network (TCP-IP) ----
-            CommandInfo("AT+PING", "Network", "Ping a remote host and report round-trip latency"),
-            CommandInfo("AT+CIPDOMAIN", "Network", "Resolve a domain name to an IP via DNS"),
-            CommandInfo("AT+CIPSTATE", "Network", "Show active TCP/UDP/SSL connection info"),
+            CommandInfo('AT+PING="<host>"', "Network", "Ping a remote host and report round-trip latency",
+                        "host"),
+            CommandInfo('AT+CIPDOMAIN="<domain>"', "Network", "Resolve a domain name to an IP via DNS",
+                        "domain"),
+            CommandInfo("AT+CIPSTATE?", "Network", "Show active TCP/UDP/SSL connection info"),
         ]
 
     # ── Formatting ───────────────────────────────────────────────────
