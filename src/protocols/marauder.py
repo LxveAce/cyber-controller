@@ -372,6 +372,7 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("attack -t rickroll", "Offensive", "Rickroll beacon attack"),
             # More real attack subtypes (ATTACK_TYPE_* h:93-97); the "attack" keyword gates them,
             # explicit danger= makes it belt-and-suspenders.
+            CommandInfo("attack -t funny", "Offensive", "Beacon spam (funny SSIDs)", danger="lab-only"),
             CommandInfo("attack -t badmsg", "Offensive", "Malformed-frame (bad-msg) attack",
                         danger="lab-only"),
             CommandInfo("attack -t sae", "Offensive", "WPA3 SAE-commit flood", danger="lab-only"),
@@ -459,8 +460,10 @@ class MarauderProtocol(BaseProtocol):
                         danger="lab-only"),
             CommandInfo("blespam -t flipper", "Offensive", "BLE spam (Flipper)", danger="lab-only"),
             CommandInfo("blespam -t all", "Offensive", "BLE spam (all vendors)", danger="lab-only"),
-            # spoofat carries no danger keyword, so the explicit danger= is what gates it.
+            # spoofat / findmy carry no danger keyword, so the explicit danger= is what gates them.
             CommandInfo("spoofat -t <idx>", "Offensive", "Spoof a selected AirTag (by index)",
+                        "idx", danger="lab-only"),
+            CommandInfo("findmy -t <idx>", "Offensive", "Trigger FindMy sound on a selected AirTag (by index)",
                         "idx", danger="lab-only"),
             CommandInfo("stopscan", "BLE", "Stop BLE operation"),
             # ---- Karma ----

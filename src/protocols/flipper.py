@@ -213,7 +213,9 @@ class FlipperProtocol(BaseProtocol):
             CommandInfo("loader open <app>", "System", "Launch installed app by name", "app"),
             # ---- SubGHz ----
             CommandInfo("subghz rx", "SubGHz", "Receive SubGHz signals"),
-            CommandInfo("subghz tx", "Offensive", "Transmit SubGHz signal", danger="lab-only"),
+            CommandInfo("subghz tx <key_hex> <freq_hz> <te_us> <repeat> <device>", "Offensive",
+                        "Transmit a SubGHz key (bare 'subghz tx' only prints usage)",
+                        "key_hex freq_hz te_us repeat device", danger="lab-only"),
             CommandInfo("subghz decode_raw", "SubGHz", "Decode raw SubGHz recording"),
             # tx_from_file (subghz_cli.c:1157, usage:832): transmit a saved .sub; <path> required,
             # <repeat> defaults 10, <device> defaults 0 (internal CC1101).
@@ -228,10 +230,22 @@ class FlipperProtocol(BaseProtocol):
             CommandInfo("nfc", "NFC", "Open the interactive NFC sub-CLI (scanner/emulate/dump)"),
             # ---- RFID ----
             CommandInfo("rfid read", "RFID", "Read 125kHz RFID"),
-            CommandInfo("rfid emulate", "Offensive", "Emulate RFID tag", danger="lab-only"),
+            CommandInfo("rfid emulate <key_type> <key_data>", "Offensive",
+                        "Emulate a 125kHz RFID tag (bare 'rfid emulate' only prints usage)",
+                        "key_type key_data", danger="lab-only"),
+            CommandInfo("rfid write <key_type> <key_data>", "Offensive",
+                        "Write/clone a 125kHz tag onto a T5577 card", "key_type key_data",
+                        danger="lab-only"),
+            CommandInfo("rfid raw_emulate <file>", "Offensive",
+                        "Emulate a raw-captured RFID signal from a file", "file", danger="lab-only"),
             # ---- IR ----
             CommandInfo("ir rx", "IR", "Receive IR signal"),
-            CommandInfo("ir tx", "Offensive", "Transmit IR signal", danger="lab-only"),
+            CommandInfo("ir tx <protocol> <address> <command>", "Offensive",
+                        "Transmit an IR signal (bare 'ir tx' only prints usage)",
+                        "protocol address command", danger="lab-only"),
+            CommandInfo("ir universal <remote> <signal>", "Offensive",
+                        "Send a universal-remote IR signal (e.g. tv power)", "remote signal",
+                        danger="lab-only"),
             # ---- Bluetooth ----
             CommandInfo("bt hci_info", "Bluetooth", "HCI / adapter state (bt info was a no-op)"),
             # ---- GPIO ----
