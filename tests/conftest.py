@@ -43,6 +43,48 @@ def _isolate_captures_dir(tmp_path, monkeypatch):
     monkeypatch.setenv("CC_CAPTURES_DIR", str(tmp_path / "captures"))
 
 
+def reap_qt_workers() -> None:
+    """Join background QThreads left running on any built-but-never-closed top-level widget.
+
+    Some widgets start a worker QThread at CONSTRUCTION — clearest is ``FlashTab`` whose
+    ``_VariantLoader`` hits the network for variants (DeviceTab/CrackLabTab workers are the same
+    shape). A test that BUILDS such a widget but never closes it leaves the thread running; when
+    CPython later GCs the widget, Qt aborts ("QThread: Destroyed while thread is still running") —
+    a native EXIT=127 with no traceback. It is a RACE: random/CI order usually lets a later test's
+    ``processEvents`` finish the thread first, so it only bites in fixed order (the intermittent
+    flake). Production is correct (``closeEvent`` -> ``shutdown()`` joins every worker); this reaps
+    the TEST-only leak so it can't crash a *later* test.
+
+    Cheap: a no-op unless a ``QApplication`` exists; ``processEvents`` first lets a just-finished
+    worker self-remove; each ``shutdown()`` only ``wait()``s on a thread that is running, so a
+    worker-less widget costs a couple of ``isRunning()`` checks. Never "fix" this by rewiring a
+    worker's ``finished`` to a ``self``-touching lambda — the safe lever is joining at teardown.
+    """
+    try:
+        from PyQt5.QtWidgets import QApplication
+    except Exception:  # noqa: BLE001 — PyQt5 not installed: no Qt test ran, nothing to reap
+        return
+    app = QApplication.instance()
+    if app is None:
+        return
+    app.processEvents()
+    for w in list(app.topLevelWidgets()):
+        shut = getattr(w, "shutdown", None)
+        if callable(shut):
+            try:
+                shut()
+            except Exception:  # noqa: BLE001 — a reaper must never fail an otherwise-green test
+                pass
+    app.processEvents()
+
+
+@pytest.fixture(autouse=True)
+def _join_leaked_qt_workers():
+    """Autouse teardown that runs :func:`reap_qt_workers` after every test (see it for the why)."""
+    yield
+    reap_qt_workers()
+
+
 @pytest.fixture(scope="session")
 def repo_root() -> Path:
     """Absolute path to the repository root (contains the ``src`` package)."""
