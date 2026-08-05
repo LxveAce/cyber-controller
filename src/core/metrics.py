@@ -323,6 +323,17 @@ def event_to_readings(ev: Any, port: str) -> list[Reading]:
                                f"packets: {info}", port))
         return out
 
+    if et == "wifi_sniff":
+        total = _num(d.get("total"))
+        parts = [f"{k} {_num(d.get(k))}" for k in ("mgmt", "data", "ctrl")
+                 if _num(d.get(k)) is not None]
+        label = f"pkts: {total}" if total is not None else "pkts"
+        if parts:
+            label += " (" + " / ".join(parts) + ")"
+        out.append(Reading(ReadingKind.PACKET_RATE, Medium.WIFI, total, "pkts", label, port,
+                           extra=dict(d)))
+        return out
+
     if et == "device_info":
         summary = _device_summary(d)
         out.append(Reading(ReadingKind.DEVICE_INFO, Medium.SYSTEM, summary, "", summary, port,
@@ -335,6 +346,16 @@ def event_to_readings(ev: Any, port: str) -> list[Reading]:
         batt = _num(d.get("batt") if d.get("batt") is not None else d.get("battery"))
         if batt is not None:
             out.append(Reading(ReadingKind.BATTERY, Medium.SYSTEM, batt, "%", f"{batt:.0f}%", port))
+        return out
+
+    if et == "status":
+        # A generic status line — mine it for a battery/voltage reading only when present (the
+        # Flipper reports power as event_type="status"); scan-status text carries no metric.
+        batt = _num(d.get("batt") if d.get("batt") is not None else d.get("battery"))
+        if batt is not None:
+            extra = {k: d[k] for k in ("voltage", "charging", "battery") if k in d}
+            out.append(Reading(ReadingKind.BATTERY, Medium.SYSTEM, batt, "%", f"{batt:.0f}%", port,
+                               extra=extra))
         return out
 
     if et == "link_state":
@@ -370,6 +391,15 @@ def event_to_readings(ev: Any, port: str) -> list[Reading]:
         else:
             value, label = "alert", "alert"
         out.append(Reading(ReadingKind.ALERT, Medium.WIFI, value, "", label, port, extra=dict(d)))
+        return out
+
+    if et == "deauth_detected":
+        # A deauth frame was OBSERVED (defensive signal) — an alert, not a detection.
+        bssid = d.get("bssid") or d.get("mac") or ""
+        label = f"deauth seen: {bssid}" if bssid else "deauth seen"
+        extra = {"kind": "deauth"}
+        extra.update({k: d[k] for k in ("bssid", "mac") if k in d})
+        out.append(Reading(ReadingKind.ALERT, Medium.WIFI, "deauth", "", label, port, extra=extra))
         return out
 
     if et == "snapshot":

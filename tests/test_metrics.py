@@ -162,6 +162,31 @@ def test_arm_state_and_alert_and_airspace_and_capture():
     assert cap.kind is ReadingKind.CAPTURE and cap.value == "handshake"
 
 
+def test_status_line_with_battery_maps_to_battery_reading():
+    # The Flipper reports power as event_type="status" {battery, charging, voltage}.
+    rs = event_to_readings(
+        _ev("status", {"battery": "85", "charging": "false", "voltage": "3900"}), "COM4")
+    assert len(rs) == 1 and rs[0].kind is ReadingKind.BATTERY
+    assert rs[0].value == 85 and rs[0].extra.get("voltage") == "3900"
+    # A status line with no power field stays non-metric.
+    assert event_to_readings(_ev("status", {"message": "scanning"}), "COM4") == []
+
+
+def test_wifi_sniff_maps_to_packet_rate_with_breakdown():
+    rs = event_to_readings(
+        _ev("wifi_sniff", {"total": 1200, "mgmt": 800, "data": 300, "ctrl": 100}), "COM4")
+    assert len(rs) == 1 and rs[0].kind is ReadingKind.PACKET_RATE
+    assert rs[0].value == 1200 and rs[0].unit == "pkts"
+    assert "mgmt 800" in rs[0].label and "data 300" in rs[0].label
+
+
+def test_deauth_detected_maps_to_alert():
+    rs = event_to_readings(_ev("deauth_detected", {"bssid": "aa:bb:cc"}), "COM4")
+    assert len(rs) == 1 and rs[0].kind is ReadingKind.ALERT
+    assert rs[0].value == "deauth"
+    assert "aa:bb:cc" in rs[0].label and rs[0].extra.get("kind") == "deauth"
+
+
 def test_non_metric_events_map_to_nothing():
     for et in ("info", "status", "error", "version", "scan_complete", "save", "stopped"):
         assert event_to_readings(_ev(et, {"message": "x"}), "COM4") == []
