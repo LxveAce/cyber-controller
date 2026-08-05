@@ -130,11 +130,13 @@ def test_old_verbs_gone_from_broadcast() -> None:
 
 def test_blespam_uses_real_documented_form() -> None:
     # The command-surface audit (2026-07-15, cross-checked vs docs.ghostesp.net) confirms
-    # `blespam [mode|-s]` is a REAL GhostESP verb, so it now ships in the palette. What was dropped
-    # was the OLD phantom `blespam all` form / its TargetAction / the BLE_SPAM broadcast verb — those
-    # stay gone (CC exposes blespam via the command palette only, not as a per-target/broadcast action).
+    # `blespam [mode|-s]` is a REAL GhostESP verb, shipped as explicit per-mode verbs
+    # (`blespam -random/-apple/-samsung/-google/-ms` + `-s` stop), each gated lab-only. Bare
+    # `blespam` only prints usage. The OLD phantom `blespam all` form / TargetAction / the
+    # BLE_SPAM broadcast verb stay dropped.
     names = _command_names()
-    assert "blespam" in names, "real 'blespam' verb missing from palette"
+    blespam_modes = [n for n in names if n.startswith("blespam -") and n != "blespam -s"]
+    assert blespam_modes, "real per-mode 'blespam -<mode>' verbs missing from palette"
     assert "blespam -s" in names, "real 'blespam -s' stop verb missing from palette"
     assert "blespam all" not in names, "old phantom 'blespam all' form must stay gone"
     assert "blespam all" not in _action_templates()
@@ -183,5 +185,5 @@ def test_broadcast_renamed_verbs() -> None:
     assert BROADCAST_CAPABILITIES[BroadcastVerb.CAPTURE_HANDSHAKES][1] == "capture -eapol"
     # untouched verbs stay put
     assert BROADCAST_CAPABILITIES[BroadcastVerb.FIND_APS][1] == "scanap"
-    # STOP ALL must be the universal `stop` (not scan-only `stopscan`), so it halts deauth/beacon too.
+    # STOP ALL is the universal `stop` (not scan-only `stopscan`), halting deauth/beacon too.
     assert BROADCAST_CAPABILITIES[BroadcastVerb.STOP_ALL][1] == "stop"
