@@ -20,7 +20,11 @@ def _ci(fw, name):
     from src.protocols import get_protocol
     proto = get_protocol(fw)
     for ci in proto.get_commands():
-        if ci.name == name:
+        # A command may embed its arg template in the name (e.g. the Flipper's
+        # "subghz tx <key_hex> <freq_hz> ..."), so match the verb exactly OR as the leading
+        # token(s) before the first placeholder. A trailing space guards "subghz tx" from also
+        # matching "subghz tx_from_file".
+        if ci.name == name or ci.name.startswith(name + " "):
             return ci
     raise AssertionError(f"{fw}: command {name!r} not found")
 
