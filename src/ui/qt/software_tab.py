@@ -156,11 +156,10 @@ class SoftwareTab(QWidget):
         container = QWidget()
         root = QVBoxLayout(container)
 
-        intro = QLabel("Write a verified bootable operating system to a USB stick. Firmware for boards "
-                       "lives under RIG → Firmware — this view is for PC/USB operating systems.")
-        intro.setObjectName("muted")
-        intro.setWordWrap(True)
-        root.addWidget(intro)
+        from src.ui.qt import primer
+        root.addWidget(primer.note_bar(
+            "Write a verified bootable OS to a USB stick. Board firmware lives under DEVICE ▸ Firmware — "
+            "this is for PC/USB operating systems."))
 
         top = QHBoxLayout()
         self._top_row = top   # Wave-3: OS / USB / action columns stack on a compact canvas
@@ -209,6 +208,8 @@ class SoftwareTab(QWidget):
         self._local_lbl.setObjectName("muted")
         self._local_lbl.setWordWrap(True)
         drive_layout.addWidget(self._local_lbl)
+        drive_layout.addWidget(primer.note_bar(
+            "THE ENTIRE DRIVE IS ERASED. Only removable drives are listed.", warn=True))
         top.addWidget(drive_card, stretch=2)
 
         btn_col = QVBoxLayout()
@@ -238,6 +239,7 @@ class SoftwareTab(QWidget):
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
+        primer.apply_primer(self)   # mockup formula: tight tables / .field inputs / .btn buttons
         self._relayout_software(force=True)   # seed the OS/USB/action row orientation
 
     # ── responsive layout (Wave-3) ───────────────────────────────────
