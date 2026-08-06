@@ -318,16 +318,13 @@ def test_howto_available_via_help_not_tabstrip(qapp, isolated_settings):
     assert not hasattr(win, "_howto_tab")       # and it is no longer mounted as a tab widget
 
 
-def test_terms_available_in_help_menu(qapp, isolated_settings):
-    # WS-10: Terms of Service & Use is reachable from the Help menu, not a tab.
-    from PyQt5.QtWidgets import QMenu
+def test_terms_available_via_palette(qapp, isolated_settings):
+    # Reform: the menu bar was removed; Terms of Service & Use is reachable from the command palette
+    # (not a tab, not a Help menu).
     win = _make_window()
     assert hasattr(win, "_on_terms")
-    help_menu = next((m for m in win.menuBar().findChildren(QMenu)
-                      if m.title().replace("&", "") == "Help"), None)
-    assert help_menu is not None
-    actions = [a.text().replace("&", "") for a in help_menu.actions()]
-    assert any("Terms of Service" in a for a in actions), actions
+    labels = {c.label for c in win._palette._commands}
+    assert any("Terms of Service" in lbl for lbl in labels), labels
 
 
 def test_devices_tab_widget_inventory(qapp, isolated_settings):

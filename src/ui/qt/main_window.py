@@ -218,7 +218,7 @@ class CyberControllerWindow(QMainWindow):
         # QSettings for persisting splitter state
         self._qsettings = QSettings("LxveAce", "CyberController")
 
-        self._build_menu_bar()
+        self._build_shortcuts()
         self._build_main_layout()
         self._build_status_bar()
 
@@ -272,112 +272,47 @@ class CyberControllerWindow(QMainWindow):
 
     # ── Menu bar ─────────────────────────────────────────────────────
 
-    def _build_menu_bar(self) -> None:
-        mb = self.menuBar()
+    def _build_shortcuts(self) -> None:
+        # Reform: the QMainWindow menu bar was REMOVED to match the mockup's clean top bar. Nothing
+        # is lost: the menu's actions fold into the command palette (Ctrl+Shift+P; see
+        # _wire_command_palette), and every shortcut it carried is re-anchored to the WINDOW below,
+        # so it still fires app-wide without a menu.
+        self.menuBar().hide()   # no visible menu bar (explicit; nothing populates it now)
 
-        # File
-        file_menu = mb.addMenu("&File")
-
-        act_quit = QAction("&Quit", self)
+        # Shortcut-carrying actions added to the window (no menu) so their accelerators still fire.
+        act_quit = QAction("Quit", self)
         act_quit.setShortcut("Ctrl+Q")
         act_quit.triggered.connect(self.close)
-        file_menu.addAction(act_quit)
 
-        # View
-        view_menu = mb.addMenu("&View")
-
-        act_font_up = QAction("Font Size &+", self)
+        act_font_up = QAction("Increase Font Size", self)
         act_font_up.setShortcut("Ctrl+=")
         act_font_up.triggered.connect(lambda: self._change_font_size(1))
-        view_menu.addAction(act_font_up)
 
-        act_font_down = QAction("Font Size &-", self)
+        act_font_down = QAction("Decrease Font Size", self)
         act_font_down.setShortcut("Ctrl+-")
         act_font_down.triggered.connect(lambda: self._change_font_size(-1))
-        view_menu.addAction(act_font_down)
 
-        view_menu.addSeparator()
+        act_palette = QAction("Command Palette", self)
+        act_palette.setShortcut("Ctrl+Shift+P")
+        act_palette.setStatusTip("Jump to any tab or action by name — press Ctrl+Shift+P anywhere.")
+        act_palette.triggered.connect(self._on_command_palette)
 
-        # Interface Mode (dual-depth progressive disclosure) — Simple / Pro radio.
-        mode_menu = view_menu.addMenu("&Interface Mode")
+        for act in (act_quit, act_font_up, act_font_down, act_palette):
+            self.addAction(act)
+
+        # Interface Mode (Simple/Pro): the top-bar segment is the visible control now, but keep the
+        # checkable actions alive (set_ui_mode syncs them, hasattr-guarded; test_dual_depth_ui reads
+        # them) plus the Ctrl+M toggle that works even when part of the UI is hidden.
         self._mode_group = QActionGroup(self)
         self._mode_group.setExclusive(True)
-        self._act_mode_simple = QAction("&Simple (guided, fewer options)", self, checkable=True)
-        self._act_mode_pro = QAction("&Pro (full access)", self, checkable=True)
+        self._act_mode_simple = QAction("Simple", self, checkable=True)
+        self._act_mode_pro = QAction("Pro", self, checkable=True)
         self._act_mode_simple.triggered.connect(lambda: self.set_ui_mode("simple"))
         self._act_mode_pro.triggered.connect(lambda: self.set_ui_mode("pro"))
         for a in (self._act_mode_simple, self._act_mode_pro):
             self._mode_group.addAction(a)
-            mode_menu.addAction(a)
-
-        # Ctrl+M toggles Simple<->Pro, always available even if part of the UI is hidden.
         shortcut_mode = QShortcut(QKeySequence("Ctrl+M"), self)
         shortcut_mode.activated.connect(self._toggle_ui_mode)
-
-        view_menu.addSeparator()
-        act_loadout = QAction("&Loadout…", self)
-        act_loadout.setStatusTip("Choose which firmwares/hardware you use — hide unused features (or Full Stack).")
-        act_loadout.triggered.connect(self.configure_loadout)
-        view_menu.addAction(act_loadout)
-
-        # Tools
-        tools_menu = mb.addMenu("&Tools")
-
-        act_suicide = QAction("&Dead Man's Switch Setup…", self)
-        act_suicide.setStatusTip("Provision the Dead Man's Switch boot password & duress config (host-side).")
-        act_suicide.triggered.connect(self._on_suicide_setup)
-        tools_menu.addAction(act_suicide)
-
-        act_flock_map = QAction("Flock &Heatmap…", self)
-        act_flock_map.setStatusTip("Map located ALPR-camera detections from a saved Flock scan (cameras.geojson).")
-        act_flock_map.triggered.connect(self._on_flock_heatmap)
-        tools_menu.addAction(act_flock_map)
-
-        # Help
-        help_menu = mb.addMenu("&Help")
-
-        act_guide = QAction("&User Guide", self)
-        act_guide.triggered.connect(self._on_user_guide)
-        help_menu.addAction(act_guide)
-
-        act_howto = QAction("&How-To Guide", self)
-        act_howto.triggered.connect(self._on_howto)
-        help_menu.addAction(act_howto)
-
-        act_terms = QAction("&Terms of Service && Use…", self)
-        act_terms.setStatusTip("The legal terms for using Cyber Controller — authorized, lawful, "
-                               "research/lab use only.")
-        act_terms.triggered.connect(self._on_terms)
-        help_menu.addAction(act_terms)
-
-        act_shortcuts = QAction("&Keyboard Shortcuts", self)
-        act_shortcuts.triggered.connect(self._on_keyboard_shortcuts)
-        help_menu.addAction(act_shortcuts)
-
-        act_palette = QAction("Command &Palette", self)
-        act_palette.setShortcut("Ctrl+Shift+P")
-        act_palette.setStatusTip("Jump to any tab or action by name — press Ctrl+Shift+P anywhere.")
-        act_palette.triggered.connect(self._on_command_palette)
-        help_menu.addAction(act_palette)
-
-        help_menu.addSeparator()
-
-        act_bug = QAction("&Report a Bug…", self)
-        act_bug.setStatusTip("Collect recent logs + system info (auto-redacted) to save or send back for fixing.")
-        act_bug.triggered.connect(self._on_report_bug)
-        help_menu.addAction(act_bug)
-
-        act_updates = QAction("Check for &Updates…", self)
-        act_updates.triggered.connect(lambda: self.check_for_updates(force=True))
-        help_menu.addAction(act_updates)
-
-        act_about = QAction("&About", self)
-        act_about.triggered.connect(self._on_about)
-        help_menu.addAction(act_about)
-
-        act_github = QAction("&GitHub", self)
-        act_github.triggered.connect(self._on_github)
-        help_menu.addAction(act_github)
 
         # ── Global shortcuts ────────────────────────────────────────
         shortcut_f5 = QShortcut(QKeySequence("F5"), self)
@@ -2138,6 +2073,15 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("Keyboard Shortcuts", self._on_keyboard_shortcuts)
         self._palette.add_command("Check for Updates…", lambda: self.check_for_updates(force=True))
         self._palette.add_command("Quit", self.close)
+        # Reform: the menu bar was removed; fold its ORPHAN actions here so nothing is lost. The
+        # covered ones (guides/terms/updates/dead-man's-switch/quit) were already palette commands;
+        # Flock is reachable via MAP > Flock Map.
+        self._palette.add_command("Configure Loadout", self.configure_loadout)
+        self._palette.add_command("Report a Bug…", self._on_report_bug)
+        self._palette.add_command("About", self._on_about)
+        self._palette.add_command("GitHub", self._on_github)
+        self._palette.add_command("Increase Font Size", lambda: self._change_font_size(1))
+        self._palette.add_command("Decrease Font Size", lambda: self._change_font_size(-1))
 
     def _on_command_palette(self) -> None:
         """Open the command palette dialog."""
