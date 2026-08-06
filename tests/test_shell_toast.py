@@ -69,15 +69,21 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_window_folds_status_chrome_into_the_shell_and_toasts(qapp):
+def test_window_keeps_status_alive_offbar_and_toasts(qapp):
+    # Reform (main_window `0202880`): the reformed top bar matches the mockup (brand · breadcrumb ·
+    # SAFE lamp · Simple/Pro segment · icons). The old CPU/RAM/Devices/Targets status line + Mode
+    # badge are NO LONGER folded into it (they cluttered the bar + duplicated the Dashboard gauges),
+    # but they stay ALIVE (the _refresh_status timer keeps _status_label current for any reader).
+    # Transient notices still route to the ONE shell toast (no second bottom statusBar).
     win = _make_window()
     try:
         shell = win._app_shell
         bar = shell._status_bar_layout
         widgets = {bar.itemAt(i).widget() for i in range(bar.count())}
-        assert win._status_label in widgets     # system-health line folded into the shell bar
-        assert win._mode_badge in widgets        # mode badge folded in (no separate bottom bar)
-        win.toast("action ran", timeout=0)
+        assert win._status_label not in widgets   # retired from the top bar (reform) ...
+        assert win._mode_badge not in widgets
+        assert win._status_label is not None and win._mode_badge is not None  # ... but kept alive
+        win.toast("action ran", timeout=0)        # the single transient surface still works
         assert shell._toast_label.text() == "action ran"
         assert not shell._toast_label.isHidden()
     finally:
