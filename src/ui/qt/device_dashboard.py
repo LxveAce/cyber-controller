@@ -185,14 +185,37 @@ class DeviceDashboard(QWidget):
         sys_v.addLayout(gps_row)
         center_v.addWidget(sys_card)
 
-        sel_card, sel_v, _ = self._card("Selected Device")
+        # Selected Device — BUILT FRESH (not re-homed): each device_tab readout sets its OWN inline
+        # style that beats any Dashboard QSS, so re-homing them can't be made readable. We render the
+        # same data (via the host's formatter methods — no logic duplicated) with mockup styling.
+        sel_card, sel_v, self._sd_meta = self._card("Selected Device", "")
         top_row = QHBoxLayout()
-        _add(top_row, getattr(dt, "_arm_label", None))   # ARM/SAFE lamp — prominent, always visible
+        self._sd_arm = QLabel("○ —")                     # ARM/SAFE lamp — prominent pill (safety)
+        self._sd_arm.setTextFormat(Qt.PlainText)
+        top_row.addWidget(self._sd_arm)
         top_row.addStretch(1)
-        _add(top_row, getattr(dt, "_health_label", None))
+        self._sd_health = QLabel("")                     # connection health chip
+        self._sd_health.setStyleSheet("font-size:9pt;")
+        top_row.addWidget(self._sd_health)
         sel_v.addLayout(top_row)
-        for attr in ("_caps_label", "_telemetry_label", "_alert_label", "_snapshot_label"):
-            _add(sel_v, getattr(dt, attr, None))
+        self._sd_caps = QWidget()                        # capability pills row
+        self._sd_caps_lay = QHBoxLayout(self._sd_caps)
+        self._sd_caps_lay.setContentsMargins(0, 2, 0, 2)
+        self._sd_caps_lay.setSpacing(5)
+        sel_v.addWidget(self._sd_caps)
+        self._sd_telem = QLabel("")                      # identity/telemetry (muted mono line)
+        self._sd_telem.setWordWrap(True)
+        self._sd_telem.setStyleSheet(f"color:{_META};font-size:8pt;font-family:'Cascadia Mono',Consolas,monospace;")
+        sel_v.addWidget(self._sd_telem)
+        self._sd_alert = QLabel("")                      # detector alert — a real amber callout
+        self._sd_alert.setWordWrap(True)
+        self._sd_alert.setStyleSheet("color:#d29922;background:rgba(210,153,34,0.10);"
+                                     "border-left:3px solid #d29922;border-radius:3px;padding:4px 8px;font-size:9pt;")
+        sel_v.addWidget(self._sd_alert)
+        self._sd_snap = QLabel("")                       # airspace snapshot (blue mono)
+        self._sd_snap.setWordWrap(True)
+        self._sd_snap.setStyleSheet("color:#58a6ff;font-size:9pt;font-family:'Cascadia Mono',Consolas,monospace;")
+        sel_v.addWidget(self._sd_snap)
         center_v.addWidget(sel_card)
 
         link_card, link_v, _ = self._card("Relay Link", "LxveNode")
@@ -254,7 +277,78 @@ class DeviceDashboard(QWidget):
                 fn()
             except Exception:  # noqa: BLE001
                 pass
+        self._render_selected_device()
         self._render_link()
+
+    def _active_dev(self):
+        dt = self._device_tab
+        try:
+            port = getattr(dt, "_active_port", "") or ""
+            dm = getattr(dt, "_dm", None)
+            return dm.get_device(port) if (port and dm is not None) else None
+        except Exception:  # noqa: BLE001
+            return None
+
+    def _render_selected_device(self) -> None:
+        """Render the Selected Device readouts fresh + readable (mockup styling), reusing the host's
+        formatter methods for the DATA so no device logic is duplicated and no density field is dropped."""
+        dt, dev = self._device_tab, self._active_dev()
+        cls = type(dt)
+        # ARM/SAFE lamp — a prominent state-tinted pill (arm_lamp_render is shared with Operate).
+        from src.ui.qt.arm_lamp import arm_lamp_render
+        text, color = arm_lamp_render(getattr(dev, "arm_state", "") or "")
+        color = color or "#8b949e"
+        _tint = {"#3fb950": "#0f2417", "#d29922": "#241c07", "#f85149": "#2b1416"}.get(color, "#161b22")
+        self._sd_arm.setText(text or "○ —")
+        self._sd_arm.setStyleSheet(f"color:{color};background:{_tint};border:1px solid {color};"
+                                   f"border-radius:7px;padding:4px 12px;font-weight:700;font-size:10pt;")
+        # Health chip (colored ● + word) — drop the redundant 'Health:' prefix from the formatter output.
+        try:
+            h = cls._format_health(dev) if dev is not None else ""
+        except Exception:  # noqa: BLE001
+            h = ""
+        self._sd_health.setText(str(h).replace("Health:", "").strip())
+        # Capability pills (fresh row) from the host's own _current_capabilities() — nothing duplicated.
+        while self._sd_caps_lay.count():
+            w = self._sd_caps_lay.takeAt(0).widget()
+            if w is not None:
+                w.setParent(None)   # remove NOW (deleteLater is async — would double the pills)
+                w.deleteLater()
+        try:
+            caps = dt._current_capabilities() if dev is not None else []
+        except Exception:  # noqa: BLE001
+            caps = []
+        for c in caps:
+            cs = str(c)
+            unknown = cs.lower().startswith(("cap", "unknown")) and any(ch.isdigit() for ch in cs)
+            pill = QLabel(cs if unknown else cs.upper())
+            if unknown:
+                pill.setStyleSheet(f"color:{_META};font-style:italic;font-size:8pt;padding:2px 4px;")
+            else:
+                pill.setStyleSheet("border:1px solid #6e40c9;border-radius:11px;color:#c8b6f5;"
+                                   "background:#0d1117;padding:2px 8px;font-size:8pt;")
+            self._sd_caps_lay.addWidget(pill)
+        self._sd_caps_lay.addStretch(1)
+        self._sd_caps.setVisible(bool(caps))
+        # Telemetry (muted mono) + fw_banner appended so the banner is never dropped (density).
+        try:
+            t = cls._telemetry_line(getattr(dev, "telemetry", {}) or {}) if dev is not None else ""
+        except Exception:  # noqa: BLE001
+            t = ""
+        banner = (getattr(dev, "fw_banner", "") or "") if dev is not None else ""
+        self._sd_telem.setText((t + (f"  ·  {banner}" if banner else "")).strip())
+        # Alert callout (amber) + airspace snapshot (blue) — blank collapses each.
+        try:
+            a = cls._alert_line(getattr(dev, "alert_count", 0), getattr(dev, "last_alert", {}) or {}) \
+                if dev is not None else ""
+        except Exception:  # noqa: BLE001
+            a = ""
+        self._sd_alert.setText(str(a)); self._sd_alert.setVisible(bool(a))
+        try:
+            s = cls._snapshot_line(getattr(dev, "last_snapshot", {}) or {}) if dev is not None else ""
+        except Exception:  # noqa: BLE001
+            s = ""
+        self._sd_snap.setText(str(s)); self._sd_snap.setVisible(bool(s))
 
     def _render_link(self) -> None:
         """Render the Relay Link strip for the active device (link_strip.py ships only a render-model)."""

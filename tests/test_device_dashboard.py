@@ -39,16 +39,18 @@ def test_rehomes_live_widgets_into_the_dashboard(qapp):
     assert isinstance(dash, DeviceDashboard)
     # the REAL live widgets are re-parented INTO the dashboard subtree (density: nothing rebuilt/dropped)
     assert dash.isAncestorOf(health._cpu_gauge)      # a host gauge now lives in the dashboard
-    assert dash.isAncestorOf(dev._arm_label)         # the ARM/SAFE lamp is re-homed + present
     assert dash.isAncestorOf(dev._terminal)          # the serial terminal is re-homed
     assert dash.isAncestorOf(dev._device_list)       # the device list is re-homed
-
-
-def test_arm_lamp_and_bj_stop_survive_rehome(qapp):
-    dash, _health, dev = _make()
-    # safety-critical widgets are re-homed by reference (their host logic still drives them)
-    assert dash.isAncestorOf(dev._arm_label)
     assert dash.isAncestorOf(dev._bj_panel)          # the ungated BlueJammer STOP rides inside, whole
+
+
+def test_selected_device_rendered_fresh_and_readable(qapp):
+    # the Selected Device readouts are BUILT FRESH (not re-homed) so they can be styled readably;
+    # the ARM/SAFE lamp is a fresh prominent pill and rendering must not raise (dev=None here).
+    dash, _health, _dev = _make()
+    assert dash.isAncestorOf(dash._sd_arm)           # fresh ARM/SAFE lamp present in the dashboard
+    assert dash._sd_arm.text()                       # rendered (defaults to a lamp glyph, never blank)
+    dash._render_selected_device()                   # re-render with no active device — must not raise
 
 
 def test_pumps_host_refreshes(qapp):
