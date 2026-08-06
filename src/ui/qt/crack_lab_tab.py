@@ -443,6 +443,12 @@ class CrackLabTab(QWidget):
         _outer.addWidget(_scroll)
         root = QVBoxLayout(_content)
 
+        from src.ui.qt import primer
+        root.addWidget(primer.note_bar(
+            "Offline WPA/WPA2 key recovery: capture → wordlist → per-run consent → crack. The built-in "
+            "native cracker works with no install; aircrack-ng / hashcat are optional faster engines. "
+            "Dictionary-only; the consent gate is never bypassed."))
+
         # Wave-3 Batch C: controls (left) / captures+log (right) split. Only a true desktop
         # (>=1024) gets the side-by-side; it stacks vertical otherwise (see _apply_crack_layout).
         self._split = QSplitter(Qt.Horizontal)
@@ -560,6 +566,7 @@ class CrackLabTab(QWidget):
         self._log.setPlaceholderText("tool output appears here during a run")
         right_col.addWidget(self._log, 1)
 
+        primer.apply_primer(self)   # mockup formula: tight tables / .field inputs / .btn buttons
         self._refresh_tools()
         self._refresh_wordlists()
 
