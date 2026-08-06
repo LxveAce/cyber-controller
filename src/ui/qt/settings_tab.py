@@ -314,6 +314,8 @@ class SettingsTab(QWidget):
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
+        from src.ui.qt import primer
+        primer.apply_primer(self)   # mockup formula: tight fields / .btn buttons across every settings card
         self._relayout_settings(force=True)   # initial placement of the cards into the grid
 
     # ── Responsive layout (Wave-3 Batch C) ───────────────────────────

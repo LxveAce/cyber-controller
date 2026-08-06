@@ -424,6 +424,8 @@ class WardriveTab(QWidget):
         self._log.setReadOnly(True)
         self._log.setMinimumHeight(140)
         root.addWidget(self._log, 1)
+        from src.ui.qt import primer
+        primer.apply_primer(self)   # mockup formula: tight tables / .field inputs / .btn buttons
         self._relayout_wardrive(force=True)   # seed the cards-row orientation
 
     # ── responsive layout (Wave-3) ───────────────────────────────────

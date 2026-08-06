@@ -65,6 +65,8 @@ class WardriveMultiTab(QWidget):
         self._build_ui()
         self._refresh_boards()
         self._refresh_ports()
+        from src.ui.qt import primer
+        primer.apply_primer(self)   # mockup formula: tight tables / .field inputs / .btn buttons
 
     # ── Adaptive layout (Wave-3 Batch C) ──────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
