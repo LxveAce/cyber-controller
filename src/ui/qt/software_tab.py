@@ -210,17 +210,16 @@ class SoftwareTab(QWidget):
         drive_layout.addWidget(self._local_lbl)
         drive_layout.addWidget(primer.note_bar(
             "THE ENTIRE DRIVE IS ERASED. Only removable drives are listed.", warn=True))
-        top.addWidget(drive_card, stretch=2)
-
-        btn_col = QVBoxLayout()
+        # Reform: the mockup puts Flash OS as a wide DANGER button INSIDE the Target USB card (it erases
+        # the whole drive), not a bare gray button in a side column.
         self._btn_flash = QPushButton("Flash OS")
-        self._btn_flash.setObjectName("flash_btn")
-        self._btn_flash.setMinimumHeight(40)
+        self._btn_flash.setObjectName("btnDanger")
+        self._btn_flash.setMinimumHeight(38)
         self._btn_flash.setToolTip("Download (if needed), verify, then write the OS to the selected "
                                    "removable USB. Destructive — the whole drive is erased.")
         self._btn_flash.clicked.connect(self._on_flash)
-        btn_col.addWidget(self._btn_flash)
-        top.addLayout(btn_col)
+        drive_layout.addWidget(self._btn_flash)
+        top.addWidget(drive_card, stretch=2)
         root.addLayout(top)
 
         self._progress = QProgressBar()
