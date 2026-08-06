@@ -25,6 +25,8 @@ import time
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from src.core.metrics import Medium, MetricsModel, Reading, ReadingKind
+
 
 @dataclass
 class TailHit:
@@ -148,3 +150,21 @@ def attach_tail_detector(ingestor: Any, tracker: PersistenceTracker,
 
     ingestor.add_event_observer(_feed)
     return _feed
+
+
+def tails_to_alerts(tracker: PersistenceTracker, model: MetricsModel, now: float,
+                    min_persistence: float = 0.5) -> list[Reading]:
+    """Turn the tracker's flagged tails at *now* into canonical ALERT readings in *model*, keyed per
+    device — a persistent follower then surfaces on the Dashboard's alert slot. Awareness-first: it
+    flags "this device keeps reappearing near you," it never acts. Wall-clock-free (caller passes
+    *now*; the app's TailDetect panel calls this each poll tick). Returns the stored readings."""
+    out: list[Reading] = []
+    for hit in tracker.tails(now, min_persistence):
+        pct = int(round(hit.persistence * 100))
+        label = f"possible tail: {hit.label or hit.device} ({pct}%, {hit.windows} windows)"
+        reading = Reading(ReadingKind.ALERT, Medium.UNKNOWN, hit.persistence, "", label,
+                          device_source=hit.device,
+                          extra={"tail": True, "persistence": hit.persistence,
+                                 "windows": hit.windows})
+        out.append(model.update(reading))
+    return out

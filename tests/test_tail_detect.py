@@ -7,7 +7,8 @@ ingestor wiring is exercised with a fake ingestor + a controllable clock: person
 """
 from __future__ import annotations
 
-from src.core.tail_detect import PersistenceTracker, attach_tail_detector
+from src.core.metrics import MetricsModel, ReadingKind
+from src.core.tail_detect import PersistenceTracker, attach_tail_detector, tails_to_alerts
 from src.protocols.base import ParsedEvent
 
 W = 100  # window seconds used across these tests
@@ -111,3 +112,31 @@ def test_attach_reads_probe_and_ble_device_keys_with_labels():
     hits = {h.device: h.label for h in trk.tails(150.0, min_persistence=0.0)}
     assert "11:22" in hits and "33:44" in hits
     assert "probe" in hits["11:22"] and "BLE" in hits["33:44"]
+
+
+# ── tails_to_alerts: a persistent tail -> a Dashboard ALERT reading ───────────────────────────────
+
+def test_tails_to_alerts_emits_alert_only_for_flagged_tails():
+    t = PersistenceTracker(window_seconds=W, num_windows=4)
+    for b in (0, 1, 2, 3):
+        t.observe("A", b * W + 5)      # persistence 1.0 -> flagged
+    for b in (2, 3):
+        t.observe("B", b * W + 5)      # 0.5 -> flagged
+    t.observe("C", 3 * W + 5)          # 0.25 -> below threshold
+    m = MetricsModel()
+    tails_to_alerts(t, m, 3 * W + 5, min_persistence=0.5)
+    assert m.latest("A", ReadingKind.ALERT) is not None
+    assert m.latest("B", ReadingKind.ALERT) is not None
+    assert m.latest("C", ReadingKind.ALERT) is None          # below threshold -> no alert
+    a = m.latest("A", ReadingKind.ALERT)
+    assert a.extra.get("tail") is True and a.extra.get("windows") == 4
+    assert "possible tail" in a.label
+
+
+def test_tails_to_alerts_skips_ignored_devices():
+    t = PersistenceTracker(window_seconds=W, num_windows=4, ignore={"me"})
+    for b in (0, 1, 2, 3):
+        t.observe("me", b * W + 5)     # my own device -> never scored, never alerted
+    m = MetricsModel()
+    tails_to_alerts(t, m, 3 * W + 5, min_persistence=0.5)
+    assert m.latest("me", ReadingKind.ALERT) is None
