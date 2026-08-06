@@ -504,12 +504,12 @@ class CyberControllerWindow(QMainWindow):
         self._build_tabs()
         # Apply the saved loadout (hide unused tabs) before choosing the default tab.
         self.apply_loadout(self._load_loadout(), persist=False)
-        # Land on OPERATE -> Home (the dual-axis launcher, now the first OPERATE sub-view). Fall back to
-        # RIG / Devices only if OPERATE isn't mounted (hidden by a loadout / popped out).
-        if self._tabs.indexOf(self._operate_surface) >= 0:
+        # Land on the reform front door: DEVICE -> Dashboard (the launch screen). Fall back to
+        # OPERATE -> Home only if the DEVICE surface is hidden (loadout / popped out).
+        if self._tabs.indexOf(self._rig_surface) >= 0:
+            self._show_subtab(self._rig_surface, self._device_dashboard)
+        elif self._tabs.indexOf(self._operate_surface) >= 0:
             self._show_subtab(self._operate_surface, self._operate_home)
-        else:
-            self._show_subtab(self._rig_surface, self._device_tab)
         self._refresh_sidebar_devices()
         self._build_command_palette()
         # Wave-10 Phase C (Phase D polish): fuse the app-shell omnibar with the command palette —
@@ -686,10 +686,19 @@ class CyberControllerWindow(QMainWindow):
                     w.addTab(_widget, label_icon(_label), _label)
             return w
 
-        # RIG — "get a rig ready": Devices · Health · Nodes · Firmware · Software OS · Mesh.
+        # DEVICE — the reform front door: Dashboard (landing) · Firmware · Software OS · Mesh. The
+        # DeviceDashboard RE-HOMES the Devices + Health leaf widgets (device list, gauges, readouts,
+        # serial terminal, BlueJammer/Mesh panels) into ONE landing screen, so Devices + Health are no
+        # longer their own sub-tabs; the device_tab/health_tab instances stay created (headless, pumped
+        # by the Dashboard) so every signal/ref survives. Nodes re-homes to Mesh (follow-up) — kept
+        # created for now. Mesh stays the whole CrossCommTab; the Dashboard takes cross_comm=None until
+        # its own cross-comm summary lands (avoids double-parenting the one widget). (_rig_surface attr
+        # name kept to minimize churn; nav_model relabels the rail RIG -> DEVICE.)
+        from src.ui.qt.device_dashboard import DeviceDashboard
+        self._device_dashboard = DeviceDashboard(self._health_tab, self._device_tab, cross_comm=None)
         self._rig_surface = _verb_surface(
-            ("Devices", self._device_tab), ("Health", self._health_tab), ("Nodes", self._nodes_tab),
-            ("Firmware", self._flash_tab), ("Software OS", self._software_tab), ("Mesh", self._cross_comm_tab),
+            ("Dashboard", self._device_dashboard), ("Firmware", self._flash_tab),
+            ("Software OS", self._software_tab), ("Mesh", self._cross_comm_tab),
         )
         # HUNT — "see what's out there, passively": Wi-Fi · BLE analyzers · Targets · node Graph.
         self._hunt_surface = _verb_surface(
@@ -1956,7 +1965,8 @@ class CyberControllerWindow(QMainWindow):
         if tab is None or not port:
             return
         if tab.select_port(port):
-            self._show_subtab(self._rig_surface, self._device_tab)
+            # Devices is re-homed into the Dashboard now, so focus the DEVICE ▸ Dashboard landing.
+            self._show_subtab(self._rig_surface, self._device_dashboard)
 
     def _on_sidebar_scan(self) -> None:
         """Scan ports off the GUI thread, then register + refresh the sidebar when it reports back.
@@ -2041,12 +2051,13 @@ class CyberControllerWindow(QMainWindow):
         self._palette = CommandPalette(self)
         # Navigate by WIDGET, not a hardcoded index — immune to tab reordering (the old fixed indices
         # had drifted and pointed at the wrong tabs).
-        # RIG sub-views (Spade v2 verb IA): firmware/OS + devices/health/nodes all re-home to RIG.
+        # DEVICE sub-views (reform): Dashboard (landing) + Firmware + Software OS + Mesh. Devices +
+        # Health are re-homed INTO the Dashboard, so their entries land on it; Nodes re-homes to Mesh.
+        self._palette.add_command("View Dashboard", lambda: self._show_subtab(self._rig_surface, self._device_dashboard))
         self._palette.add_command("Flash Firmware", lambda: self._show_subtab(self._rig_surface, self._flash_tab))
         self._palette.add_command("Flash Software OS", lambda: self._show_subtab(self._rig_surface, self._software_tab))
-        self._palette.add_command("Connect to Device", lambda: self._show_subtab(self._rig_surface, self._device_tab))
-        self._palette.add_command("View Health", lambda: self._show_subtab(self._rig_surface, self._health_tab))
-        self._palette.add_command("Manage Nodes", lambda: self._show_subtab(self._rig_surface, self._nodes_tab))
+        self._palette.add_command("Connect to Device", lambda: self._show_subtab(self._rig_surface, self._device_dashboard))
+        self._palette.add_command("View Health", lambda: self._show_subtab(self._rig_surface, self._device_dashboard))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)
         # OPERATE sub-views: Control (the QA-1 merged Broadcast + Console screen) + Macros. Both the
         # single-device and fan-out palette entries land on the one merged Control (self._operate_action).

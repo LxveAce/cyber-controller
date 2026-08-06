@@ -64,7 +64,7 @@ def test_apply_loadout_hides_unused_tabs(qapp, isolated_settings):
         for subview in ("Devices", "Health", "Software OS", "Targets", "Control", "Macros",
                         "Wardrive", "Cross-Comm", "Crack Lab", "Flock Map", "Graph"):
             assert subview not in labels  # grouped into a verb surface, never a top-level label
-        for core in ("RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
+        for core in ("DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
             assert core in labels
         # Full Stack restores everything
         win.apply_loadout(L.full_stack_loadout(), persist=False)
@@ -82,7 +82,7 @@ def test_loadout_gps_and_usb_os_gates(qapp, isolated_settings):
         labels = _labels(win)
         # P2.5: Wardrive is a MAP sub-view, Targets a HUNT sub-view, Software OS a RIG sub-view. At top level
         # we assert the always-shown verbs that hold them (MAP / HUNT / RIG) are present.
-        assert "MAP" in labels and "HUNT" in labels and "RIG" in labels
+        assert "MAP" in labels and "HUNT" in labels and "DEVICE" in labels
         for sub in ("Wardrive", "Targets", "Software OS"):
             assert sub not in labels  # sub-views, not top-level
     finally:

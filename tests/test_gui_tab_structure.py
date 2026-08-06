@@ -38,8 +38,9 @@ from PyQt5.QtWidgets import (  # noqa: E402
 # this list in lockstep; a diff here is the intended signal that the tab IA changed. Spade v2 verb IA (P2.5):
 # the rail is driven by nav_model.visible_nav() — RIG · HUNT · OPERATE · CRACK · MAP + the pinned Settings.
 EXPECTED_TABS = [
-    # RIG — get a rig ready: Devices/Health/Nodes/Firmware/Software OS/Mesh. See test_rig_surface_subtabs.
-    ("RIG", "_rig_surface"),
+    # DEVICE — the reform front door: Dashboard (re-homes Devices+Health) / Firmware / Software OS /
+    # Mesh. (_rig_surface attr kept; rail relabeled RIG->DEVICE.) See test_device_surface_subtabs.
+    ("DEVICE", "_rig_surface"),
     # HUNT — passive discovery: Wi-Fi/BLE analyzers/Targets/Graph. See test_hunt_surface_subtabs.
     ("HUNT", "_hunt_surface"),
     # OPERATE — the ONE action surface (the double-Operate died): Home launcher/merged Control/Macros.
@@ -85,33 +86,34 @@ def test_tab_count_is_6(qapp, isolated_settings):
     assert win._tabs.count() == len(EXPECTED_TABS) == 6
 
 
-def test_lands_on_operate_home_launcher(qapp, isolated_settings):
-    # P2.5: the double-Operate is gone — Operate Home is the launcher sub-view of the ONE OPERATE surface, and
-    # the window lands on it (OPERATE selected + its Home sub-view current).
+def test_lands_on_device_dashboard(qapp, isolated_settings):
+    # Reform front door: launch opens on DEVICE ▸ Dashboard (the re-homed landing), not the old
+    # Operate-Home bounce-pad (DEVICE selected + its Dashboard sub-view current).
     win = _make_window()
-    assert win._tabs.currentWidget() is win._operate_surface
-    assert win._operate_surface.currentWidget() is win._operate_home
+    assert win._tabs.currentWidget() is win._rig_surface
+    assert win._rig_surface.currentWidget() is win._device_dashboard
 
 
-def test_rig_surface_subtabs(qapp, isolated_settings):
-    # P2.5 folds the old Flash + Connect surfaces into RIG — Devices (leads), Health, Nodes, Firmware,
-    # Software OS, and Mesh (Cross-Comm re-homed here from the dissolved Analyze bundle). The re-parented
-    # widgets are the SAME objects the window still exposes on named attrs.
+def test_device_surface_subtabs(qapp, isolated_settings):
+    # Reform: DEVICE = Dashboard (leads, the landing that RE-HOMES the Devices + Health widgets) +
+    # Firmware + Software OS + Mesh. Devices/Health are no longer their own sub-tabs (their leaves live
+    # in the Dashboard); Nodes re-homes to Mesh (follow-up). The re-parented widgets are the SAME objects.
     win = _make_window()
     surface = win._rig_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Devices", "Health", "Nodes", "Firmware", "Software OS", "Mesh"]
-    assert surface.widget(0) is win._device_tab, "Devices sub-tab must be the DeviceTab object"
-    assert surface.widget(1) is win._health_tab, "Health sub-tab must be the HealthTab object"
-    assert surface.widget(2) is win._nodes_tab, "Nodes sub-tab must be the NodesTab object"
-    assert surface.widget(3) is win._flash_tab, "Firmware sub-tab must be the FlashTab object"
-    assert surface.widget(4) is win._software_tab, "Software OS sub-tab must be the SoftwareTab object"
-    assert surface.widget(5) is win._cross_comm_tab, "Mesh sub-tab must be the CrossCommTab object"
-    # None of these are direct top-level tabs anymore (the old Flash/Connect labels are gone too).
+    assert titles == ["Dashboard", "Firmware", "Software OS", "Mesh"]
+    assert surface.widget(0) is win._device_dashboard, "Dashboard sub-tab must be the DeviceDashboard"
+    assert surface.widget(1) is win._flash_tab, "Firmware sub-tab must be the FlashTab object"
+    assert surface.widget(2) is win._software_tab, "Software OS sub-tab must be the SoftwareTab object"
+    assert surface.widget(3) is win._cross_comm_tab, "Mesh sub-tab must be the CrossCommTab object"
+    # The Dashboard still holds the SAME device_tab/health_tab instances (re-homed, refs survive).
+    assert win._device_dashboard._device_tab is win._device_tab
+    assert win._device_dashboard._health_tab is win._health_tab
+    # None of these are direct top-level tabs (Devices/Health/Nodes are subsumed / re-homed).
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Devices", "Health", "Software OS", "Firmware", "Flash", "Connect", "Cross-Comm"):
-        assert gone not in toplevel, f"{gone!r} should be a RIG sub-tab, not top-level"
-    assert "RIG" in toplevel
+    for gone in ("Devices", "Health", "Nodes", "Software OS", "Firmware", "Flash", "Connect", "Cross-Comm"):
+        assert gone not in toplevel, f"{gone!r} should be a DEVICE sub-tab, not top-level"
+    assert "DEVICE" in toplevel
 
 
 def test_operate_surface_subtabs(qapp, isolated_settings):
@@ -242,7 +244,7 @@ def test_verb_order_is_the_mission_arc(qapp, isolated_settings):
     # pinned Settings last — mirroring nav_model.visible_nav() order (the single source that drives the rail).
     win = _make_window()
     titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    assert titles == ["RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"]
+    assert titles == ["DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"]
 
 
 # ── Per-tab widget inventory (S4 characterization) ───────────────────

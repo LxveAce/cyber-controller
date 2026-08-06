@@ -67,13 +67,11 @@ def _n(key: str, label: str, icon: str = "", children: tuple = (), **kw) -> NavN
 # re-parent into each surface (per CC-SPADE-DESIGN §2). nrf/NFC browse tiles are absent
 # (honest-functionality: no real screen). Sense is capability-gated until node firmware.
 _SURFACES: tuple[NavNode, ...] = (
-    _n("rig", "RIG", "rig", primary_action="connect", children=(
-        _n("devices", "Devices", "usb"),
-        _n("health", "Health", "pulse"),
-        _n("nodes", "Nodes", "mesh"),
+    _n("rig", "DEVICE", "rig", primary_action="connect", children=(
+        _n("dashboard", "Dashboard", "gauge"),   # the reform landing (re-homes Devices + Health)
         _n("flash_firmware", "Firmware", "chip"),
         _n("flash_os", "Software OS", "disk"),
-        _n("cross_comm", "Mesh", "link"),
+        _n("cross_comm", "Mesh", "link"),        # Nodes re-homes here (follow-up)
     )),
     _n("hunt", "HUNT", "radar", primary_action="scan", children=(
         _n("wifi", "Wi-Fi", "wifi"),

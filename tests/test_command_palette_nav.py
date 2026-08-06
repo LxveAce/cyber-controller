@@ -80,7 +80,7 @@ def _run_palette_command(win, label: str) -> None:
 # the BLE analyzer -> HUNT (re-homed from the dissolved Analyze bundle).
 NAV_CASES = [
     ("Control Device", "_operate_surface", "_operate_action"),
-    ("Manage Nodes", "_rig_surface", "_nodes_tab"),
+    ("View Dashboard", "_rig_surface", "_device_dashboard"),   # reform: DEVICE landing (Nodes re-homes to Mesh)
     ("Crack Lab", "_crack_surface", "_crack_lab_tab"),
     ("BLE Analyzer", "_hunt_surface", "_ble_analyzer"),
 ]

@@ -43,7 +43,7 @@ def test_operate_home_tab_is_embedded_additively(window):
     labels = _tab_labels(window)
     assert "OPERATE" in labels
     assert window._operate_surface.widget(0) is window._operate_home   # Home leads the OPERATE sub-views
-    for existing in ("RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
+    for existing in ("DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
         assert existing in labels
 
 

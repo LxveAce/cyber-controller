@@ -29,10 +29,10 @@ def test_core_tabs_always_visible():
     # sub-view, never a top-level tab. All verbs are ALWAYS (fail-open), so any configured loadout shows them.
     lo = {"full_stack": False, "configured": True, "firmwares": ["meshtastic"], "hardware": []}
     vis = L.visible_tabs(lo)
-    for core in ("RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
+    for core in ("DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
         assert core in vis
     for sub in ("Devices", "Health"):
-        assert sub not in vis  # RIG sub-views now, never top-level
+        assert sub not in vis  # re-homed into the DEVICE Dashboard now, never top-level
 
 
 def test_offline_tools_live_under_always_shown_verbs():
@@ -65,8 +65,8 @@ def test_software_os_is_a_rig_subview():
     # usb_os-gated top-level tab. Per-sub-view gating is a documented follow-up (surface granularity today).
     no_os = {"full_stack": False, "configured": True, "firmwares": ["marauder"], "hardware": ["esp32"]}
     vis = L.visible_tabs(no_os)
-    assert "Software OS" not in vis   # not a top-level tab anymore (it's a RIG sub-view)
-    assert "RIG" in vis              # the surface that holds it is always shown
+    assert "Software OS" not in vis   # not a top-level tab anymore (it's a DEVICE sub-view)
+    assert "DEVICE" in vis           # the surface that holds it is always shown
 
 
 def test_firmware_filtering():

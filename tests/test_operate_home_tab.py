@@ -60,7 +60,7 @@ def win(qapp):
 
 # The top-level verb surfaces that must all survive the P2.5 rewire (parity set). Operate Home is no
 # longer a peer top-level tab — it's the launcher sub-view of OPERATE (asserted separately below).
-_EXPECTED_TABS = {"RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"}
+_EXPECTED_TABS = {"DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"}
 
 
 def test_all_top_level_tabs_survive_the_reconcile(win):

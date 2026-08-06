@@ -44,7 +44,7 @@ ALWAYS = "*"  # a tab that is always shown (core)
 # tools — exactly the functionality-hiding the fail-open rule forbids — so every verb is ALWAYS (per-
 # sub-view loadout gating inside a surface stays the documented follow-up).
 TAB_REQUIREMENTS: "dict[str, object]" = {
-    "RIG": ALWAYS,       # Devices + Health + Nodes + Firmware + Software OS + Mesh
+    "DEVICE": ALWAYS,    # Dashboard (re-homes Devices + Health) + Firmware + Software OS + Mesh
     "HUNT": ALWAYS,      # Wi-Fi + BLE analyzers + Targets + Graph (passive awareness)
     "OPERATE": ALWAYS,   # Home launcher + Control (merged fan-out + console) + Macros
     "CRACK": ALWAYS,     # the offline Crack Lab (no radio needed)
@@ -54,7 +54,7 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
 
 # Canonical tab order (matches main_window._tab_registry / nav_model.visible_nav); re-inserts tabs in order.
 TAB_ORDER = (
-    "RIG", "HUNT", "OPERATE", "CRACK", "MAP", "Settings",
+    "DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Settings",
 )
 
 

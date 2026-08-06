@@ -56,7 +56,7 @@ def win(qapp):
     qapp.processEvents()
 
 
-_SURFACES = {"rig", "hunt", "operate", "crack", "map", "settings"}
+_SURFACES = {"device", "hunt", "operate", "crack", "map", "settings"}
 
 
 def test_app_shell_is_the_splitter_top_widget(win):
@@ -78,7 +78,7 @@ def test_shell_sidebar_has_a_destination_per_surface(win):
 
 def test_shell_nav_selects_the_surface_in_the_tabs(win):
     # selecting a shell destination drives _tabs.setCurrentWidget to that verb surface
-    win._app_shell.select_destination("rig")
+    win._app_shell.select_destination("device")
     assert win._tabs.currentWidget() is win._rig_surface
     win._app_shell.select_destination("hunt")
     assert win._tabs.currentWidget() is win._hunt_surface
@@ -92,7 +92,7 @@ def test_tab_bar_is_hidden_sidebar_is_sole_nav(win):
     # every surface is still reachable via the sidebar (setCurrentWidget drives the hidden tabs).
     win._app_shell.select_destination("map")
     assert win._tabs.currentWidget() is win._map_surface
-    win._app_shell.select_destination("rig")
+    win._app_shell.select_destination("device")
     assert win._tabs.currentWidget() is win._rig_surface
 
 
@@ -126,10 +126,10 @@ def test_shell_sidebar_mirrors_the_visible_tab_set(win):
 def test_shell_sidebar_highlights_the_current_tab(win):
     # Switching via the tab-bar updates the sidebar highlight (currentChanged -> _sync_shell_nav).
     win._tabs.setCurrentWidget(win._rig_surface)
-    assert win._app_shell._destinations["rig"].isChecked()
+    assert win._app_shell._destinations["device"].isChecked()
     win._tabs.setCurrentWidget(win._settings_tab)
     assert win._app_shell._destinations["settings"].isChecked()
-    assert not win._app_shell._destinations["rig"].isChecked()   # only one active
+    assert not win._app_shell._destinations["device"].isChecked()   # only one active
 
 
 def test_device_sidebar_folded_into_the_app_shell(win):
