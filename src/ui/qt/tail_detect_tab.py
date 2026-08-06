@@ -14,7 +14,8 @@ from __future__ import annotations
 import time
 from typing import Any, Optional
 
-from PyQt5.QtCore import QTimer
+from PyQt5.QtCore import Qt, QTimer
+from PyQt5.QtGui import QColor
 from PyQt5.QtWidgets import (
     QAbstractItemView,
     QDoubleSpinBox,
@@ -91,8 +92,22 @@ class TailDetectTab(QWidget):
         self._table.setHorizontalHeaderLabels(["Device", "Label", "Persistence", "Windows"])
         self._table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self._table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        self._table.verticalHeader().setVisible(False)   # drop the gray row-index gutter
+        self._table.setAlternatingRowColors(True)
+        hh = self._table.horizontalHeader()
+        hh.setSectionResizeMode(0, QHeaderView.Stretch)            # Device
+        hh.setSectionResizeMode(1, QHeaderView.Stretch)            # Label
+        hh.setSectionResizeMode(2, QHeaderView.ResizeToContents)   # Persistence
+        hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)   # Windows
         outer.addWidget(self._table, 1)
+        # Reassuring empty-state, drawn over the table viewport so rowCount() stays 0 (an overlay,
+        # never an inserted row). Positioned + toggled in refresh().
+        self._empty_label = QLabel(
+            "Nothing keeps reappearing near you right now.", self._table.viewport())
+        self._empty_label.setWordWrap(True)
+        self._empty_label.setAlignment(Qt.AlignCenter)
+        self._empty_label.setStyleSheet(f"color:{C.TEXT_MUTED};")
+        self._empty_label.hide()
 
         row = QHBoxLayout()
         self._ignore_btn = QPushButton("Mark selected as mine (ignore)")
@@ -123,12 +138,24 @@ class TailDetectTab(QWidget):
         for r, h in enumerate(hits):
             self._table.setItem(r, 0, QTableWidgetItem(h.device))
             self._table.setItem(r, 1, QTableWidgetItem(h.label))
-            self._table.setItem(r, 2, QTableWidgetItem(f"{h.persistence:.2f}"))
-            self._table.setItem(r, 3, QTableWidgetItem(str(h.windows)))
+            pers = QTableWidgetItem(f"{h.persistence:.2f}")
+            pers.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            if h.persistence >= 0.8:       # near-constant presence — the strongest tail signal
+                pers.setForeground(QColor(C.ERROR))
+            elif h.persistence >= 0.5:
+                pers.setForeground(QColor(C.WARNING))
+            self._table.setItem(r, 2, pers)
+            win = QTableWidgetItem(str(h.windows))
+            win.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            self._table.setItem(r, 3, win)
         n = len(hits)
         self._count_label.setText(
             "No devices flagged." if n == 0
             else f"{n} device{'' if n == 1 else 's'} keep reappearing")
+        self._count_label.setStyleSheet(
+            f"color:{C.TEXT_MUTED};" if n == 0 else f"color:{C.WARNING};")
+        self._empty_label.setGeometry(self._table.viewport().rect())
+        self._empty_label.setVisible(n == 0)
 
     def _on_threshold(self, value: float) -> None:
         self._threshold = float(value)

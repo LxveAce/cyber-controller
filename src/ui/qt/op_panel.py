@@ -47,7 +47,7 @@ class OpPanel(QWidget):
         self._stop_cmd = stop_cmd
         self._arg = arg or ""
         self._detail = OperationDetail(
-            title=(getattr(ci, "name", "") or "op"),
+            title=(getattr(ci, "description", "") or op_spec.pretty_label(ci) or "op"),
             modes=op_spec.op_modes(ci),
             help_spec=op_spec.op_help_spec(ci),
         )

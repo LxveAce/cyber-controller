@@ -160,6 +160,8 @@ class OperateConsole(OperateTab):
         # Single-device pane: master (Zone-B hero + command grid) / detail (OpPanel), a QSplitter.
         self._grid_box = QGroupBox("Commands")
         self._grid_layout = QVBoxLayout(self._grid_box)
+        self._grid_layout.setSpacing(4)
+        self._grid_layout.setContentsMargins(6, 6, 6, 6)
         self._op_detail_box = QGroupBox("Selected operation")
         self._op_detail_layout = QVBoxLayout(self._op_detail_box)
         self._op_hint = QLabel("Select a command above to configure and run it.")
@@ -186,8 +188,11 @@ class OperateConsole(OperateTab):
         self._single_pane = QSplitter(Qt.Horizontal)
         self._single_pane.addWidget(left)
         self._single_pane.addWidget(right)
-        self._single_pane.setStretchFactor(0, 1)
-        self._single_pane.setStretchFactor(1, 1)
+        self._single_pane.setStretchFactor(0, 2)   # command side dominates
+        self._single_pane.setStretchFactor(1, 1)   # detail is a slim column that fills on selection
+        self._single_pane.setChildrenCollapsible(False)
+        self._single_pane.setSizes([720, 360])
+        right.setMinimumWidth(320)
 
         self._broadcast_bar = BroadcastBar(self._broadcast_engine, self._dm, self._bus)
         self._bj_panel = BlueJammerPanel(parent=self)   # arm gate independent of arm_state
@@ -221,6 +226,9 @@ class OperateConsole(OperateTab):
 
     def _apply_operate_layout(self, ol: Any) -> None:
         super()._apply_operate_layout(ol)   # base: head stack, log shrink, arm hit-target, cols
+        zb = getattr(self, "_zone_b_strip", None)
+        if zb is not None:   # Zone-B tiles honor the deck's hit-target (28pt pointer / 44pt touch)
+            zb.set_min_target(int(getattr(ol, "hit_edge_pt", 44) or 44))
         self._compact = bool(getattr(ol, "collapse_chrome", False))
         self._telemetry_label.setVisible(not self._compact)
         if self._compact:

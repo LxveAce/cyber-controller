@@ -82,11 +82,15 @@ class QuickActionsStrip(QWidget):
         self.refresh_readiness()
 
     def _make_tile(self, ci: Any) -> QPushButton:
-        from src.core import safety
+        from src.core import op_spec, safety
         danger = safety.classify(getattr(ci, "name", "") or "", ci)
-        btn = QPushButton(getattr(ci, "name", "") or "?")
+        # Human label ("Scan for APs and stations"), not the raw verb; the exact command (ci.name)
+        # leads the tooltip below and stays the only string ever sent.
+        btn = QPushButton(getattr(ci, "description", "") or op_spec.pretty_label(ci) or "?")
         btn.setMinimumHeight(self._min_target)
-        tip = getattr(ci, "description", "") or getattr(ci, "name", "") or ""
+        raw = getattr(ci, "name", "") or ""
+        desc = getattr(ci, "description", "") or ""
+        tip = raw + (f"\n{desc}" if desc else "")
         if getattr(ci, "args", ""):
             tip += f"\nargs: {ci.args}"
         if danger:

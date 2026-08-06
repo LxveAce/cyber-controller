@@ -385,15 +385,19 @@ class OperateTab(QWidget):
         for ci in commands:
             groups.setdefault(getattr(ci, "category", "") or "Other", []).append(ci)
         cols = max(1, self._grid_cols)   # Wave-3 Batch C: size-driven columns (was hard-coded 3)
+        from src.core import op_spec
         for category, cmds in groups.items():
             box = QGroupBox(category)
             grid = QGridLayout(box)
+            grid.setSpacing(6)
             for i, ci in enumerate(cmds):
-                btn = QPushButton(ci.name)
+                # Show the human description ("Scan for APs and stations"), not the raw command; the
+                # exact command (ci.name) still leads the tooltip and is the only string ever sent.
+                btn = QPushButton(ci.description or op_spec.pretty_label(ci))
                 btn.setMinimumHeight(self._hit_edge_pt)   # real touch target (0 until first layout)
                 # The authoritative danger level (same call the send path uses), not the raw catalog field.
                 danger = safety.classify(ci.name, ci)
-                tip = ci.description or ci.name
+                tip = ci.name + (f"\n{ci.description}" if ci.description else "")
                 if getattr(ci, "args", ""):
                     tip += f"\nargs: {ci.args}"
                 if danger:
@@ -414,6 +418,7 @@ class OperateTab(QWidget):
                 # layers on top of the tx/safe enable, never instead of it.
                 if getattr(ci, "stream", False):
                     self._stream_buttons.append(btn)
+            grid.setColumnStretch(cols, 1)   # slack column: buttons take natural width, not full-span
             self._grid_layout.addWidget(box)
 
     def _on_command_selected(self, ci) -> None:

@@ -13,6 +13,7 @@ Nothing here sends or touches a device; it only shapes data. The guarded send (`
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from src.core import safety
@@ -32,6 +33,24 @@ def op_help_spec(ci: Any) -> dict:
         "args": (getattr(ci, "args", "") or "").strip(),
         "danger": safety.classify(name, ci),
     }
+
+
+def pretty_label(ci: Any) -> str:
+    """A human display label for a command that has no ``description`` — a DISPLAY-ONLY fallback.
+    The firmware catalogs populate ``description``, so this mainly serves description-less test
+    stubs. It NEVER feeds :func:`op_command` or the send path; the raw ``name`` stays the sole sent
+    string. Drops ``<...>`` / ``[...]`` placeholder tokens and ``-flag`` args, then title-cases.
+    """
+    name = (getattr(ci, "name", "") or "").strip()
+    if not name:
+        return "?"
+    cleaned = re.sub(r"[<\[][^>\]]*[>\]]", " ", name)      # <mac>, [idx] -> gone
+    cleaned = re.sub(r"(?:^|\s)-\S+", " ", cleaned)         # -t, -b flags -> gone
+    words = [w for w in re.split(r"[\s_-]+", cleaned) if w]
+    if not words:
+        return name
+    text = " ".join(words)
+    return text[:1].upper() + text[1:]
 
 
 def op_modes(ci: Any) -> list[str]:
