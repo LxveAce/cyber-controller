@@ -60,6 +60,16 @@ def test_pumps_host_refreshes(qapp):
     assert dash._dev_timer.interval() == 3000
 
 
+def test_responsive_reflow_for_small_screens(qapp):
+    # CC is universal (cyberdeck 320-480px ... desktop): the 3 columns must stack on a narrow deck.
+    from PyQt5.QtWidgets import QBoxLayout
+    dash, _health, _dev = _make()
+    dash._apply_responsive(1400)
+    assert dash._stacked is False and dash._grid.direction() == QBoxLayout.LeftToRight
+    dash._apply_responsive(400)
+    assert dash._stacked is True and dash._grid.direction() == QBoxLayout.TopToBottom
+
+
 def test_set_ui_mode_forwards_without_raising(qapp):
     dash, _health, _dev = _make()
     dash.set_ui_mode("simple")

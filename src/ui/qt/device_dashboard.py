@@ -27,6 +27,7 @@ from typing import Optional
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
+    QBoxLayout,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -74,6 +75,7 @@ class DeviceDashboard(QWidget):
         self._cross_comm = cross_comm
         self._link_label: "Optional[QLabel]" = None
         self._link_card: "Optional[QFrame]" = None
+        self._stacked: "Optional[bool]" = None   # responsive reflow state (3-col vs stacked)
         self.setStyleSheet(_CARD_QSS)
         self._build_ui()
         # Pump the headless hosts' refreshes (their own show-gated timers never start once re-homed).
@@ -251,6 +253,7 @@ class DeviceDashboard(QWidget):
         grid.addWidget(right, 4)      # slimmer right column (mockup 1fr)
         left.setMinimumWidth(232)
         left.setMaximumWidth(300)
+        self._grid, self._left = grid, left   # kept for the responsive reflow (resizeEvent)
         gh_v.addWidget(cols_row)
         # Device Health goes full-width below the columns — a 5-col table is unreadable crammed into the
         # 232px left column (owner: "device health is unreadable"). Usability over mockup-exact placement.
@@ -385,6 +388,30 @@ class DeviceDashboard(QWidget):
         super().hideEvent(ev)
         self._health_timer.stop()
         self._dev_timer.stop()
+
+    def resizeEvent(self, ev) -> None:  # noqa: N802 (Qt override)
+        super().resizeEvent(ev)
+        self._apply_responsive(ev.size().width())
+
+    def _apply_responsive(self, width: int) -> None:
+        """Reflow for many screen sizes (CC is universal: cyberdeck 320-480px · tablet · desktop · 4K).
+        Below ~900px the 3 columns stack into one so a narrow deck stays usable (scroll handles height);
+        at desktop width they sit side-by-side. Only flips on crossing the breakpoint (no per-pixel churn)."""
+        grid = getattr(self, "_grid", None)
+        if grid is None:
+            return
+        stacked = width < 900
+        if stacked == self._stacked:
+            return
+        self._stacked = stacked
+        grid.setDirection(QBoxLayout.TopToBottom if stacked else QBoxLayout.LeftToRight)
+        if stacked:
+            for i in range(grid.count()):
+                grid.setStretch(i, 0)          # each column sizes to content when stacked
+            self._left.setMaximumWidth(16777215)
+        else:
+            grid.setStretch(0, 0); grid.setStretch(1, 5); grid.setStretch(2, 4)
+            self._left.setMaximumWidth(300)
 
     def set_ui_mode(self, mode: str) -> None:
         """Forward the Simple/Pro depth toggle to the composed hosts — each hides its own Pro widgets
