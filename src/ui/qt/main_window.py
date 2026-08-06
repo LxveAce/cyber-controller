@@ -517,6 +517,10 @@ class CyberControllerWindow(QMainWindow):
         # pre-filtered to the typed text (top match selected); the operator confirms with Enter, so
         # nothing runs straight off a keystroke (some commands are consequential).
         self._app_shell.omnibar_submitted.connect(self._on_omnibar_submitted)
+        # Reform chrome (Atlas): the top-bar Simple/Pro segment drives the same depth toggle as the
+        # View menu, and the ⤢ pop-out icon detaches the current tab (mirrors Ctrl+Shift+D).
+        self._app_shell.depth_changed.connect(lambda m: self.set_ui_mode(m))
+        self._app_shell.detach_requested.connect(lambda: self._tabs.detach_current())
         # Slice E: keep the Operate Home landing summary live. Target/capture counts refresh on
         # their bus events (like the shell badges); the device count refreshes with the sidebar.
         for _evt in ("target.added", "target.updated", "target.removed", "target.cleared",
@@ -769,10 +773,19 @@ class CyberControllerWindow(QMainWindow):
             self._app_shell.add_destination(_key, _label)
         self._app_shell.destination_selected.connect(self._on_shell_nav)
         self._app_shell_binder = PageLayoutBinder(self._app_shell, self._hub)
-        # Slice B: fold the device panel into the one shell sidebar (below the nav destinations).
-        self._app_shell.add_sidebar_widget(self._device_sidebar)
+        # Reform chrome (Atlas): the rail is nav-only now — the DEVICE Dashboard owns the device list,
+        # connect/scan and firmware controls, so the old device panel is no longer folded into the rail
+        # (that made the 196px rail cluttered vs the approved mockup). Kept alive + parented but hidden
+        # so its refresh timer / selection signals never touch an orphan top-level window.
+        self._device_sidebar.setParent(self._app_shell)
+        self._device_sidebar.hide()
         # Keep the sidebar in step with the tab strip (mode/loadout hides some surfaces).
         self._tabs.currentChanged.connect(self._sync_shell_nav)
+        # Reform chrome (Atlas): mirror the active sub-tab into the top-bar breadcrumb leaf, so an
+        # inner sub-tab switch shows e.g. "DEVICE ▸ Firmware" (not just the verb).
+        for _surface in self._verb_surfaces.values():
+            if isinstance(_surface, QTabWidget):
+                _surface.currentChanged.connect(self._sync_shell_crumb_leaf)
         self._sync_shell_nav()
         # Wave-10 Phase C (slice C): the app-shell sidebar is now the SOLE nav, so hide the flat tab
         # strip — the veneer's last piece. The tabs still exist (setCurrentWidget drives them
@@ -924,6 +937,19 @@ class CyberControllerWindow(QMainWindow):
                 cur_key = key
         if cur_key is not None:
             shell.highlight_destination(cur_key)
+            self._sync_shell_crumb_leaf()
+
+    def _sync_shell_crumb_leaf(self, *_args) -> None:
+        """Set the top-bar breadcrumb leaf to the active surface's current sub-tab (e.g.
+        DEVICE ▸ Dashboard), so the crumb mirrors the mockup. A plain surface (no sub-tabs) clears it."""
+        shell = getattr(self, "_app_shell", None)
+        if shell is None or not hasattr(shell, "set_breadcrumb_leaf"):
+            return
+        cur = self._tabs.currentWidget()
+        leaf = ""
+        if isinstance(cur, QTabWidget) and cur.count() > 0:
+            leaf = cur.tabText(cur.currentIndex())
+        shell.set_breadcrumb_leaf(leaf)
 
     # ── Loadout (which firmwares/hardware → which tabs are shown) ─────
     def _show_subtab(self, surface, widget) -> None:
@@ -1152,6 +1178,9 @@ class CyberControllerWindow(QMainWindow):
         if hasattr(self, "_act_mode_simple"):
             self._act_mode_simple.setChecked(mode == "simple")
             self._act_mode_pro.setChecked(mode == "pro")
+        shell = getattr(self, "_app_shell", None)
+        if shell is not None and hasattr(shell, "set_depth"):
+            shell.set_depth(mode)   # keep the top-bar Simple/Pro segment in step (no re-emit)
         if hasattr(self, "_mode_badge"):
             label = "Simple" if mode == "simple" else "Pro"
             color = "#f0883e" if mode == "simple" else "#a371f7"

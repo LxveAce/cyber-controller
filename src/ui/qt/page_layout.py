@@ -1,14 +1,16 @@
 """Shared PageLayout frame — the one shell every screen inherits (GUI rebuild, Wave-10 Phase B1).
 
 The design brief's single biggest anti-template move: every view is structurally identical, only the
-content differs. This frame provides that structure = a collapsible LEFT icon sidebar (destinations
-carrying live count-badge slots) + a persistent TOP status bar (device-truth slots: link / battery /
-SD / GPS / task / ARMED) + a header POSTURE toggle (Recon-Defense <-> gated Offense) + an OMNIBAR
-slot (command input fused with fuzzy search) + a central content area.
+content differs. This frame provides that structure = a LEFT nav rail (verb destinations at top,
+Settings pinned bottom, each carrying a live count-badge slot) + a persistent TOP bar (brand ·
+breadcrumb · live device-truth · a prominent SAFE/ARMED lamp · a Simple/Pro depth segment · pop-out
+and settings icons) + a central content area.
 
-This is the reusable frame COMPONENT only: additive, standalone, no main_window coupling. Wiring
-the badges/status/posture to the hub is Phase B2/B3; re-parenting the app in is Phase C. Signals
-let a host observe navigation, posture, and omnibar input without this frame knowing the app.
+Reform pass (2026-08-06): the rendering now matches the owner-approved reform mockup — brand mark +
+title, a self-updating breadcrumb, the ``● SAFE`` state lamp, the Pro/Simple segmented control, and
+``⤢``/``⚙`` icon buttons — while EVERY public method and signal the app (main_window) and the
+PageLayoutBinder call is preserved unchanged, so the shell wiring keeps working. Signals let a host
+observe navigation, posture, depth and omnibar input without this frame knowing the app.
 """
 from __future__ import annotations
 
@@ -32,15 +34,41 @@ from src.ui.qt.theme import colors as C
 # a theme without semantic success/warn/error names still renders; info falls back to muted text.
 _TOAST_COLORS = {"success": "#3fb950", "warning": "#d29922", "error": "#f85149"}
 
+# Mockup chrome literals (GitHub-Primer): the rail/topbar sit on the deepest surface, a step below
+# the canvas, so the content reads as raised. Kept literal to match the approved mockup exactly.
+_RAIL_BG = "#010409"
+_RAIL_BD = "#21262d"
+_TX2 = "#f0f6fc"
+
+# Rail glyphs by destination key — the mockup's per-verb marks. main_window adds destinations by key
+# without an icon, so the frame supplies the glyph itself (a leading substring match keeps it robust
+# to exact labels: "software-os" etc. never collide with a verb key).
+_NAV_GLYPHS = {
+    "device": "◫", "rig": "◫", "hunt": "◎", "operate": "⌘", "crack": "⚷",
+    "map": "⌖", "terminal": "❯", "settings": "⚙",
+}
+# Destinations pinned to the BOTTOM of the rail (below the grow spacer), like the mockup.
+_BOTTOM_KEYS = {"terminal", "settings"}
+
+
+def _glyph_for(key: str, fallback: str = "•") -> str:
+    k = (key or "").lower()
+    if k in _NAV_GLYPHS:
+        return _NAV_GLYPHS[k]
+    for name, g in _NAV_GLYPHS.items():
+        if k.startswith(name):
+            return g
+    return fallback
+
 
 class _Destination(QPushButton):
-    """One sidebar destination: a checkable button carrying an optional count badge."""
+    """One nav-rail destination: a checkable button (glyph + label + optional count badge)."""
 
     def __init__(self, key: str, label: str, icon_text: str = "") -> None:
         super().__init__()
         self.key = key
         self._label = label
-        self._icon = icon_text
+        self._icon = icon_text or _glyph_for(key)
         self._count = 0
         self._mode = "sidebar"
         self.setCheckable(True)
@@ -48,20 +76,23 @@ class _Destination(QPushButton):
         self._render("sidebar")
 
     def _style(self, align: str) -> str:
+        # .navitem: rounded row, 3px left rule that lights to the accent when active; the active row
+        # sits on the card surface so it reads as "you are here".
         return (
-            f"QPushButton{{text-align:{align}; padding:6px 10px; border:none; color:{C.TEXT_MUTED};"
-            f" background:transparent;}}"
-            f"QPushButton:checked{{color:{C.TEXT_PRIMARY}; background:{C.BG_CARD};"
-            f" border-left:2px solid {C.ACCENT};}}"
-            f"QPushButton:hover{{color:{C.TEXT_PRIMARY};}}")
+            f"QPushButton{{text-align:{align}; padding:9px 10px; border:none; border-radius:8px;"
+            f" border-left:3px solid transparent; color:{C.TEXT_MUTED}; background:transparent;"
+            f" font-weight:600; letter-spacing:0.3px; font-size:12px;}}"
+            f"QPushButton:hover{{color:{_TX2}; background:{C.BG_DEEP};}}"
+            f"QPushButton:checked{{color:{_TX2}; background:{C.BG_SURFACE};"
+            f" border-left:3px solid {C.ACCENT};}}")
 
     def set_count(self, count: int) -> None:
         self._count = max(0, int(count))
         self._render(self._mode)
 
     def _render(self, mode: str) -> None:
-        """Render for one nav mode: 'sidebar' = icon + label inline; 'rail' = icon OVER a tiny label
-        (a legible ~64px touch cell for the deck — replaces the old icon-only 44px collapse)."""
+        """Render for one nav mode: 'sidebar' = glyph + label inline; 'rail' = glyph OVER a tiny label
+        (a legible ~64px touch cell for the deck)."""
         self._mode = mode
         badge = f"  ({self._count})" if self._count > 0 else ""
         icon = self._icon or "•"
@@ -70,23 +101,26 @@ class _Destination(QPushButton):
             self.setToolTip(f"{self._label}{badge}")
             self.setStyleSheet(self._style("center"))
         else:  # sidebar
-            self.setText(f"{icon}  {self._label}{badge}")
+            self.setText(f"{icon}   {self._label}{badge}")
             self.setToolTip("")
             self.setStyleSheet(self._style("left"))
 
 
 class PageLayout(QWidget):
-    """The shared shell frame: sidebar + status bar + posture toggle + omnibar + content."""
+    """The shared shell frame: nav rail + top bar (brand/crumb/lamp/depth/icons) + content."""
 
-    destination_selected = pyqtSignal(str)  # a sidebar destination key was chosen
+    destination_selected = pyqtSignal(str)  # a nav destination key was chosen
     posture_changed = pyqtSignal(str)       # display posture changed (host-driven) -> new value
     omnibar_submitted = pyqtSignal(str)     # the operator entered a command / search
+    depth_changed = pyqtSignal(str)         # Simple/Pro segmented control -> "simple" | "pro"
+    detach_requested = pyqtSignal()         # the ⤢ pop-out icon was clicked
 
     def __init__(self, parent: "Optional[QWidget]" = None) -> None:
         super().__init__(parent)
         self._destinations: dict[str, _Destination] = {}
         self._status: dict[str, QLabel] = {}
         self._posture = POSTURE_RECON
+        self._depth = "pro"
         self._collapsed = False
         self._nav_mode = "sidebar"   # "sidebar" | "rail" | "bottombar" (Spade v2 nav-chrome)
         self._content: Optional[QWidget] = None
@@ -120,69 +154,183 @@ class PageLayout(QWidget):
         body.addWidget(holder, 1)
         outer.addLayout(body, 1)
 
-    # ── status bar (top) ─────────────────────────────────────────────
+    # ── top bar ──────────────────────────────────────────────────────
     def _build_status_bar(self) -> QWidget:
         bar = QFrame()
         bar.setObjectName("page_status_bar")
+        bar.setFixedHeight(44)
         bar.setStyleSheet(
-            f"#page_status_bar{{background:{C.BG_SURFACE}; border-bottom:1px solid {C.BORDER};}}")
+            f"#page_status_bar{{background:{_RAIL_BG}; border-bottom:1px solid {_RAIL_BD};}}")
         h = QHBoxLayout(bar)
-        h.setContentsMargins(8, 4, 8, 4)
-        # collapse toggle for the sidebar
-        self._collapse_btn = QPushButton("≡")  # ≡
+        h.setContentsMargins(14, 0, 12, 0)
+        h.setSpacing(12)
+
+        # Manual sidebar-collapse control kept for the API/tests + toggle_sidebar(), but hidden: the
+        # responsive driver (main_window) folds the rail automatically, so the mockup shows no toggle.
+        self._collapse_btn = QPushButton("≡")
         self._collapse_btn.setFixedWidth(28)
         self._collapse_btn.setCursor(Qt.PointingHandCursor)
         self._collapse_btn.clicked.connect(self.toggle_sidebar)
+        self._collapse_btn.setVisible(False)
         h.addWidget(self._collapse_btn)
-        # posture indicator (display-only: a plain chip mirroring the global recon/offense state).
-        # It gates nothing; the real floor is safety.classify + the OPERATE two-factor arm. It was
-        # a checkable "escalate to Offense" toggle whose click emitted an auth request that
-        # production ALWAYS denied (no authorizer wired), so it armed nothing while implying a
-        # safety boundary that doesn't exist. Spade v2 (D3/D4) makes it an honest label.
+
+        # brand: gradient ◈ mark + product name
+        mark = QLabel("◈")
+        mark.setFixedSize(22, 22)
+        mark.setAlignment(Qt.AlignCenter)
+        mark.setStyleSheet(
+            "QLabel{background:qlineargradient(x1:0,y1:0,x2:1,y2:1,"
+            f"stop:0 {C.ACCENT}, stop:1 {C.ACCENT_DIM}); color:#fff; border-radius:6px; font-size:12px;}}")
+        h.addWidget(mark)
+        brand = QLabel("Cyber Controller")
+        brand.setStyleSheet(f"color:{_TX2}; font-weight:650; letter-spacing:0.2px;")
+        h.addWidget(brand)
+
+        # breadcrumb (self-updates on navigation; a host may add the leaf via set_breadcrumb)
+        self._crumb = QLabel()
+        self._crumb.setTextFormat(Qt.RichText)
+        self._crumb.setStyleSheet(f"color:{C.TEXT_MUTED}; font-size:12px;")
+        self.set_breadcrumb("DEVICE", "Dashboard")
+        h.addWidget(self._crumb)
+
+        h.addStretch(1)
+
+        # posture indicator (display-only, gates nothing) — kept for API/binder but hidden: the reform
+        # top bar shows the SAFE/ARMED lamp instead. set_posture still tracks + emits for the binder.
         self._posture_lbl = QLabel()
         self._render_posture()
+        self._posture_lbl.setVisible(False)
         h.addWidget(self._posture_lbl)
-        # device-truth status fields (slots; wired in B2)
+
+        # device-truth status fields (slots; wired by the binder). 'armed' drives the lamp, so its own
+        # label is parented+hidden (its text is still kept in sync as truth), while 'link' etc. render
+        # inline, muted, before the lamp.
         for key in ("link", "battery", "sd", "gps", "task", "armed"):
             lbl = QLabel("")
-            lbl.setStyleSheet(f"color:{C.TEXT_MUTED}; padding:0 6px;")
+            lbl.setStyleSheet(f"color:{C.TEXT_MUTED}; padding:0 6px; font-size:11.5px;")
             lbl.setVisible(False)
             self._status[key] = lbl
-            h.addWidget(lbl)
+            if key == "armed":
+                lbl.setParent(bar)   # kept as truth (tests read its text) but never shown; lamp is visual
+            else:
+                h.addWidget(lbl)
+
         # transient-toast slot (separate from the persistent device-truth slots above) — see toast()
         self._toast_label = QLabel("")
         self._toast_label.setVisible(False)
         h.addWidget(self._toast_label)
-        h.addStretch(1)
-        self._status_bar_layout = h   # host widgets (add_status_widget) insert before the omnibar
-        # omnibar (command + fuzzy search fused)
+
+        # the SAFE / ARMED state lamp (the mockup's prominent pill)
+        self._safe_lamp = QLabel()
+        self._render_safe_lamp("")
+        h.addWidget(self._safe_lamp)
+
+        # Simple / Pro depth segmented control
+        h.addWidget(self._build_depth_segment())
+
+        # pop-out (detach) + settings icon buttons
+        self._btn_detach = self._icon_button("⤢", "Pop out the current view into its own window")
+        self._btn_detach.clicked.connect(self.detach_requested.emit)
+        h.addWidget(self._btn_detach)
+        self._btn_settings = self._icon_button("⚙", "Settings")
+        self._btn_settings.clicked.connect(lambda: self.select_destination("settings"))
+        h.addWidget(self._btn_settings)
+
+        self._status_bar_layout = h   # host widgets (add_status_widget) insert before the icons
+
+        # omnibar (command + fuzzy search) — kept + wired (returnPressed) for the API, but hidden to
+        # match the mockup's clean bar; the command palette stays reachable via Ctrl+Shift+P.
         self._omnibar = QLineEdit()
         self._omnibar.setPlaceholderText("Command or search…")
         self._omnibar.setFixedWidth(240)
-        self._omnibar.setStyleSheet(
-            f"background:{C.BG_INPUT}; color:{C.TEXT_PRIMARY}; border:1px solid {C.BORDER};"
-            f" border-radius:4px; padding:3px 6px;")
         self._omnibar.returnPressed.connect(self._on_omnibar)
+        self._omnibar.setVisible(False)
         h.addWidget(self._omnibar)
         return bar
 
-    # ── sidebar (left) ───────────────────────────────────────────────
+    def _icon_button(self, glyph: str, tip: str) -> QPushButton:
+        btn = QPushButton(glyph)
+        btn.setFixedSize(28, 28)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setToolTip(tip)
+        btn.setStyleSheet(
+            f"QPushButton{{border:1px solid {C.BORDER}; border-radius:7px; background:transparent;"
+            f" color:{C.TEXT_MUTED}; font-size:14px;}}"
+            f"QPushButton:hover{{color:{_TX2}; border-color:{C.TEXT_DIM};}}")
+        return btn
+
+    def _build_depth_segment(self) -> QWidget:
+        seg = QFrame()
+        seg.setObjectName("depth_seg")
+        seg.setStyleSheet(f"#depth_seg{{border:1px solid {C.BORDER}; border-radius:7px;}}")
+        row = QHBoxLayout(seg)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(0)
+        self._depth_btns: dict[str, QPushButton] = {}
+        for mode, text in (("pro", "Pro"), ("simple", "Simple")):
+            b = QPushButton(text)
+            b.setCheckable(True)
+            b.setCursor(Qt.PointingHandCursor)
+            b.clicked.connect(lambda _c=False, m=mode: self._on_depth_clicked(m))
+            self._depth_btns[mode] = b
+            row.addWidget(b)
+        self._render_depth()
+        return seg
+
+    def _render_depth(self) -> None:
+        for mode, b in self._depth_btns.items():
+            on = mode == self._depth
+            b.setChecked(on)
+            if on:
+                b.setStyleSheet(f"QPushButton{{background:{C.ACCENT}; color:#fff; border:0;"
+                                f" padding:4px 11px; font-weight:600; font-size:11.5px;}}")
+            else:
+                b.setStyleSheet(f"QPushButton{{background:transparent; color:{C.TEXT_MUTED}; border:0;"
+                                f" padding:4px 11px; font-size:11.5px;}}")
+
+    def _on_depth_clicked(self, mode: str) -> None:
+        if mode == self._depth:
+            return
+        self._depth = mode
+        self._render_depth()
+        self.depth_changed.emit(mode)
+
+    def set_depth(self, mode: str) -> None:
+        """Reflect the current Simple/Pro depth in the segment WITHOUT emitting (host-driven sync, e.g.
+        the View menu changed the mode)."""
+        mode = "simple" if str(mode).lower().startswith("s") else "pro"
+        if mode == self._depth:
+            return
+        self._depth = mode
+        self._render_depth()
+
+    # ── nav rail (left) ──────────────────────────────────────────────
     def _build_sidebar(self) -> QWidget:
         self._sidebar = QFrame()
         self._sidebar.setObjectName("page_sidebar")
         self._sidebar.setStyleSheet(
-            f"#page_sidebar{{background:{C.BG_SURFACE}; border-right:1px solid {C.BORDER};}}")
+            f"#page_sidebar{{background:{_RAIL_BG}; border-right:1px solid {_RAIL_BD};}}")
         self._sidebar.setMinimumWidth(160)
         self._sidebar.setMaximumWidth(220)
         self._sidebar_layout = QVBoxLayout(self._sidebar)
-        self._sidebar_layout.setContentsMargins(0, 4, 0, 4)
-        self._sidebar_layout.setSpacing(1)
+        self._sidebar_layout.setContentsMargins(8, 8, 8, 6)
+        self._sidebar_layout.setSpacing(2)
+        # top verbs, a grow spacer, then bottom-pinned destinations (Terminal/Settings) + a hint.
+        self._nav_top = QVBoxLayout()
+        self._nav_top.setContentsMargins(0, 0, 0, 0)
+        self._nav_top.setSpacing(2)
+        self._nav_bottom = QVBoxLayout()
+        self._nav_bottom.setContentsMargins(0, 0, 0, 0)
+        self._nav_bottom.setSpacing(2)
+        self._sidebar_layout.addLayout(self._nav_top)
         self._sidebar_layout.addStretch(1)
+        self._sidebar_layout.addLayout(self._nav_bottom)
         return self._sidebar
 
     # ── public API ───────────────────────────────────────────────────
     def add_destination(self, key: str, label: str, icon_text: str = "") -> None:
-        """Add a sidebar destination. Selecting it emits ``destination_selected(key)``."""
+        """Add a nav destination. Selecting it emits ``destination_selected(key)``. Terminal/Settings
+        pin to the bottom of the rail (below the grow spacer); every other verb sits at the top."""
         if key in self._destinations:
             return
         dest = _Destination(key, label, icon_text)
@@ -190,8 +338,8 @@ class PageLayout(QWidget):
             dest._render("rail")
         dest.clicked.connect(lambda _checked=False, k=key: self.select_destination(k))
         self._destinations[key] = dest
-        # insert above the trailing stretch
-        self._sidebar_layout.insertWidget(self._sidebar_layout.count() - 1, dest)
+        target = self._nav_bottom if key.lower() in _BOTTOM_KEYS else self._nav_top
+        target.addWidget(dest)
 
     def select_destination(self, key: str) -> None:
         """Select *key* (checks its button, unchecks the rest) and emit the signal."""
@@ -199,6 +347,7 @@ class PageLayout(QWidget):
             return
         for k, d in self._destinations.items():
             d.setChecked(k == key)
+        self._sync_crumb(key)
         self.destination_selected.emit(key)
 
     def highlight_destination(self, key: str) -> None:
@@ -208,6 +357,7 @@ class PageLayout(QWidget):
             return
         for k, d in self._destinations.items():
             d.setChecked(k == key)
+        self._sync_crumb(key)
 
     def set_destination_visible(self, key: str, visible: bool) -> None:
         """Show/hide a destination — so a nav rail can mirror which surfaces are available."""
@@ -216,9 +366,10 @@ class PageLayout(QWidget):
             dest.setVisible(visible)
 
     def add_sidebar_widget(self, widget: QWidget) -> None:
-        """Add an arbitrary widget to the sidebar below the destinations (e.g. a device/context
-        panel folded into the one shell sidebar). Inserted above the trailing stretch."""
-        self._sidebar_layout.insertWidget(self._sidebar_layout.count() - 1, widget)
+        """Add an arbitrary widget to the rail, above the bottom-pinned destinations. (The reform rail
+        is nav-only; the app no longer folds the device panel in here — the DEVICE Dashboard owns it —
+        but the hook is preserved so an existing caller never breaks.)"""
+        self._nav_top.addWidget(widget)
 
     def set_badge(self, key: str, count: int) -> None:
         """Set a destination's live count badge (hidden at 0)."""
@@ -258,13 +409,18 @@ class PageLayout(QWidget):
         self.setStyleSheet(min_target_qss(min_target_pt))
 
     def set_status(self, key: str, text: str, color: "Optional[str]" = None) -> None:
-        """Set a top-bar device-truth field (link/battery/sd/gps/task/armed). Empty hides it."""
+        """Set a top-bar device-truth field (link/battery/sd/gps/task/armed). Empty hides it. The
+        'armed' field drives the SAFE/ARMED lamp (ARMED/ARMING => red/amber lamp; empty => SAFE)."""
+        if key == "armed":
+            self._status["armed"].setText(text)   # keep the hidden truth label in sync
+            self._render_safe_lamp(text)
+            return
         lbl = self._status.get(key)
         if lbl is None:
             return
         lbl.setText(text)
         lbl.setVisible(bool(text))
-        lbl.setStyleSheet(f"color:{color or C.TEXT_MUTED}; padding:0 6px;")
+        lbl.setStyleSheet(f"color:{color or C.TEXT_MUTED}; padding:0 6px; font-size:11.5px;")
 
     def toast(self, message: str, level: str = "info", timeout: int = 4000) -> None:
         """Show a TRANSIENT status message in the one shell bar, auto-clearing after *timeout* ms.
@@ -287,9 +443,30 @@ class PageLayout(QWidget):
         self._toast_label.setVisible(False)
 
     def add_status_widget(self, widget: QWidget) -> None:
-        """Add a host widget to the top status bar (right side, before the omnibar) — so chrome that
+        """Add a host widget to the top status bar (before the SAFE lamp + icons) — so chrome that
         used to live on a second bottom status bar folds into this one shell bar."""
-        self._status_bar_layout.insertWidget(self._status_bar_layout.count() - 1, widget)
+        # Insert just before the SAFE lamp (kept near the end): find the lamp's index, insert ahead.
+        idx = self._status_bar_layout.indexOf(self._safe_lamp)
+        if idx < 0:
+            idx = self._status_bar_layout.count()
+        self._status_bar_layout.insertWidget(idx, widget)
+
+    def set_breadcrumb(self, verb: str, leaf: str = "") -> None:
+        """Set the top-bar breadcrumb: ``VERB ▸ Leaf`` (the verb bolded, the leaf muted)."""
+        verb = (verb or "").strip()
+        leaf = (leaf or "").strip()
+        self._crumb_verb = verb
+        self._crumb.setText(f"<b style='color:{C.TEXT_PRIMARY}'>{verb}</b>"
+                            + (f" ▸ {leaf}" if leaf else ""))
+
+    def set_breadcrumb_leaf(self, leaf: str) -> None:
+        """Update just the leaf, keeping the current verb (a host wires this to the active sub-tab)."""
+        self.set_breadcrumb(getattr(self, "_crumb_verb", ""), leaf)
+
+    def _sync_crumb(self, key: str) -> None:
+        dest = self._destinations.get(key)
+        if dest is not None:
+            self.set_breadcrumb(dest._label, "")
 
     def set_nav_mode(self, mode: str) -> None:
         """Render the surface nav three ways: the full labeled 'sidebar', a 64px icon-over-label
@@ -318,7 +495,7 @@ class PageLayout(QWidget):
         self.set_nav_mode("rail" if collapsed else "sidebar")
 
     def toggle_sidebar(self) -> None:
-        """Manual ≡ toggle between the full sidebar and the icon rail."""
+        """Manual toggle between the full sidebar and the icon rail."""
         self.set_nav_mode("sidebar" if self._nav_mode != "sidebar" else "rail")
 
     @property
@@ -342,6 +519,22 @@ class PageLayout(QWidget):
         return self._nav_mode
 
     # ── internals ────────────────────────────────────────────────────
+    def _render_safe_lamp(self, armed_text: str) -> None:
+        """Render the top-bar state lamp from the 'armed' device-truth: empty => SAFE (green), ARMED
+        => red, anything else (ARMING/pending) => amber. The lamp is display truth; the real send-path
+        floor is safety.classify + the OPERATE two-factor arm."""
+        t = (armed_text or "").strip().upper()
+        if t.startswith("ARMED"):
+            label, col, bg, bd = "ARMED", C.ERROR, "#2b1416", "#8b2c26"
+        elif t:  # ARMING / pending / any non-empty non-armed state
+            label, col, bg, bd = t, C.ALERT, "#241c07", "#8a6100"
+        else:
+            label, col, bg, bd = "SAFE", C.SUCCESS, "#0f2417", "#238636"
+        self._safe_lamp.setText(f"●  {label}")
+        self._safe_lamp.setStyleSheet(
+            f"QLabel{{color:{col}; border:1px solid {bd}; border-radius:20px; background:{bg};"
+            f" padding:3px 11px; font-weight:650; font-size:11.5px; letter-spacing:0.4px;}}")
+
     def _render_posture(self) -> None:
         offense = self._posture == POSTURE_OFFENSE
         self._posture_lbl.setText("Offense" if offense else "Recon / Defense")
