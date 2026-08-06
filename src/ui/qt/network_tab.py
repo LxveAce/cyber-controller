@@ -294,6 +294,8 @@ class NetworkTab(QWidget):
         self._scene = QGraphicsScene(self)
         self._view = _GraphView(self._scene)
         root.addWidget(self._view, 1)
+        from src.ui.qt import primer
+        primer.apply_primer(self)   # mockup formula: .field controls / .btn buttons (graph canvas untouched)
 
         # Simple-mode stand-in for the (advanced, send-capable) graph. Hidden in Pro.
         self._simple_notice = QLabel(

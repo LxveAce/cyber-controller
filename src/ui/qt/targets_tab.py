@@ -168,6 +168,8 @@ class TargetsTab(QWidget):
         self._timer.setInterval(3000)
         self._timer.timeout.connect(self._refresh)
         # Safety-net poll (the bus/showEvent do the live work) — runs only while visible (show/hideEvent).
+        from src.ui.qt import primer
+        primer.apply_primer(self)   # mockup formula: tight targets table / .field inputs / .btn buttons
 
     # ── Layout ───────────────────────────────────────────────────────
 

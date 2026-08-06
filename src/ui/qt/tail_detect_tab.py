@@ -100,6 +100,8 @@ class TailDetectTab(QWidget):
         hh.setSectionResizeMode(2, QHeaderView.ResizeToContents)   # Persistence
         hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)   # Windows
         outer.addWidget(self._table, 1)
+        from src.ui.qt import primer
+        primer.apply_primer(self)   # mockup formula: tight detections table / .btn buttons
         # Reassuring empty-state, drawn over the table viewport so rowCount() stays 0 (an overlay,
         # never an inserted row). Positioned + toggled in refresh().
         self._empty_label = QLabel(

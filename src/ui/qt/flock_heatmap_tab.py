@@ -699,6 +699,8 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 "border-radius:4px;padding:5px 8px;font-weight:600;")
             root.addWidget(self._wip_banner)
             self._last_flock_size: "Optional[str]" = None   # Wave-3: size class (debounce)
+            from src.ui.qt import primer
+            primer.apply_primer(self)   # mockup formula: control-row .field/.btn (map canvas untouched)
             _note = QLabel(
                 "Cameras appear from a live scan or a loaded cameras.geojson, on a real street "
                 "basemap. The map stays offline by default; turn on “Online tiles” once, with "

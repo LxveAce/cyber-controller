@@ -48,6 +48,8 @@ class NodesTab(QWidget):
         self._ctrl = controller
         self._last_nodes_size: "Optional[str]" = None   # Wave-3 Batch C: last size class (debounce)
         self._build_ui()
+        from src.ui.qt import primer
+        primer.apply_primer(self)   # mockup formula: tight node table / .field inputs / .btn buttons
         self._refresh()
         self._timer = QTimer(self)
         self._timer.setInterval(2000)
