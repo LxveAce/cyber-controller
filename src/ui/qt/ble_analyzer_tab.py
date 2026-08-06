@@ -319,6 +319,8 @@ try:
             self._timer = QTimer(self)
             self._timer.setInterval(1000)
             self._timer.timeout.connect(self._refresh)
+            from src.ui.qt import primer
+            primer.apply_primer(self)   # mockup formula: tight device table / .btn buttons
             self._relayout_ble(force=True)   # seed the stat-grid column count
 
         # ── lifecycle: the 1s refresh runs only while the tab is visible ──
