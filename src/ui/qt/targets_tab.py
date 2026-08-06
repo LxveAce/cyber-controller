@@ -182,7 +182,13 @@ class TargetsTab(QWidget):
         scroll.setFrameShape(QScrollArea.NoFrame)
 
         container = QWidget()
-        root = QVBoxLayout(container)
+        # Reform: match the mockup — the whole Targets view is ONE card ("Targets — shared pool"). Make
+        # the card's body layout the build root, so the filter / toolbar / table all land inside the card.
+        _croot = QVBoxLayout(container)
+        _croot.setContentsMargins(14, 12, 14, 12)
+        from src.ui.qt.flash_tab import _make_card
+        _card, root = _make_card("Targets — shared pool")
+        _croot.addWidget(_card, 1)
 
         # Search / filter bar
         self._search_input = QLineEdit()
