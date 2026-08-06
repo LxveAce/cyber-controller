@@ -35,6 +35,7 @@ from PyQt5.QtWidgets import (
     QLabel,
     QPushButton,
     QScrollArea,
+    QStyledItemDelegate,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -66,6 +67,15 @@ def _add(layout, widget) -> None:
     """Re-home *widget* into *layout* (skip if it doesn't exist)."""
     if widget is not None:
         layout.addWidget(widget)
+
+
+class _RightAlignDelegate(QStyledItemDelegate):
+    """Right-align a column's cells at the delegate level, so the alignment survives the host's
+    per-poll repopulation (setItem rebuilds the items each refresh, dropping any per-item alignment)."""
+
+    def initStyleOption(self, option, index) -> None:  # noqa: N802 (Qt override)
+        super().initStyleOption(option, index)
+        option.displayAlignment = Qt.AlignRight | Qt.AlignVCenter
 
 
 class DeviceDashboard(QWidget):
@@ -308,6 +318,7 @@ class DeviceDashboard(QWidget):
         dev_health = getattr(ht, "_dev_card", None)
         if dev_health is not None:
             gh_v.addWidget(dev_health)
+            self._style_device_health()
         gh_v.addStretch(1)
         scroll.setWidget(grid_host)
         outer.addWidget(scroll, 1)
@@ -382,6 +393,28 @@ class DeviceDashboard(QWidget):
         clear_btn = getattr(self, "_xc_clear", None)
         if clear_btn is not None:
             clear_btn.setEnabled(pool is not None and hasattr(pool, "clear"))
+
+    def _style_device_health(self) -> None:
+        """Style the re-homed Device Health table for readability WITHOUT editing health_tab: per-column
+        sizing (Firmware absorbs the slack; Port/Uptime/Signal/Last-Seen size to content), compact rows,
+        and right-aligned Uptime + Signal via a delegate (survives the host's per-poll repopulation,
+        which rebuilds the items and would drop any per-item alignment)."""
+        tbl = getattr(self._health_tab, "_device_table", None)
+        if tbl is None:
+            return
+        hdr = tbl.horizontalHeader()
+        if hdr is not None and tbl.columnCount() >= 5:
+            hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # Port
+            hdr.setSectionResizeMode(1, QHeaderView.Stretch)           # Firmware absorbs the slack
+            hdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Uptime
+            hdr.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Signal
+            hdr.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Last Seen
+        vh = tbl.verticalHeader()
+        if vh is not None:
+            vh.setDefaultSectionSize(22)   # compact rows (the header stays hidden)
+        self._dh_delegate = _RightAlignDelegate(tbl)   # kept on self so it isn't GC'd
+        tbl.setItemDelegateForColumn(2, self._dh_delegate)   # Uptime -> right
+        tbl.setItemDelegateForColumn(3, self._dh_delegate)   # Signal -> right
 
     def _active_dev(self):
         dt = self._device_tab
