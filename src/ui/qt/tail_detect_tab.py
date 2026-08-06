@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from src.core.tail_detect import PersistenceTracker, attach_tail_detector
+from src.core.tail_detect import PersistenceTracker, attach_tail_detector, tails_to_alerts
 from src.ui.qt.theme import colors as C
 
 _REFRESH_MS = 5000
@@ -41,12 +41,16 @@ class TailDetectTab(QWidget):
     on build, refreshes the flagged-device table on a ~5s timer, and marks a device as your own."""
 
     def __init__(self, ingestor: Any = None, tracker: "Optional[PersistenceTracker]" = None,
-                 now_fn: "Optional[Any]" = None, parent: "Optional[QWidget]" = None) -> None:
+                 now_fn: "Optional[Any]" = None, model: Any = None,
+                 parent: "Optional[QWidget]" = None) -> None:
         super().__init__(parent)
         self._now = now_fn or time.time
         self._tracker = tracker or PersistenceTracker(ignore=self._load_ignore())
         self._threshold = _DEFAULT_THRESHOLD
         self._ingestor = ingestor
+        # Optional shared MetricsModel (the instance the Dashboard reads): when set, each refresh
+        # also routes flagged tails to canonical ALERT readings so a follower hits the alert slot.
+        self._model = model
         self._observer = None
         if ingestor is not None:
             self._observer = attach_tail_detector(ingestor, self._tracker, self._now)
@@ -109,8 +113,12 @@ class TailDetectTab(QWidget):
         self._timer.stop()
 
     def refresh(self) -> None:
-        """Repaint the flagged-device table from tracker.tails(now, threshold), strongest first."""
-        hits = self._tracker.tails(self._now(), self._threshold)
+        """Repaint the flagged-device table from tracker.tails(now, threshold). With a shared
+        MetricsModel wired, also route the flagged tails to ALERT readings (Dashboard)."""
+        now = self._now()
+        hits = self._tracker.tails(now, self._threshold)
+        if self._model is not None:
+            tails_to_alerts(self._tracker, self._model, now, self._threshold)
         self._table.setRowCount(len(hits))
         for r, h in enumerate(hits):
             self._table.setItem(r, 0, QTableWidgetItem(h.device))

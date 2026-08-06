@@ -102,3 +102,18 @@ def test_shutdown_detaches_and_stops(qapp):
     p.shutdown()
     assert ing.observers == []                             # observer removed
     assert not p._timer.isActive()
+
+
+def test_model_tie_in_routes_alerts_only_when_wired(qapp, monkeypatch):
+    """When a shared MetricsModel is wired, each refresh routes flagged tails to ALERT readings
+    (Dashboard); with no model it never calls tails_to_alerts (Atlas's tie-in, cc d02c7c7)."""
+    import src.ui.qt.tail_detect_tab as mod
+    calls = []
+    monkeypatch.setattr(mod, "tails_to_alerts",
+                        lambda tracker, model, now, thr: calls.append((model, now, thr)))
+    sentinel = object()
+    TailDetectTab(tracker=_seeded_tracker(), now_fn=lambda: _NOW, model=sentinel)   # refresh runs
+    assert calls and calls[-1][0] is sentinel and calls[-1][1] == _NOW
+    calls.clear()
+    TailDetectTab(tracker=_seeded_tracker(), now_fn=lambda: _NOW)                   # model=None
+    assert calls == []
