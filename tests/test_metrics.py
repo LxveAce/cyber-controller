@@ -116,6 +116,19 @@ def test_ble_detection_uses_ble_medium_and_name_or_addr():
     assert by[ReadingKind.RSSI].medium is Medium.BLE and by[ReadingKind.RSSI].value == -55
 
 
+def test_ble_tracker_kind_is_flagged_for_the_sense_layer():
+    # GhostESP tags an AirTag/Flipper with `kind`; LxveOS with a `tracker` field. Both -> a tracker
+    # flag on the DETECTION reading so the Sense/tracker layer can distinguish a stalking tracker.
+    at = _by_kind(event_to_readings(_ev("ble_found", {"mac": "aa", "kind": "airtag"}), "COM4"))
+    assert at[ReadingKind.DETECTION].extra.get("tracker") is True
+    assert at[ReadingKind.DETECTION].extra.get("tracker_kind") == "airtag"
+    lx = _by_kind(event_to_readings(_ev("ble_found", {"addr": "bb", "tracker": 1}), "COM4"))
+    assert lx[ReadingKind.DETECTION].extra.get("tracker") is True
+    # a plain BLE device is NOT flagged as a tracker.
+    plain = _by_kind(event_to_readings(_ev("ble_found", {"mac": "cc", "name": "Speaker"}), "COM4"))
+    assert "tracker" not in plain[ReadingKind.DETECTION].extra
+
+
 def test_gps_fix_maps_lat_lon():
     rs = event_to_readings(_ev("gps_fix", {"lat": 40.1, "lon": -74.2}), "COM4")
     assert len(rs) == 1 and rs[0].kind is ReadingKind.GPS_FIX and rs[0].medium is Medium.GPS

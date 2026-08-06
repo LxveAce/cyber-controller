@@ -267,6 +267,21 @@ def _airspace_label(d: dict) -> str:
     return "airspace: " + " · ".join(bits) if bits else "airspace"
 
 
+_TRACKER_KINDS = ("airtag", "flipper", "tracker")
+
+
+def _tracker_kind(event_type: str, d: dict) -> str:
+    """A BLE item-tracker / AirTag / Flipper detection kind, or "" — so the Sense/tracker layer can
+    flag a possible stalking tracker apart from a generic BLE device. GhostESP tags `kind`
+    (airtag/flipper); LxveOS carries a `tracker` field on its BLE detections."""
+    if event_type != "ble_found":
+        return ""
+    kind = str(d.get("kind") or "").strip().lower()
+    if kind in _TRACKER_KINDS:
+        return kind
+    return "tracker" if d.get("tracker") else ""
+
+
 def event_to_readings(ev: Any, port: str) -> list[Reading]:
     """Map one ParsedEvent to zero or more canonical :class:`Reading`s (the CANONICAL_EVENTS layer).
 
@@ -280,7 +295,12 @@ def event_to_readings(ev: Any, port: str) -> list[Reading]:
     if et in _DETECTION_MEDIUM:
         med = _DETECTION_MEDIUM[et]
         label = _detection_label(et, d)
-        out.append(Reading(ReadingKind.DETECTION, med, label, "", label, port, extra={"event": et}))
+        extra = {"event": et}
+        tkind = _tracker_kind(et, d)
+        if tkind:
+            extra["tracker"] = True
+            extra["tracker_kind"] = tkind
+        out.append(Reading(ReadingKind.DETECTION, med, label, "", label, port, extra=extra))
         rssi = _num(d.get("rssi"))
         if rssi is not None:
             out.append(Reading(ReadingKind.RSSI, med, rssi, "dBm", f"{rssi} dBm", port))
