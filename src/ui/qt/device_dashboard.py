@@ -91,6 +91,22 @@ class DeviceDashboard(QWidget):
         self._dev_timer.timeout.connect(self._pump_devices)
         self._pump_health()
         self._pump_devices()
+        # Live per-serial-line liveness (density spec: the ARM lamp + alert update per line, not only on
+        # the 3s poll). The host's line signal fires device_tab._on_line_received FIRST (updating the
+        # device's arm/alert state), then this re-renders — guarded on an unchanged signature, so it's
+        # cheap under a scan burst. (Spade's CC-DASH-SELDEV-LIVENESS flag.)
+        line_signal = getattr(self._device_tab, "_line_signal", None)
+        if line_signal is not None and hasattr(line_signal, "line_received"):
+            try:
+                line_signal.line_received.connect(self._on_device_line)
+            except Exception:  # noqa: BLE001 — a missing signal must never block the landing
+                pass
+
+    def _on_device_line(self, *_args) -> None:
+        """Per serial line: refresh the Selected Device readouts so the ARM lamp + detector alert are
+        live per line (not only on the 3s poll). Cheap — _render_selected_device guards on an unchanged
+        signature, so a burst of scan lines only re-renders on a real change."""
+        self._render_selected_device()
 
     # ── card helpers ─────────────────────────────────────────────────────────
     @staticmethod
@@ -378,35 +394,54 @@ class DeviceDashboard(QWidget):
 
     def _render_selected_device(self) -> None:
         """Render the Selected Device readouts fresh + readable (mockup styling), reusing the host's
-        formatter methods for the DATA so no device logic is duplicated and no density field is dropped."""
+        formatter methods for the DATA so no device logic is duplicated and no density field is dropped.
+
+        Cheap on repeat: it computes the data first and early-returns on an unchanged signature, so it is
+        safe to also fire per serial line (the density spec wants the ARM lamp + alert live per line, not
+        only on the 3s poll — Spade's liveness flag). A burst of scan lines only re-renders on real change.
+        """
+        from src.ui.qt.arm_lamp import arm_lamp_render
         dt, dev = self._device_tab, self._active_dev()
         cls = type(dt)
-        # ARM/SAFE lamp — a prominent state-tinted pill (arm_lamp_render is shared with Operate).
-        from src.ui.qt.arm_lamp import arm_lamp_render
-        text, color = arm_lamp_render(getattr(dev, "arm_state", "") or "")
+        port = getattr(dt, "_active_port", "") or ""
+
+        def _fmt(fn, *a):
+            try:
+                return str(fn(*a)) if dev is not None else ""
+            except Exception:  # noqa: BLE001 — a formatter hiccup must not crash the landing
+                return ""
+
+        arm_text, color = arm_lamp_render(getattr(dev, "arm_state", "") or "")
         color = color or "#8b949e"
+        health = _fmt(cls._format_health, dev).replace("Health:", "").strip()
+        try:
+            caps = [str(c) for c in dt._current_capabilities()] if dev is not None else []
+        except Exception:  # noqa: BLE001
+            caps = []
+        telem = _fmt(cls._telemetry_line, getattr(dev, "telemetry", {}) or {})
+        banner = (getattr(dev, "fw_banner", "") or "") if dev is not None else ""
+        telem = (telem + (f"  ·  {banner}" if banner else "")).strip()
+        alert = _fmt(cls._alert_line, getattr(dev, "alert_count", 0), getattr(dev, "last_alert", {}) or {})
+        snap = _fmt(cls._snapshot_line, getattr(dev, "last_snapshot", {}) or {})
+
+        sig = (port, arm_text, color, health, tuple(caps), telem, alert, snap)
+        if sig == getattr(self, "_sd_sig", None):
+            return   # nothing changed — skip the widget churn (makes per-serial-line rendering cheap)
+        self._sd_sig = sig
+
+        # ARM/SAFE lamp — a prominent state-tinted pill (arm_lamp_render is shared with Operate).
         _tint = {"#3fb950": "#0f2417", "#d29922": "#241c07", "#f85149": "#2b1416"}.get(color, "#161b22")
-        self._sd_arm.setText(text or "○ —")
+        self._sd_arm.setText(arm_text or "○ —")
         self._sd_arm.setStyleSheet(f"color:{color};background:{_tint};border:1px solid {color};"
                                    f"border-radius:7px;padding:4px 12px;font-weight:700;font-size:10pt;")
-        # Health chip (colored ● + word) — drop the redundant 'Health:' prefix from the formatter output.
-        try:
-            h = cls._format_health(dev) if dev is not None else ""
-        except Exception:  # noqa: BLE001
-            h = ""
-        self._sd_health.setText(str(h).replace("Health:", "").strip())
-        # Capability pills (fresh row) from the host's own _current_capabilities() — nothing duplicated.
+        self._sd_health.setText(health)
+        # Capability pills (fresh row) — rebuilt only when the signature changed (cheap per line).
         while self._sd_caps_lay.count():
             w = self._sd_caps_lay.takeAt(0).widget()
             if w is not None:
                 w.setParent(None)   # remove NOW (deleteLater is async — would double the pills)
                 w.deleteLater()
-        try:
-            caps = dt._current_capabilities() if dev is not None else []
-        except Exception:  # noqa: BLE001
-            caps = []
-        for c in caps:
-            cs = str(c)
+        for cs in caps:
             unknown = cs.lower().startswith(("cap", "unknown")) and any(ch.isdigit() for ch in cs)
             pill = QLabel(cs if unknown else cs.upper())
             if unknown:
@@ -417,25 +452,9 @@ class DeviceDashboard(QWidget):
             self._sd_caps_lay.addWidget(pill)
         self._sd_caps_lay.addStretch(1)
         self._sd_caps.setVisible(bool(caps))
-        # Telemetry (muted mono) + fw_banner appended so the banner is never dropped (density).
-        try:
-            t = cls._telemetry_line(getattr(dev, "telemetry", {}) or {}) if dev is not None else ""
-        except Exception:  # noqa: BLE001
-            t = ""
-        banner = (getattr(dev, "fw_banner", "") or "") if dev is not None else ""
-        self._sd_telem.setText((t + (f"  ·  {banner}" if banner else "")).strip())
-        # Alert callout (amber) + airspace snapshot (blue) — blank collapses each.
-        try:
-            a = cls._alert_line(getattr(dev, "alert_count", 0), getattr(dev, "last_alert", {}) or {}) \
-                if dev is not None else ""
-        except Exception:  # noqa: BLE001
-            a = ""
-        self._sd_alert.setText(str(a)); self._sd_alert.setVisible(bool(a))
-        try:
-            s = cls._snapshot_line(getattr(dev, "last_snapshot", {}) or {}) if dev is not None else ""
-        except Exception:  # noqa: BLE001
-            s = ""
-        self._sd_snap.setText(str(s)); self._sd_snap.setVisible(bool(s))
+        self._sd_telem.setText(telem)
+        self._sd_alert.setText(alert); self._sd_alert.setVisible(bool(alert))
+        self._sd_snap.setText(snap); self._sd_snap.setVisible(bool(snap))
 
     def _render_link(self) -> None:
         """Render the Relay Link strip for the active device (link_strip.py ships only a render-model)."""
