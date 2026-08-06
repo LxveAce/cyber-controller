@@ -78,8 +78,8 @@ class DeviceDashboard(QWidget):
         frame = QFrame()
         frame.setObjectName("dashcard")
         lay = QVBoxLayout(frame)
-        lay.setContentsMargins(12, 11, 12, 12)
-        lay.setSpacing(8)
+        lay.setContentsMargins(10, 7, 10, 9)
+        lay.setSpacing(6)
         hdr = QHBoxLayout()
         t = QLabel(title.upper())
         t.setStyleSheet(f"color:{_ACCENT};font-size:10pt;font-weight:700;letter-spacing:0.5px;")
@@ -147,6 +147,7 @@ class DeviceDashboard(QWidget):
             gauge, detail = getattr(ht, g, None), getattr(ht, d, None)
             if gauge is None:
                 continue
+            gauge.setFixedSize(84, 92)     # de-bulk: the host gauge is min-100px; the mockup is ~84
             col = QWidget()
             cv = QVBoxLayout(col)
             cv.setContentsMargins(0, 0, 0, 0)
@@ -187,9 +188,9 @@ class DeviceDashboard(QWidget):
 
         # RIGHT — Cross-Comm + Serial Terminal
         if self._cross_comm is not None:
-            cc_card, cc_v, _ = self._card("Cross-Comm", "shared target pool")
-            cc_v.addWidget(self._cross_comm, 1)   # kept WHOLE + SHOWN (pool refresh gates on visible)
-            right_v.addWidget(cc_card, 1)
+            # Mount CrossCommTab directly — it ships its own card chrome, so wrapping it in another
+            # dashcard made the card-in-card the owner flagged. Kept WHOLE + SHOWN (pool gates on visible).
+            right_v.addWidget(self._cross_comm, 1)
 
         term_card, term_v, _ = self._card("Serial Terminal")
         _add(term_v, getattr(dt, "_term_label", None))
@@ -201,13 +202,14 @@ class DeviceDashboard(QWidget):
         term_v.addLayout(cmd_row)
         _add(term_v, getattr(dt, "_bj_panel", None))     # ungated STOP + arm gate ride inside, whole
         _add(term_v, getattr(dt, "_mesh_panel", None))   # host toggles visibility by reference
-        right_v.addWidget(term_card, 1)
+        right_v.addWidget(term_card, 0)                   # sizes to content, doesn't hog the column
+        right_v.addStretch(1)
 
         grid.addWidget(left, 0)
-        grid.addWidget(center, 3)
-        grid.addWidget(right, 3)
+        grid.addWidget(center, 5)     # command/health column dominates (mockup 1.15fr)
+        grid.addWidget(right, 4)      # slimmer right column (mockup 1fr)
         left.setMinimumWidth(232)
-        left.setMaximumWidth(320)
+        left.setMaximumWidth(300)
         scroll.setWidget(grid_host)
         outer.addWidget(scroll, 1)
 
