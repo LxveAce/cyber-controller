@@ -259,7 +259,12 @@ try:
             self._scan = scan_controller     # None -> Start disabled (no engine wired; a bare tab)
             self._scanning = False           # whether WE started a scan here (drives the pill)
 
-            root = QVBoxLayout(self)
+            # Reform: the mockup HUNT BLE is ONE "BLE Analyzer" card (title + tiles + graph + table).
+            _root = QVBoxLayout(self)
+            _root.setContentsMargins(14, 12, 14, 12)
+            from src.ui.qt.flash_tab import _make_card
+            _card, root = _make_card("BLE Analyzer", "awareness · transmits nothing")
+            _root.addWidget(_card, 1)
             self._header = QLabel(
                 "Not scanning. Start a BLE scan on a connected device to see BLE advertisements here.")
             self._header.setStyleSheet("color:#8b949e;")
@@ -280,7 +285,8 @@ try:
             root.addWidget(self._scan_btn)
 
             self._graph = _RssiGraph(self._model)
-            root.addWidget(self._graph, 1)
+            self._graph.setMaximumHeight(170)   # mockup graphbox is compact; table gets the room
+            root.addWidget(self._graph)
 
             ctl = QHBoxLayout()
             self._sort_combo = QComboBox()

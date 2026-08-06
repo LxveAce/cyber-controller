@@ -218,7 +218,12 @@ try:
             self._last_event_ts: "Optional[float]" = None  # when we last folded in a Wi-Fi event
             self._last_wifi_size: "Optional[str]" = None    # Wave-3: size class (debounce)
 
-            root = QVBoxLayout(self)
+            # Reform: the mockup HUNT Wi-Fi is ONE "Wi-Fi Analyzer" card (title + tiles + graph + table).
+            _root = QVBoxLayout(self)
+            _root.setContentsMargins(14, 12, 14, 12)
+            from src.ui.qt.flash_tab import _make_card
+            _card, root = _make_card("Wi-Fi Analyzer", "awareness · transmits nothing")
+            _root.addWidget(_card, 1)
             self._header = QLabel(
                 "Not scanning. Start a Wi-Fi scan on a connected device to see access points.")
             self._header.setStyleSheet("color:#8b949e;")
@@ -231,7 +236,8 @@ try:
             root.addWidget(self._stats)
 
             self._graph = _ChannelGraph(self._model)
-            root.addWidget(self._graph, 1)
+            self._graph.setMaximumHeight(170)   # mockup graphbox is compact; table gets the room
+            root.addWidget(self._graph)
 
             ctl = QHBoxLayout()
             self._sort_combo = QComboBox()
