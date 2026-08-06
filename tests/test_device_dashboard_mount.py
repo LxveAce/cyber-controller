@@ -142,3 +142,18 @@ def test_bluejammer_stop_is_mounted_and_ungated(win):
              if "stop" in (b.text() or "").lower() or "stop" in (b.objectName() or "").lower()]
     assert stops, "no STOP-labelled control inside the re-homed BlueJammer panel"
     assert any(b.isEnabled() for b in stops), "every BlueJammer STOP control is disabled (gated)"
+
+
+def test_selected_device_refreshes_live_per_serial_line(win):
+    # CC-DASH-SELDEV-LIVENESS: the Selected Device mirror must refresh PER SERIAL LINE, not
+    # only on the 3s poll (density spec: ARM lamp + alert live per line). A line on the host's line
+    # signal must re-render the mirror. Guards the regression where the readability rebuild first
+    # dropped this instant liveness; restored on my flag.
+    dash = win._device_dashboard
+    line_signal = getattr(win._device_tab, "_line_signal", None)
+    assert line_signal is not None and hasattr(line_signal, "line_received"), \
+        "device_tab lost _line_signal.line_received — the liveness hook has no signal"
+    calls = []
+    dash._render_selected_device = lambda: calls.append(1)   # spy the re-render
+    line_signal.line_received.emit("COM3", "status tx=1")
+    assert calls, "a serial line did not refresh the Selected Device readouts — liveness lost"
