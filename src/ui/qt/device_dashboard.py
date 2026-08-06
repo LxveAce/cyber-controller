@@ -27,12 +27,16 @@ from typing import Optional
 
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtWidgets import (
+    QAbstractItemView,
     QBoxLayout,
     QFrame,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QPushButton,
     QScrollArea,
+    QTableWidget,
+    QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -229,11 +233,39 @@ class DeviceDashboard(QWidget):
         self._link_card = link_card
         center_v.addWidget(link_card)
 
-        # RIGHT — Cross-Comm + Serial Terminal
-        if self._cross_comm is not None:
-            # Mount CrossCommTab directly — it ships its own card chrome, so wrapping it in another
-            # dashcard made the card-in-card the owner flagged. Kept WHOLE + SHOWN (pool gates on visible).
-            right_v.addWidget(self._cross_comm, 1)
+        # RIGHT — Cross-Comm summary (fresh, read-only) + Serial Terminal.
+        # The full pool/rules/history/stream editor is the DEVICE ▸ Mesh sub-tab (the whole CrossCommTab).
+        # Here we render a compact SUMMARY of the SAME shared target pool so the landing shows cross-device
+        # discovery at a glance, WITHOUT double-parenting that one widget (density rule: a summary, not a
+        # duplicate editor). Built fresh (like Selected Device) so it is readable + styleable.
+        xc_card, xc_v, self._xc_meta = self._card("Cross-Comm", "")
+        self._xc_table = QTableWidget(0, 4)
+        self._xc_table.setHorizontalHeaderLabels(["Type", "SSID / Name", "RSSI", "Ch"])
+        self._xc_table.verticalHeader().setVisible(False)
+        self._xc_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._xc_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._xc_table.setSelectionMode(QAbstractItemView.SingleSelection)
+        self._xc_table.setAlternatingRowColors(True)
+        self._xc_table.setMinimumHeight(148)
+        _hdr = self._xc_table.horizontalHeader()
+        _hdr.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        _hdr.setSectionResizeMode(1, QHeaderView.Stretch)
+        _hdr.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        _hdr.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        xc_v.addWidget(self._xc_table)
+        xc_btns = QHBoxLayout()
+        xc_refresh = QPushButton("Refresh")
+        xc_refresh.setToolTip("Re-read the shared cross-device target pool.")
+        xc_refresh.clicked.connect(self._render_cross_comm)
+        xc_btns.addWidget(xc_refresh)
+        self._xc_clear = QPushButton("Clear Pool")
+        self._xc_clear.setToolTip("Clear all discovered cross-device targets from the shared pool.")
+        self._xc_clear.setStyleSheet("QPushButton{font-size:8pt;padding:3px 9px;color:#f85149;}")
+        self._xc_clear.clicked.connect(self._clear_pool)
+        xc_btns.addWidget(self._xc_clear)
+        xc_btns.addStretch(1)
+        xc_v.addLayout(xc_btns)
+        right_v.addWidget(xc_card)
 
         term_card, term_v, _ = self._card("Serial Terminal")
         _add(term_v, getattr(dt, "_term_label", None))
@@ -282,6 +314,58 @@ class DeviceDashboard(QWidget):
                 pass
         self._render_selected_device()
         self._render_link()
+        self._render_cross_comm()
+
+    def _pool(self):
+        return getattr(self._device_tab, "_pool", None)
+
+    def _clear_pool(self) -> None:
+        pool = self._pool()
+        if pool is not None and hasattr(pool, "clear"):
+            try:
+                pool.clear()
+            except Exception:  # noqa: BLE001
+                pass
+        self._render_cross_comm()
+
+    def _render_cross_comm(self) -> None:
+        """Render the compact Cross-Comm pool summary from the shared TargetPool (strongest first, top
+        rows only — the pool can hold thousands). Read-only; the full editor is the Mesh sub-tab."""
+        tbl = getattr(self, "_xc_table", None)
+        if tbl is None:
+            return
+        pool = self._pool()
+        targets = []
+        if pool is not None:
+            try:
+                targets = list(pool.all())
+            except Exception:  # noqa: BLE001
+                targets = []
+        try:
+            targets.sort(key=lambda t: getattr(t, "rssi", 0) or -999, reverse=True)
+        except Exception:  # noqa: BLE001
+            pass
+        cap = 60
+        shown = targets[:cap]
+        total = len(targets)
+        extra = f"  (+{total - cap} more)" if total > cap else ""
+        self._xc_meta.setText(f"{total} target" + ("" if total == 1 else "s") + extra)
+        tbl.setRowCount(len(shown))
+        for row, t in enumerate(shown):
+            ttype = (getattr(getattr(t, "target_type", None), "value", "") or "").upper()
+            name = getattr(t, "ssid", "") or getattr(t, "mac", "") or ""
+            rssi = getattr(t, "rssi", 0)
+            ch = getattr(t, "channel", 0)
+            cells = [QTableWidgetItem(ttype), QTableWidgetItem(str(name)),
+                     QTableWidgetItem("" if not rssi else str(rssi)),
+                     QTableWidgetItem("" if not ch else str(ch))]
+            cells[2].setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            cells[3].setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
+            for col, item in enumerate(cells):
+                tbl.setItem(row, col, item)
+        clear_btn = getattr(self, "_xc_clear", None)
+        if clear_btn is not None:
+            clear_btn.setEnabled(pool is not None and hasattr(pool, "clear"))
 
     def _active_dev(self):
         dt = self._device_tab
