@@ -34,23 +34,22 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_apply_shell_layout_collapses_and_hides_on_compact(qapp):
+def test_apply_shell_layout_collapses_the_rail_on_compact(qapp):
     from src.ui.qt.layout_profile import layout_profile
     win = _make_window()
     try:
-        terminal = win._main_splitter.widget(1)
+        # Reform P3: the terminal moved out of the docked bottom splitter pane into a rail surface, so
+        # there is no bottom terminal to hide — the shell just folds the nav rail on a compact canvas.
+        assert win._main_splitter.count() == 1, "shell-only splitter (terminal is a rail surface now)"
 
         win._apply_shell_layout(layout_profile(1440, 900, dpi=96))   # expanded
         assert not win._app_shell.collapsed
-        assert not terminal.isHidden()
 
         win._apply_shell_layout(layout_profile(480, 800, dpi=96))    # compact
         assert win._app_shell.collapsed, "sidebar should fold to an icon rail on a compact canvas"
-        assert terminal.isHidden(), "the bottom terminal should hide on a compact canvas"
 
         win._apply_shell_layout(layout_profile(900, 700, dpi=96))    # regular — room again
         assert not win._app_shell.collapsed
-        assert not terminal.isHidden()
     finally:
         win.close()
 
@@ -72,25 +71,22 @@ def test_relayout_debounces_on_nav_mode(qapp):
         win.close()
 
 
-def test_touch_deck_collapses_to_rail_and_undocks_terminal(qapp):
+def test_touch_deck_collapses_to_rail(qapp):
     # THE Spade P1 deck fix: at 800x480 the size is "regular" (< 1024), so the old is_compact-only
-    # gate left the 7" TOUCH deck with a full desktop sidebar + docked terminal. Driving off
-    # nav_mode fixes it — touch collapses to a rail + undocks the terminal; the same geometry with a
-    # POINTER (a small desktop window) keeps the full sidebar. nav_mode, not size, is the driver.
+    # gate left the 7" TOUCH deck with a full desktop sidebar. Driving off nav_mode fixes it — touch
+    # collapses to a rail; the same geometry with a POINTER (a small desktop window) keeps the full
+    # sidebar. nav_mode, not size, is the driver. (Reform P3: the terminal is a rail surface now, not a
+    # docked pane, so there is no bottom terminal to undock — the rail collapse is the whole behavior.)
     from src.ui.qt.layout_profile import layout_profile
     win = _make_window()
     try:
-        terminal = win._main_splitter.widget(1)
-
         win._apply_shell_layout(layout_profile(800, 480, touch=True))    # the deck
         assert win._app_shell.nav_mode == "rail", "the 800x480 touch deck renders the icon rail"
         assert win._app_shell.collapsed, "the 800x480 touch deck must fold to an icon rail"
-        assert terminal.isHidden(), "the deck undocks the terminal (it needs the room)"
 
         win._apply_shell_layout(layout_profile(800, 480, touch=False))   # same size, pointer
         assert win._app_shell.nav_mode == "sidebar", "a pointer window keeps the full sidebar"
         assert not win._app_shell.collapsed
-        assert not terminal.isHidden()
     finally:
         win.close()
 

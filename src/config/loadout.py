@@ -49,12 +49,13 @@ TAB_REQUIREMENTS: "dict[str, object]" = {
     "OPERATE": ALWAYS,   # Home launcher + Control (merged fan-out + console) + Macros
     "CRACK": ALWAYS,     # the offline Crack Lab (no radio needed)
     "MAP": ALWAYS,       # Wardrive + Multi-Wardrive + Flock Map (Flock loads a saved map hardware-free)
+    "Terminal": ALWAYS,  # reform P3: the persistent terminal hub, pinned in the rail above Settings
     "Settings": ALWAYS,
 }
 
 # Canonical tab order (matches main_window._tab_registry / nav_model.visible_nav); re-inserts tabs in order.
 TAB_ORDER = (
-    "DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Settings",
+    "DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Terminal", "Settings",
 )
 
 

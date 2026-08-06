@@ -61,14 +61,14 @@ _SURFACES = {"device", "hunt", "operate", "crack", "map", "settings"}
 
 def test_app_shell_is_the_splitter_top_widget(win):
     assert isinstance(win._app_shell, PageLayout)
-    assert win._main_splitter.widget(0) is win._app_shell   # shell is the top slot
-    assert win._main_splitter.count() == 2                  # shell + terminal (unchanged shape)
+    assert win._main_splitter.widget(0) is win._app_shell   # shell is the top (and now only) slot
+    assert win._main_splitter.count() == 1                  # reform P3: terminal moved to the rail; shell-only splitter
 
 
 def test_tabs_live_inside_the_shell_content(win):
     # the whole top area (sidebar + tabs) is the shell's content; _tabs is unchanged + reachable
     assert win._app_shell._content is not None
-    assert win._tabs.count() == 6                            # the 5 verb surfaces + pinned Settings
+    assert win._tabs.count() == 7                            # 5 verbs + pinned TERMINAL (reform P3) + Settings
 
 
 def test_shell_sidebar_has_a_destination_per_surface(win):
@@ -190,7 +190,8 @@ def test_rail_is_driven_by_nav_model(win):
     # must be ABSENT from both the rail and the sidebar. Wire-it-or-it-doesn't-appear is structural.
     import src.core.nav_model as nav
     titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    expected = [n.label for n in nav.visible_nav(win._nav_capabilities())] + [nav.settings_node().label]
+    # verb surfaces from nav_model, then the two pinned utilities (reform P3: TERMINAL, then Settings).
+    expected = [n.label for n in nav.visible_nav(win._nav_capabilities())] + ["Terminal", nav.settings_node().label]
     assert titles == expected
     assert "SENSE" not in titles
     assert "sense" not in win._app_shell._destinations   # reserved surface stays out until a provider lands

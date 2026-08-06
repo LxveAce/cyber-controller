@@ -761,6 +761,9 @@ class CyberControllerWindow(QMainWindow):
             _vsurface = self._verb_surfaces.get(_node.key)
             if _vsurface is not None:
                 self._tabs.addTab(_vsurface, label_icon(_node.label), _node.label)
+        # Reform (P3): TERMINAL is a pinned rail surface — the persistent terminal hub (device list +
+        # per-port terminals), moved out of the docked bottom pane, mounted above Settings.
+        self._tabs.addTab(self._term_frame, label_icon("Terminal"), "Terminal")
         _settings_node = _nav.settings_node()
         self._tabs.addTab(self._settings_tab, label_icon(_settings_node.label), _settings_node.label)
 
@@ -1082,6 +1085,7 @@ class CyberControllerWindow(QMainWindow):
             _vsurface = self._verb_surfaces.get(_node.key)
             if _vsurface is not None:
                 reg.append((_node.label, _vsurface))
+        reg.append(("Terminal", self._term_frame))   # reform P3: pinned terminal hub, above Settings
         reg.append((_nav.settings_node().label, self._settings_tab))
         return reg
 
@@ -1340,7 +1344,12 @@ class CyberControllerWindow(QMainWindow):
 
         term_layout.addLayout(terminal_panel, stretch=1)
 
-        self._main_splitter.addWidget(term_frame)
+        # Reform (P3): the persistent terminal moves OUT of the docked bottom splitter pane into its own
+        # TERMINAL rail surface (mounted in _build_tabs). Kept as self._term_frame so _build_tabs can add
+        # it as a verb surface; NOT added to _main_splitter (which now holds only the app shell). The
+        # _apply_shell_layout terminal-dock logic already guards on splitter.count() > 1, so a one-pane
+        # splitter is safe. Every _pterm_* wiring below is unchanged — the terminal still receives lines.
+        self._term_frame = term_frame
 
         # Internal state for multi-device persistent terminal connections
         # Maps port -> SerialConnection

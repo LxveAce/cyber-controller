@@ -51,8 +51,11 @@ EXPECTED_TABS = [
     # MAP — one canvas: Wardrive/Multi-Wardrive/Flock Map. See test_map_surface_subtabs.
     ("MAP", "_map_surface"),
     # Settings — the pinned utility surface.
+    # TERMINAL — reform P3: the persistent terminal hub, moved out of the docked bottom pane into a
+    # pinned rail surface (above Settings). Its widget is the term_frame itself.
+    ("Terminal", "_term_frame"),
     ("Settings", "_settings_tab"),
-    # How-To is in the Help menu (CC-6); Operate Home is an OPERATE sub-view (P2.5) — neither is top-level.
+    # How-To is in the Help menu (CC-6); Operate Home is retired (P2, OPERATE opens on the Console) — neither is top-level.
 ]
 
 
@@ -79,11 +82,11 @@ def _make_window():
     return CyberControllerWindow(DeviceManager(), FlashEngine(), bus, TargetPool(bus))
 
 
-def test_tab_count_is_6(qapp, isolated_settings):
-    # 6 top-level surfaces: the 5 Spade verbs (RIG/HUNT/OPERATE/CRACK/MAP) + the pinned Settings. P2.5 wired
-    # the rail from nav_model.visible_nav(), collapsing the old 7 noun tabs (which included the double-Operate).
+def test_tab_count_is_7(qapp, isolated_settings):
+    # 7 top-level surfaces: the 5 job-verbs (DEVICE/HUNT/OPERATE/CRACK/MAP) + the pinned TERMINAL (reform
+    # P3: the persistent terminal moved out of the docked bottom pane into a rail surface) + pinned Settings.
     win = _make_window()
-    assert win._tabs.count() == len(EXPECTED_TABS) == 6
+    assert win._tabs.count() == len(EXPECTED_TABS) == 7
 
 
 def test_lands_on_device_dashboard(qapp, isolated_settings):
@@ -247,7 +250,7 @@ def test_verb_order_is_the_mission_arc(qapp, isolated_settings):
     # pinned Settings last — mirroring nav_model.visible_nav() order (the single source that drives the rail).
     win = _make_window()
     titles = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    assert titles == ["DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"]
+    assert titles == ["DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Terminal", "Settings"]
 
 
 # ── Per-tab widget inventory (S4 characterization) ───────────────────
