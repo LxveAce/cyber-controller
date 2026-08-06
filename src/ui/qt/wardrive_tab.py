@@ -402,6 +402,7 @@ class WardriveTab(QWidget):
 
         ctrl = QHBoxLayout()
         self._btn_start = QPushButton("Start wardrive")
+        self._btn_start.setObjectName("btnGreen")  # mockup: the Start go-action is green
         self._btn_start.setToolTip("Begin scanning + GPS-tagging APs to the WiGLE CSV.")
         self._btn_start.clicked.connect(self._on_start)
         ctrl.addWidget(self._btn_start)
