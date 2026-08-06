@@ -177,12 +177,16 @@ class OperateConsole(OperateTab):
         grid_scroll = QScrollArea()
         grid_scroll.setWidgetResizable(True)
         grid_scroll.setFrameShape(QScrollArea.NoFrame)
+        # A command grid scrolls only vertically — never sideways (a horizontal scrollbar on buttons
+        # reads as broken; wide description buttons keep their full command in the tooltip).
+        grid_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         grid_scroll.setWidget(self._grid_box)          # the grid scrolls in-pane
         left_lay.addWidget(grid_scroll, 1)
 
         right = QScrollArea()
         right.setWidgetResizable(True)
         right.setFrameShape(QScrollArea.NoFrame)
+        right.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         right.setWidget(self._op_detail_box)
 
         self._single_pane = QSplitter(Qt.Horizontal)
