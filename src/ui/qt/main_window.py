@@ -2675,15 +2675,22 @@ class CyberControllerWindow(QMainWindow):
 
     # ── Cleanup ──────────────────────────────────────────────────────
 
-    def closeEvent(self, event) -> None:
+    def shutdown(self) -> None:
+        """Stop the timers, join every in-flight background QThread, and stop the health-monitor
+        thread — the worker-teardown half of closeEvent, exposed idempotently (no UI-state
+        persistence) so a built-but-never-closed window is REAPABLE. conftest.reap_qt_workers()
+        calls it after every test, so a window's child QThreads (e.g. FlashTab's construction-time
+        _VariantLoader) and its HealthMonitor thread can't accumulate across tests and later crash
+        a teardown processEvents() on a dangling cross-thread queued signal (the intermittent
+        SIGSEGV). closeEvent calls this first, then persists UI state + releases connections."""
         self._timer.stop()
         self._sidebar_timer.stop()
-        # Join every in-flight background QThread BEFORE tearing down connections/resources. Without
-        # this, app.exec_() returns, this window (parent of the worker QThreads) is garbage-collected,
-        # and a QThread C++ dtor firing while its thread still runs aborts the process on exit
-        # ('QThread: Destroyed while thread is still running') — most visible in the frozen build.
-        # FlashTab owns its own worker set (variant loader / flash / detect / vault / backup-erase); a
-        # tab is a child widget so it gets no closeEvent of its own — join through its shutdown().
+        # Join every in-flight background QThread. Without this, a QThread C++ dtor firing while its
+        # thread still runs aborts the process ('QThread: Destroyed while thread is still running'),
+        # and a leaked worker's queued cross-thread signal can crash a later processEvents() on the
+        # now-freed target. FlashTab owns its own worker set (variant loader / flash / detect /
+        # vault / backup-erase); a tab is a child widget with no closeEvent of its own — join it
+        # through its shutdown().
         ft = getattr(self, "_flash_tab", None)
         if ft is not None:
             try:
@@ -2723,6 +2730,17 @@ class CyberControllerWindow(QMainWindow):
                     _KEEPALIVE_WORKERS.add(w)  # still blocked (black-hole net) — don't let GC destroy it
             except RuntimeError:  # C++ side already gone
                 pass
+        # Stop the HealthMonitor poll thread (a daemon threading.Thread). A built-but-never-closed
+        # window would otherwise leave it running, accumulating one per window across a suite.
+        try:
+            self._health.stop()
+        except Exception:  # noqa: BLE001 — teardown must never raise
+            pass
+
+    def closeEvent(self, event) -> None:
+        # Join every background QThread + stop the health monitor before tearing down connections
+        # (see shutdown() for why the ordering + the worker parking matter).
+        self.shutdown()
         # Save splitter state
         self._qsettings.setValue("main_splitter_state", self._main_splitter.saveState())
         # Remember which tabs were popped out (+ their window geometry), then re-dock them so no
@@ -2746,8 +2764,7 @@ class CyberControllerWindow(QMainWindow):
             except Exception:
                 pass
         self._pterm_conns.clear()
-        self._health.stop()
-        self._dm.shutdown()
+        self._dm.shutdown()   # workers + health monitor already stopped by shutdown()
         log.info("Window closed — resources released")
         event.accept()
 

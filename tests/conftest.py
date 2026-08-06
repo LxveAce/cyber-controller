@@ -55,9 +55,12 @@ def reap_qt_workers() -> None:
     flake). Production is correct (``closeEvent`` -> ``shutdown()`` joins every worker); this reaps
     the TEST-only leak so it can't crash a *later* test.
 
-    Cheap: a no-op unless a ``QApplication`` exists; ``processEvents`` first lets a just-finished
-    worker self-remove; each ``shutdown()`` only ``wait()``s on a thread that is running, so a
-    worker-less widget costs a couple of ``isRunning()`` checks. Never "fix" this by rewiring a
+    ORDER MATTERS: join every reapable widget's workers FIRST, THEN pump, THEN drop leftovers.
+    Pumping before joining is the crash window — a still-running worker's queued cross-thread signal
+    to a widget the next test is about to GC segfaults ``processEvents`` (an intermittent native
+    EXIT=127/139 with a nondeterministic crash site). Joining first stops new emissions; the pump
+    then delivers already-queued signals to still-alive widgets; ``removePostedEvents`` clears what
+    is left so a later test's pump can't hit a GC-freed target. Never "fix" this by rewiring a
     worker's ``finished`` to a ``self``-touching lambda — the safe lever is joining at teardown.
     """
     try:
@@ -67,7 +70,7 @@ def reap_qt_workers() -> None:
     app = QApplication.instance()
     if app is None:
         return
-    app.processEvents()
+    # 1) Join workers first (no new cross-thread emissions after this).
     for w in list(app.topLevelWidgets()):
         shut = getattr(w, "shutdown", None)
         if callable(shut):
@@ -75,7 +78,10 @@ def reap_qt_workers() -> None:
                 shut()
             except Exception:  # noqa: BLE001 — a reaper must never fail an otherwise-green test
                 pass
+    # 2) Deliver any already-queued signals to the (still-alive) widgets, then 3) drop the rest so a
+    #    later test's processEvents can't hit a GC-freed target.
     app.processEvents()
+    app.removePostedEvents(None)
 
 
 @pytest.fixture(autouse=True)
@@ -83,6 +89,44 @@ def _join_leaked_qt_workers():
     """Autouse teardown that runs :func:`reap_qt_workers` after every test (see it for the why)."""
     yield
     reap_qt_workers()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Stash the real exit code so :func:`pytest_unconfigure` can force a clean Qt exit with it."""
+    session.config._qt_exitstatus = int(exitstatus) if exitstatus is not None else 0
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_unconfigure(config):
+    """Force a clean process exit after a Qt session, so the exit code reflects the TESTS — never
+    Qt's teardown.
+
+    The suite builds many QWidgets + background QThreads. When pytest returns and CPython finalizes,
+    Qt destroys a lingering QThread C++ object while its OS thread is still alive — an intermittent
+    native SIGSEGV/abort (EXIT=127/139), and sometimes instead a HANG where the process never exits
+    (a real, observed leak: dozens of orphaned py/python pairs accumulated over prior runs). The
+    per-test reaper joins workers with bounded waits, but interpreter shutdown still races Qt. This
+    runs LAST (unconfigure is after the terminal summary printed), so it flushes and ``os._exit``
+    with the stashed code — shutdown can't turn a green run red or hang it, and no output is lost.
+    Scoped to Qt runs only (no QApplication -> normal exit); skips atexit/coverage, unused here.
+    """
+    code = getattr(config, "_qt_exitstatus", None)
+    if code is None:
+        return
+    try:
+        from PyQt5.QtWidgets import QApplication
+    except Exception:  # noqa: BLE001 — no PyQt5 -> no Qt teardown race -> normal exit
+        return
+    if QApplication.instance() is None:
+        return
+    import os
+    import sys
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:  # noqa: BLE001 — never let a flush error block the forced exit
+        pass
+    os._exit(int(code))
 
 
 @pytest.fixture(scope="session")
