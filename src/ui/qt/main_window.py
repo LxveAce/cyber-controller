@@ -505,11 +505,12 @@ class CyberControllerWindow(QMainWindow):
         # Apply the saved loadout (hide unused tabs) before choosing the default tab.
         self.apply_loadout(self._load_loadout(), persist=False)
         # Land on the reform front door: DEVICE -> Dashboard (the launch screen). Fall back to
-        # OPERATE -> Home only if the DEVICE surface is hidden (loadout / popped out).
+        # OPERATE -> Console only if the DEVICE surface is hidden (loadout / popped out). Spade's guards
+        # (test_lands_on_device_dashboard) require the launch to stay on DEVICE ▸ Dashboard.
         if self._tabs.indexOf(self._rig_surface) >= 0:
             self._show_subtab(self._rig_surface, self._device_dashboard)
         elif self._tabs.indexOf(self._operate_surface) >= 0:
-            self._show_subtab(self._operate_surface, self._operate_home)
+            self._show_subtab(self._operate_surface, self._operate_action)
         self._refresh_sidebar_devices()
         self._build_command_palette()
         # Wave-10 Phase C (Phase D polish): fuse the app-shell omnibar with the command palette —
@@ -711,9 +712,15 @@ class CyberControllerWindow(QMainWindow):
         )
         # OPERATE — the ONE action surface (kills the double-Operate): Home launcher · merged Control · Macros.
         # Control is the QA-1 splitter (fan-out Broadcast + single-device Console), preserved verbatim.
+        # Reform (P2): OPERATE opens on the single dense Console (OperateTab), matching the mockup —
+        # the old tile Operate-Home is retired from the surface (sub-tabs: Console | Macros). Home stays
+        # constructed + hidden below so its summary/action refreshes — which PRIME the console's active
+        # device (_rebuild_home_actions -> console.select_device) — keep working harmlessly.
         self._operate_surface = _verb_surface(
-            ("Home", self._operate_home), ("Control", self._operate_action), ("Macros", self._macro_tab),
+            ("Console", self._operate_action), ("Macros", self._macro_tab),
         )
+        self._operate_home.setParent(self._operate_surface)
+        self._operate_home.hide()
         # CRACK — "capture -> key": the offline Crack Lab.
         self._crack_surface = _verb_surface(("Crack Lab", self._crack_lab_tab))
         # MAP — one canvas: Wardrive · Multi-Wardrive · Flock / ALPR.

@@ -123,10 +123,13 @@ def test_operate_surface_subtabs(qapp, isolated_settings):
     win = _make_window()
     surface = win._operate_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Home", "Control", "Macros"]
-    assert surface.widget(0) is win._operate_home, "Home sub-view must be the OperateHome launcher"
-    assert surface.widget(1) is win._operate_action, "Control must be the merged Operate splitter"
-    assert surface.widget(2) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
+    # Reform (P2): OPERATE opens on the single dense Console (the merged Operate splitter), matching the
+    # mockup — the old tile Operate-Home is retired from the surface (kept constructed + hidden to prime
+    # the console). Sub-tabs are now Console | Macros; Home no longer leads.
+    assert titles == ["Console", "Macros"]
+    assert surface.widget(0) is win._operate_action, "Console must be the merged Operate splitter (leads OPERATE)"
+    assert surface.widget(1) is win._macro_tab, "Macros sub-tab must be the MacroTab object"
+    assert surface.indexOf(win._operate_home) < 0, "Operate-Home is retired from the OPERATE surface"
     # The merged Control screen still holds BOTH the fan-out bar and the single-device console.
     merged = {win._operate_action.widget(i) for i in range(win._operate_action.count())}
     assert win._broadcast_bar in merged, "fan-out BroadcastBar must live in the merged Control screen"

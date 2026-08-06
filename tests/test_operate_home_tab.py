@@ -73,12 +73,11 @@ def test_operate_home_tab_is_the_operate_home_directly(win):
     # the widget IS the real OperateHome — no per-tab PageLayout wrapper anymore.
     assert isinstance(win._operate_home, OperateHome)
     assert not isinstance(win._operate_home, PageLayout)    # the frame wrapper is gone
-    # P2.5: Operate Home is the launcher sub-view of the ONE OPERATE surface (the double-Operate died),
-    # so it resolves inside _operate_surface, and focusing it via _show_subtab still works.
-    assert win._operate_surface.indexOf(win._operate_home) >= 0
-    win._show_subtab(win._operate_surface, win._operate_home)
-    assert win._tabs.currentWidget() is win._operate_surface
-    assert win._operate_surface.currentWidget() is win._operate_home
+    # Reform (P2): the tile Operate-Home is RETIRED from the OPERATE surface (OPERATE opens on the
+    # Console now). Home stays constructed (still a real OperateHome) but hidden — it is no longer a
+    # navigable sub-view, so it is not in the surface.
+    assert win._operate_surface.indexOf(win._operate_home) < 0
+    assert not win._operate_home.isVisible()
     # Spade v2 P2c: no duplicate analyzer clones — wifi/ble navigate to the real analyzer instead.
     assert not hasattr(win, "_oh_wifi") and not hasattr(win, "_oh_ble")
 

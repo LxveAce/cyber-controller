@@ -42,7 +42,9 @@ def test_operate_home_tab_is_embedded_additively(window):
     # verb surface (the double-Operate is gone). The 5 verb surfaces + the pinned Settings are all present.
     labels = _tab_labels(window)
     assert "OPERATE" in labels
-    assert window._operate_surface.widget(0) is window._operate_home   # Home leads the OPERATE sub-views
+    # Reform (P2): OPERATE opens on the Console (the merged Operate splitter); the tile Operate-Home is
+    # retired from the surface (kept constructed + hidden).
+    assert window._operate_surface.widget(0) is window._operate_action   # Console leads the OPERATE sub-views
     for existing in ("DEVICE", "HUNT", "OPERATE", "CRACK", "MAP", "Settings"):
         assert existing in labels
 
