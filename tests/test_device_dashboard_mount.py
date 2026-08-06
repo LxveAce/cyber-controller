@@ -1,11 +1,18 @@
 """Shell-side guard for the DEVICE > Dashboard front door (the reform landing).
 
-test_device_dashboard.py checks the STANDALONE widget re-homes a spot-check of widgets. This guards
-the MOUNTED path: when the real CyberControllerWindow builds, its `_device_dashboard` is the first
-DEVICE sub-tab AND carries the FULL REFORM-DENSITY-SPEC device field set (every readout, the serial
-terminal, and the three safety items) re-homed as live widgets. The re-composition wires by
-`getattr(host, "_attr", None)`, so a future rename of a DeviceTab/HealthTab attr would SILENTLY drop
-a field from the front door (the "a field went missing" regression). This makes that loud.
+test_device_dashboard.py checks the STANDALONE widget; this guards the MOUNTED path: the real
+CyberControllerWindow's `_device_dashboard` is the first DEVICE sub-tab AND carries the full
+REFORM-DENSITY-SPEC device field set. The Dashboard composes two legitimate ways (density spec:
+prefer re-parenting, else EXTRACT the readout — never drop a FIELD):
+  * RE-HOMED by reference — most widgets (device list, gauges, serial terminal, BlueJammer/Mesh
+    panels) are the LIVE host widgets re-parented into the Dashboard subtree.
+  * FRESH MIRROR — the Selected Device card renders its own `_sd_*` widgets from the host's OWN
+    formatters (arm_lamp_render / _format_health / _current_capabilities / _telemetry_line /
+    _alert_line / _snapshot_line); re-homing those inline-styled readouts couldn't be made readable.
+    Same data, no field dropped.
+So the guard checks the right invariant per widget: re-homed ones must be under the Dashboard by
+reference; mirrored fields must have their fresh Dashboard widget present + mounted. Either way, a
+field that stops reaching the front door (attr rename, a dropped mirror) is a loud failure.
 
 The BlueJammer STOP is asserted present AND enabled — owner directive is that STOP stays ungated, so
 "the panel is mounted" is not enough; the STOP control must be reachable.
@@ -70,9 +77,9 @@ def win(qapp):
     qapp.processEvents()
 
 
-# (host attr on the window, widget attr, human label). The density-critical device readouts +
-# controls + safety items the front door carries (REFORM-DENSITY-SPEC Dashboard field set).
-_DENSITY = [
+# RE-HOMED by reference (host attr on the window, widget attr, label): the LIVE host widget must be
+# re-parented into the Dashboard subtree (density-critical controls/readouts + safety items).
+_REHOMED = [
     ("_device_tab", "_device_list",     "device list"),
     ("_device_tab", "_btn_connect",     "connect button"),
     ("_device_tab", "_firmware_combo",  "firmware combo"),
@@ -81,17 +88,23 @@ _DENSITY = [
     ("_health_tab", "_disk_gauge",      "disk gauge"),
     ("_health_tab", "_batt_gauge",      "battery gauge"),
     ("_health_tab", "_gps_status",      "GPS status"),
-    ("_device_tab", "_arm_label",       "ARM/SAFE lamp"),
-    ("_device_tab", "_health_label",    "health chip"),
-    ("_device_tab", "_caps_label",      "capabilities readout"),
-    ("_device_tab", "_telemetry_label", "telemetry readout"),
-    ("_device_tab", "_alert_label",     "alert readout"),
-    ("_device_tab", "_snapshot_label",  "airspace snapshot"),
     ("_device_tab", "_terminal",        "serial terminal"),
     ("_device_tab", "_cmd_input",       "command input"),
     ("_device_tab", "_btn_send",        "send button"),
     ("_device_tab", "_bj_panel",        "BlueJammer panel"),
     ("_device_tab", "_mesh_panel",      "Meshtastic panel"),
+]
+
+# FRESH MIRROR (Dashboard attr, label): the Selected Device card renders these from the host's own
+# formatters (not re-homed). A field is surfaced iff its fresh Dashboard widget exists + is mounted.
+# `_sd_arm` is the ARM/SAFE lamp (safety) — it MUST have a home on the front door.
+_MIRRORED = [
+    ("_sd_arm",    "ARM/SAFE lamp"),
+    ("_sd_health", "health chip"),
+    ("_sd_caps",   "capabilities readout"),
+    ("_sd_telem",  "telemetry readout"),
+    ("_sd_alert",  "alert readout"),
+    ("_sd_snap",   "airspace snapshot"),
 ]
 
 
@@ -100,14 +113,24 @@ def test_dashboard_is_the_first_device_subtab(win):
     assert win._rig_surface.widget(0) is win._device_dashboard
 
 
-@pytest.mark.parametrize("host_attr,widget_attr,label", _DENSITY,
-                         ids=[c[2] for c in _DENSITY])
-def test_density_widget_is_live_and_rehomed(win, host_attr, widget_attr, label):
+@pytest.mark.parametrize("host_attr,widget_attr,label", _REHOMED,
+                         ids=[c[2] for c in _REHOMED])
+def test_rehomed_widget_is_live_and_under_dashboard(win, host_attr, widget_attr, label):
     host = getattr(win, host_attr)
     widget = getattr(host, widget_attr, None)
     assert widget is not None, f"host lost {widget_attr} — density source gone ({label})"
     assert win._device_dashboard.isAncestorOf(widget), (
         f"{label} exists but is NOT under the mounted Dashboard — front door dropped it")
+
+
+@pytest.mark.parametrize("dash_attr,label", _MIRRORED, ids=[c[1] for c in _MIRRORED])
+def test_selected_device_field_is_surfaced_fresh(win, dash_attr, label):
+    # Selected Device fields are mirrored (fresh widgets), not re-homed — guard the FIELD: its fresh
+    # Dashboard widget must exist AND be mounted on the front door (a dropped mirror = lost field).
+    widget = getattr(win._device_dashboard, dash_attr, None)
+    assert widget is not None, f"Selected Device mirror {dash_attr} missing — dropped ({label})"
+    assert win._device_dashboard.isAncestorOf(widget), (
+        f"{label} mirror exists but is NOT under the mounted Dashboard — front door dropped it")
 
 
 def test_bluejammer_stop_is_mounted_and_ungated(win):
