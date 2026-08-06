@@ -62,15 +62,19 @@ class TailDetectTab(QWidget):
         self.refresh()
 
     def _build_ui(self) -> None:
+        # Reform: match the mockup — the whole view is ONE "Follower / Tail Detection" card, with the
+        # description as a footnote and the threshold row / table / ignore button inside it.
         outer = QVBoxLayout(self)
-        hdr = QLabel(
-            "<b>Follower / tail detection</b> — flags a device that <b>keeps reappearing</b> near "
-            "you across time (possible surveillance). Awareness-first: it never confirms a "
-            "follower and never acts on a device. Method: ArgeliusLabs/Chasing-Your-Tail-NG (MIT)."
-        )
-        hdr.setWordWrap(True)
-        hdr.setStyleSheet(f"color:{C.TEXT_MUTED};")
-        outer.addWidget(hdr)
+        outer.setContentsMargins(14, 12, 14, 12)
+        from src.ui.qt import primer
+        from src.ui.qt.flash_tab import _make_card
+        card, cl = _make_card("Follower / Tail Detection", "counter-surveillance")
+        outer.addWidget(card, 1)
+
+        cl.addWidget(primer.footnote(
+            "Flags a device that keeps reappearing near you across time (possible surveillance). "
+            "Awareness-first: it never confirms a follower and never acts on a device. Method: "
+            "ArgeliusLabs/Chasing-Your-Tail-NG (MIT)."))
 
         ctl = QHBoxLayout()
         ctl.addWidget(QLabel("Min persistence:"))
@@ -86,7 +90,7 @@ class TailDetectTab(QWidget):
         self._count_label = QLabel("")
         self._count_label.setStyleSheet(f"color:{C.TEXT_MUTED};")
         ctl.addWidget(self._count_label)
-        outer.addLayout(ctl)
+        cl.addLayout(ctl)
 
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(["Device", "Label", "Persistence", "Windows"])
@@ -99,9 +103,7 @@ class TailDetectTab(QWidget):
         hh.setSectionResizeMode(1, QHeaderView.Stretch)            # Label
         hh.setSectionResizeMode(2, QHeaderView.ResizeToContents)   # Persistence
         hh.setSectionResizeMode(3, QHeaderView.ResizeToContents)   # Windows
-        outer.addWidget(self._table, 1)
-        from src.ui.qt import primer
-        primer.apply_primer(self)   # mockup formula: tight detections table / .btn buttons
+        cl.addWidget(self._table, 1)
         # Reassuring empty-state, drawn over the table viewport so rowCount() stays 0 (an overlay,
         # never an inserted row). Positioned + toggled in refresh().
         self._empty_label = QLabel(
@@ -118,7 +120,8 @@ class TailDetectTab(QWidget):
         self._ignore_btn.clicked.connect(self._mark_selected_ignored)
         row.addWidget(self._ignore_btn)
         row.addStretch(1)
-        outer.addLayout(row)
+        cl.addLayout(row)
+        primer.apply_primer(self)   # mockup formula: tight detections table / .btn buttons
 
     def showEvent(self, ev) -> None:  # noqa: N802 (Qt override)
         super().showEvent(ev)
