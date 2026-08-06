@@ -2035,10 +2035,12 @@ class CyberControllerWindow(QMainWindow):
         self._mode_badge.setToolTip("Click (or Ctrl+M) to switch between Simple and Pro interface modes")
         self._mode_badge.mousePressEvent = lambda _ev: self._toggle_ui_mode()  # type: ignore[assignment]
 
-        if shell is not None:
-            shell.add_status_widget(self._status_label)
-            shell.add_status_widget(self._mode_badge)
-        else:  # pragma: no cover - defensive fallback
+        # Reform chrome (Atlas): the reformed top bar matches the approved mockup — brand · breadcrumb ·
+        # ● SAFE lamp · Simple/Pro segment · ⤢/⚙. The old CPU/RAM/Devices/Targets summary + "Mode ▾" badge
+        # are NOT folded into it: they cluttered the bar (owner: "just like the example") and duplicate the
+        # Dashboard's own gauges + the segment + the shell's device slot. The labels stay alive (the
+        # _refresh_status timer keeps _status_label current for any reader) but are not shown in the top bar.
+        if shell is None:  # pragma: no cover - defensive fallback (no reformed shell, e.g. a bare test)
             self.statusBar().addPermanentWidget(self._status_label)
             self.statusBar().addPermanentWidget(self._mode_badge)
 
