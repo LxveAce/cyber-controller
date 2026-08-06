@@ -23,7 +23,6 @@ from PyQt5.QtWidgets import (
     QComboBox,
     QDialog,
     QFileDialog,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -449,76 +448,65 @@ class CrackLabTab(QWidget):
             "native cracker works with no install; aircrack-ng / hashcat are optional faster engines. "
             "Dictionary-only; the consent gate is never bypassed."))
 
-        # Wave-3 Batch C: controls (left) / captures+log (right) split. Only a true desktop
-        # (>=1024) gets the side-by-side; it stacks vertical otherwise (see _apply_crack_layout).
+        # Reform: match the mockup's CRACK card grid — controls (Engine · Capture & Wordlist · Run) on
+        # the left, Captured Handshakes + Log on the right. Stacks vertically on a small/deck canvas
+        # (_apply_crack_layout flips the split). Every control + its wiring is preserved.
+        from src.ui.qt.flash_tab import _make_card
         self._split = QSplitter(Qt.Horizontal)
         _left = QWidget()
         left_col = QVBoxLayout(_left)
         left_col.setContentsMargins(0, 0, 0, 0)
+        left_col.setSpacing(12)
+        left_col.setAlignment(Qt.AlignTop)
         _right = QWidget()
         right_col = QVBoxLayout(_right)
         right_col.setContentsMargins(0, 0, 0, 0)
+        right_col.setSpacing(12)
         self._split.addWidget(_left)
         self._split.addWidget(_right)
+        self._split.setStretchFactor(0, 0)
+        self._split.setStretchFactor(1, 1)
         root.addWidget(self._split, 1)
 
-        info = QLabel(cp.capability_text())
-        info.setWordWrap(True)
-        left_col.addWidget(info)
-
-        # tools presence
-        tools_box = QGroupBox("Engine (built-in native cracker always works — optional faster engines below)")
-        tl = QHBoxLayout(tools_box)
-        self._tools_label = QLabel("…")
-        self._tools_label.setWordWrap(True)
-        tl.addWidget(self._tools_label, 1)
+        # ── LEFT · Engine card ──
+        eng_card, eng_l = _make_card("Engine", "native always works")
+        self._backend_combo = QComboBox()
+        eng_l.addWidget(self._backend_combo)
+        eng_btns = QHBoxLayout()
         get_tools = QPushButton("Get tools…")
         get_tools.clicked.connect(self._show_tools)
-        tl.addWidget(get_tools)
+        eng_btns.addWidget(get_tools)
         recheck = QPushButton("Re-check")
         recheck.clicked.connect(self._refresh_tools)
-        tl.addWidget(recheck)
-        left_col.addWidget(tools_box)
+        eng_btns.addWidget(recheck)
+        eng_btns.addStretch(1)
+        eng_l.addLayout(eng_btns)
+        self._tools_label = QLabel("…")
+        self._tools_label.setObjectName("dim")
+        self._tools_label.setWordWrap(True)
+        eng_l.addWidget(self._tools_label)
+        left_col.addWidget(eng_card)
 
-        # capture picker
+        # ── LEFT · Capture & Wordlist card ──
+        cw_card, cw_l = _make_card("Capture & Wordlist")
+        _cap_lbl = QLabel("Capture (.pcapng / .pcap / .cap / .hc22000)")
+        _cap_lbl.setObjectName("dim")
+        cw_l.addWidget(_cap_lbl)
         cap_row = QHBoxLayout()
-        cap_row.addWidget(QLabel("Capture:"))
         self._capture_edit = QLineEdit()
         self._capture_edit.setPlaceholderText("a .pcapng/.pcap/.cap/.hc22000 file you captured")
         # Typing a new path by hand breaks the double-click binding, so a solved crack won't get
-        # written back onto a capture the user is no longer cracking (textEdited fires on user edits
-        # only, NOT on the programmatic setText a row double-click does).
+        # written back onto a capture the user is no longer cracking (textEdited fires on user edits only).
         self._capture_edit.textEdited.connect(self._forget_active_capture)
         cap_row.addWidget(self._capture_edit, 1)
         browse_cap = QPushButton("Browse…")
         browse_cap.clicked.connect(self._pick_capture)
         cap_row.addWidget(browse_cap)
-        left_col.addLayout(cap_row)
-
-        # ── Captures (auto-populated from live device captures) ──────────
-        cap_box = QGroupBox("Captured handshakes")
-        cb = QVBoxLayout(cap_box)
-        hdr = QHBoxLayout()
-        hdr.addWidget(QLabel("Auto-logged as devices capture; double-click a row to load it."))
-        hdr.addStretch(1)
-        self._export_captures_btn = QPushButton("Export…")
-        self._export_captures_btn.setToolTip(
-            "Write the capture log to a spreadsheet-safe CSV or a JSON file — pick the format "
-            "in the save dialog (includes any recovered passwords).")
-        self._export_captures_btn.clicked.connect(self._on_export_captures)
-        hdr.addWidget(self._export_captures_btn)
-        cb.addLayout(hdr)
-        self._captures_table = QTableWidget(0, len(CAPTURE_CSV_COLUMNS))
-        self._captures_table.setHorizontalHeaderLabels([c.upper() for c in CAPTURE_CSV_COLUMNS])
-        self._captures_table.setSelectionBehavior(QAbstractItemView.SelectRows)
-        self._captures_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self._captures_table.cellDoubleClicked.connect(self._on_capture_activated)
-        cb.addWidget(self._captures_table)
-        right_col.addWidget(cap_box, 1)
-
-        # wordlist picker
+        cw_l.addLayout(cap_row)
+        _wl_lbl = QLabel("Wordlist")
+        _wl_lbl.setObjectName("dim")
+        cw_l.addWidget(_wl_lbl)
         wl_row = QHBoxLayout()
-        wl_row.addWidget(QLabel("Wordlist:"))
         self._wordlist_combo = QComboBox()
         self._wordlist_combo.setEditable(False)
         wl_row.addWidget(self._wordlist_combo, 1)
@@ -531,22 +519,26 @@ class CrackLabTab(QWidget):
         catalog = QPushButton("Catalog…")
         catalog.clicked.connect(self._show_catalog)
         wl_row.addWidget(catalog)
-        left_col.addLayout(wl_row)
-
-        # backend + optional BSSID
-        opt_row = QHBoxLayout()
-        opt_row.addWidget(QLabel("Engine:"))
-        self._backend_combo = QComboBox()
-        opt_row.addWidget(self._backend_combo)
-        opt_row.addWidget(QLabel("BSSID (aircrack, optional):"))
+        cw_l.addLayout(wl_row)
+        _bssid_lbl = QLabel("BSSID (aircrack, optional)")
+        _bssid_lbl.setObjectName("dim")
+        cw_l.addWidget(_bssid_lbl)
         self._bssid_edit = QLineEdit()
         self._bssid_edit.setPlaceholderText("AA:BB:CC:DD:EE:FF")
-        opt_row.addWidget(self._bssid_edit, 1)
-        left_col.addLayout(opt_row)
+        cw_l.addWidget(self._bssid_edit)
+        left_col.addWidget(cw_card)
 
-        # run / stop
+        # ── LEFT · Run card (the real consent gate stays the per-run dialog; this is the honest note) ──
+        run_card, run_l = _make_card("Run", "consent required per run")
+        _consent = QLabel("⚠ You confirm you own or are explicitly authorized to test the network on every "
+                          "run — the consent gate is never bypassed.")
+        _consent.setWordWrap(True)
+        _consent.setStyleSheet("color:#d29922;background:rgba(210,153,34,0.10);border:1px solid #8a6100;"
+                               "border-radius:6px;padding:6px 9px;font-size:11px;")
+        run_l.addWidget(_consent)
         run_row = QHBoxLayout()
         self._run_btn = QPushButton("Recover key…")
+        self._run_btn.setObjectName("btnGreen")
         self._run_btn.clicked.connect(self._on_run)
         run_row.addWidget(self._run_btn)
         self._stop_btn = QPushButton("Stop")
@@ -554,17 +546,44 @@ class CrackLabTab(QWidget):
         self._stop_btn.clicked.connect(self._on_stop)
         run_row.addWidget(self._stop_btn)
         run_row.addStretch(1)
+        run_l.addLayout(run_row)
         self._result_label = QLabel("")
         self._result_label.setWordWrap(True)
-        run_row.addWidget(self._result_label, 1)
-        left_col.addLayout(run_row)
+        run_l.addWidget(self._result_label)
+        left_col.addWidget(run_card)
         left_col.addStretch(1)
 
-        # log
+        # ── RIGHT · Captured Handshakes card ──
+        cap_card, cap_l = _make_card("Captured Handshakes", "auto-logged")
+        _cap_hint = QLabel("Auto-logged as your devices capture — double-click a row to load it into the run.")
+        _cap_hint.setObjectName("dim")
+        _cap_hint.setWordWrap(True)
+        cap_l.addWidget(_cap_hint)
+        self._captures_table = QTableWidget(0, len(CAPTURE_CSV_COLUMNS))
+        self._captures_table.setHorizontalHeaderLabels([c.upper() for c in CAPTURE_CSV_COLUMNS])
+        self._captures_table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self._captures_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
+        self._captures_table.cellDoubleClicked.connect(self._on_capture_activated)
+        cap_l.addWidget(self._captures_table, 1)
+        exp_row = QHBoxLayout()
+        exp_row.addStretch(1)
+        self._export_captures_btn = QPushButton("Export…")
+        self._export_captures_btn.setToolTip(
+            "Write the capture log to a spreadsheet-safe CSV or a JSON file — pick the format "
+            "in the save dialog (includes any recovered passwords).")
+        self._export_captures_btn.clicked.connect(self._on_export_captures)
+        exp_row.addWidget(self._export_captures_btn)
+        cap_l.addLayout(exp_row)
+        right_col.addWidget(cap_card, 1)
+
+        # ── RIGHT · Log card ──
+        log_card, log_l = _make_card("Log", "tool output")
         self._log = QPlainTextEdit()
         self._log.setReadOnly(True)
+        self._log.setObjectName("terminal")
         self._log.setPlaceholderText("tool output appears here during a run")
-        right_col.addWidget(self._log, 1)
+        log_l.addWidget(self._log, 1)
+        right_col.addWidget(log_card, 1)
 
         primer.apply_primer(self)   # mockup formula: tight tables / .field inputs / .btn buttons
         self._refresh_tools()
