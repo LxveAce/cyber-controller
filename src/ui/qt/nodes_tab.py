@@ -77,31 +77,32 @@ class NodesTab(QWidget):
         _outer.setContentsMargins(0, 0, 0, 0)
         _outer.addWidget(_scroll)
         root = QVBoxLayout(_content)
+        root.setContentsMargins(14, 12, 14, 12)
+        from src.ui.qt import primer
+        from src.ui.qt.flash_tab import _make_card
 
-        banner = QLabel(
-            "⚠  The relay/node ESP32 sketches ship as source in firmware/ — compile and flash "
-            "them yourself. Provision, attach, and detach here run over a gateway board you've "
-            "opened in the Devices tab (a live serial link); over-the-air node discovery from "
-            "this view isn't wired up yet."
-        )
-        banner.setWordWrap(True)
-        banner.setStyleSheet(
-            "background:#3d2c00;color:#f0c000;border:1px solid #7a5c00;border-radius:6px;"
-            "padding:8px 10px;font-weight:600;"
-        )
-        root.addWidget(banner)
+        # Reform: compact mockup note_bar (was an oversized amber block) + wrap node management in the
+        # mockup's "Provisioned Nodes" card (access-gate meta).
+        root.addWidget(primer.note_bar(
+            "The relay/node ESP32 sketches ship as source in firmware/ — compile and flash them "
+            "yourself. Provision / attach / detach run over a gateway board you've opened in the "
+            "DEVICE Dashboard (a live serial link); over-the-air node discovery isn't wired up yet.",
+            warn=True))
+
+        card, cl = _make_card("Provisioned Nodes", "access gate")
+        root.addWidget(card, 1)
 
         self._locked_label = QLabel("🔒  Unlock the access gate to manage nodes.")
         self._locked_label.setAlignment(Qt.AlignCenter)
         self._locked_label.setStyleSheet("color:#8b949e;padding:24px;")
-        root.addWidget(self._locked_label)
+        cl.addWidget(self._locked_label)
 
         # A5 #7: shown when unlocked but no nodes exist yet, so the blank table isn't mistaken for an error.
         self._empty_hint = QLabel("No nodes provisioned yet — click “Provision…” to add one.")
         self._empty_hint.setAlignment(Qt.AlignCenter)
         self._empty_hint.setStyleSheet("color:#8b949e;padding:24px;")
         self._empty_hint.setVisible(False)
-        root.addWidget(self._empty_hint)
+        cl.addWidget(self._empty_hint)
 
         self._table = QTableWidget(0, len(self._COLS))
         self._table.setHorizontalHeaderLabels(self._COLS)
@@ -109,7 +110,7 @@ class NodesTab(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectRows)
         self._table.setSelectionMode(QTableWidget.SingleSelection)
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
-        root.addWidget(self._table, stretch=1)
+        cl.addWidget(self._table, 1)
 
         # Wave-3 Batch C: the six-button action row is DENSITY-driven (see _apply_nodes_layout /
         # nodes_layout) — a grid that reflows 6-wide when roomy, else 2 (pointer) or 1 (touch) when
@@ -129,7 +130,7 @@ class NodesTab(QWidget):
         self._btn_refresh.clicked.connect(self._refresh)
         self._buttons = [self._btn_provision, self._btn_rotate, self._btn_deprov,
                          self._btn_attach, self._btn_detach, self._btn_refresh]
-        root.addLayout(self._btn_grid)
+        cl.addLayout(self._btn_grid)   # buttons live inside the Provisioned Nodes card (bottom)
         self._relayout_nodes(force=True)   # seed the button placement into the grid
 
     # ── responsive layout (Wave-3 Batch C) ───────────────────────────

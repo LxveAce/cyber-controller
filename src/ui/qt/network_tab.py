@@ -289,11 +289,14 @@ class NetworkTab(QWidget):
         hint.setStyleSheet("color:#8b949e;")
         self._hint_label = hint   # Wave-3 Batch C: demoted on dense chrome (compact)
         bar.addWidget(hint)
-        root.addWidget(self._controls)
-
+        # Reform: wrap the toolbar + canvas in the mockup's "Node Graph" card (canvas itself untouched).
+        from src.ui.qt.flash_tab import _make_card
+        _graph_card, _gcl = _make_card("Node Graph", "mesh topology")
+        _gcl.addWidget(self._controls)
         self._scene = QGraphicsScene(self)
         self._view = _GraphView(self._scene)
-        root.addWidget(self._view, 1)
+        _gcl.addWidget(self._view, 1)
+        root.addWidget(_graph_card, 1)
         from src.ui.qt import primer
         primer.apply_primer(self)   # mockup formula: .field controls / .btn buttons (graph canvas untouched)
 
