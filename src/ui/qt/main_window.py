@@ -648,7 +648,7 @@ class CyberControllerWindow(QMainWindow):
         self._hunt_surface = _verb_surface(
             ("Wi-Fi", self._wifi_analyzer), ("BLE", self._ble_analyzer),
             ("Targets", self._targets_tab), ("Tail Detect", self._tail_detect_tab),
-            ("Graph", self._network_tab),
+            ("Node Graph", self._network_tab),
         )
         # OPERATE — the ONE action surface (kills the double-Operate): Home launcher · merged Control · Macros.
         # Control is the QA-1 splitter (fan-out Broadcast + single-device Console), preserved verbatim.
@@ -666,7 +666,7 @@ class CyberControllerWindow(QMainWindow):
         # MAP — one canvas: Wardrive · Multi-Wardrive · Flock / ALPR.
         self._map_surface = _verb_surface(
             ("Wardrive", self._wardrive_tab), ("Multi-Wardrive", self._wardrive_multi_tab),
-            ("Flock Map", self._flock_heatmap),
+            ("Flock / ALPR", self._flock_heatmap),
         )
 
         # Tap the analyzer event feeds now the analyzers exist + are mounted under HUNT. The taps key off the

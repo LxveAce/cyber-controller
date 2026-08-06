@@ -149,12 +149,12 @@ def test_map_surface_subtabs(qapp, isolated_settings):
     win = _make_window()
     surface = win._map_surface
     titles = [surface.tabText(i) for i in range(surface.count())]
-    assert titles == ["Wardrive", "Multi-Wardrive", "Flock Map"]
+    assert titles == ["Wardrive", "Multi-Wardrive", "Flock / ALPR"]
     assert surface.widget(0) is win._wardrive_tab, "Wardrive sub-tab must be the WardriveTab object"
     assert surface.widget(1) is win._wardrive_multi_tab, "Multi-Wardrive must be the WardriveMultiTab object"
     assert surface.widget(2) is win._flock_heatmap, "Flock Map must be the FlockHeatmapTab object"
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Wardrive", "Multi-Wardrive", "Flock Map", "Survey"):
+    for gone in ("Wardrive", "Multi-Wardrive", "Flock / ALPR", "Survey"):
         assert gone not in toplevel, f"{gone!r} should be a MAP sub-tab, not top-level"
     assert "MAP" in toplevel
 
@@ -204,14 +204,14 @@ def test_hunt_surface_subtabs(qapp, isolated_settings):
     if win._ble_analyzer is not None:
         expected.append("BLE")
         assert win._ble_analyzer in members, "BLE analyzer must live in HUNT"
-    expected += ["Targets", "Tail Detect", "Graph"]
+    expected += ["Targets", "Tail Detect", "Node Graph"]
     assert titles == expected
     assert win._targets_tab in members, "Targets sub-tab must be the TargetsTab object, in HUNT"
     assert win._tail_detect_tab in members, "Tail Detect sub-tab must be the TailDetectTab object, in HUNT"
     assert win._network_tab in members, "Graph sub-tab must be the NetworkTab object, in HUNT"
     # These are sub-views now, not top-level; the old "Analyze"/"Network" labels are gone.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]
-    for gone in ("Graph", "Targets", "Analyze", "Network"):
+    for gone in ("Node Graph", "Targets", "Analyze", "Network"):
         assert gone not in toplevel
     assert "HUNT" in toplevel
 
