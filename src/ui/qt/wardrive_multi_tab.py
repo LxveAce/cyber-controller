@@ -150,8 +150,11 @@ class WardriveMultiTab(QWidget):
         gps_l.addLayout(o)
         root.addWidget(gps_card)
 
+        # Live capture status wrapped in a card so the surface is fully card-based (mockup formula).
+        status_card, status_l = _make_card("Live status", "per-board")
         ctl = QHBoxLayout()
         self._btn_start = QPushButton("Start all")
+        self._btn_start.setObjectName("btnGreen")   # mockup: the primary go-action is green
         self._btn_start.clicked.connect(self._on_start)
         self._btn_stop = QPushButton("Stop all")
         self._btn_stop.setEnabled(False)
@@ -161,19 +164,20 @@ class WardriveMultiTab(QWidget):
         ctl.addStretch(1)
         self._total_label = QLabel("Fix: No Fix    Total APs: 0")
         ctl.addWidget(self._total_label)
-        root.addLayout(ctl)
+        status_l.addLayout(ctl)
 
         self._status_table = QTableWidget(0, len(_STATUS_COLS))
         self._status_table.setHorizontalHeaderLabels(_STATUS_COLS)
         self._status_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
         self._status_table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        root.addWidget(self._status_table, 1)
+        status_l.addWidget(self._status_table, 1)
 
         self._errors_label = QLabel("")
         self._errors_label.setWordWrap(True)
         self._errors_label.setStyleSheet("color:#f85149;")   # red: a board/GPS that failed to open
         self._errors_label.hide()
-        root.addWidget(self._errors_label)
+        status_l.addWidget(self._errors_label)
+        root.addWidget(status_card, 1)
 
     # ── board selection (testable) ───────────────────────────────────
     def _connected_boards(self) -> list[tuple[str, str]]:
