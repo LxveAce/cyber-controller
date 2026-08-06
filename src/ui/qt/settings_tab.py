@@ -305,7 +305,7 @@ class SettingsTab(QWidget):
         btn_row.addStretch()
         self._reset_btn = QPushButton("Reset to Defaults")
         self._save_btn = QPushButton("Save Settings")
-        self._save_btn.setObjectName("flash_btn")
+        self._save_btn.setObjectName("btnGreen")  # reform green go-action (flash_btn is flattened under primer)
         btn_row.addWidget(self._reset_btn)
         btn_row.addWidget(self._save_btn)
         root.addLayout(btn_row)

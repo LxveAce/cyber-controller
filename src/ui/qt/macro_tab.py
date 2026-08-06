@@ -252,7 +252,7 @@ class MacroTab(QWidget):
         ctrl_row.addWidget(self._speed_combo)
 
         self._btn_record = QPushButton("● Record")
-        self._btn_record.setObjectName("erase_btn")  # Red styling
+        self._btn_record.setObjectName("btnDanger")  # reform red (erase_btn is flattened under primer)
         self._btn_record.clicked.connect(self._on_record)
         ctrl_row.addWidget(self._btn_record)
 
@@ -262,7 +262,7 @@ class MacroTab(QWidget):
         ctrl_row.addWidget(self._btn_stop)
 
         self._btn_play = QPushButton("▶ Play")
-        self._btn_play.setObjectName("flash_btn")  # Green styling
+        self._btn_play.setObjectName("btnGreen")  # reform green (flash_btn is flattened under primer)
         self._btn_play.setEnabled(False)
         self._btn_play.clicked.connect(self._on_play)
         ctrl_row.addWidget(self._btn_play)

@@ -145,6 +145,10 @@ def primer_qss() -> str:
         f"QPushButton#btnGreen{{background:#238636;border-color:#2ea043;color:#fff;font-weight:600;}}"
         f"QPushButton#btnDanger{{border-color:#8b2c26;color:{RED};}}"
         f"QPushButton#btnWarn{{border-color:#8a6100;color:{AMBER};}}"
+        # Disabled colour-buttons dim to the neutral gray (the global #flash_btn had a :disabled rule;
+        # btnGreen/btnDanger need their own since this sheet flattens the objectName-based global one).
+        f"QPushButton#btnGreen:disabled,QPushButton#btnDanger:disabled,QPushButton#btnWarn:disabled"
+        f"{{background:{BORDER2};border-color:{BORDER2};color:{DIM};font-weight:400;}}"
     )
 
 

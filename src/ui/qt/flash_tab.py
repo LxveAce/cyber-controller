@@ -439,7 +439,7 @@ class FlashTab(QWidget):
         # Flash + Backup buttons
         btn_col = QVBoxLayout()
         self._btn_flash = QPushButton("Flash")
-        self._btn_flash.setObjectName("flash_btn")
+        self._btn_flash.setObjectName("btnGreen")  # reform green go-action (flash_btn is flattened under primer)
         self._btn_flash.setMinimumHeight(40)
         self._btn_flash.setToolTip(
             "Write the selected firmware profile to the board on the chosen port."
@@ -455,7 +455,7 @@ class FlashTab(QWidget):
         btn_col.addWidget(self._btn_backup)
 
         self._btn_erase = QPushButton("Erase Flash")
-        self._btn_erase.setObjectName("erase_btn")
+        self._btn_erase.setObjectName("btnDanger")  # reform red (erase_btn is flattened under primer)
         self._btn_erase.setToolTip(
             "Wipe the board's entire flash. Destructive — confirms before running."
         )
