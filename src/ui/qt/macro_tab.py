@@ -116,12 +116,11 @@ class MacroTab(QWidget):
         left_scroll.setMinimumWidth(160)
 
         left = QWidget()
-        left_layout = QVBoxLayout(left)
-        left_layout.setContentsMargins(0, 0, 0, 0)
-
-        lbl = QLabel("Saved Macros")
-        lbl.setObjectName("card_title")
-        left_layout.addWidget(lbl)
+        _left_v = QVBoxLayout(left)
+        _left_v.setContentsMargins(0, 0, 0, 0)
+        # Reform: the mockup shows the saved-macro list inside a "Saved Macros" card.
+        _sm_card, left_layout = _make_card("Saved Macros")
+        _left_v.addWidget(_sm_card, 1)
 
         self._macro_list = QListWidget()
         self._macro_list.setMinimumHeight(80)
@@ -187,6 +186,11 @@ class MacroTab(QWidget):
         var_layout_inner.addLayout(var_row)
         right_layout.addWidget(var_card)
 
+        # Reform: wrap the loaded-macro editor (name, steps, controls) in one card,
+        # matching the mockup's macro card. The name label acts as its dynamic title.
+        self._editor_card, editor_layout = _make_card()
+        right_layout.addWidget(self._editor_card, stretch=1)
+
         # Macro info
         info_row = QHBoxLayout()
         self._macro_name_label = QLabel("No macro loaded")
@@ -198,7 +202,7 @@ class MacroTab(QWidget):
         self._macro_info_label.setObjectName("muted")
         self._macro_info_label.setWordWrap(True)
         info_row.addWidget(self._macro_info_label)
-        right_layout.addLayout(info_row)
+        editor_layout.addLayout(info_row)
 
         # Steps table
         self._steps_table = QTableWidget()
@@ -213,7 +217,7 @@ class MacroTab(QWidget):
         self._steps_table.setSelectionBehavior(QTableWidget.SelectRows)
         self._steps_table.verticalHeader().setVisible(False)
         self._steps_table.setMinimumHeight(80)
-        right_layout.addWidget(self._steps_table, stretch=1)
+        editor_layout.addWidget(self._steps_table, stretch=1)
 
         # Progress bar
         self._progress = QProgressBar()
@@ -222,7 +226,7 @@ class MacroTab(QWidget):
         self._progress.setTextVisible(True)
         self._progress.setFormat("Ready")
         self._progress.setMinimumHeight(20)
-        right_layout.addWidget(self._progress)
+        editor_layout.addWidget(self._progress)
 
         # Control buttons
         ctrl_row = QHBoxLayout()
@@ -247,7 +251,7 @@ class MacroTab(QWidget):
         self._speed_combo.setCurrentText("1x")
         ctrl_row.addWidget(self._speed_combo)
 
-        self._btn_record = QPushButton("Record")
+        self._btn_record = QPushButton("● Record")
         self._btn_record.setObjectName("erase_btn")  # Red styling
         self._btn_record.clicked.connect(self._on_record)
         ctrl_row.addWidget(self._btn_record)
@@ -257,7 +261,7 @@ class MacroTab(QWidget):
         self._btn_stop.clicked.connect(self._on_stop)
         ctrl_row.addWidget(self._btn_stop)
 
-        self._btn_play = QPushButton("Play")
+        self._btn_play = QPushButton("▶ Play")
         self._btn_play.setObjectName("flash_btn")  # Green styling
         self._btn_play.setEnabled(False)
         self._btn_play.clicked.connect(self._on_play)
@@ -268,7 +272,7 @@ class MacroTab(QWidget):
         self._btn_save.clicked.connect(self._on_save)
         ctrl_row.addWidget(self._btn_save)
 
-        right_layout.addLayout(ctrl_row)
+        editor_layout.addLayout(ctrl_row)
 
         right_scroll.setWidget(right)
         splitter.addWidget(right_scroll)
@@ -436,7 +440,7 @@ class MacroTab(QWidget):
         dev = self._dm.get_device(port)
         protocol = (getattr(dev, "firmware", "") or "") if dev is not None else ""
         self._recorder.start_recording(port, protocol=protocol)
-        self._btn_record.setText("Recording...")
+        self._btn_record.setText("● Recording...")
         self._btn_record.setEnabled(False)
         self._btn_stop.setEnabled(True)
         self._btn_play.setEnabled(False)
@@ -451,7 +455,7 @@ class MacroTab(QWidget):
             )
             self._current_macro = macro
             self._display_macro(macro)
-            self._btn_record.setText("Record")
+            self._btn_record.setText("● Record")
             self._btn_record.setEnabled(True)
             self._btn_stop.setEnabled(False)
             self._progress.setFormat("Recording stopped")
