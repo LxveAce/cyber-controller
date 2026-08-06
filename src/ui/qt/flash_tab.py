@@ -76,17 +76,29 @@ def _uf2_chip_for_variant(
     return None
 
 
-def _make_card(title: str | None = None) -> tuple[QFrame, QVBoxLayout]:
-    """Create a card-styled QFrame with optional title label."""
+def _make_card(title: str | None = None, meta: str = "") -> tuple[QFrame, QVBoxLayout]:
+    """Create a card-styled QFrame following the reform mockup formula: an UPPERCASE accent title with
+    an optional dim right-meta, on the mockup's tight padding. Shared by 8 tabs, so this one change
+    carries the formula across the app. Returns (card, body_layout) — add content to the body below the
+    header (backward-compatible: callers that passed only a title keep working)."""
     card = QFrame()
     card.setObjectName("card")
     layout = QVBoxLayout(card)
-    layout.setContentsMargins(16, 16, 16, 16)
+    layout.setContentsMargins(13, 11, 13, 12)   # mockup .card padding (tighter than the old 16)
     layout.setSpacing(8)
     if title:
-        lbl = QLabel(title)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        header.setSpacing(8)
+        lbl = QLabel(title.upper())             # mockup .card>h3 is uppercase (Qt QSS can't text-transform)
         lbl.setObjectName("card_title")
-        layout.addWidget(lbl)
+        header.addWidget(lbl)
+        header.addStretch(1)
+        if meta:
+            m = QLabel(meta)
+            m.setObjectName("card_meta")
+            header.addWidget(m)
+        layout.addLayout(header)
     return card, layout
 
 
