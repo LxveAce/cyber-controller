@@ -371,6 +371,11 @@ class FlashTab(QWidget):
         container = QWidget()
         root = QVBoxLayout(container)
 
+        from src.ui.qt import primer
+        root.addWidget(primer.note_bar(
+            "Board firmware flashing. Pick your port + firmware, then Flash. The vault caches proven "
+            "binaries offline; nothing claims proven without an owner-tested binary behind it."))
+
         # ── Top row: port + profile selectors ────────────────────────
         top = QHBoxLayout()
         top.setSpacing(8)
@@ -570,6 +575,7 @@ class FlashTab(QWidget):
 
         scroll.setWidget(container)
         outer.addWidget(scroll)
+        primer.apply_primer(self)   # mockup formula: tight tables / .field inputs / .btn buttons
         self._refresh_vault_status()
 
     # ── Dual-depth (Simple / Pro) ────────────────────────────────────
