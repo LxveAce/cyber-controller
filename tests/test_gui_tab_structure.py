@@ -204,9 +204,10 @@ def test_hunt_surface_subtabs(qapp, isolated_settings):
     if win._ble_analyzer is not None:
         expected.append("BLE")
         assert win._ble_analyzer in members, "BLE analyzer must live in HUNT"
-    expected += ["Targets", "Graph"]
+    expected += ["Targets", "Tail Detect", "Graph"]
     assert titles == expected
     assert win._targets_tab in members, "Targets sub-tab must be the TargetsTab object, in HUNT"
+    assert win._tail_detect_tab in members, "Tail Detect sub-tab must be the TailDetectTab object, in HUNT"
     assert win._network_tab in members, "Graph sub-tab must be the NetworkTab object, in HUNT"
     # These are sub-views now, not top-level; the old "Analyze"/"Network" labels are gone.
     toplevel = [win._tabs.tabText(i) for i in range(win._tabs.count())]

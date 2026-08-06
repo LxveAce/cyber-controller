@@ -640,10 +640,15 @@ class CyberControllerWindow(QMainWindow):
             ("Dashboard", self._device_dashboard), ("Firmware", self._flash_tab),
             ("Software OS", self._software_tab), ("Mesh", self._cross_comm_tab),
         )
-        # HUNT — "see what's out there, passively": Wi-Fi · BLE analyzers · Targets · node Graph.
+        # HUNT — "see what's out there, passively": Wi-Fi · BLE analyzers · Targets · Tail Detect · Graph.
+        # Reform: mount the follower/tail-detection panel under HUNT (the mockup HUNT sub-tab; the built
+        # TailDetectTab was never mounted). It taps the shared ingestor stream for its persistence tracker.
+        from src.ui.qt.tail_detect_tab import TailDetectTab
+        self._tail_detect_tab = TailDetectTab(self._ingestor)
         self._hunt_surface = _verb_surface(
             ("Wi-Fi", self._wifi_analyzer), ("BLE", self._ble_analyzer),
-            ("Targets", self._targets_tab), ("Graph", self._network_tab),
+            ("Targets", self._targets_tab), ("Tail Detect", self._tail_detect_tab),
+            ("Graph", self._network_tab),
         )
         # OPERATE — the ONE action surface (kills the double-Operate): Home launcher · merged Control · Macros.
         # Control is the QA-1 splitter (fan-out Broadcast + single-device Console), preserved verbatim.
