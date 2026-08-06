@@ -40,7 +40,21 @@ from src.ui.qt.link_strip import link_strip_render
 
 _ACCENT = "#a371f7"
 _META = "#6e7681"
-_CARD_QSS = "QFrame#dashcard{background:#161b22;border:1px solid #30363d;border-radius:8px;}"
+# De-bulk to the mockup's tight scale: card chrome + tighter fonts/padding on the re-homed controls
+# (buttons/combos/lists/tables carry Qt's generous defaults; the readout labels keep their own inline
+# font-size, which is fine). The ARM/SAFE lamp keeps its own prominent style (not overridden here).
+_CARD_QSS = (
+    "QFrame#dashcard{background:#161b22;border:1px solid #30363d;border-radius:8px;}"
+    "QPushButton{font-size:8pt;padding:3px 9px;}"
+    "QComboBox{font-size:8pt;padding:2px 6px;}"
+    "QLineEdit{font-size:8pt;padding:2px 6px;}"
+    "QListWidget{font-size:8pt;outline:0;}"
+    "QListWidget::item{padding:2px 4px;}"
+    "QTableWidget{font-size:8pt;}"
+    "QTableWidget::item{padding:1px 4px;}"
+    "QHeaderView::section{font-size:8pt;padding:2px 5px;}"
+    "QTextEdit{font-size:8pt;}"
+)
 
 
 def _add(layout, widget) -> None:
@@ -108,8 +122,12 @@ class DeviceDashboard(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QScrollArea.NoFrame)
         grid_host = QWidget()
-        grid = QHBoxLayout(grid_host)
-        grid.setContentsMargins(14, 14, 14, 14)
+        gh_v = QVBoxLayout(grid_host)
+        gh_v.setContentsMargins(14, 14, 14, 14)
+        gh_v.setSpacing(12)
+        cols_row = QWidget()
+        grid = QHBoxLayout(cols_row)
+        grid.setContentsMargins(0, 0, 0, 0)
         grid.setSpacing(12)
 
         left, left_v = self._column()
@@ -136,7 +154,7 @@ class DeviceDashboard(QWidget):
         _add(fw_row, getattr(dt, "_firmware_combo", None))
         dev_v.addLayout(fw_row)
         left_v.addWidget(dev_card)
-        _add(left_v, getattr(ht, "_dev_card", None))   # Device Health card (lifted whole) [PRO]
+        left_v.addStretch(1)   # Devices top-aligned; Device Health moves to a full-width row below
 
         # CENTER — System Health + Selected Device + Relay Link
         sys_card, sys_v, _ = self._card("System Health", "host · live 5s")
@@ -210,6 +228,13 @@ class DeviceDashboard(QWidget):
         grid.addWidget(right, 4)      # slimmer right column (mockup 1fr)
         left.setMinimumWidth(232)
         left.setMaximumWidth(300)
+        gh_v.addWidget(cols_row)
+        # Device Health goes full-width below the columns — a 5-col table is unreadable crammed into the
+        # 232px left column (owner: "device health is unreadable"). Usability over mockup-exact placement.
+        dev_health = getattr(ht, "_dev_card", None)
+        if dev_health is not None:
+            gh_v.addWidget(dev_health)
+        gh_v.addStretch(1)
         scroll.setWidget(grid_host)
         outer.addWidget(scroll, 1)
 
