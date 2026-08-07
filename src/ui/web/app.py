@@ -486,6 +486,7 @@ def create_app(
             targets=[t.to_dict() for t in target_pool.all()],
             target_count=target_pool.count,
             sys=_gauge_ctx(),
+            flash_profiles=list(profiles.keys()),
         )
 
     @app.route("/api/system-health")

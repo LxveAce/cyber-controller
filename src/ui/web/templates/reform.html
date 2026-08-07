@@ -166,35 +166,34 @@
       </div>
     </div>
 
-    <!-- Firmware (board-first flashing) — design preview -->
+    <!-- Firmware — board/port-first flashing (LIVE, wired to /api/flash) -->
     <div class="sub" data-sub="fw">
-      <div class="notebar warnbar">Board-first flashing. Pick your board, then a firmware. The badge is honest about whether that exact pair is proven, experimental, needs an external tool, or ships source-only.</div>
+      <div class="notebar warnbar">Flashing writes to the device and cannot be undone mid-write. Pick the target port + a firmware, then Flash. The port must be free (disconnect any serial monitor first).</div>
       <div class="split side">
         <div class="card">
-          <h3><span class="t">Board</span></h3>
-          <table><tbody>
-            <tr><td class="con">&#9679; ESP32-S3 (detected on COM4)</td></tr>
-            <tr><td>ESP32 WROOM</td></tr>
-            <tr><td>ESP32-C3</td></tr>
-            <tr><td>M5StickC Plus 2</td></tr>
-            <tr><td>Flipper Zero</td></tr>
-            <tr><td>NRF52840</td></tr>
-          </tbody></table>
+          <h3><span class="t">Target Port</span><span class="r">Scan</span></h3>
+          <table><tbody id="fw-ports"><tr><td class="off">scanning ports&#8230;</td></tr></tbody></table>
+          <div class="footnote" id="fw-port-msg" style="margin-top:6px;min-height:14px"></div>
         </div>
         <div class="card">
-          <h3><span class="t">Firmware for ESP32-S3</span><span class="r">esptool bundled</span></h3>
+          <h3><span class="t">Firmware</span><span class="r">esptool bundled</span></h3>
           <table>
-            <thead><tr><th>Firmware</th><th>This board</th><th></th></tr></thead>
-            <tbody>
-              <tr><td>Marauder</td><td><span class="fbadge fb-exp">&#9888; experimental</span></td><td class="r"><button class="btn sm green">Flash</button></td></tr>
-              <tr><td>GhostESP</td><td><span class="fbadge fb-ok">&#9989; proven binary</span></td><td class="r"><button class="btn sm green">Flash</button></td></tr>
-              <tr><td>Bruce</td><td><span class="fbadge fb-exp">&#9888; experimental</span></td><td class="r"><button class="btn sm green">Flash</button></td></tr>
-              <tr><td>ESP32-DIV</td><td><span class="fbadge fb-exp">&#9888; experimental</span></td><td class="r"><button class="btn sm">Flash</button></td></tr>
-              <tr><td>Flock-You</td><td><span class="fbadge fb-src">&#9940; source-only</span></td><td class="r"><button class="btn sm" disabled style="opacity:.5">Build yourself</button></td></tr>
-              <tr><td>LxveOS</td><td><span class="fbadge fb-ok">&#9989; proven binary</span></td><td class="r"><button class="btn sm green">Flash</button></td></tr>
+            <thead><tr><th>Firmware</th><th>Board / variant</th><th></th></tr></thead>
+            <tbody id="fw-profiles">
+              {% for name in flash_profiles %}
+              <tr>
+                <td>{{ name }}</td>
+                <td><select class="field fw-variant" data-profile="{{ name }}" style="min-width:150px"><option value="">Default (auto)</option></select></td>
+                <td class="r"><button class="btn sm green fw-flash" data-profile="{{ name }}">Flash</button></td>
+              </tr>
+              {% else %}
+              <tr><td class="off" colspan="3">no firmware profiles found</td></tr>
+              {% endfor %}
             </tbody>
           </table>
-          <div class="footnote">&#128274; needs-tool badges route to qFlipper / adb / hackrf as appropriate. Nothing claims &#8220;proven&#8221; without an owner-tested binary behind it.</div>
+          <div class="footnote">Variants load from each firmware&#8217;s own release. Leave on &#8220;Default&#8221; unless a board with a shared chip ID flashes a blank screen.</div>
+          <div style="margin-top:10px"><div class="progress" style="height:6px;background:#0d1117;border:1px solid var(--bd);border-radius:4px;overflow:hidden"><div id="fw-bar" style="height:100%;width:0;background:var(--acc);transition:width .2s"></div></div></div>
+          <div class="term" id="fw-log" style="height:130px;margin-top:8px"><div class="p">Pick a port + firmware, then Flash.</div></div>
         </div>
       </div>
     </div>

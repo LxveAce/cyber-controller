@@ -218,6 +218,7 @@
       var sel = devs.filter(function (d) { return d.connected; })[0] || null;
       subscribeSerial(sel ? sel.port : null, sel ? sel.firmware : null);
       if (window.__opSyncDevices) window.__opSyncDevices(devs);
+      if (window.__fwSyncPorts) window.__fwSyncPorts(devs);
     }).catch(function () {});
   }
 
@@ -373,6 +374,75 @@
     };
   }
   initOperate();
+
+  // ── DEVICE ▸ Firmware (flash, wired to /api/flash + /api/variants) ──
+  function initFirmware() {
+    var portsBody = document.getElementById("fw-ports");
+    var portMsg = document.getElementById("fw-port-msg");
+    var logEl = document.getElementById("fw-log");
+    var bar = document.getElementById("fw-bar");
+    if (!portsBody) return;
+    var fwPort = null;
+
+    window.__fwSyncPorts = function (devs) {
+      if (!devs.length) { portsBody.innerHTML = '<tr><td class="off">no ports — plug in a device</td></tr>'; return; }
+      portsBody.innerHTML = devs.map(function (d) {
+        var sel = d.port === fwPort ? " sel" : "";
+        return '<tr data-port="' + esc(d.port) + '" class="dev-row' + sel + '"><td class="' +
+          (d.connected ? "con" : "off") + '">' + (d.connected ? "●" : "○") + " " + esc(d.port) +
+          " — " + esc(d.name || d.firmware || "device") + "</td></tr>";
+      }).join("");
+    };
+    portsBody.addEventListener("click", function (e) {
+      var row = e.target.closest("tr.dev-row");
+      if (!row || !row.dataset.port) return;
+      fwPort = row.dataset.port;
+      portsBody.querySelectorAll(".dev-row").forEach(function (r) { r.classList.toggle("sel", r === row); });
+      if (portMsg) portMsg.textContent = "target: " + fwPort;
+    });
+
+    // lazy-load each profile's variants on first interaction
+    document.querySelectorAll(".fw-variant").forEach(function (sel) {
+      var loaded = false;
+      sel.addEventListener("focus", function () {
+        if (loaded) return;
+        loaded = true;
+        getJSON("/api/variants?profile=" + encodeURIComponent(sel.dataset.profile)).then(function (data) {
+          (data.variants || []).forEach(function (v) {
+            var o = document.createElement("option");
+            o.value = v.name;
+            o.textContent = v.label ? v.name + " — " + v.label : v.name;
+            sel.appendChild(o);
+          });
+        }).catch(function () {});
+      });
+    });
+
+    document.querySelectorAll(".fw-flash").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        if (!fwPort) { if (portMsg) { portMsg.textContent = "click a target port first"; portMsg.style.color = "var(--red)"; } return; }
+        var profile = btn.dataset.profile;
+        var vsel = document.querySelector('.fw-variant[data-profile="' + profile + '"]');
+        var variant = vsel ? vsel.value : "";
+        if (!window.confirm("Flash " + profile + " to " + fwPort + "?\n\nThis overwrites the device firmware and cannot be undone mid-write.")) return;
+        if (bar) bar.style.width = "0";
+        if (logEl) { logEl.innerHTML = ""; appendLine(logEl, "p", "[Flashing " + profile + " → " + fwPort + "]"); }
+        ensureSocket();
+        postJSON("/api/flash", { port: fwPort, profile_id: profile, variant: variant })
+          .then(function () { appendLine(logEl, "tx", "flash started…"); })
+          .catch(function (err) { appendLine(logEl, "er", "error: " + err); });
+      });
+    });
+
+    // flash progress stream
+    ensureSocket();
+    if (socket) socket.on("flash_progress", function (d) {
+      if (!d || (fwPort && d.port && d.port !== fwPort)) return;
+      if (bar && typeof d.percent === "number") bar.style.width = d.percent + "%";
+      if (d.message) appendLine(logEl, d.done ? (d.success ? "ok" : "er") : "rx", d.message);
+    });
+  }
+  initFirmware();
 
   // initial hydrate + 5s cadence (matches the mockup's "live 5s")
   refreshHealth(); refreshDevices(); refreshTargets();
