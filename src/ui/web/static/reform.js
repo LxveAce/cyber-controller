@@ -567,6 +567,24 @@
   }
   initSettings();
 
+  // ── CRACK: live engine detection (read-only; the RUN stays consent-gated) ─
+  function initCrack() {
+    var eng = document.getElementById("crack-engine");
+    var foot = document.getElementById("crack-tools");
+    if (!eng || !foot) return;
+    getJSON("/api/crack-tools").then(function (d) {
+      var backends = d.backends || [];
+      var labels = { native: "Built-in native cracker", hashcat: "hashcat (GPU)", aircrack: "aircrack-ng (CPU)" };
+      eng.innerHTML = backends.map(function (b) { return '<option>' + esc(labels[b] || b) + "</option>"; }).join("");
+      foot.innerHTML = (d.tools || []).map(function (t) {
+        var mark = t.present ? "✓" : "✗";
+        var col = t.present ? "var(--green)" : "var(--dim)";
+        return '<span style="color:' + col + '">' + mark + " " + esc(t.name) + (t.present && t.version ? " " + esc(t.version.split(" ")[0]) : "") + "</span>";
+      }).join(" · ") || "native ready";
+    }).catch(function () { foot.textContent = "engine detection unavailable"; });
+  }
+  initCrack();
+
   // initial hydrate + 5s cadence (matches the mockup's "live 5s")
   refreshHealth(); refreshDevices(); refreshTargets();
   setInterval(refreshHealth, 5000);

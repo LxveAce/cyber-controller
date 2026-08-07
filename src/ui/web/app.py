@@ -496,6 +496,23 @@ def create_app(
 
         return jsonify(HealthMonitor.get_system_health())
 
+    @app.route("/api/crack-tools")
+    @requires_auth
+    def api_crack_tools():
+        """Read-only crack-engine availability for the CRACK card (native always works; hashcat +
+        aircrack are optional accelerators). Detection only — running a crack stays behind its
+        per-run consent gate and is NOT exposed here."""
+        from src.core.crack_pipeline import available_backends, detect_tools
+
+        tools = detect_tools()
+        return jsonify({
+            "backends": available_backends(tools),
+            "tools": [
+                {"name": t.name, "present": t.present, "version": t.version}
+                for t in tools.values()
+            ],
+        })
+
     @app.route("/api/gate-status")
     @requires_auth
     def api_gate_status():

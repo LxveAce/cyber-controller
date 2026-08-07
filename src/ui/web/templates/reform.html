@@ -345,13 +345,14 @@
       <div class="grid" style="align-content:start">
         <div class="card">
           <h3><span class="t">Engine</span><span class="r">native always works</span></h3>
-          <select class="field"><option>Built-in native cracker</option><option>hashcat (GPU) &#8212; detected</option><option>aircrack-ng (CPU) &#8212; not installed</option></select>
-          <div class="footnote">&#10003; native ready &#183; &#10003; hashcat 6.2 (GPU) &#183; &#10007; aircrack-ng not installed</div>
+          <select class="field" id="crack-engine" aria-label="Crack engine"><option>Built-in native cracker</option></select>
+          <div class="footnote" id="crack-tools">detecting engines&#8230;</div>
         </div>
         <div class="card">
           <h3><span class="t">Run</span><span class="r">consent required per run</span></h3>
           <label class="chip warn" style="border-color:#8a6100;color:var(--amber);white-space:normal;text-align:left;line-height:1.4">&#9744; I own this network or am explicitly authorized to test it</label>
-          <div class="row" style="margin-top:10px"><button class="btn green">Recover key&#8230;</button><button class="btn" disabled style="opacity:.5">Stop</button></div>
+          <div class="row" style="margin-top:10px"><button class="btn green" disabled style="opacity:.6" title="Capture + run wiring lands next">Recover key&#8230;</button></div>
+          <div class="footnote">Engine detection is live. The crack RUN keeps its per-run authorized-use consent gate &#8212; wiring lands with the capture pipeline.</div>
         </div>
       </div>
       <div class="grid" style="align-content:start">

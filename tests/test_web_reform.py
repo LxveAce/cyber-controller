@@ -119,6 +119,20 @@ def test_gate_status_requires_auth():
     assert c.get("/api/gate-status").status_code == 401
 
 
+def test_crack_tools_is_detection_only():
+    # The CRACK card shows engine availability; "native" is always a backend. Detection only — the
+    # endpoint never runs a crack (that stays behind the per-run consent gate).
+    c = _client(DeviceManager())
+    data = c.get("/api/crack-tools").get_json()
+    assert "native" in data["backends"]
+    assert isinstance(data["tools"], list)
+
+
+def test_crack_tools_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/api/crack-tools").status_code == 401
+
+
 def _client_with_desktop_token(token):
     app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
                            desktop_token=token)
