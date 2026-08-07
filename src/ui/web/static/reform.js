@@ -38,6 +38,7 @@
     var subName = tabs ? tabs.textContent : "";
     crumb.innerHTML = "<b>" + crumbNames[v] + "</b>" + (subName ? " ▸ " + subName : "");
     document.getElementById("main").scrollTop = 0;
+    if (window.__ccPollTick) { window.__ccPollTick(); }   // instant refresh for the surface just shown
   });
 
   document.querySelectorAll(".subtabs").forEach(function (bar) {
@@ -654,9 +655,27 @@
   }
   initFlock();
 
-  // initial hydrate + 5s cadence (matches the mockup's "live 5s")
-  refreshHealth(); refreshDevices(); refreshTargets();
-  setInterval(refreshHealth, 5000);
-  setInterval(refreshDevices, 5000);
-  setInterval(refreshTargets, 5000);
+  // Surface-gated, visibility-aware live cadence (P0-6): one tick that refreshes ONLY the visible
+  // surface's data, and stops entirely while the window is hidden/minimized — so an idle or
+  // backgrounded app costs nothing on hardware. (The mockup's "live 5s", only where it's on screen.)
+  refreshHealth(); refreshDevices(); refreshTargets();   // initial hydrate (once, seeds every surface)
+  function _activeView() {
+    var el = document.querySelector(".main .view.on");
+    return el ? el.dataset.view : "";
+  }
+  function _pollTick() {
+    var v = _activeView();
+    if (v === "device") { refreshHealth(); refreshDevices(); refreshTargets(); }
+    else if (v === "hunt") { refreshTargets(); }
+    // other surfaces are socket-driven or static — no periodic poll needed
+  }
+  var _pollTimer = null;
+  function _startPoll() { if (!_pollTimer) _pollTimer = setInterval(_pollTick, 5000); }
+  function _stopPoll() { if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; } }
+  document.addEventListener("visibilitychange", function () {
+    if (document.hidden) { _stopPoll(); }
+    else { _pollTick(); _startPoll(); }   // catch-up on re-show, then resume
+  });
+  window.__ccPollTick = _pollTick;         // let the nav handlers force an instant refresh on switch
+  if (!document.hidden) { _startPoll(); }
 })();
