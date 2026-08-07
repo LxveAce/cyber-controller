@@ -668,6 +668,35 @@ def create_app(
         _audit("wordlist_byo", user=session.get("user"))
         return jsonify({"ok": True, "path": resolved})
 
+    @app.route("/api/captures")
+    @requires_auth
+    def api_captures():
+        """Captured handshakes/PMKIDs for the CRACK card, from the shared CaptureStore (auto-logged as the
+        connected devices capture them). Exposes ONLY display fields — never the raw pcap path, the crackable
+        hc22000 hashline, or the raw serial line. The recovered ``password`` is the operator's own result and
+        is shown on this loopback UI only once a capture has actually been cracked."""
+        if capture_store is None:
+            return jsonify({"captures": []})
+
+        def _hhmm(dt: Any) -> str:
+            try:
+                return dt.strftime("%H:%M")
+            except Exception:  # noqa: BLE001 — a bad/absent timestamp just renders blank
+                return ""
+
+        out = []
+        for c in capture_store.all():
+            out.append({
+                "ssid": c.ssid or "",
+                "bssid": c.bssid or "",
+                "type": "PMKID" if c.capture_type == "pmkid" else "handshake",
+                "source": c.device_source or "",
+                "captured": _hhmm(c.captured_at),
+                "crack_status": c.crack_status,
+                "password": c.password if c.crack_status == "cracked" else "",
+            })
+        return jsonify({"captures": out})
+
     @app.route("/api/gate-status")
     @requires_auth
     def api_gate_status():

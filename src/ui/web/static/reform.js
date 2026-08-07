@@ -39,6 +39,7 @@
     crumb.innerHTML = "<b>" + crumbNames[v] + "</b>" + (subName ? " ▸ " + subName : "");
     document.getElementById("main").scrollTop = 0;
     if (window.__ccPollTick) { window.__ccPollTick(); }   // instant refresh for the surface just shown
+    if (v === "crack" && window.__ccRefreshCaptures) { window.__ccRefreshCaptures(); }
   });
 
   document.querySelectorAll(".subtabs").forEach(function (bar) {
@@ -783,6 +784,35 @@
     load();
   }
   initWordlists();
+
+  // ── CRACK ▸ Captured Handshakes: live from the shared CaptureStore (auto-logged as devices capture) ─
+  function initCaptures() {
+    var body = document.getElementById("crack-captures-body");
+    if (!body) return;
+    function pwCell(c) {
+      if (c.crack_status === "cracked" && c.password) return '<td class="con mono">' + esc(c.password) + "</td>";
+      if (c.crack_status === "running") return '<td style="color:var(--amber)">cracking&#8230;</td>';
+      return '<td class="dim">&#8212;</td>';
+    }
+    function render(list) {
+      if (!list.length) {
+        body.innerHTML = '<tr><td class="off" colspan="6">no captures yet &#8212; they auto-log as your devices capture handshakes / PMKIDs</td></tr>';
+        return;
+      }
+      body.innerHTML = list.map(function (c) {
+        return "<tr><td>" + esc(c.ssid || "—") + '</td><td class="mono dim">' + esc(c.bssid || "—") +
+          "</td><td>" + esc(c.type || "—") + '</td><td class="mono">' + esc(c.source || "—") +
+          '</td><td class="dim">' + esc(c.captured || "—") + "</td>" + pwCell(c) + "</tr>";
+      }).join("");
+    }
+    function load() {
+      getJSON("/api/captures").then(function (d) { render(d.captures || []); })
+        .catch(function () { body.innerHTML = '<tr><td class="er" colspan="6">captures unavailable</td></tr>'; });
+    }
+    window.__ccRefreshCaptures = load;   // the rail handler re-pulls this when CRACK is opened
+    load();
+  }
+  initCaptures();
 
   // ── Mesh ▸ Provisioned Nodes: live vault status + management (keys redacted server-side) ─
   // Renders the key-free node table with per-node actions (Rotate / Deprovision / Attach / Detach) and a
