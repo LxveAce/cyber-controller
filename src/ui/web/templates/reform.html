@@ -280,15 +280,17 @@
             <line x1="500" y1="160" x2="250" y2="90" opacity="0.7"/>
             <line x1="500" y1="160" x2="760" y2="110" opacity="0.7"/>
             <line x1="500" y1="160" x2="300" y2="250" opacity="0.45" stroke-dasharray="5 5"/>
+            <line x1="760" y1="110" x2="820" y2="240" opacity="0.45" stroke-dasharray="5 5"/>
           </g>
           <g font-family="ui-monospace,Consolas,monospace" font-size="12" text-anchor="middle">
-            <g><circle cx="500" cy="160" r="26" fill="#161b22" stroke="#3fb950" stroke-width="2.5"/><text x="500" y="164" fill="#f0f6fc">base</text></g>
-            <g><circle cx="250" cy="90" r="22" fill="#161b22" stroke="#a371f7" stroke-width="2"/><text x="250" y="94" fill="#c9d1d9">!7c19</text></g>
-            <g><circle cx="760" cy="110" r="22" fill="#161b22" stroke="#a371f7" stroke-width="2"/><text x="760" y="114" fill="#c9d1d9">relay-N</text></g>
-            <g><circle cx="300" cy="250" r="20" fill="#161b22" stroke="#58a6ff" stroke-width="2"/><text x="300" y="254" fill="#c9d1d9">!22b8</text></g>
+            <g><circle cx="500" cy="160" r="26" fill="#161b22" stroke="#3fb950" stroke-width="2.5"/><text x="500" y="164" fill="#f0f6fc">base</text><text x="500" y="205" fill="#8b949e">this node</text></g>
+            <g><circle cx="250" cy="90" r="22" fill="#161b22" stroke="#a371f7" stroke-width="2"/><text x="250" y="94" fill="#c9d1d9">!7c19</text><text x="250" y="52" fill="#8b949e">trail-1 &#183; 1 hop</text></g>
+            <g><circle cx="760" cy="110" r="22" fill="#161b22" stroke="#a371f7" stroke-width="2"/><text x="760" y="114" fill="#c9d1d9">relay-N</text><text x="760" y="72" fill="#8b949e">direct RF</text></g>
+            <g><circle cx="300" cy="250" r="20" fill="#161b22" stroke="#58a6ff" stroke-width="2"/><text x="300" y="254" fill="#c9d1d9">!22b8</text><text x="300" y="288" fill="#8b949e">via mqtt</text></g>
+            <g><circle cx="820" cy="240" r="20" fill="#161b22" stroke="#58a6ff" stroke-width="2"/><text x="820" y="244" fill="#c9d1d9">!91af</text><text x="820" y="278" fill="#8b949e">2 hops</text></g>
           </g>
         </svg>
-        <div class="maplegend"><div class="li"><span class="dot9" style="background:#3fb950"></span>this node</div><div class="li"><span class="dot9" style="background:#a371f7"></span>direct RF</div><div class="li"><span class="dot9" style="background:#58a6ff"></span>multi-hop</div></div>
+        <div class="maplegend"><div class="li"><span class="dot9" style="background:#3fb950"></span>this node</div><div class="li"><span class="dot9" style="background:#a371f7"></span>direct RF &#183; solid link</div><div class="li"><span class="dot9" style="background:#58a6ff"></span>multi-hop &#183; dashed</div></div>
       </div>
     </div></div>
   </section>
@@ -351,11 +353,13 @@
       <div class="grid" style="align-content:start">
         <div class="card">
           <h3><span class="t">Captured Handshakes</span><span class="r">auto-logged &#183; Export&#8230;</span></h3>
+          <div class="footnote" style="margin:-4px 0 9px">Auto-logged as your devices capture &#8212; double-click a row to load it into the run.</div>
           <table>
-            <thead><tr><th>SSID</th><th>BSSID</th><th>Type</th><th>Source</th><th>Password</th></tr></thead>
+            <thead><tr><th>SSID</th><th>BSSID</th><th>Type</th><th>Source</th><th>Captured</th><th>Password</th></tr></thead>
             <tbody>
-              <tr><td>HomeNet-5G</td><td class="mono dim">D4:6A:91:..</td><td>handshake</td><td class="mono">COM4</td><td class="con mono">hunter2!spring</td></tr>
-              <tr><td>corp-guest</td><td class="mono dim">AA:BB:C1:..</td><td>PMKID</td><td class="mono">COM4</td><td class="dim">&#8212;</td></tr>
+              <tr><td>HomeNet-5G</td><td class="mono dim">D4:6A:91:..</td><td>handshake</td><td class="mono">COM4</td><td class="dim">14:02</td><td class="con mono">hunter2!spring</td></tr>
+              <tr><td>corp-guest</td><td class="mono dim">AA:BB:C1:..</td><td>PMKID</td><td class="mono">COM4</td><td class="dim">13:41</td><td class="dim">&#8212;</td></tr>
+              <tr><td>cafe-wifi</td><td class="mono dim">9C:3D:CF:..</td><td>handshake</td><td class="mono">COM11</td><td class="dim">12:58</td><td style="color:var(--amber)">cracking&#8230;</td></tr>
             </tbody>
           </table>
         </div>
@@ -401,7 +405,19 @@
         <div class="mapover"><span class="chip">1.8 km</span><span class="chip">42 APs &#183; 6 open</span></div>
       </div>
     </div></div>
-    <div class="sub" data-sub="multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3><div class="dim" style="font-size:11px">Concurrent multi-board survey ports in Phase 2.</div></div></div>
+    <div class="sub" data-sub="multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3>
+      <div class="row" style="margin-bottom:10px"><button class="btn green sm">Start all</button><span class="chip on">COM4 &#9679; Marauder</span><span class="chip on">COM7 &#9679; Flipper</span><span class="chip">merged &#8594; 1 CSV</span></div>
+      <div class="mapwrap">
+        <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid slice" role="img" aria-label="multi-wardrive map">
+          <rect width="1000" height="380" fill="#0b0f14"/><rect width="1000" height="380" fill="url(#grid)"/>
+          <path d="M0 250 H1000 M0 130 H1000 M300 0 V380 M660 0 V380" stroke="#222a34" stroke-width="6"/>
+          <polyline points="60,320 180,300 210,220 340,205 360,120 520,112" fill="none" stroke="#a371f7" stroke-width="2.5"/>
+          <polyline points="520,112 560,200 700,210 760,120 880,150 940,240" fill="none" stroke="#58a6ff" stroke-width="2.5"/>
+          <g><circle cx="204" cy="262" r="4.5" fill="#3fb950"/><circle cx="362" cy="150" r="4.5" fill="#f0883e"/><circle cx="500" cy="150" r="4.5" fill="#58a6ff"/><circle cx="700" cy="200" r="4.5" fill="#3fb950"/><circle cx="820" cy="140" r="4.5" fill="#f0883e"/></g>
+        </svg>
+        <div class="maplegend"><div class="li"><span class="dot9" style="background:#a371f7"></span>COM4 track</div><div class="li"><span class="dot9" style="background:#58a6ff"></span>COM7 track</div></div>
+      </div>
+    </div></div>
     <div class="sub" data-sub="flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r" id="flock-count">awareness &#183; OSINT</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Awareness map of publicly-visible ALPR cameras, imported from OpenStreetMap (Overpass). Passive OSINT &#8212; CC transmits nothing and drives no device.</div>
       <div class="row" style="margin-bottom:10px;align-items:center">
