@@ -65,14 +65,14 @@ def launch_desktop_qt(
     # Leanness (P1-10): trim Chromium before QtWebEngine loads. setdefault so an operator override wins.
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", _LEAN_CHROMIUM_FLAGS)
     try:
-        from PyQt5.QtCore import QUrl
-        from PyQt5.QtGui import QDesktopServices
+        from PyQt5.QtCore import Qt, QSettings, QUrl
+        from PyQt5.QtGui import QDesktopServices, QKeySequence
         from PyQt5.QtWebEngineWidgets import (
             QWebEnginePage,
             QWebEngineSettings,
             QWebEngineView,
         )
-        from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow
+        from PyQt5.QtWidgets import QAction, QApplication, QFileDialog, QMainWindow
     except ImportError:
         log.error(
             "PyQtWebEngine is not installed — the Qt desktop shell needs it.\n"
@@ -136,7 +136,16 @@ def launch_desktop_qt(
     app.setOrganizationName("LxveAce")
     app.setApplicationName("CyberController")
 
-    window = QMainWindow()
+    # Window geometry persistence (P1-13): remember size + position across launches via QSettings
+    # (keyed off the org/app name set above). Saved on close, restored on next open.
+    _qsettings = QSettings()
+
+    class _CCMainWindow(QMainWindow):
+        def closeEvent(self, ev):  # noqa: N802 (Qt override)
+            _qsettings.setValue("window/geometry", self.saveGeometry())
+            super().closeEvent(ev)
+
+    window = _CCMainWindow()
     window.setWindowTitle("Cyber Controller")
     try:
         from src.ui.qt.widgets.cc_icon import create_cc_icon
@@ -184,8 +193,30 @@ def launch_desktop_qt(
     _min_w, _min_h = adaptive_minimum_size(_geo.width(), _geo.height())
     _lw, _lh = adaptive_launch_size(_geo.width(), _geo.height())
     window.setMinimumSize(_min_w, _min_h)
-    window.resize(_lw, _lh)
-    window.show()
+    _saved_geo = _qsettings.value("window/geometry")
+    if _saved_geo is None or not window.restoreGeometry(_saved_geo):
+        window.resize(_lw, _lh)   # first run, or a stale/invalid saved geometry -> adaptive default
 
+    # Native keyboard shortcuts (P1-11) — app-level QActions, NO visible menu bar (keep the exact
+    # chromeless HTML look). Zoom / reload / fullscreen / quit: the desktop reflexes the mockup lacks.
+    def _shortcut(seq, fn):
+        act = QAction(window)
+        act.setShortcut(QKeySequence(seq))
+        act.setShortcutContext(Qt.ApplicationShortcut)
+        act.triggered.connect(fn)
+        window.addAction(act)
+
+    def _zoom(delta):
+        view.setZoomFactor(max(0.5, min(3.0, round(view.zoomFactor() + delta, 2))))
+
+    _shortcut("Ctrl+Q", app.quit)
+    _shortcut("Ctrl++", lambda: _zoom(0.1))
+    _shortcut("Ctrl+=", lambda: _zoom(0.1))
+    _shortcut("Ctrl+-", lambda: _zoom(-0.1))
+    _shortcut("Ctrl+0", lambda: view.setZoomFactor(1.0))
+    _shortcut("F5", view.reload)
+    _shortcut("F11", lambda: window.showNormal() if window.isFullScreen() else window.showFullScreen())
+
+    window.show()
     log.info("Opening Cyber Controller PyQt/QtWebEngine window (loopback :%d)", port)
     return app.exec_()
