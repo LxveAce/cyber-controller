@@ -63,15 +63,6 @@
     });
   }
 
-  var termlist = document.getElementById("termlist");
-  if (termlist) {
-    termlist.addEventListener("click", function (e) {
-      var r = e.target.closest(".termrow");
-      if (!r) return;
-      document.querySelectorAll("#termlist .termrow").forEach(function (x) { x.classList.toggle("on", x === r); });
-      document.querySelectorAll(".termpane").forEach(function (p) { p.classList.toggle("on", p.dataset.term === r.dataset.term); });
-    });
-  }
 
   document.getElementById("depth").addEventListener("click", function (e) {
     var b = e.target.closest("button");
@@ -219,6 +210,7 @@
       subscribeSerial(sel ? sel.port : null, sel ? sel.firmware : null);
       if (window.__opSyncDevices) window.__opSyncDevices(devs);
       if (window.__fwSyncPorts) window.__fwSyncPorts(devs);
+      if (window.__termSyncDevices) window.__termSyncDevices(devs);
     }).catch(function () {});
   }
 
@@ -443,6 +435,78 @@
     });
   }
   initFirmware();
+
+  // ── TERMINAL view: one live terminal per connected port ────────────
+  function initTerminal() {
+    var listEl = document.getElementById("reform-termlist");
+    var panesEl = document.getElementById("reform-termpanes");
+    if (!listEl || !panesEl) return;
+    var built = {};   // port -> true (pane already built)
+    var activePort = null;
+
+    function selectPort(port) {
+      activePort = port;
+      listEl.querySelectorAll(".termrow").forEach(function (r) { r.classList.toggle("on", r.dataset.term === port); });
+      panesEl.querySelectorAll(".rterm-pane").forEach(function (p) { p.style.display = p.dataset.term === port ? "block" : "none"; });
+    }
+    function buildPane(port, fw) {
+      if (built[port]) return;
+      built[port] = true;
+      var pane = document.createElement("div");
+      pane.className = "rterm-pane";
+      pane.dataset.term = port;
+      pane.style.display = "none";
+      var head = document.createElement("div");
+      head.className = "between";
+      head.innerHTML = '<h3 style="margin:0 0 8px"><span class="t">' + esc(port) + "</span> <span class=\"dim\">· " + esc(fw || "serial") + "</span></h3>";
+      var term = document.createElement("div");
+      term.className = "term termbig";
+      var inp = document.createElement("div");
+      inp.className = "terminput";
+      inp.style.marginTop = "8px";
+      inp.innerHTML = '<span class="pr">&gt;</span>';
+      var field = document.createElement("input");
+      field.className = "field mono";
+      field.placeholder = "type a raw command (danger verbs still confirm)…";
+      var btn = document.createElement("button");
+      btn.className = "btn";
+      btn.textContent = "Send";
+      function doSend() {
+        var cmd = (field.value || "").trim();
+        if (!cmd) return;
+        sendCommand(port, cmd, term, null);
+        field.value = "";
+      }
+      btn.addEventListener("click", doSend);
+      field.addEventListener("keydown", function (e) { if (e.key === "Enter") doSend(); });
+      inp.appendChild(field); inp.appendChild(btn);
+      pane.appendChild(head); pane.appendChild(term); pane.appendChild(inp);
+      panesEl.appendChild(pane);
+      bindTerminal(port, term, "[Live terminal — " + port + "]");
+    }
+
+    window.__termSyncDevices = function (devs) {
+      var connected = devs.filter(function (d) { return d.connected; });
+      if (!connected.length) {
+        listEl.innerHTML = '<div class="dim" style="font-size:12px;padding:6px">no connected ports — connect a device under DEVICE ▸ Dashboard.</div>';
+        return;
+      }
+      listEl.innerHTML = connected.map(function (d) {
+        return '<div class="termrow' + (d.port === activePort ? " on" : "") + '" data-term="' + esc(d.port) +
+          '"><span class="sw" style="background:var(--green)"></span><span class="nm">' + esc(d.port) +
+          " — " + esc(d.firmware || d.name || "device") + '</span><span class="st con">● live</span></div>';
+      }).join("");
+      connected.forEach(function (d) { buildPane(d.port, d.firmware); });
+      if (!activePort || !connected.some(function (d) { return d.port === activePort; })) {
+        selectPort(connected[0].port);
+      }
+    };
+    listEl.addEventListener("click", function (e) {
+      var r = e.target.closest(".termrow");
+      if (r && r.dataset.term) selectPort(r.dataset.term);
+    });
+  }
+  initTerminal();
 
   // initial hydrate + 5s cadence (matches the mockup's "live 5s")
   refreshHealth(); refreshDevices(); refreshTargets();

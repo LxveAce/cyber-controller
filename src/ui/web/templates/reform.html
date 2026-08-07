@@ -439,30 +439,12 @@
   <section class="view" data-view="terminal">
     <div class="split side">
       <div class="card" style="align-self:start">
-        <h3><span class="t">Terminals</span></h3>
-        <div class="termlist" id="termlist">
-          <div class="termrow" data-term="local"><span class="sw" style="background:#c9d1d9"></span><span class="nm">Local (host shell)</span><span class="st">PowerShell</span></div>
-          <div class="termrow on" data-term="com4"><span class="sw" style="background:var(--green)"></span><span class="nm">COM4 &#8212; Marauder</span><span class="st con">&#9679; 115200</span></div>
-          <div class="termrow" data-term="shared"><span class="sw" style="background:var(--acc)"></span><span class="nm">Shared activity</span><span class="st">all &#183; merged</span></div>
-        </div>
-        <div class="footnote" style="margin-top:10px">Every serial port keeps its own colored, persistent terminal. Shared merges every channel&#8217;s activity in one stream.</div>
+        <h3><span class="t">Terminals</span><span class="r">connected ports</span></h3>
+        <div class="termlist" id="reform-termlist"><div class="dim" style="font-size:12px;padding:6px">no connected ports &#8212; connect a device under DEVICE &#9656; Dashboard.</div></div>
+        <div class="footnote" style="margin-top:10px">Every connected serial port keeps its own live terminal. Danger verbs still confirm before sending.</div>
       </div>
-      <div>
-        <div class="termpane" data-term="local">
-          <div class="term termbig"><div class="ok">PS C:\CyberController&gt;</div><div class="tx">esptool --version</div><div class="rx">esptool.py v4.7.0</div></div>
-        </div>
-        <div class="termpane on" data-term="com4">
-          <div class="between"><h3 style="margin:0"><span class="t">COM4 &#8212; Marauder</span> <span class="dim">&#183; serial 115200</span></h3></div>
-          <div class="term termbig">
-            <div class="p">[Connected to COM4 @ 115200]</div>
-            <div class="tx">&gt; scanall</div><div class="rx">Scanning APs + stations&#8230;</div>
-            <div class="rx">found 42 APs &#183; 71 clients</div>
-          </div>
-          <div class="terminput"><span class="pr">&gt;</span><input class="field mono" placeholder="type a raw Marauder command&#8230; (danger verbs still gated)"><button class="btn">Send</button></div>
-        </div>
-        <div class="termpane" data-term="shared">
-          <div class="term termbig"><div><span style="color:var(--green)">[COM4]</span> <span class="rx">scanall &#8594; 42 APs &#183; 71 clients</span></div></div>
-        </div>
+      <div id="reform-termpanes">
+        <div class="term termbig"><div class="p">Select a connected port on the left to open its terminal.</div></div>
       </div>
     </div>
   </section>
