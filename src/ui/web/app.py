@@ -42,7 +42,7 @@ from flask import (
 )
 from flask_socketio import SocketIO, emit
 
-from src.core import node_provision
+from src.core import host_shell, node_provision
 from src.core.channel_survey import survey_channels
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
@@ -122,6 +122,7 @@ def create_app(
     trusted_proxies: list[str] | None = None,
     desktop_token: str | None = None,
     capture_store: Any = None,
+    host_shell_loopback: bool = False,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
 
@@ -167,6 +168,14 @@ def create_app(
     creds, _generated = resolve_web_credentials(log)
     login_limiter = RateLimiter(max_events=8, window_seconds=60.0)
     cmd_limiter = RateLimiter(max_events=60, window_seconds=10.0)
+
+    # Host-shell envelope (C2). Decided ONCE, here, from the bind's loopback-ness + the env opt-ins. When it
+    # is not enabled the host_shell_* socket handlers below are never even DEFINED (not merely refused), and
+    # the /api/host-shell probe reports the honest reason so the UI hides the Local tab. RCE by nature, so it
+    # stays off unless CC_WEB_HOST_SHELL=1 AND the server is loopback AND not LAN-exposed (CC_WEB_ALLOW_LAN).
+    host_shell_enabled, host_shell_reason = host_shell.availability_from_env(is_loopback=host_shell_loopback)
+    if host_shell_enabled:
+        log.info("Host shell ENABLED (loopback, opt-in) — a console onto this machine is exposed on the UI")
 
     # W1.1(web): the key-free wireless-node manager. Same UI-agnostic controller the Qt/tk tabs use; its
     # default vault getter reads the gate-sealed vault, so the keys never reach this process' request path.
@@ -622,6 +631,14 @@ def create_app(
             log.exception("gate-status read failed")
             return jsonify({"configured": False, "policy": "either", "has_password": False,
                             "has_key": False, "locked": False, "remaining_secs": 0})
+
+    @app.route("/api/host-shell")
+    @requires_auth
+    def api_host_shell():
+        """Whether the host-shell console is available on this bind, so the reform TERMINAL surface can show
+        or hide its 'Local (host shell)' tab. Reports ONLY the enabled boolean + the honest reason — no host
+        data. The actual shell lives behind the gated socket handlers, which don't exist unless enabled."""
+        return jsonify({"enabled": host_shell_enabled, "reason": host_shell_reason})
 
     @app.route("/api/quick-commands")
     @requires_auth
@@ -1190,6 +1207,83 @@ def create_app(
         else:
             emit("serial_output", {"port": port, "line": f"[Not connected to {port}]"})
 
+    # ── Host shell (opt-in, loopback-only, never LAN) ─────────────────────────────────────────────────
+    # These handlers are DEFINED ONLY when the envelope said enabled. On a LAN bind, or without the
+    # CC_WEB_HOST_SHELL opt-in, they do not exist at all — a client cannot conjure a host shell into being
+    # by emitting the event, because there is nothing listening. Each socket (sid) owns at most one shell,
+    # torn down on close or disconnect. Auth + rate-limit + audit mirror the serial send_command path.
+    if host_shell_enabled:
+        _host_shells: dict = {}          # sid -> HostShellSession
+        _host_shells_lock = threading.Lock()
+
+        def _close_host_shell(sid: str) -> None:
+            with _host_shells_lock:
+                sess = _host_shells.pop(sid, None)
+            if sess is not None:
+                sess.kill()
+
+        @socketio.on("host_shell_open")
+        def on_host_shell_open(_data=None) -> None:
+            if not _socket_authed():
+                return
+            sid = request.sid
+            with _host_shells_lock:
+                if sid in _host_shells:
+                    emit("host_shell_status", {"open": True})
+                    return
+                # bind the sid so the reader thread (no request context) can target this exact socket
+                sess = host_shell.HostShellSession(
+                    lambda text, s=sid: socketio.emit("host_shell_output", {"text": text}, to=s))
+                _host_shells[sid] = sess
+            _audit("host_shell_open", user=session.get("user"))
+            sess.start()
+            emit("host_shell_status", {"open": True})
+
+        @socketio.on("host_shell_input")
+        def on_host_shell_input(data=None) -> None:
+            if not _socket_authed():
+                return
+            if not cmd_limiter.allow(_client_ip()):
+                emit("host_shell_output", {"text": "[rate limited]\r\n"})
+                return
+            if not isinstance(data, dict):
+                data = {}
+            text = str(data.get("data", ""))
+            if len(text) > _MAX_COMMAND_LEN:
+                emit("host_shell_output", {"text": "[input too long]\r\n"})
+                return
+            with _host_shells_lock:
+                sess = _host_shells.get(request.sid)
+            if sess is None:
+                emit("host_shell_output", {"text": "[host shell not open]\r\n"})
+                return
+            _audit("host_shell_input", user=session.get("user"))
+            sess.write(text)
+
+        @socketio.on("host_shell_resize")
+        def on_host_shell_resize(data=None) -> None:
+            if not _socket_authed():
+                return
+            if not isinstance(data, dict):
+                data = {}
+            with _host_shells_lock:
+                sess = _host_shells.get(request.sid)
+            if sess is not None:
+                try:
+                    sess.resize(int(data.get("cols", 80)), int(data.get("rows", 24)))
+                except (TypeError, ValueError):
+                    pass
+
+        @socketio.on("host_shell_close")
+        def on_host_shell_close(_data=None) -> None:
+            _close_host_shell(request.sid)
+            emit("host_shell_status", {"open": False})
+
+        @socketio.on("disconnect")
+        def on_host_shell_disconnect() -> None:
+            # Never leak a live shell process when the socket goes away.
+            _close_host_shell(request.sid)
+
     return app, socketio
 
 
@@ -1281,6 +1375,8 @@ def launch_web(
         device_manager, flash_engine, event_bus, target_pool,
         audit=audit, allowed_origins=origins, trusted_proxies=trusted_proxies,
         desktop_token=desktop_token, capture_store=hub.captures,
+        # Only a loopback bind is even a candidate for the host shell; the env opt-ins are checked inside.
+        host_shell_loopback=is_local,
     )
     app.config["cc_hub"] = hub
 
