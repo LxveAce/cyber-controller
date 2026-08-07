@@ -495,6 +495,28 @@ def create_app(
 
         return jsonify(HealthMonitor.get_system_health())
 
+    @app.route("/api/quick-commands")
+    @requires_auth
+    def api_quick_commands():
+        """The real per-firmware one-tap command set for a connected device, grouped by category, for
+        the reform OPERATE console. Commands come from the firmware's own protocol registry (no
+        phantom verbs); danger labels drive the client-side confirm (label-never-block). GET only."""
+        from src.core.quick_commands import grouped_quick_commands
+
+        port = str(request.args.get("port", ""))
+        dev = device_manager.get_device(port) if port else None
+        firmware = getattr(dev, "firmware", "") if dev else str(request.args.get("firmware", ""))
+        groups = [
+            {
+                "category": cat,
+                "commands": [
+                    {"command": c.command, "label": c.label, "danger": c.danger} for c in cmds
+                ],
+            }
+            for cat, cmds in grouped_quick_commands(firmware or "")
+        ]
+        return jsonify({"port": port, "firmware": firmware, "groups": groups})
+
     @app.route("/devices")
     @requires_auth
     def devices_page():

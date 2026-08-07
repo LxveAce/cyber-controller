@@ -338,61 +338,22 @@
         <div class="between">
           <div class="row" style="align-items:center">
             <span class="muted">Device</span>
-            <select class="field" style="width:auto"><option>COM4 &#8212; Marauder</option><option>COM7 &#8212; Flipper</option></select>
-            <select class="field" style="width:auto"><option>Firmware: auto (Marauder)</option><option>Force GhostESP</option></select>
+            <select class="field" id="op-device" style="width:auto"><option value="">no connected device</option></select>
             <span class="armlamp"><span class="d"></span> SAFE</span>
           </div>
-          <div class="pill-row" id="op-pills"><button class="on" data-opane="single">Single-device</button><button data-opane="broadcast">Broadcast</button></div>
+          <span class="dim" id="op-status" style="font-size:11px"></span>
         </div>
-        <div class="row" style="margin-top:10px;align-items:center">
-          <span class="dim" style="font-size:11px">Offensive-TX arm gate (two-factor):</span>
-          <button class="btn sm">Arm&#8230;</button><input class="field" style="width:130px" placeholder="token from device"><button class="btn sm">Confirm</button><button class="btn sm danger">Disarm</button>
-        </div>
+        <div class="footnote" style="margin-top:8px">Commands come from the selected firmware&#8217;s own protocol registry. Flagged verbs warn + require a confirm (label-never-block); nothing is hard-blocked.</div>
       </div>
-      <div class="opane on" data-opane="single">
-        <div class="card" style="margin-bottom:12px">
-          <h3><span class="t">Quick actions</span><span class="r">one-tap &#183; Marauder</span></h3>
-          <div class="row">
-            <button class="cmdbtn" style="flex:1 1 150px">Show firmware info<span class="raw">info</span></button>
-            <button class="cmdbtn" style="flex:1 1 150px">Scan for APs and stations<span class="raw">scanall</span></button>
-            <button class="cmdbtn" style="flex:1 1 150px">Tag a GPS POI<span class="raw">wardrivepoi &lt;label&gt;</span></button>
-            <button class="cmdbtn danger" style="flex:1 1 150px">Deauthentication attack<span class="raw">attack -t deauth</span></button>
-            <button class="btn danger" style="flex:0 0 auto">&#9632; STOP</button>
-          </div>
-        </div>
-        <div class="split side">
-          <div class="card">
-            <h3><span class="t">Commands &#8212; Marauder</span></h3>
-            <div class="cmdcats">
-              <div class="cat"><h4>Scanning</h4><div class="cmdgrid">
-                <button class="cmdbtn">Scan for APs and stations<span class="raw">scanall</span></button>
-                <button class="cmdbtn">List discovered APs<span class="raw">list -a</span></button>
-                <button class="cmdbtn">List discovered clients<span class="raw">list -c</span></button>
-                <button class="cmdbtn">Stop current scan<span class="raw">stopscan</span></button>
-              </div></div>
-              <div class="cat"><h4>Attack <span style="color:var(--amber);font-weight:600">&#183; lab-only</span></h4><div class="cmdgrid">
-                <button class="cmdbtn danger">Deauthentication attack<span class="raw">attack -t deauth</span></button>
-                <button class="cmdbtn danger">Beacon spam (SSID list)<span class="raw">attack -t beacon -l</span></button>
-                <button class="cmdbtn danger">Probe flood<span class="raw">attack -t probe</span></button>
-                <button class="cmdbtn danger">Karma attack<span class="raw">attack -t karma</span></button>
-              </div></div>
-            </div>
-          </div>
-          <div class="card"><h3><span class="t">Selected Operation</span><span class="r" style="color:var(--amber)">lab-only</span></h3>
-            <div style="font-weight:600;color:var(--tx2);margin-bottom:8px">Deauthentication attack <span class="dim mono" style="font-weight:400">attack -t deauth</span></div>
-            <div class="notebar warnbar" style="margin:0 0 10px">&#9888; Offensive TX &#8212; requires ARMED. Only on equipment you own or are authorized to test.</div>
-            <button class="btn danger wide" style="opacity:.6">Run  <span class="dim" style="font-weight:400">(arm the device first)</span></button>
-          </div>
-        </div>
-      </div>
-      <div class="opane" data-opane="broadcast">
+      <div class="split side">
         <div class="card">
-          <h3><span class="t">Broadcast &#8212; fan out to every connected device</span></h3>
-          <table><thead><tr><th>Device</th><th>Firmware</th><th>Native verb</th><th>Status</th></tr></thead><tbody>
-            <tr><td class="mono con">COM4</td><td>Marauder</td><td class="mono">scanall</td><td class="con">sent</td></tr>
-            <tr><td class="mono con">COM7</td><td>Flipper</td><td class="mono dim">&#8212;</td><td class="dim">no scan verb</td></tr>
-          </tbody></table>
-          <div class="footnote">Each device runs its OWN firmware&#8217;s verb; offensive broadcast verbs stay behind the arm gate.</div>
+          <h3><span class="t">Commands</span><span class="r" id="op-fw">&#8212;</span></h3>
+          <div class="cmdcats" id="op-cmdgrid"><div class="dim" style="font-size:12px">Connect a device (DEVICE &#9656; Dashboard) to load its command set.</div></div>
+        </div>
+        <div class="card">
+          <h3><span class="t">Activity</span><span class="r">shared terminal</span></h3>
+          <div class="term" id="op-term" style="height:300px"><div class="p">Sent commands and device output appear here.</div></div>
+          <div class="terminput" style="margin-top:8px"><span class="pr">&gt;</span><input class="field mono" id="op-input" placeholder="type a raw command (danger verbs still confirm)&#8230;"><button class="btn" id="op-send">Send</button></div>
         </div>
       </div>
     </div>

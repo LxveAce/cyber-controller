@@ -86,6 +86,23 @@ def test_system_health_requires_auth():
     assert c.get("/api/system-health").status_code == 401
 
 
+def test_quick_commands_returns_real_registry_for_firmware():
+    # The OPERATE console loads its command grid from the firmware's own protocol registry (no
+    # phantom verbs). Marauder has a rich set; each command carries a danger label for the gate.
+    c = _client(DeviceManager())
+    data = c.get("/api/quick-commands?firmware=marauder").get_json()
+    assert data["firmware"] == "marauder"
+    assert data["groups"], "marauder should expose grouped commands"
+    cmds = [cmd for g in data["groups"] for cmd in g["commands"]]
+    assert any(cmd["command"] == "scanall" for cmd in cmds)
+    assert all(set(cmd) == {"command", "label", "danger"} for cmd in cmds)
+
+
+def test_quick_commands_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/api/quick-commands?firmware=marauder").status_code == 401
+
+
 def _client_with_desktop_token(token):
     app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
                            desktop_token=token)

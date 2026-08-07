@@ -217,6 +217,7 @@
       // first connected device drives Selected Device + the serial subscription
       var sel = devs.filter(function (d) { return d.connected; })[0] || null;
       subscribeSerial(sel ? sel.port : null, sel ? sel.firmware : null);
+      if (window.__opSyncDevices) window.__opSyncDevices(devs);
     }).catch(function () {});
   }
 
@@ -236,43 +237,142 @@
     }).catch(function () {});
   }
 
-  // ── live serial (Socket.IO) ───────────────────────────────────────
+  // ── live serial (Socket.IO), shared by every terminal sink ─────────
+  // One socket; serial_output fans out to any registered sink whose port matches. Both the Dashboard
+  // terminal and the OPERATE Activity terminal register as sinks, so each shows its device's output.
   var socket = null;
-  var subscribedPort = null;
-  var term = document.getElementById("dash-term");
+  var serialSinks = {};   // port -> [DOM elements]
+  var subscribedPorts = {};
 
-  function termLine(cls, text) {
-    if (!term) return;
+  function appendLine(el, cls, text) {
+    if (!el) return;
     var div = document.createElement("div");
     div.className = cls;
     div.textContent = text;
-    term.appendChild(div);
-    while (term.childNodes.length > 200) term.removeChild(term.firstChild);
-    term.scrollTop = term.scrollHeight;
+    el.appendChild(div);
+    while (el.childNodes.length > 300) el.removeChild(el.firstChild);
+    el.scrollTop = el.scrollHeight;
+  }
+  function ensureSocket() {
+    if (socket || !window.io) return socket;
+    socket = window.io({ auth: { csrf: window.CSRF_TOKEN || "" } });
+    socket.on("serial_output", function (msg) {
+      if (!msg || !msg.port) return;
+      (serialSinks[msg.port] || []).forEach(function (el) { appendLine(el, "rx", msg.line); });
+    });
+    return socket;
+  }
+  function subscribePort(port) {
+    if (!port) return;
+    ensureSocket();
+    if (!subscribedPorts[port] && socket) {
+      subscribedPorts[port] = true;
+      socket.emit("subscribe_serial", { port: port, csrf: window.CSRF_TOKEN || "" });
+    }
+  }
+  function bindTerminal(port, el, resetLine) {
+    if (!port || !el) return;
+    serialSinks[port] = serialSinks[port] || [];
+    if (serialSinks[port].indexOf(el) === -1) {
+      serialSinks[port].push(el);
+      if (resetLine) { el.innerHTML = ""; appendLine(el, "p", resetLine); }
+    }
+    subscribePort(port);
   }
 
+  // Dashboard terminal: bind to the first connected device's stream.
+  var dashTerm = document.getElementById("dash-term");
+  var dashBoundPort = null;
   function subscribeSerial(port, fw) {
     var title = document.getElementById("term-title");
     var selTitle = document.getElementById("sel-title");
     if (!port) {
       if (title) title.textContent = "no device";
       if (selTitle) selTitle.textContent = "none connected";
-      subscribedPort = null;
       return;
     }
     if (title) title.textContent = port + " — " + (fw || "device");
     if (selTitle) selTitle.textContent = port + " · " + (fw || "device");
-    if (subscribedPort === port) return; // already streaming this port
-    subscribedPort = port;
-    if (term) { term.innerHTML = ""; termLine("p", "[Connected to " + port + "]"); }
-    if (!socket && window.io) {
-      socket = window.io({ auth: { csrf: window.CSRF_TOKEN || "" } });
-      socket.on("serial_output", function (msg) {
-        if (msg && msg.port === subscribedPort) termLine("rx", msg.line);
-      });
-    }
-    if (socket) socket.emit("subscribe_serial", { port: port, csrf: window.CSRF_TOKEN || "" });
+    if (dashBoundPort === port) return;
+    dashBoundPort = port;
+    bindTerminal(port, dashTerm, "[Connected to " + port + "]");
   }
+
+  // ── OPERATE console (device select · command grid · send · activity) ─
+  function sendCommand(port, command, termEl, statusEl) {
+    postJSON("/api/command", { port: port, command: command })
+      .then(function () {
+        appendLine(termEl, "tx", "> " + command);
+        if (statusEl) statusEl.textContent = "» sent: " + command;
+      })
+      .catch(function (err) {
+        appendLine(termEl, "er", "error: " + err);
+        if (statusEl) statusEl.textContent = "error: " + err;
+      });
+  }
+  function renderCmdGrid(groups, port, gridEl, termEl, statusEl) {
+    if (!groups || !groups.length) {
+      gridEl.innerHTML = '<div class="dim" style="font-size:12px">This firmware has no one-tap commands — use the raw input below.</div>';
+      return;
+    }
+    gridEl.innerHTML = groups.map(function (g) {
+      var btns = g.commands.map(function (c) {
+        var dcls = c.danger ? " danger" : "";
+        var badge = c.danger ? ' <span class="badge" style="background:#2a2109;color:var(--amber)">' + esc(c.danger) + "</span>" : "";
+        return '<button class="cmdbtn' + dcls + '" data-cmd="' + esc(c.command) + '" data-danger="' +
+          esc(c.danger || "") + '">' + esc(c.label) + badge + '<span class="raw">' + esc(c.command) + "</span></button>";
+      }).join("");
+      return '<div class="cat"><h4>' + esc(g.category) + '</h4><div class="cmdgrid">' + btns + "</div></div>";
+    }).join("");
+    gridEl.querySelectorAll(".cmdbtn").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var cmd = b.getAttribute("data-cmd");
+        var danger = b.getAttribute("data-danger");
+        if (danger && !window.confirm("Controlled / authorized use only (" + danger + "):\n\n" + cmd + "\n\nProceed?")) return;
+        sendCommand(port, cmd, termEl, statusEl);
+      });
+    });
+  }
+  function initOperate() {
+    var sel = document.getElementById("op-device");
+    var grid = document.getElementById("op-cmdgrid");
+    var termEl = document.getElementById("op-term");
+    var statusEl = document.getElementById("op-status");
+    var fwEl = document.getElementById("op-fw");
+    var input = document.getElementById("op-input");
+    var sendBtn = document.getElementById("op-send");
+    if (!sel || !grid) return;
+
+    function loadFor(port) {
+      if (!port) { grid.innerHTML = '<div class="dim" style="font-size:12px">Connect a device (DEVICE ▸ Dashboard) to load its command set.</div>'; if (fwEl) fwEl.textContent = "—"; return; }
+      bindTerminal(port, termEl, "[Activity — " + port + "]");
+      getJSON("/api/quick-commands?port=" + encodeURIComponent(port)).then(function (data) {
+        if (fwEl) fwEl.textContent = data.firmware || "device";
+        renderCmdGrid(data.groups, port, grid, termEl, statusEl);
+      }).catch(function () { grid.innerHTML = '<div class="er" style="font-size:12px">Could not load commands.</div>'; });
+    }
+    sel.addEventListener("change", function () { loadFor(sel.value); });
+    if (sendBtn) sendBtn.addEventListener("click", function () {
+      var cmd = (input.value || "").trim();
+      if (!cmd || !sel.value) { if (statusEl) statusEl.textContent = "select a device + type a command"; return; }
+      sendCommand(sel.value, cmd, termEl, statusEl);
+      input.value = "";
+    });
+    if (input) input.addEventListener("keydown", function (e) { if (e.key === "Enter" && sendBtn) sendBtn.click(); });
+
+    // keep the device dropdown in sync with connected devices
+    window.__opSyncDevices = function (devs) {
+      var connected = devs.filter(function (d) { return d.connected; });
+      var prev = sel.value;
+      sel.innerHTML = connected.length
+        ? connected.map(function (d) { return '<option value="' + esc(d.port) + '">' + esc(d.port) + " — " + esc(d.firmware || d.name || "device") + "</option>"; }).join("")
+        : '<option value="">no connected device</option>';
+      var want = connected.some(function (d) { return d.port === prev; }) ? prev : (connected[0] ? connected[0].port : "");
+      sel.value = want;
+      if (want !== prev || !grid.dataset.loaded) { grid.dataset.loaded = "1"; loadFor(want); }
+    };
+  }
+  initOperate();
 
   // initial hydrate + 5s cadence (matches the mockup's "live 5s")
   refreshHealth(); refreshDevices(); refreshTargets();
