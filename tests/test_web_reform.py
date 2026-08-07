@@ -60,7 +60,7 @@ def test_reform_lists_connected_device():
 
 def test_reform_selected_device_card_binds_live_fields():
     # The Selected Device card mirrors the mockup: capability chips + a board/fw/ui/ops/heap detail
-    # line, both bound to the connected device's live runtime_capabilities + telemetry (not invented).
+    # line, bound to the connected device's live runtime_capabilities + telemetry (not invented).
     dm = DeviceManager()
     dev = Device(port="COM9", name="Marauder", firmware="marauder", connected=True, health="alive")
     dev.runtime_capabilities = frozenset({"wifi", "ble"})
@@ -84,6 +84,42 @@ def test_system_health_endpoint_shape():
 def test_system_health_requires_auth():
     c = _client(DeviceManager(), authed=False)
     assert c.get("/api/system-health").status_code == 401
+
+
+def _client_with_desktop_token(token):
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
+                           desktop_token=token)
+    return app.test_client()
+
+
+def test_desktop_auth_bootstraps_a_clean_session():
+    # The one-time token establishes a session and 302s to /reform WITHOUT credentials in the URL,
+    # so the window lands on a clean address where relative fetch() works.
+    c = _client_with_desktop_token("secret-token-xyz")
+    r = c.get("/desktop-auth?token=secret-token-xyz")
+    assert r.status_code == 302
+    assert r.headers["Location"].endswith("/reform")
+    # session is now authenticated — /reform renders without a 401
+    assert c.get("/reform").status_code == 200
+
+
+def test_desktop_auth_is_single_use():
+    c = _client_with_desktop_token("one-shot")
+    assert c.get("/desktop-auth?token=one-shot").status_code == 302
+    # the token is consumed after one use — the route goes inert (404) so it can't be replayed
+    fresh = c.application.test_client()
+    assert fresh.get("/desktop-auth?token=one-shot").status_code == 404
+
+
+def test_desktop_auth_rejects_bad_token():
+    c = _client_with_desktop_token("right")
+    assert c.get("/desktop-auth?token=wrong").status_code == 403
+
+
+def test_desktop_auth_inert_without_token():
+    # The LAN web server never sets a desktop token, so the route must not exist (no auth bypass).
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/desktop-auth?token=anything").status_code == 404
 
 
 def test_desktop_shell_module_importable():

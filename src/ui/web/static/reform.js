@@ -13,6 +13,16 @@
 (function () {
   "use strict";
 
+  // The desktop shell (and any Basic-auth deep link) loads this page with credentials in the URL
+  // (http://user:pass@host/…). The browser then REFUSES every relative fetch() with "Request cannot be
+  // constructed from a URL that includes credentials", which would break all live hydration + actions.
+  // The first load already authenticated and set the session cookie, so drop the credentials from the
+  // address and let the cookie carry auth — fetch() works on the clean URL.
+  if (location.username || location.password) {
+    location.replace(location.origin + location.pathname + location.search + location.hash);
+    return;
+  }
+
   // ── mockup navigation ─────────────────────────────────────────────
   var crumbNames = { device: "DEVICE", hunt: "HUNT", operate: "OPERATE", crack: "CRACK", map: "MAP", terminal: "TERMINAL", settings: "SETTINGS" };
   var crumb = document.getElementById("crumb");
@@ -89,6 +99,60 @@
     return fetch(url, { headers: { "X-CSRF-Token": window.CSRF_TOKEN || "" }, credentials: "same-origin" })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); });
   }
+  function postJSON(url, body) {
+    return fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": window.CSRF_TOKEN || "" },
+      credentials: "same-origin",
+      body: JSON.stringify(body || {}),
+    }).then(function (r) {
+      return r.json().then(function (data) { return r.ok ? data : Promise.reject(data.error || r.status); });
+    });
+  }
+
+  // ── Dashboard device actions (Connect / Disconnect / Scan) ─────────
+  var selectedPort = null;
+  var devMsg = document.getElementById("dash-dev-msg");
+  function setDevMsg(text, isErr) {
+    if (!devMsg) return;
+    devMsg.textContent = text || "";
+    devMsg.style.color = isErr ? "var(--red)" : "var(--dim)";
+  }
+  var devTable = document.getElementById("dash-devices");
+  if (devTable) {
+    devTable.addEventListener("click", function (e) {
+      var row = e.target.closest("tr.dev-row");
+      if (!row || !row.dataset.port) return;
+      selectedPort = row.dataset.port;
+      document.querySelectorAll("#dash-devices .dev-row").forEach(function (r) {
+        r.classList.toggle("sel", r === row);
+      });
+      setDevMsg("selected " + selectedPort);
+    });
+  }
+  function wireBtn(id, fn) {
+    var b = document.getElementById(id);
+    if (b) b.addEventListener("click", fn);
+  }
+  wireBtn("dash-connect", function () {
+    if (!selectedPort) { setDevMsg("click a device row first", true); return; }
+    setDevMsg("connecting " + selectedPort + "…");
+    postJSON("/api/connect", { port: selectedPort })
+      .then(function () { setDevMsg("connected " + selectedPort); refreshDevices(); })
+      .catch(function (err) { setDevMsg("connect failed: " + err, true); });
+  });
+  wireBtn("dash-disconnect", function () {
+    if (!selectedPort) { setDevMsg("click a device row first", true); return; }
+    setDevMsg("disconnecting " + selectedPort + "…");
+    postJSON("/api/disconnect", { port: selectedPort })
+      .then(function () { setDevMsg("disconnected " + selectedPort); refreshDevices(); })
+      .catch(function (err) { setDevMsg("disconnect failed: " + err, true); });
+  });
+  wireBtn("dash-scan", function () {
+    setDevMsg("scanning ports…");
+    refreshDevices();
+    setTimeout(function () { setDevMsg(""); }, 1200);
+  });
 
   function setGauge(metric, v, num, det, invert) {
     var g = document.querySelector('.gauge[data-metric="' + metric + '"]');
@@ -131,7 +195,9 @@
     getJSON("/api/devices").then(function (devs) {
       var dot = function (c) { return c ? "●" : "○"; };
       var listHtml = devs.length ? devs.map(function (d) {
-        return '<tr><td class="' + (d.connected ? "con" : "off") + '">' + dot(d.connected) + " " +
+        var sel = d.port === selectedPort ? " sel" : "";
+        return '<tr data-port="' + esc(d.port) + '" class="dev-row' + sel + '"><td class="' +
+          (d.connected ? "con" : "off") + '">' + dot(d.connected) + " " +
           esc(d.port) + " — " + esc(d.name || d.firmware || "device") + "</td></tr>";
       }).join("") : '<tr><td class="off">○ no devices — press Scan Ports</td></tr>';
       var list = document.getElementById("dash-devices");

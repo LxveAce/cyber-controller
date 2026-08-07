@@ -57,25 +57,22 @@
         <!-- devices column -->
         <div class="grid" style="align-content:start">
           <div class="card">
-            <h3><span class="t">Devices</span><span class="r">Scan &#183; Connect</span></h3>
+            <h3><span class="t">Devices</span><span class="r">click a row &#183; Connect</span></h3>
             <table>
               <tbody id="dash-devices">
                 {% for d in devices %}
-                <tr><td class="{{ 'con' if d.connected else 'off' }}">{{ '&#9679;'|safe if d.connected else '&#9675;'|safe }} {{ d.port }} &#8212; {{ d.name or d.firmware or 'device' }}</td></tr>
+                <tr data-port="{{ d.port }}" class="dev-row"><td class="{{ 'con' if d.connected else 'off' }}">{{ '&#9679;'|safe if d.connected else '&#9675;'|safe }} {{ d.port }} &#8212; {{ d.name or d.firmware or 'device' }}</td></tr>
                 {% else %}
                 <tr><td class="off">&#9675; no devices &#8212; press Scan Ports</td></tr>
                 {% endfor %}
               </tbody>
             </table>
             <div class="row" style="margin-top:9px">
-              <button class="btn green sm">Connect</button>
-              <button class="btn sm">Disconnect</button>
-              <button class="btn sm">Scan Ports</button>
+              <button class="btn green sm" id="dash-connect">Connect</button>
+              <button class="btn sm" id="dash-disconnect">Disconnect</button>
+              <button class="btn sm" id="dash-scan">Scan Ports</button>
             </div>
-            <div style="margin-top:9px">
-              <label class="dim" style="font-size:11px">Firmware</label>
-              <select class="field" style="margin-top:3px"><option>Auto-detect{% if selected %} (detected: {{ selected.firmware }}){% endif %}</option><option>Marauder</option><option>GhostESP</option><option>Flipper</option><option>Generic / Raw</option></select>
-            </div>
+            <div class="footnote" id="dash-dev-msg" style="margin-top:6px;min-height:14px"></div>
           </div>
           <div class="card pro">
             <h3><span class="t">Device Health</span></h3>

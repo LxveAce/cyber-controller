@@ -33,8 +33,6 @@ from src.core.flash_engine import FlashEngine
 
 log = logging.getLogger(__name__)
 
-_LANDING = "reform"  # the Phase-1 proof surface (DEVICE ▸ Dashboard, live)
-
 
 def _free_loopback_port() -> int:
     """Grab an ephemeral port the OS just handed us, then release it for the server to re-bind.
@@ -77,14 +75,15 @@ def launch_desktop(
         )
         return 1
 
-    # One-time random credential for this process, so the loopback port isn't open even to another
-    # local user. Respect an operator-provided credential if one is already set.
+    # Still keep a strong web credential set (so the loopback port is not open even to another local
+    # user), but the window does NOT authenticate via credentials-in-URL: a browser refuses relative
+    # fetch() from a user:pass@host document, which would break every live update + action. Instead
+    # a single-use bootstrap token establishes the session and lands the window on a CLEAN URL.
     if not os.environ.get("CC_WEB_PASS"):
         os.environ["CC_WEB_USER"] = os.environ.get("CC_WEB_USER", "cc-desktop")
         os.environ["CC_WEB_PASS"] = secrets.token_urlsafe(24)
-    user = os.environ["CC_WEB_USER"]
-    password = os.environ["CC_WEB_PASS"]
 
+    token = secrets.token_urlsafe(32)
     port = _free_loopback_port()
 
     # launch_web() blocks on socketio.run(), so run it on a daemon thread; the window owns the main
@@ -95,7 +94,7 @@ def launch_desktop(
         try:
             launch_web(
                 device_manager, flash_engine, event_bus, target_pool,
-                host="127.0.0.1", port=port, audit=audit,
+                host="127.0.0.1", port=port, audit=audit, desktop_token=token,
             )
         except Exception:
             log.exception("Desktop web server thread crashed")
@@ -106,10 +105,9 @@ def launch_desktop(
         log.error("Web server did not come up on 127.0.0.1:%d in time", port)
         return 1
 
-    # Basic-auth creds in the URL authenticate the very first request; the server rotates the
-    # session cookie at the auth boundary, so the credential rides exactly one navigation.
-    creds = f"{quote(user, safe='')}:{quote(password, safe='')}@"
-    url = f"http://{creds}127.0.0.1:{port}/{_LANDING}"
+    # /desktop-auth consumes the one-time token, sets the session cookie, and 302s to /reform (clean
+    # URL). No credentials ever ride in the address, so fetch()/WebSocket work in the window.
+    url = f"http://127.0.0.1:{port}/desktop-auth?token={quote(token, safe='')}"
 
     log.info("Opening Cyber Controller desktop window (loopback :%d)", port)
     webview.create_window(

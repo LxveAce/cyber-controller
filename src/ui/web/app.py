@@ -34,6 +34,7 @@ from flask import (
     abort,
     g,
     jsonify,
+    redirect,
     render_template,
     request,
     send_from_directory,
@@ -119,8 +120,15 @@ def create_app(
     allowed_origins: list[str] | None = None,
     nodes_controller: NodesController | None = None,
     trusted_proxies: list[str] | None = None,
+    desktop_token: str | None = None,
 ) -> tuple[Flask, SocketIO]:
-    """Create and configure the hardened Flask application and SocketIO instance."""
+    """Create and configure the hardened Flask application and SocketIO instance.
+
+    ``desktop_token`` (loopback desktop shell only): a one-time bootstrap secret. When set, the
+    ``/desktop-auth?token=`` route consumes it once to establish a session WITHOUT credentials in the
+    URL — a browser refuses relative fetch() from a ``user:pass@host`` document, so the desktop window
+    must reach a clean URL. It is inert (404) for the LAN ``--ui web`` server, which never sets it, so
+    this is not a network auth bypass."""
 
     app = Flask(
         __name__,
@@ -437,6 +445,28 @@ def create_app(
         if isinstance(heap, int):
             parts.append(f"heap {heap // 1024} KB")
         return "  ·  ".join(parts)
+
+    # Single-use bootstrap holder for the loopback desktop shell (see create_app docstring). A list
+    # so the route can null it after one use; None (LAN web) keeps the route inert.
+    _desktop_token = [desktop_token]
+
+    @app.route("/desktop-auth")
+    def desktop_auth():
+        want = _desktop_token[0]
+        if not want:
+            abort(404)  # inert for the LAN web server — never a network auth bypass
+        got = str(request.args.get("token", ""))
+        if not (got and secrets.compare_digest(got, want)):
+            _audit("desktop_auth_fail")
+            abort(403)
+        _desktop_token[0] = None  # consume: one navigation only
+        session.clear()
+        session["authenticated"] = True
+        session["user"] = "cc-desktop"
+        session["csrf"] = new_csrf_token()
+        physical_key.record_successful_unlock()
+        _audit("desktop_auth_ok")
+        return redirect("/reform")
 
     @app.route("/reform")
     @requires_auth
@@ -1060,6 +1090,7 @@ def launch_web(
     host: str = "127.0.0.1",
     port: int = 5000,
     audit: Any = None,
+    desktop_token: str | None = None,
 ) -> int:
     """Create and run the hardened Flask web remote UI.
 
@@ -1088,6 +1119,7 @@ def launch_web(
     app, socketio = create_app(
         device_manager, flash_engine, event_bus, target_pool,
         audit=audit, allowed_origins=origins, trusted_proxies=trusted_proxies,
+        desktop_token=desktop_token,
     )
 
     ssl_args: dict[str, Any] = {}

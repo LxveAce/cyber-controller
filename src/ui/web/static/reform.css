@@ -129,6 +129,8 @@ td{padding:6px 8px;border-bottom:1px solid var(--bd2)}
 tbody tr:nth-child(even){background:#0f141b}
 td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .con{color:var(--green)} .off{color:var(--dim)}
+.dev-row{cursor:pointer} .dev-row:hover td{background:#0d1117}
+.dev-row.sel td{background:#161b22;box-shadow:inset 3px 0 0 var(--acc)}
 
 /* terminal */
 .term{background:#010409;border:1px solid var(--bd);border-radius:6px;font-family:var(--mono);font-size:11.5px;padding:9px 11px;height:150px;overflow:auto;line-height:1.5}
