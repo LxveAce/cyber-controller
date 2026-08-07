@@ -1,7 +1,7 @@
 """Cyber Controller — main entry point.
 
 Usage:
-    cyber-controller [--ui qt|tk|tui|web] [--log-level DEBUG|INFO|WARNING|ERROR]
+    cyber-controller [--ui qt|tk|tui|web|webview|qtweb] [--log-level DEBUG|INFO|WARNING|ERROR]
     cyber-controller --ui web [--host 0.0.0.0] [--port 5000]
 
 Parses CLI arguments, initialises logging, and launches the selected UI.
@@ -18,7 +18,7 @@ from pathlib import Path
 
 log = logging.getLogger("cyber-controller")
 
-_UI_CHOICES = ("qt", "tk", "tui", "web", "webview")
+_UI_CHOICES = ("qt", "tk", "tui", "web", "webview", "qtweb")
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE = "%H:%M:%S"
 
@@ -243,6 +243,18 @@ def _launch_desktop(dm, fe, bus, pool, vault=None, health=None, macro=None, audi
         return 1
 
 
+def _launch_desktop_qt(dm, fe, bus, pool, vault=None, health=None, macro=None, audit=None) -> int:
+    """PyQt + QtWebEngine window over the web UI — a genuine PyQt app rendering the reform HTML/CSS.
+    Loopback-only, no LAN listener. Heavier than pywebview (bundles Chromium); Windows/desktop path."""
+    log.info("Launching desktop shell (PyQt/QtWebEngine) over the web UI")
+    try:
+        from src.ui.web.desktop_qt import launch_desktop_qt
+        return launch_desktop_qt(dm, fe, bus, pool, audit=audit)
+    except ImportError:
+        log.error("PyQtWebEngine not installed. pip install cyber-controller[web] PyQtWebEngine")
+        return 1
+
+
 def _open_browser_when_ready(host: str, port: int) -> None:
     """Open the default browser at the web-UI URL after a short delay (server warm-up), in a daemon
     thread so it never blocks the server. Localhost is used for display when bound to 0.0.0.0."""
@@ -270,6 +282,7 @@ _LAUNCHERS = {
     "tui": _launch_tui,
     "web": _launch_web,
     "webview": _launch_desktop,
+    "qtweb": _launch_desktop_qt,
 }
 
 
