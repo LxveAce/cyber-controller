@@ -110,10 +110,15 @@
             {% if selected %}
             <div class="between" style="margin-bottom:9px">
               <span class="armlamp"><span class="d"></span> SAFE</span>
-              <span class="chip on">&#9679; alive</span>
+              <span class="chip on">&#9679; {{ selected.health if selected.health and selected.health != 'unknown' else 'connected' }}</span>
             </div>
-            <div class="kv mono muted" style="margin-bottom:6px">{{ selected.port }} &#183; {{ selected.firmware or 'unknown fw' }}{% if selected.baud %} &#183; {{ selected.baud }} baud{% endif %}</div>
-            <div class="kv mono" style="color:var(--blue)">airspace: targets in shared pool &#183; {{ target_count }}</div>
+            {% if sel_caps %}
+            <div class="row" style="margin-bottom:9px">
+              {% for c in sel_caps %}<span class="chip cap">{{ c }}</span>{% endfor %}
+            </div>
+            {% endif %}
+            {% if sel_detail %}<div class="kv mono muted" style="margin-bottom:6px">{{ sel_detail }}</div>{% endif %}
+            <div class="kv mono" style="color:var(--blue)">airspace: {{ target_count }} targets in the shared pool</div>
             {% else %}
             <div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">Connect a device to see its capabilities, health, and airspace.</div>
             {% endif %}
@@ -139,8 +144,9 @@
               <table>
                 <thead><tr><th>Type</th><th>SSID</th><th class="r">RSSI</th><th class="r">Ch</th></tr></thead>
                 <tbody id="dash-pool">
+                  {% set tlabels = {'ap':'AP','client':'Client','ble':'BLE','subghz':'SubGHz','nfc':'NFC','rfid':'RFID','alpr':'ALPR'} %}
                   {% for t in targets %}
-                  <tr><td>{{ t.target_type or '&#8212;'|safe }}</td><td>{{ t.ssid or t.mac or '&#8212;'|safe }}</td><td class="r">{{ t.rssi if t.rssi is not none else '&#8212;'|safe }}</td><td class="r">{{ t.channel if t.channel is not none else '&#8212;'|safe }}</td></tr>
+                  <tr><td>{{ tlabels.get(t.target_type, t.target_type) or '&#8212;'|safe }}</td><td>{{ t.ssid or t.mac or '&#8212;'|safe }}</td><td class="r">{{ t.rssi if t.rssi is not none else '&#8212;'|safe }}</td><td class="r">{{ t.channel if t.channel is not none else '&#8212;'|safe }}</td></tr>
                   {% else %}
                   <tr><td class="off" colspan="4">pool empty &#8212; targets appear as devices discover them</td></tr>
                   {% endfor %}

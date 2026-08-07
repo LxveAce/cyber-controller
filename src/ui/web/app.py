@@ -403,6 +403,41 @@ def create_app(
             "gps": s.get("gps_fix", False),
         }
 
+    def _selected_caps(dev: Any) -> list[str]:
+        """The connected device's self-reported runtime capabilities, upper-cased for the cap chips
+        (WIFI/BLE/GPS/SD…). Empty until the firmware speaks a device_info — honest, not invented."""
+        if dev is None:
+            return []
+        caps = getattr(dev, "runtime_capabilities", None) or ()
+        return sorted(str(c).upper() for c in caps)
+
+    def _selected_detail(dev: Any) -> str:
+        """One identity/telemetry line for the Selected Device card — board/chip · fw · ui · ops ·
+        heap, present keys only. Mirrors the Qt Operate tab's formatter so both read identically."""
+        if dev is None:
+            return ""
+        t = getattr(dev, "telemetry", {}) or {}
+        parts: list[str] = []
+        ident = "/".join(str(t[k]) for k in ("board", "chip") if t.get(k))
+        if not ident:
+            ident = getattr(dev, "detected_chip", "") or ""
+        if ident:
+            parts.append(ident)
+        if t.get("fw"):
+            parts.append(f"fw {t['fw']}")
+        if t.get("ui"):
+            parts.append(f"ui {t['ui']}")
+        ops = t.get("ops")
+        if isinstance(ops, dict):
+            parts.append(
+                f"ops {ops.get('ready', 0)}/{ops.get('planned', 0)}/"
+                f"{ops.get('attachable_unavailable', 0)}"
+            )
+        heap = t.get("heap")
+        if isinstance(heap, int):
+            parts.append(f"heap {heap // 1024} KB")
+        return "  ·  ".join(parts)
+
     @app.route("/reform")
     @requires_auth
     def reform_page():
@@ -416,6 +451,8 @@ def create_app(
             devices=devices,
             device_count=len(devices),
             selected=selected,
+            sel_caps=_selected_caps(selected),
+            sel_detail=_selected_detail(selected),
             targets=[t.to_dict() for t in target_pool.all()],
             target_count=target_pool.count,
             sys=_gauge_ctx(),

@@ -158,8 +158,9 @@
     getJSON("/api/targets").then(function (ts) {
       var body = document.getElementById("dash-pool");
       if (body) {
+        var TLABELS = { ap: "AP", client: "Client", ble: "BLE", subghz: "SubGHz", nfc: "NFC", rfid: "RFID", alpr: "ALPR" };
         body.innerHTML = ts.length ? ts.map(function (t) {
-          return "<tr><td>" + esc(t.target_type || "—") + "</td><td>" + esc(t.ssid || t.mac || "—") +
+          return "<tr><td>" + esc(TLABELS[t.target_type] || t.target_type || "—") + "</td><td>" + esc(t.ssid || t.mac || "—") +
             '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") + '</td><td class="r">' +
             (t.channel != null ? esc(t.channel) : "—") + "</td></tr>";
         }).join("") : '<tr><td class="off" colspan="4">pool empty — targets appear as devices discover them</td></tr>';

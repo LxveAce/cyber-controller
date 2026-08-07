@@ -58,6 +58,19 @@ def test_reform_lists_connected_device():
     assert "COM9" in body
 
 
+def test_reform_selected_device_card_binds_live_fields():
+    # The Selected Device card mirrors the mockup: capability chips + a board/fw/ui/ops/heap detail
+    # line, both bound to the connected device's live runtime_capabilities + telemetry (not invented).
+    dm = DeviceManager()
+    dev = Device(port="COM9", name="Marauder", firmware="marauder", connected=True, health="alive")
+    dev.runtime_capabilities = frozenset({"wifi", "ble"})
+    dev.telemetry = {"board": "esp32-s3", "fw": "v1.5b", "heap": 214 * 1024}
+    dm.add_device(dev)
+    body = _client(dm).get("/reform").get_data(as_text=True)
+    assert "WIFI" in body and "BLE" in body  # capability chips
+    assert "esp32-s3" in body and "fw v1.5b" in body and "heap 214 KB" in body  # detail line
+
+
 def test_system_health_endpoint_shape():
     c = _client(DeviceManager())
     r = c.get("/api/system-health")
