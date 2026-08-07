@@ -5,13 +5,22 @@ This is "the PyQt app, skinned as the HTML": a native PyQt ``QMainWindow`` whose
 unchanged — ``reform.html``/``reform.css``/``reform.js`` + the hardened Flask + SocketIO bridge + the
 Python core. Only the window changes: a Qt/Chromium web view instead of pywebview's OS webview.
 
-Why this over ``desktop.py`` (pywebview): the owner wants a genuine PyQt application. The trade-off is
-weight — QtWebEngine bundles Chromium — most noticeable on the Raspberry-Pi (ARM) target, where
-PyQtWebEngine wheels are unreliable; the Pi path stays pywebview / ``--ui web`` until that's validated.
+Native-shell features (so it behaves like a real desktop app, not a bare browser frame):
+  * leanness — trims Chromium's background services + caps render processes (owner: responsive, not
+    heavy on hardware). No fidelity or security loss.
+  * adaptive sizing — the minimum/launch size clamps to the actual screen, so a small cyberdeck panel
+    (800x480 / 1024x600) is usable instead of stuck behind a 900-wide floor.
+  * window identity — organisation/app name + the CC icon (also the base for QSettings later).
+  * external-link + download handling — off-box links open in the system browser (never white-screen
+    the app), and downloads route to a native Save dialog.
 
 Security posture is identical to ``desktop.py``: binds 127.0.0.1 on an ephemeral port (no LAN
 listener), the web auth gate is untouched, and a single-use bootstrap token establishes the session
 on a clean URL (credentials never ride in the address, so relative ``fetch()`` / WebSocket work).
+
+Why this over ``desktop.py`` (pywebview): the owner wants a genuine PyQt application. The trade-off is
+weight — QtWebEngine bundles Chromium — most noticeable on the Raspberry-Pi (ARM) target, where
+PyQtWebEngine wheels are unreliable; the Pi path stays pywebview / ``--ui web`` until that's validated.
 
 PyQtWebEngine is an optional dependency; if it is missing we say so and point at the other UIs.
 """
@@ -32,6 +41,17 @@ from src.ui.web.desktop import _free_loopback_port, _wait_until_serving
 
 log = logging.getLogger(__name__)
 
+_LOCAL_HOSTS = ("127.0.0.1", "localhost", "::1", "")
+
+# Chromium flags that trim background/telemetry services and cap the render-process count without
+# touching rendering fidelity or the security model. Set BEFORE QtWebEngine initializes; an operator
+# override (an existing QTWEBENGINE_CHROMIUM_FLAGS) always wins.
+_LEAN_CHROMIUM_FLAGS = (
+    "--disable-features=Translate,MediaRouter,DialMediaRouteProvider,OptimizationHints,AcceptCHFrame "
+    "--disable-background-networking --disable-component-update --disable-domain-reliability "
+    "--disable-sync --disable-breakpad --renderer-process-limit=1"
+)
+
 
 def launch_desktop_qt(
     device_manager: DeviceManager,
@@ -42,10 +62,17 @@ def launch_desktop_qt(
     audit: Any = None,
 ) -> int:
     """Run the web UI inside a native PyQt/QtWebEngine window. Returns a process exit code."""
+    # Leanness (P1-10): trim Chromium before QtWebEngine loads. setdefault so an operator override wins.
+    os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", _LEAN_CHROMIUM_FLAGS)
     try:
         from PyQt5.QtCore import QUrl
-        from PyQt5.QtWebEngineWidgets import QWebEngineView
-        from PyQt5.QtWidgets import QApplication, QMainWindow
+        from PyQt5.QtGui import QDesktopServices
+        from PyQt5.QtWebEngineWidgets import (
+            QWebEnginePage,
+            QWebEngineSettings,
+            QWebEngineView,
+        )
+        from PyQt5.QtWidgets import QApplication, QFileDialog, QMainWindow
     except ImportError:
         log.error(
             "PyQtWebEngine is not installed — the Qt desktop shell needs it.\n"
@@ -88,14 +115,76 @@ def launch_desktop_qt(
     # URL). No credentials ever ride in the address, so fetch()/WebSocket work in the window.
     url = f"http://127.0.0.1:{port}/desktop-auth?token={quote(token, safe='')}"
 
+    # External-link + new-window interception (P0-3): keep the app itself always on the loopback origin;
+    # any off-box link (GitHub, Sponsors, docs) opens in the system browser instead of navigating — or
+    # white-screening — the app. `createWindow` (target=_blank) routes out the same way.
+    class _ShellPage(QWebEnginePage):
+        def acceptNavigationRequest(self, qurl, nav_type, is_main_frame):  # noqa: N802 (Qt override)
+            if is_main_frame and qurl.host() not in _LOCAL_HOSTS:
+                QDesktopServices.openUrl(qurl)
+                return False
+            return super().acceptNavigationRequest(qurl, nav_type, is_main_frame)
+
+        def createWindow(self, _wtype):  # noqa: N802 (Qt override)
+            # A link asked for a new window; open its first navigation externally, then discard.
+            tmp = QWebEnginePage(self)
+            tmp.urlChanged.connect(lambda u, p=tmp: (QDesktopServices.openUrl(u), p.deleteLater()))
+            return tmp
+
     app = QApplication.instance() or QApplication([])
+    # Window identity (P0-4) — org/app name (also the base any future QSettings key hangs off) + CC icon.
+    app.setOrganizationName("LxveAce")
+    app.setApplicationName("CyberController")
+
     window = QMainWindow()
     window.setWindowTitle("Cyber Controller")
+    try:
+        from src.ui.qt.widgets.cc_icon import create_cc_icon
+        window.setWindowIcon(create_cc_icon())
+    except Exception:  # noqa: BLE001 — an icon is cosmetic; never block launch on it
+        pass
+
     view = QWebEngineView(window)
+    view.setPage(_ShellPage(view))
+
+    # Downloads (P0-3): route any download the page triggers to a native Save dialog.
+    def _on_download(item) -> None:
+        suggested = item.path() or getattr(item, "downloadFileName", lambda: "")() or ""
+        path, _ = QFileDialog.getSaveFileName(window, "Save file", suggested)
+        if path:
+            item.setPath(path)
+            item.accept()
+        else:
+            item.cancel()
+
+    view.page().profile().downloadRequested.connect(_on_download)
+
+    # Settings hardening (leanness + attack-surface): disable engine features the reform UI never uses.
+    _settings = view.settings()
+    for _name, _on in (
+        ("PluginsEnabled", False),
+        ("WebGLEnabled", False),
+        ("ScreenCaptureEnabled", False),
+        ("FullScreenSupportEnabled", False),
+        ("HyperlinkAuditingEnabled", False),
+        ("DnsPrefetchEnabled", False),
+        ("PdfViewerEnabled", False),
+    ):
+        _attr = getattr(QWebEngineSettings, _name, None)
+        if _attr is not None:
+            _settings.setAttribute(_attr, _on)
+
     view.load(QUrl(url))
     window.setCentralWidget(view)
-    window.resize(1280, 820)
-    window.setMinimumSize(900, 600)
+
+    # Adaptive sizing (P0-5): clamp the minimum + launch size to the real screen so a small cyberdeck
+    # panel is usable (the old hardcoded 900-wide minimum made an 800x480 / 1024x600 deck unusable).
+    from src.ui.qt.screen import adaptive_launch_size, adaptive_minimum_size
+    _geo = app.primaryScreen().availableGeometry()
+    _min_w, _min_h = adaptive_minimum_size(_geo.width(), _geo.height())
+    _lw, _lh = adaptive_launch_size(_geo.width(), _geo.height())
+    window.setMinimumSize(_min_w, _min_h)
+    window.resize(_lw, _lh)
     window.show()
 
     log.info("Opening Cyber Controller PyQt/QtWebEngine window (loopback :%d)", port)
