@@ -568,7 +568,42 @@
   }
   initSettings();
 
-  // ── CRACK: live engine detection (read-only; the RUN stays consent-gated) ─
+  // ── CRACK: live engine detection + optional-tool fetch (the RUN stays consent-gated) ─
+  function crackToolRow(a) {
+    var mark = a.present ? "✓" : "✗";
+    var col = a.present ? "var(--green)" : "var(--dim)";
+    var where = a.present ? (a.source === "PATH" ? "on PATH" : (a.source === "installed" ? "installed" : "ready")) : "not installed";
+    var btn = (!a.present && a.can_autofetch) ? '<button class="btn sm" data-install="' + esc(a.tool) + '">Install</button>' : "";
+    return '<div class="row" style="align-items:center;margin:4px 0;font-size:11px">' +
+      '<span style="color:' + col + ';min-width:170px">' + mark + " " + esc(a.tool) + " · " + where + "</span>" +
+      '<span class="dim" style="flex:1">' + esc(a.guidance || "") + "</span>" + btn + "</div>";
+  }
+  function renderCrackPanel(panel) {
+    var avail = panel.__avail || [];
+    if (!avail.length) {
+      panel.innerHTML = '<div class="dim" style="font-size:11px">No optional tools to fetch here — the built-in native cracker is always ready.</div>';
+      return;
+    }
+    panel.innerHTML =
+      '<div class="dim" style="font-size:11px;margin-bottom:4px">Optional accelerators (the native cracker needs none of these):</div>' +
+      avail.map(crackToolRow).join("") +
+      '<div id="crack-panel-msg" class="dim" style="font-size:11px;margin-top:4px"></div>';
+    var msg = panel.querySelector("#crack-panel-msg");
+    panel.querySelectorAll("button[data-install]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var tool = b.getAttribute("data-install");
+        b.disabled = true; b.textContent = "Installing…";
+        if (msg) { msg.style.color = "var(--dim)"; msg.textContent = "Fetching " + tool + "… (download + verify + extract)"; }
+        postJSON("/api/crack/install-tool", { tool: tool }).then(function (res) {
+          if (msg) { msg.style.color = "var(--green)"; msg.textContent = "✓ " + tool + " installed → " + (res.path || "tools dir"); }
+          initCrack();
+        }).catch(function (err) {
+          b.disabled = false; b.textContent = "Install";
+          if (msg) { msg.style.color = "var(--amber)"; msg.textContent = "✗ " + (typeof err === "string" ? err : "install failed"); }
+        });
+      });
+    });
+  }
   function initCrack() {
     var eng = document.getElementById("crack-engine");
     var foot = document.getElementById("crack-tools");
@@ -582,9 +617,21 @@
         var col = t.present ? "var(--green)" : "var(--dim)";
         return '<span style="color:' + col + '">' + mark + " " + esc(t.name) + (t.present && t.version ? " " + esc(t.version.split(" ")[0]) : "") + "</span>";
       }).join(" · ") || "native ready";
+      var panel = document.getElementById("crack-tools-panel");
+      if (panel) { panel.__avail = d.availability || []; if (!panel.hidden) renderCrackPanel(panel); }
     }).catch(function () { foot.textContent = "engine detection unavailable"; });
   }
-  initCrack();
+  (function wireCrack() {
+    var getBtn = document.getElementById("crack-get-tools");
+    var reBtn = document.getElementById("crack-recheck");
+    var panel = document.getElementById("crack-tools-panel");
+    if (getBtn && panel) getBtn.addEventListener("click", function () {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) renderCrackPanel(panel);
+    });
+    if (reBtn) reBtn.addEventListener("click", function () { initCrack(); });
+    initCrack();
+  })();
 
   // ── Mesh ▸ Provisioned Nodes: live vault status (key-redacted server-side) ─
   function initNodes() {

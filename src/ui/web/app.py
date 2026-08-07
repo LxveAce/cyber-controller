@@ -556,6 +556,8 @@ def create_app(
         aircrack are optional accelerators). Detection only — running a crack stays behind its
         per-run consent gate and is NOT exposed here."""
         from src.core.crack_pipeline import available_backends, detect_tools
+        from src.core.tool_installer import (
+            default_tools_dir, installable_tools, tool_availability)
 
         tools = detect_tools()
         return jsonify({
@@ -564,7 +566,41 @@ def create_app(
                 {"name": t.name, "present": t.present, "version": t.version}
                 for t in tools.values()
             ],
+            # Per-tool status for the "Get tools" panel: present?/where-from/can CC fetch it/how-to.
+            "availability": [
+                {"tool": a.tool, "present": a.present, "source": a.source,
+                 "can_autofetch": a.can_autofetch, "guidance": a.guidance}
+                for a in tool_availability()
+            ],
+            "installable": installable_tools(),
+            "tools_dir": default_tools_dir(),
         })
+
+    @app.route("/api/crack/install-tool", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_crack_install_tool():
+        """Auto-fetch ONE optional crack accelerator into CC's tools dir (today: aircrack-ng on Windows).
+        Download + integrity-verify + extract + launch-probe, fail-closed — anything CC can't safely
+        auto-install is refused here with the honest guidance instead. This grants NO authorization to
+        crack: a crack RUN keeps its own separate per-run consent gate, never bypassed by installing a tool."""
+        from src.core.tool_installer import install_tool, installable_tools, spec_for
+
+        data = _json_body()
+        tool = str(data.get("tool", "")).strip()
+        if tool not in installable_tools():
+            return jsonify({"error": f"{tool or 'that tool'} can't be auto-installed on this system — "
+                            "see the guidance next to it"}), 400
+        spec = spec_for(tool)
+        if spec is None:
+            return jsonify({"error": f"no install spec for {tool}"}), 400
+        _audit("crack_install_tool", user=session.get("user"), tool=tool)
+        log_lines: list[str] = []
+        try:
+            exe = install_tool(spec, on_line=lambda line: log_lines.append(str(line)))
+        except Exception as exc:  # noqa: BLE001 — surface the honest failure to the panel, install nothing
+            return jsonify({"ok": False, "tool": tool, "error": str(exc), "log": log_lines}), 502
+        return jsonify({"ok": True, "tool": tool, "path": exe, "log": log_lines})
 
     @app.route("/api/gate-status")
     @requires_auth
