@@ -439,15 +439,20 @@
   <!-- ============ SETTINGS ============ -->
   <section class="view" data-view="settings">
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
-      <div class="card"><h3><span class="t">Access Gate</span><span class="r">status</span></h3>
+      <div class="card"><h3><span class="t">Serial Defaults</span></h3><label class="dim" style="font-size:11px">Default baud</label><select class="field"><option>115200</option><option>230400</option><option>921600</option></select></div>
+      <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field"><option>921600</option><option>460800</option></select></div>
+      <div class="card"><h3><span class="t">Interface</span></h3><label class="dim" style="font-size:11px">Touch mode</label><select class="field"><option>Auto (detect a touchscreen)</option><option>On</option><option>Off</option></select></div>
+      <div class="card"><h3><span class="t">Updates</span></h3><label class="chip on" style="margin-bottom:6px">&#9745; Auto-check for updates</label><div class="kv mono muted">Current v2.1.0 &#183; up to date</div><button class="btn sm" style="margin-top:6px">Check now</button></div>
+      <div class="card pro"><h3><span class="t">Wardrive Uploads</span></h3><label class="dim" style="font-size:11px">WiGLE token</label><input class="field" type="password" value="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"></div>
+      <div class="card pro"><h3><span class="t">Safety &amp; Disclaimers</span></h3><label class="chip on" style="margin-bottom:6px">&#9745; Confirm dangerous commands</label><br><label class="chip">&#9744; Suppress all safety warnings</label></div>
+      <div class="card pro"><h3><span class="t">Access Gate</span><span class="r">password / USB key</span></h3>
         <div class="kv mono muted" id="set-gate">reading gate status&#8230;</div>
-        <div class="footnote">The access gate is configured from the desktop app / console. This shows its live state (never a secret).</div>
-      </div>
-      <div class="card"><h3><span class="t">About</span></h3>
-        <div class="kv mono muted">Cyber Controller &#183; reform web UI</div>
-        <div class="footnote">Served from the app&#8217;s own core over loopback. Live surfaces: Device, Operate, Firmware, Terminal, Hunt.</div>
-      </div>
+        <div class="footnote" style="margin:6px 0 0">Configured from the desktop app / console &#8212; this shows its live state (never a secret).</div>
+        <button class="btn sm acc" style="margin-top:7px">Set up access gate&#8230;</button></div>
+      <div class="card pro"><h3><span class="t">Secure Container</span></h3><label class="chip">&#9744; Encrypt my saved macros</label></div>
+      <div class="card pro"><h3><span class="t">Firmware Vault</span></h3><input class="field mono" value="~/.cyber-controller/firmware_vault"></div>
     </div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn">Reset to Defaults</button><button class="btn acc">Save Settings</button></div>
   </section>
 
   </main>
