@@ -607,6 +607,53 @@
   }
   initNodes();
 
+  // ── MAP ▸ Flock/ALPR: OSINT camera import (user-initiated, awareness-only) ─
+  function initFlock() {
+    var input = document.getElementById("flock-bbox");
+    var btn = document.getElementById("flock-load");
+    var msg = document.getElementById("flock-msg");
+    var count = document.getElementById("flock-count");
+    var attr = document.getElementById("flock-attr");
+    var markers = document.getElementById("flock-markers");
+    if (!btn || !markers) return;
+    var SVGNS = "http://www.w3.org/2000/svg";
+
+    function render(cams, bbox) {
+      while (markers.firstChild) markers.removeChild(markers.firstChild);
+      var s = bbox[0], w = bbox[1], n = bbox[2], e = bbox[3];
+      var lonSpan = (e - w) || 1e-6, latSpan = (n - s) || 1e-6;
+      cams.forEach(function (c) {
+        var x = ((c.lon - w) / lonSpan) * 1000;
+        var y = (1 - (c.lat - s) / latSpan) * 380;   // lat up = y down
+        var halo = document.createElementNS(SVGNS, "circle");
+        halo.setAttribute("cx", x); halo.setAttribute("cy", y); halo.setAttribute("r", 14);
+        halo.setAttribute("fill", "#f85149"); halo.setAttribute("opacity", "0.12");
+        var dot = document.createElementNS(SVGNS, "circle");
+        dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("r", 4.5);
+        dot.setAttribute("fill", "#f85149");
+        if (c.label) { var t = document.createElementNS(SVGNS, "title"); t.textContent = c.label; dot.appendChild(t); }
+        markers.appendChild(halo); markers.appendChild(dot);
+      });
+    }
+    btn.addEventListener("click", function () {
+      var raw = (input.value || "").trim();
+      if (raw.split(",").length !== 4) { msg.textContent = "enter S,W,N,E"; msg.style.color = "var(--red)"; return; }
+      msg.style.color = "var(--dim)"; msg.textContent = "importing from OpenStreetMap…";
+      btn.disabled = true;
+      getJSON("/api/flock?bbox=" + encodeURIComponent(raw)).then(function (d) {
+        var bbox = raw.split(",").map(Number);
+        render(d.cameras || [], bbox);
+        if (count) count.textContent = d.count + " ALPR cameras";
+        msg.textContent = d.count ? "" : "no ALPR cameras in that area";
+        if (attr) attr.textContent = d.attribution || "";
+      }).catch(function (err) {
+        msg.style.color = "var(--red)";
+        msg.textContent = typeof err === "string" ? err : "import failed (offline or rate-limited)";
+      }).then(function () { btn.disabled = false; });
+    });
+  }
+  initFlock();
+
   // initial hydrate + 5s cadence (matches the mockup's "live 5s")
   refreshHealth(); refreshDevices(); refreshTargets();
   setInterval(refreshHealth, 5000);

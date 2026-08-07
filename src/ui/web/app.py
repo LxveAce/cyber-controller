@@ -496,6 +496,39 @@ def create_app(
 
         return jsonify(HealthMonitor.get_system_health())
 
+    @app.route("/api/flock")
+    @requires_auth
+    def api_flock():
+        """USER-INITIATED ALPR-camera awareness import for a bbox (this request IS the user action
+        the core gates on). Awareness-only OSINT from OpenStreetMap via the fixed-host Overpass API
+        (no SSRF surface, drives no device, transmits nothing). GET ?bbox=S,W,N,E (decimal deg)."""
+        from src.core import flock_osm
+
+        parts = str(request.args.get("bbox", "")).split(",")
+        if len(parts) != 4:
+            return jsonify({"error": "bbox must be S,W,N,E (four decimal degrees)"}), 400
+        try:
+            bbox = tuple(float(p) for p in parts)
+        except ValueError:
+            return jsonify({"error": "bbox values must be numbers"}), 400
+        try:
+            geojson = flock_osm.fetch_alpr_geojson(bbox)
+        except ValueError as exc:  # invalid bbox range from the query builder — clean 400
+            return jsonify({"error": str(exc)}), 400
+        except Exception:
+            log.exception("flock ALPR fetch failed")
+            return jsonify({"error": "Overpass fetch failed (offline or rate-limited)"}), 502
+        cams = []
+        for f in geojson.get("features", []):
+            geo = f.get("geometry") or {}
+            coords = geo.get("coordinates") or []
+            if len(coords) == 2:
+                props = f.get("properties") or {}
+                cams.append({"lat": coords[1], "lon": coords[0], "label": props.get("ssid", "")})
+        return jsonify(
+            {"count": len(cams), "cameras": cams, "attribution": flock_osm.ODBL_ATTRIBUTION}
+        )
+
     @app.route("/api/nodes-status")
     @requires_auth
     def api_nodes_status():

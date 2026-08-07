@@ -400,7 +400,24 @@
       </div>
     </div></div>
     <div class="sub" data-sub="multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3><div class="dim" style="font-size:11px">Concurrent multi-board survey ports in Phase 2.</div></div></div>
-    <div class="sub" data-sub="flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r">located cameras</span></h3><div class="dim" style="font-size:11px">Awareness map of publicly-visible ALPR cameras. Detection is passive; CC transmits nothing.</div></div></div>
+    <div class="sub" data-sub="flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r" id="flock-count">awareness &#183; OSINT</span></h3>
+      <div class="footnote" style="margin:-4px 0 10px">Awareness map of publicly-visible ALPR cameras, imported from OpenStreetMap (Overpass). Passive OSINT &#8212; CC transmits nothing and drives no device.</div>
+      <div class="row" style="margin-bottom:10px;align-items:center">
+        <label class="dim" style="font-size:11px">Area (S,W,N,E)</label>
+        <input class="field mono" id="flock-bbox" aria-label="Bounding box S,W,N,E" style="max-width:280px" placeholder="e.g. 40.70,-74.02,40.75,-73.96">
+        <button class="btn green sm" id="flock-load">Load cameras</button>
+        <span class="dim" id="flock-msg" style="font-size:11px"></span>
+      </div>
+      <div class="mapwrap">
+        <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid slice" role="img" aria-label="ALPR camera map">
+          <defs><pattern id="flockgrid" width="72" height="72" patternUnits="userSpaceOnUse"><path d="M72 0H0V72" fill="none" stroke="#171d25" stroke-width="1"/></pattern></defs>
+          <rect width="1000" height="380" fill="#0b0f14"/><rect width="1000" height="380" fill="url(#flockgrid)"/>
+          <g id="flock-markers"></g>
+        </svg>
+        <div class="maplegend"><div class="li"><span class="dot9" style="background:#f85149"></span>ALPR camera (OSM)</div></div>
+      </div>
+      <div class="footnote" id="flock-attr" style="margin-top:8px"></div>
+    </div></div>
   </section>
 
   <!-- ============ TERMINAL (design preview) ============ -->

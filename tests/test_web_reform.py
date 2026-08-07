@@ -147,6 +147,33 @@ def test_nodes_status_requires_auth():
     assert c.get("/api/nodes-status").status_code == 401
 
 
+def test_flock_bbox_validation():
+    c = _client(DeviceManager())
+    assert c.get("/api/flock?bbox=1,2,3").status_code == 400        # not four values
+    assert c.get("/api/flock?bbox=a,b,c,d").status_code == 400      # not numbers
+
+
+def test_flock_imports_cameras(monkeypatch):
+    # Endpoint parses a (monkeypatched) Overpass response into map cameras — no live network.
+    from src.core import flock_osm
+
+    sample = {"type": "FeatureCollection", "features": [
+        {"type": "Feature", "geometry": {"type": "Point", "coordinates": [-74.0, 40.71]},
+         "properties": {"ssid": "CityCam", "mac": "osm:1"}},
+    ]}
+    monkeypatch.setattr(flock_osm, "fetch_alpr_geojson", lambda bbox, **k: sample)
+    c = _client(DeviceManager())
+    data = c.get("/api/flock?bbox=40.70,-74.02,40.75,-73.96").get_json()
+    assert data["count"] == 1
+    assert data["cameras"][0]["lat"] == 40.71 and data["cameras"][0]["lon"] == -74.0
+    assert data["attribution"]  # ODbL attribution surfaced
+
+
+def test_flock_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/api/flock?bbox=0,0,1,1").status_code == 401
+
+
 def _client_with_desktop_token(token):
     app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
                            desktop_token=token)
