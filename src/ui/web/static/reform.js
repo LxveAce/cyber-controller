@@ -488,11 +488,72 @@
     if (!listEl || !panesEl) return;
     var built = {};   // port -> true (pane already built)
     var activePort = null;
+    var lastConnected = null;   // last device list seen (null = not synced yet)
+    // ── Local host shell (only present when /api/host-shell says enabled) ──
+    var HOST = "__hostshell__";
+    var hostShellEnabled = false;
+    var hostOpened = false;
+    var hostOutEl = null;
 
     function selectPort(port) {
       activePort = port;
       listEl.querySelectorAll(".termrow").forEach(function (r) { r.classList.toggle("on", r.dataset.term === port); });
       panesEl.querySelectorAll(".rterm-pane").forEach(function (p) { p.style.display = p.dataset.term === port ? "block" : "none"; });
+      if (port === HOST) openHostShell();
+    }
+    function openHostShell() {
+      if (hostOpened) return;
+      hostOpened = true;
+      ensureSocket();
+      if (socket) socket.emit("host_shell_open", { csrf: window.CSRF_TOKEN || "" });
+    }
+    function buildHostPane() {
+      if (built[HOST]) return;
+      built[HOST] = true;
+      var pane = document.createElement("div");
+      pane.className = "rterm-pane"; pane.dataset.term = HOST; pane.style.display = "none";
+      var head = document.createElement("div"); head.className = "between";
+      head.innerHTML = '<h3 style="margin:0 0 8px"><span class="t">Local — host shell</span> <span class="dim">· this machine</span></h3>';
+      var clearBtn = document.createElement("button"); clearBtn.className = "btn sm"; clearBtn.textContent = "Clear";
+      var headRow = document.createElement("div"); headRow.className = "row"; headRow.appendChild(clearBtn);
+      head.appendChild(headRow);
+      var term = document.createElement("div"); term.className = "term termbig"; term.style.whiteSpace = "pre-wrap";
+      hostOutEl = term;
+      var inp = document.createElement("div"); inp.className = "terminput"; inp.style.marginTop = "8px";
+      inp.innerHTML = '<span class="pr">$</span>';
+      var field = document.createElement("input");
+      field.className = "field mono"; field.setAttribute("aria-label", "Host command"); field.placeholder = "run a host command on this machine…";
+      var btn = document.createElement("button"); btn.className = "btn"; btn.textContent = "Run";
+      function doRun() {
+        var cmd = field.value || "";
+        if (!cmd.trim()) return;
+        ensureSocket();
+        if (socket) socket.emit("host_shell_input", { data: cmd + "\n", csrf: window.CSRF_TOKEN || "" });
+        field.value = "";
+      }
+      btn.addEventListener("click", doRun);
+      field.addEventListener("keydown", function (e) { if (e.key === "Enter") doRun(); });
+      clearBtn.addEventListener("click", function () { if (hostOutEl) hostOutEl.textContent = ""; });
+      inp.appendChild(field); inp.appendChild(btn);
+      pane.appendChild(head); pane.appendChild(term); pane.appendChild(inp);
+      panesEl.appendChild(pane);
+    }
+    function hostRowHtml() {
+      return '<div class="termrow' + (activePort === HOST ? " on" : "") + '" data-term="' + HOST +
+        '"><span class="sw" style="background:#c9d1d9"></span><span class="nm">Local (host shell)</span><span class="st">this machine</span></div>';
+    }
+    function renderList(connected) {
+      var rows = hostShellEnabled ? hostRowHtml() : "";
+      if (connected && connected.length) {
+        rows += connected.map(function (d) {
+          return '<div class="termrow' + (d.port === activePort ? " on" : "") + '" data-term="' + esc(d.port) +
+            '"><span class="sw" style="background:var(--green)"></span><span class="nm">' + esc(d.port) +
+            " — " + esc(d.firmware || d.name || "device") + '</span><span class="st con">● live</span></div>';
+        }).join("");
+      } else if (!hostShellEnabled) {
+        rows += '<div class="dim" style="font-size:12px;padding:6px">no connected ports — connect a device under DEVICE ▸ Dashboard.</div>';
+      }
+      listEl.innerHTML = rows;
     }
     function buildPane(port, fw) {
       if (built[port]) return;
@@ -533,24 +594,39 @@
 
     window.__termSyncDevices = function (devs) {
       var connected = devs.filter(function (d) { return d.connected; });
-      if (!connected.length) {
-        listEl.innerHTML = '<div class="dim" style="font-size:12px;padding:6px">no connected ports — connect a device under DEVICE ▸ Dashboard.</div>';
-        return;
-      }
-      listEl.innerHTML = connected.map(function (d) {
-        return '<div class="termrow' + (d.port === activePort ? " on" : "") + '" data-term="' + esc(d.port) +
-          '"><span class="sw" style="background:var(--green)"></span><span class="nm">' + esc(d.port) +
-          " — " + esc(d.firmware || d.name || "device") + '</span><span class="st con">● live</span></div>';
-      }).join("");
+      lastConnected = connected;
+      renderList(connected);
       connected.forEach(function (d) { buildPane(d.port, d.firmware); });
-      if (!activePort || !connected.some(function (d) { return d.port === activePort; })) {
-        selectPort(connected[0].port);
+      // Keep a valid selection: prefer the current one; else the first port; else the host shell.
+      var stillValid = activePort === HOST ? hostShellEnabled : connected.some(function (d) { return d.port === activePort; });
+      if (!stillValid) {
+        if (connected.length) selectPort(connected[0].port);
+        else if (hostShellEnabled) selectPort(HOST);
+        else activePort = null;
       }
     };
     listEl.addEventListener("click", function (e) {
       var r = e.target.closest(".termrow");
       if (r && r.dataset.term) selectPort(r.dataset.term);
     });
+
+    // Host shell is opt-in + loopback-only; the probe tells us whether to offer the Local tab at all.
+    getJSON("/api/host-shell").then(function (d) {
+      if (!d || !d.enabled) return;
+      hostShellEnabled = true;
+      buildHostPane();
+      ensureSocket();
+      if (socket) {
+        socket.on("host_shell_output", function (msg) {
+          if (!msg || !hostOutEl) return;
+          hostOutEl.textContent += msg.text || "";
+          if (hostOutEl.textContent.length > 20000) hostOutEl.textContent = hostOutEl.textContent.slice(-20000);
+          hostOutEl.scrollTop = hostOutEl.scrollHeight;
+        });
+      }
+      renderList(lastConnected || []);            // reveal the Local row now, even before a device sync
+      if (!activePort) selectPort(HOST);           // land on it if nothing else is open
+    }).catch(function () { /* probe unavailable -> no Local tab, serial terminals unaffected */ });
   }
   initTerminal();
 
