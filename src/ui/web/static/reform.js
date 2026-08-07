@@ -227,7 +227,51 @@
       }
       var xc = document.getElementById("xc-count");
       if (xc) xc.textContent = ts.length;
+      renderHunt(ts);
     }).catch(function () {});
+  }
+
+  // HUNT surfaces are derived from the shared target pool (real discovered targets, no separate backend).
+  function tile(cls, n, label) {
+    return '<div class="tile ' + cls + '"><div class="n">' + esc(n) + '</div><div class="l">' + esc(label) + "</div></div>";
+  }
+  function renderHunt(ts) {
+    var wifi = ts.filter(function (t) { return t.target_type === "ap" || t.target_type === "client"; });
+    var aps = ts.filter(function (t) { return t.target_type === "ap"; });
+    var clients = ts.filter(function (t) { return t.target_type === "client"; });
+    var open = aps.filter(function (t) { return (t.encryption || "").toUpperCase() === "OPEN"; });
+    var ble = ts.filter(function (t) { return t.target_type === "ble"; });
+
+    var wt = document.getElementById("hunt-wifi-tiles");
+    if (wt) wt.innerHTML = tile("green", aps.length, "APs") + tile("", clients.length, "Clients") +
+      tile("orange", open.length, "Open");
+    var wr = document.getElementById("hunt-wifi-rows");
+    if (wr) wr.innerHTML = wifi.length ? wifi.map(function (t) {
+      return "<tr><td>" + esc(t.ssid || "(hidden)") + '</td><td class="mono dim">' + esc(t.mac || "—") +
+        '</td><td class="r">' + (t.channel != null ? esc(t.channel) : "—") + '</td><td class="r">' +
+        (t.rssi != null ? esc(t.rssi) : "—") + "</td><td>" + esc(t.encryption || "—") + "</td></tr>";
+    }).join("") : '<tr><td class="off" colspan="5">no Wi-Fi targets yet — scan from a connected device</td></tr>';
+
+    var strongest = ble.reduce(function (m, t) { return (t.rssi != null && t.rssi > m) ? t.rssi : m; }, -999);
+    var named = ble.filter(function (t) { return t.ssid; });
+    var bt = document.getElementById("hunt-ble-tiles");
+    if (bt) bt.innerHTML = tile("green", ble.length, "Present") + tile("", named.length, "Named") +
+      tile("green", strongest > -999 ? strongest : "—", "Strongest");
+    var br = document.getElementById("hunt-ble-rows");
+    if (br) br.innerHTML = ble.length ? ble.map(function (t) {
+      return "<tr><td>" + esc(t.ssid || "(unnamed)") + '</td><td class="mono dim">' + esc(t.mac || "—") +
+        "</td><td>" + esc(t.vendor || "—") + '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") + "</td></tr>";
+    }).join("") : '<tr><td class="off" colspan="4">no BLE targets yet — scan BLE from a connected device</td></tr>';
+
+    var TL = { ap: "AP", client: "Client", ble: "BLE", subghz: "SubGHz", nfc: "NFC", rfid: "RFID", alpr: "ALPR" };
+    var tc = document.getElementById("hunt-tgt-count");
+    if (tc) tc.textContent = ts.length;
+    var tr = document.getElementById("hunt-targets-rows");
+    if (tr) tr.innerHTML = ts.length ? ts.map(function (t) {
+      return "<tr><td>" + esc(TL[t.target_type] || t.target_type || "—") + "</td><td>" + esc(t.ssid || "—") +
+        '</td><td class="mono dim">' + esc(t.mac || "—") + '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") +
+        '</td><td class="r">' + (t.channel != null ? esc(t.channel) : "—") + "</td><td class=\"mono\">" + esc(t.device_source || "—") + "</td></tr>";
+    }).join("") : '<tr><td class="off" colspan="6">pool empty</td></tr>';
   }
 
   // ── live serial (Socket.IO), shared by every terminal sink ─────────

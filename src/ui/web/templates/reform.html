@@ -258,46 +258,22 @@
       <button data-sub="graph">Node Graph</button>
     </div>
     <div class="sub" data-sub="wifi">
-      <div class="card"><h3><span class="t">Wi-Fi Analyzer</span><span class="r">awareness &#183; transmits nothing</span></h3>
-        <div class="tiles" style="margin-bottom:12px">
-          <div class="tile green"><div class="n">42</div><div class="l">APs</div></div>
-          <div class="tile"><div class="n">71</div><div class="l">Clients</div></div>
-          <div class="tile orange"><div class="n">6</div><div class="l">Open</div></div>
-          <div class="tile"><div class="n">3</div><div class="l">WPS</div></div>
-          <div class="tile green"><div class="n">1</div><div class="l">Handshake</div></div>
-        </div>
-        <table><thead><tr><th>SSID</th><th>BSSID</th><th class="r">Ch</th><th class="r">RSSI</th><th>Enc</th><th class="r">Clients</th></tr></thead>
-          <tbody>
-            <tr><td>corp-guest</td><td class="mono dim">AA:BB:C1:..</td><td class="r">6</td><td class="r">-58</td><td>OPEN</td><td class="r">14</td></tr>
-            <tr><td>HomeNet-5G</td><td class="mono dim">D4:6A:91:..</td><td class="r">36</td><td class="r">-71</td><td>WPA2</td><td class="r">4</td></tr>
-            <tr><td class="dim">(hidden)</td><td class="mono dim">3C:22:F0:..</td><td class="r">11</td><td class="r">-77</td><td>WPA3</td><td class="r">1</td></tr>
-          </tbody></table>
+      <div class="card"><h3><span class="t">Wi-Fi Analyzer</span><span class="r">from the shared target pool &#183; awareness</span></h3>
+        <div class="tiles" id="hunt-wifi-tiles" style="margin-bottom:12px"></div>
+        <table><thead><tr><th>SSID</th><th>MAC</th><th class="r">Ch</th><th class="r">RSSI</th><th>Enc</th></tr></thead>
+          <tbody id="hunt-wifi-rows"><tr><td class="off" colspan="5">no Wi-Fi targets yet &#8212; scan from OPERATE or a connected device</td></tr></tbody></table>
       </div>
     </div>
     <div class="sub on" data-sub="ble">
-      <div class="card"><h3><span class="t">BLE Analyzer</span><span class="r">19 present &#183; 2 trackers &#183; strongest -47</span></h3>
-        <div class="tiles" style="margin-bottom:12px">
-          <div class="tile green"><div class="n">19</div><div class="l">Present</div></div>
-          <div class="tile"><div class="n">63</div><div class="l">Seen</div></div>
-          <div class="tile orange"><div class="n">2</div><div class="l">Trackers</div></div>
-          <div class="tile"><div class="n">11</div><div class="l">Named</div></div>
-          <div class="tile green"><div class="n">-47</div><div class="l">Strongest</div></div>
-        </div>
-        <div class="graphbox" style="margin-bottom:12px"><div class="bars">
-          <i style="height:30%"></i><i style="height:44%"></i><i style="height:38%"></i><i style="height:61%"></i><i style="height:52%"></i><i style="height:70%"></i><i style="height:58%"></i><i style="height:80%"></i><i style="height:66%"></i><i style="height:74%"></i><i style="height:55%"></i><i style="height:62%"></i><i style="height:48%"></i><i style="height:71%"></i><i style="height:59%"></i></div></div>
-        <table><thead><tr><th>Sig</th><th>Name</th><th>Address</th><th>Vendor</th><th class="r">Trk</th><th class="r">Age</th></tr></thead>
-          <tbody>
-            <tr><td class="mono green">&#9646;&#9646;&#9646;&#9646; -47</td><td>AirTag</td><td class="mono dim">e2:14:..</td><td>Apple, Inc.</td><td class="r" style="color:var(--red)">&#9873;</td><td class="r">now</td></tr>
-            <tr><td class="mono" style="color:var(--acc)">&#9646;&#9646;&#9646; -61</td><td>Tile</td><td class="mono dim">c8:3a:..</td><td>Tile, Inc.</td><td class="r" style="color:var(--red)">&#9873;</td><td class="r">2s</td></tr>
-            <tr><td class="mono" style="color:var(--orange)">&#9646;&#9646; -73</td><td>Galaxy Buds</td><td class="mono dim">44:91:..</td><td>Samsung</td><td class="r"></td><td class="r">5s</td></tr>
-          </tbody></table>
+      <div class="card"><h3><span class="t">BLE Analyzer</span><span class="r" id="hunt-ble-sub">from the shared target pool</span></h3>
+        <div class="tiles" id="hunt-ble-tiles" style="margin-bottom:12px"></div>
+        <table><thead><tr><th>Name</th><th>Address</th><th>Vendor</th><th class="r">RSSI</th></tr></thead>
+          <tbody id="hunt-ble-rows"><tr><td class="off" colspan="4">no BLE targets yet &#8212; scan BLE from a connected device</td></tr></tbody></table>
       </div>
     </div>
-    <div class="sub" data-sub="targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span></h3>
-      <table><thead><tr><th>Type</th><th>SSID / Name</th><th>MAC</th><th class="r">RSSI</th><th>Source</th><th></th></tr></thead><tbody>
-        <tr><td>AP</td><td>corp-guest</td><td class="mono dim">AA:BB:C1:..</td><td class="r">-58</td><td>COM4</td><td class="r"><button class="btn sm">Operate &#9656;</button></td></tr>
-        <tr><td>BLE</td><td>AirTag</td><td class="mono dim">e2:14:..</td><td class="r">-47</td><td>COM7</td><td class="r"><button class="btn sm">Operate &#9656;</button></td></tr>
-      </tbody></table></div></div>
+    <div class="sub" data-sub="targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span><span class="r"><span id="hunt-tgt-count">0</span> targets</span></h3>
+      <table><thead><tr><th>Type</th><th>SSID / Name</th><th>MAC</th><th class="r">RSSI</th><th class="r">Ch</th><th>Source</th></tr></thead>
+        <tbody id="hunt-targets-rows"><tr><td class="off" colspan="6">pool empty</td></tr></tbody></table></div></div>
     <div class="sub" data-sub="tail"><div class="card"><h3><span class="t">Follower / Tail Detection</span><span class="r">counter-surveillance</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Flags a device that keeps reappearing near you across time. Awareness-first &#8212; it never confirms a follower and never acts.</div>
       <table><thead><tr><th>Device</th><th>Label</th><th class="r">Persistence</th><th class="r">Windows</th></tr></thead><tbody>
