@@ -15,6 +15,21 @@ HealthCallback = Callable[[dict[str, Any]], None]
 
 _DEFAULT_INTERVAL = 5.0
 
+# P0-7: non-blocking CPU sampling. ``psutil.cpu_percent(interval=None)`` reports utilisation since the
+# previous call — free, with no 100ms busy-wait in the poll/request path. The only catch is the FIRST
+# call has no prior reference (returns 0.0), so warm it once with a single brief sample; every read
+# after that is non-blocking. Module-level so the warm state is shared across the static reader.
+_cpu_warm = False
+
+
+def _cpu_percent_nonblocking() -> float:
+    global _cpu_warm
+    pct = psutil.cpu_percent(interval=None)
+    if not _cpu_warm:
+        pct = psutil.cpu_percent(interval=0.1)  # one honest warm-up sample, then never block again
+        _cpu_warm = True
+    return pct
+
 
 class HealthMonitor:
     """Monitor system and device health metrics.
@@ -124,7 +139,7 @@ class HealthMonitor:
             battery_percent (None if no battery), gps_fix (always False
             unless gpsd is available).
         """
-        cpu = psutil.cpu_percent(interval=0.1)
+        cpu = _cpu_percent_nonblocking()
         mem = psutil.virtual_memory()
         disk = psutil.disk_usage("/") if not hasattr(psutil.disk_usage, "__wrapped__") else psutil.disk_usage("C:\\")
 
