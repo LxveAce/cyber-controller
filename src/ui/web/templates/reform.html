@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cyber Controller</title>
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='reform.css') }}">
+  <!-- Socket.IO client is VENDORED + served same-origin (no CDN) — same policy as base.html. -->
+  <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
+  <script nonce="{{ csp_nonce }}">window.CSRF_TOKEN = {{ csrf_token|tojson }};</script>
+</head>
+<body>
+{#
+  Reform web shell — Ace's approved mockup rendered from CC's own Flask server.
+  DEVICE ▸ Dashboard is LIVE (devices, host gauges, target pool, serial stream fed by the real core).
+  The other rail views + DEVICE sub-tabs are the mockup verbatim (static design preview) — the Phase-2
+  port wires them to the core the same way the Dashboard is wired here. Honest split; the rail hint says so.
+#}
+<div class="app" id="app">
+  <div class="topbar">
+    <div class="brand"><span class="mark">&#x25C8;</span> Cyber Controller</div>
+    <span class="crumb" id="crumb"><b>DEVICE</b> &#9656; Dashboard</span>
+    <span class="spacer"></span>
+    <span class="lamp"><span class="dot"></span> SAFE</span>
+    <span class="seg" id="depth"><button class="on" data-depth="pro">Pro</button><button data-depth="simple">Simple</button></span>
+    <button class="icon-btn" title="Pop out (detach)">&#10530;</button>
+    <button class="icon-btn" title="Settings">&#9881;</button>
+  </div>
+
+  <nav class="rail" id="rail">
+    <div class="navitem on" data-view="device"><span class="g">&#9707;</span><span class="lbl">DEVICE</span><span class="sub" id="rail-device-count">{{ device_count }}</span></div>
+    <div class="navitem" data-view="hunt"><span class="g">&#9678;</span><span class="lbl">HUNT</span><span class="sub">live</span></div>
+    <div class="navitem" data-view="operate"><span class="g">&#8984;</span><span class="lbl">OPERATE</span></div>
+    <div class="navitem" data-view="crack"><span class="g">&#9911;</span><span class="lbl">CRACK</span></div>
+    <div class="navitem" data-view="map"><span class="g">&#8982;</span><span class="lbl">MAP</span></div>
+    <div class="grow"></div>
+    <div class="navitem" data-view="terminal"><span class="g">&#10095;</span><span class="lbl">TERMINAL</span><span class="sub">{{ device_count }}</span></div>
+    <div class="navitem" data-view="settings"><span class="g">&#9881;</span><span class="lbl">SETTINGS</span></div>
+    <div class="hint">DEVICE &#9656; Dashboard = live data<br>other surfaces = design preview</div>
+  </nav>
+
+  <main class="main" id="main">
+
+  <!-- ============ DEVICE ============ -->
+  <section class="view on" data-view="device">
+    <div class="subtabs" data-tabs="device">
+      <button class="on" data-sub="dash">Dashboard</button>
+      <button data-sub="fw">Firmware</button>
+      <button data-sub="sw">Software OS</button>
+      <button data-sub="mesh">Mesh</button>
+    </div>
+
+    <!-- Dashboard (landing) — LIVE -->
+    <div class="sub on" data-sub="dash">
+      <div class="grid dash">
+        <!-- devices column -->
+        <div class="grid" style="align-content:start">
+          <div class="card">
+            <h3><span class="t">Devices</span><span class="r">Scan &#183; Connect</span></h3>
+            <table>
+              <tbody id="dash-devices">
+                {% for d in devices %}
+                <tr><td class="{{ 'con' if d.connected else 'off' }}">{{ '&#9679;'|safe if d.connected else '&#9675;'|safe }} {{ d.port }} &#8212; {{ d.name or d.firmware or 'device' }}</td></tr>
+                {% else %}
+                <tr><td class="off">&#9675; no devices &#8212; press Scan Ports</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+            <div class="row" style="margin-top:9px">
+              <button class="btn green sm">Connect</button>
+              <button class="btn sm">Disconnect</button>
+              <button class="btn sm">Scan Ports</button>
+            </div>
+            <div style="margin-top:9px">
+              <label class="dim" style="font-size:11px">Firmware</label>
+              <select class="field" style="margin-top:3px"><option>Auto-detect{% if selected %} (detected: {{ selected.firmware }}){% endif %}</option><option>Marauder</option><option>GhostESP</option><option>Flipper</option><option>Generic / Raw</option></select>
+            </div>
+          </div>
+          <div class="card pro">
+            <h3><span class="t">Device Health</span></h3>
+            <table>
+              <thead><tr><th>Port</th><th>FW</th><th class="r">Up</th><th class="r">Sig</th></tr></thead>
+              <tbody id="dash-health-rows">
+                {% for d in devices %}
+                <tr><td class="mono {{ 'con' if d.connected else 'off' }}">{{ d.port }}</td><td class="{{ '' if d.connected else 'off' }}">{{ d.firmware or '&#8212;'|safe }}</td><td class="r off">--</td><td class="r off">--</td></tr>
+                {% else %}
+                <tr><td class="off" colspan="4">no devices attached</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- center: system health + selected device + link -->
+        <div class="grid" style="align-content:start">
+          <div class="card">
+            <h3><span class="t">System Health</span><span class="r">host &#183; live 5s</span></h3>
+            <div class="gauges" id="dash-gauges">
+              <div class="gauge" data-metric="cpu" style="--v:{{ sys.cpu_v }};--c:{{ sys.cpu_c }}"><div class="ring"><div class="num">{{ sys.cpu_n }}</div></div><div class="cap">CPU</div><div class="det">{{ sys.cpu_d }}</div></div>
+              <div class="gauge" data-metric="ram" style="--v:{{ sys.ram_v }};--c:{{ sys.ram_c }}"><div class="ring"><div class="num">{{ sys.ram_n }}</div></div><div class="cap">RAM</div><div class="det">{{ sys.ram_d }}</div></div>
+              <div class="gauge pro" data-metric="disk" style="--v:{{ sys.disk_v }};--c:{{ sys.disk_c }}"><div class="ring"><div class="num">{{ sys.disk_n }}</div></div><div class="cap">Disk</div><div class="det">{{ sys.disk_d }}</div></div>
+              <div class="gauge pro" data-metric="batt" style="--v:{{ sys.batt_v }};--c:{{ sys.batt_c }}"><div class="ring"><div class="num">{{ sys.batt_n }}</div></div><div class="cap">Battery</div><div class="det">{{ sys.batt_d }}</div></div>
+            </div>
+            <div class="gps"><span class="muted">GPS:</span> <span class="{{ 'con' if sys.gps else 'dim' }}" style="font-weight:600" id="dash-gps">{{ '&#9679; Fix Acquired'|safe if sys.gps else '&#9675; no fix'|safe }}</span></div>
+          </div>
+
+          <div class="card">
+            <h3><span class="t">Selected Device</span><span class="r" id="sel-title">{% if selected %}{{ selected.port }} &#183; {{ selected.firmware }}{% else %}none connected{% endif %}</span></h3>
+            {% if selected %}
+            <div class="between" style="margin-bottom:9px">
+              <span class="armlamp"><span class="d"></span> SAFE</span>
+              <span class="chip on">&#9679; alive</span>
+            </div>
+            <div class="kv mono muted" style="margin-bottom:6px">{{ selected.port }} &#183; {{ selected.firmware or 'unknown fw' }}{% if selected.baud %} &#183; {{ selected.baud }} baud{% endif %}</div>
+            <div class="kv mono" style="color:var(--blue)">airspace: targets in shared pool &#183; {{ target_count }}</div>
+            {% else %}
+            <div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">Connect a device to see its capabilities, health, and airspace.</div>
+            {% endif %}
+          </div>
+
+          <div class="card">
+            <h3><span class="t">Relay Link</span><span class="r">LxveNode</span></h3>
+            <div class="card2" style="text-align:center;color:var(--mut);padding:18px;border:1px dashed var(--bd);border-radius:7px">No relay link. Attach an LxveNode gateway under Devices to arm Wi-Fi &#8594; LoRa failover.</div>
+          </div>
+        </div>
+
+        <!-- right: cross-comm + terminal -->
+        <div class="grid" style="align-content:start">
+          <div class="card">
+            <h3><span class="t">Cross-Comm</span><span class="r"><span id="xc-count">{{ target_count }}</span> targets</span></h3>
+            <div class="subtabs" style="margin:-4px 0 9px" data-tabs="xcomm">
+              <button class="on" data-sub="pool">Pool</button>
+              <button data-sub="rules" class="pro-tab">Rules</button>
+              <button data-sub="hist" class="pro-tab">History</button>
+              <button data-sub="stream" class="pro-tab">Stream</button>
+            </div>
+            <div class="sub on" data-sub="pool">
+              <table>
+                <thead><tr><th>Type</th><th>SSID</th><th class="r">RSSI</th><th class="r">Ch</th></tr></thead>
+                <tbody id="dash-pool">
+                  {% for t in targets %}
+                  <tr><td>{{ t.target_type or '&#8212;'|safe }}</td><td>{{ t.ssid or t.mac or '&#8212;'|safe }}</td><td class="r">{{ t.rssi if t.rssi is not none else '&#8212;'|safe }}</td><td class="r">{{ t.channel if t.channel is not none else '&#8212;'|safe }}</td></tr>
+                  {% else %}
+                  <tr><td class="off" colspan="4">pool empty &#8212; targets appear as devices discover them</td></tr>
+                  {% endfor %}
+                </tbody>
+              </table>
+              <div class="row" style="margin-top:8px"><button class="btn sm">Refresh</button><button class="btn sm danger">Clear Pool</button></div>
+            </div>
+            <div class="sub pro" data-sub="rules"><div class="dim" style="font-size:11px">Cross-comm rules port in Phase 2.</div></div>
+            <div class="sub pro" data-sub="hist"><div class="dim" style="font-size:11px">Action history ports in Phase 2.</div></div>
+            <div class="sub pro" data-sub="stream"><div class="term" style="height:120px"><div class="p">Bus events appear here in real time&#8230;</div></div></div>
+          </div>
+
+          <div class="card">
+            <h3><span class="t">Serial Terminal</span><span class="r" id="term-title">{% if selected %}{{ selected.port }} &#8212; {{ selected.firmware }}{% else %}no device{% endif %}</span></h3>
+            <div class="term" id="dash-term">
+              {% if selected %}<div class="p">[Connected to {{ selected.port }}]</div><div class="p">Live serial output streams here&#8230;</div>{% else %}<div class="p">Connect a device to stream its serial output.</div>{% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Firmware (board-first flashing) — design preview -->
+    <div class="sub" data-sub="fw">
+      <div class="notebar warnbar">Board-first flashing. Pick your board, then a firmware. The badge is honest about whether that exact pair is proven, experimental, needs an external tool, or ships source-only.</div>
+      <div class="split side">
+        <div class="card">
+          <h3><span class="t">Board</span></h3>
+          <table><tbody>
+            <tr><td class="con">&#9679; ESP32-S3 (detected on COM4)</td></tr>
+            <tr><td>ESP32 WROOM</td></tr>
+            <tr><td>ESP32-C3</td></tr>
+            <tr><td>M5StickC Plus 2</td></tr>
+            <tr><td>Flipper Zero</td></tr>
+            <tr><td>NRF52840</td></tr>
+          </tbody></table>
+        </div>
+        <div class="card">
+          <h3><span class="t">Firmware for ESP32-S3</span><span class="r">esptool bundled</span></h3>
+          <table>
+            <thead><tr><th>Firmware</th><th>This board</th><th></th></tr></thead>
+            <tbody>
+              <tr><td>Marauder</td><td><span class="fbadge fb-exp">&#9888; experimental</span></td><td class="r"><button class="btn sm green">Flash</button></td></tr>
+              <tr><td>GhostESP</td><td><span class="fbadge fb-ok">&#9989; proven binary</span></td><td class="r"><button class="btn sm green">Flash</button></td></tr>
+              <tr><td>Bruce</td><td><span class="fbadge fb-exp">&#9888; experimental</span></td><td class="r"><button class="btn sm green">Flash</button></td></tr>
+              <tr><td>ESP32-DIV</td><td><span class="fbadge fb-exp">&#9888; experimental</span></td><td class="r"><button class="btn sm">Flash</button></td></tr>
+              <tr><td>Flock-You</td><td><span class="fbadge fb-src">&#9940; source-only</span></td><td class="r"><button class="btn sm" disabled style="opacity:.5">Build yourself</button></td></tr>
+              <tr><td>LxveOS</td><td><span class="fbadge fb-ok">&#9989; proven binary</span></td><td class="r"><button class="btn sm green">Flash</button></td></tr>
+            </tbody>
+          </table>
+          <div class="footnote">&#128274; needs-tool badges route to qFlipper / adb / hackrf as appropriate. Nothing claims &#8220;proven&#8221; without an owner-tested binary behind it.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Software OS — design preview -->
+    <div class="sub" data-sub="sw">
+      <div class="notebar">Write a verified bootable OS to a USB stick. Board firmware lives under DEVICE &#9656; Firmware &#8212; this is for PC/USB operating systems.</div>
+      <div class="split two">
+        <div class="card">
+          <h3><span class="t">Operating System</span></h3>
+          <select class="field"><option>Kali Linux  [pentest]</option><option>Parrot OS  [pentest]</option><option>Tails  [privacy]</option><option>Ubuntu  [general]</option></select>
+          <div class="footnote">Downloaded from the official source and integrity-verified (SHA-256 + OpenPGP) before writing.</div>
+          <div class="kv" style="margin-top:8px">2024.3  <span class="dim">(source: online, verify: image_sig)</span></div>
+          <div class="row" style="margin-top:8px"><button class="btn sm">Check latest</button><label class="chip pro">&#9744; use bundled (offline)</label></div>
+        </div>
+        <div class="card">
+          <h3><span class="t">Target USB (removable)</span></h3>
+          <select class="field"><option>\\.\PhysicalDrive3  SanDisk Ultra  28.8 GB</option><option>\\.\PhysicalDrive4  Kingston  14.4 GB</option></select>
+          <div class="notebar warnbar" style="margin:10px 0 0">THE ENTIRE DRIVE IS ERASED. Only removable drives are listed.</div>
+          <button class="btn danger wide" style="margin-top:10px;padding:9px">Flash OS</button>
+        </div>
+      </div>
+      <div class="card" style="margin-top:12px"><h3><span class="t">Log</span></h3>
+        <div class="term" style="height:90px"><div class="p">Idle &#8212; pick an OS + USB, then Flash.</div></div>
+      </div>
+    </div>
+
+    <!-- Mesh — design preview -->
+    <div class="sub" data-sub="mesh">
+      <div class="split two">
+        <div class="card">
+          <h3><span class="t">&#9673; Meshtastic &#8212; LoRa mesh</span></h3>
+          <div class="footnote" style="margin:-4px 0 10px">Licensed ISM-band comms (US 915 MHz). CC reads nodes/channels and sends text over the node&#8217;s own StreamAPI &#8212; it authors no RF/interference frames.</div>
+          <div class="kv muted mono" style="margin-bottom:9px">4 nodes &#183; US/LongFast &#183; 2 channels &#183; config synced &#183; me !a3f2</div>
+          <table>
+            <thead><tr><th>Node</th><th>Name</th><th class="r">SNR</th><th class="r">Batt</th><th class="r">Hops</th></tr></thead>
+            <tbody>
+              <tr><td class="mono">!a3f2</td><td>base (this node)</td><td class="r">&#8212;</td><td class="r">ext</td><td class="r">0</td></tr>
+              <tr><td class="mono">!7c19</td><td>trail-1</td><td class="r">8.5</td><td class="r">74%</td><td class="r">1</td></tr>
+              <tr><td class="mono">!22b8</td><td>relay-N</td><td class="r">4.2</td><td class="r">&#9729;</td><td class="r">&#9729;</td></tr>
+            </tbody>
+          </table>
+          <div class="row" style="margin-top:9px"><select class="field" style="width:auto"><option>[0] default &#183;PRIMARY</option></select><input class="field" placeholder="Type a message to the mesh&#8230;"><button class="btn green sm">Send</button></div>
+        </div>
+        <div class="card">
+          <h3><span class="t">Provisioned Nodes</span><span class="r">access gate</span></h3>
+          <div class="notebar warnbar" style="margin:-2px 0 10px">&#9888; Node/relay ESP32 sketches ship as source &#8212; compile + flash them yourself. Provision/attach here runs over a gateway you&#8217;ve opened in Devices.</div>
+          <div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">&#128274;  Unlock the access gate to manage nodes.</div>
+          <div class="footnote">Node keys are never shown. Rotate / Deprovision / Attach / Detach each confirm.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ HUNT (design preview) ============ -->
+  <section class="view" data-view="hunt">
+    <div class="subtabs" data-tabs="hunt">
+      <button data-sub="wifi">Wi-Fi</button>
+      <button class="on" data-sub="ble">BLE</button>
+      <button data-sub="targets">Targets</button>
+      <button data-sub="tail">Tail Detect</button>
+      <button data-sub="graph">Node Graph</button>
+    </div>
+    <div class="sub" data-sub="wifi">
+      <div class="card"><h3><span class="t">Wi-Fi Analyzer</span><span class="r">awareness &#183; transmits nothing</span></h3>
+        <div class="tiles" style="margin-bottom:12px">
+          <div class="tile green"><div class="n">42</div><div class="l">APs</div></div>
+          <div class="tile"><div class="n">71</div><div class="l">Clients</div></div>
+          <div class="tile orange"><div class="n">6</div><div class="l">Open</div></div>
+          <div class="tile"><div class="n">3</div><div class="l">WPS</div></div>
+          <div class="tile green"><div class="n">1</div><div class="l">Handshake</div></div>
+        </div>
+        <table><thead><tr><th>SSID</th><th>BSSID</th><th class="r">Ch</th><th class="r">RSSI</th><th>Enc</th><th class="r">Clients</th></tr></thead>
+          <tbody>
+            <tr><td>corp-guest</td><td class="mono dim">AA:BB:C1:..</td><td class="r">6</td><td class="r">-58</td><td>OPEN</td><td class="r">14</td></tr>
+            <tr><td>HomeNet-5G</td><td class="mono dim">D4:6A:91:..</td><td class="r">36</td><td class="r">-71</td><td>WPA2</td><td class="r">4</td></tr>
+            <tr><td class="dim">(hidden)</td><td class="mono dim">3C:22:F0:..</td><td class="r">11</td><td class="r">-77</td><td>WPA3</td><td class="r">1</td></tr>
+          </tbody></table>
+      </div>
+    </div>
+    <div class="sub on" data-sub="ble">
+      <div class="card"><h3><span class="t">BLE Analyzer</span><span class="r">19 present &#183; 2 trackers &#183; strongest -47</span></h3>
+        <div class="tiles" style="margin-bottom:12px">
+          <div class="tile green"><div class="n">19</div><div class="l">Present</div></div>
+          <div class="tile"><div class="n">63</div><div class="l">Seen</div></div>
+          <div class="tile orange"><div class="n">2</div><div class="l">Trackers</div></div>
+          <div class="tile"><div class="n">11</div><div class="l">Named</div></div>
+          <div class="tile green"><div class="n">-47</div><div class="l">Strongest</div></div>
+        </div>
+        <div class="graphbox" style="margin-bottom:12px"><div class="bars">
+          <i style="height:30%"></i><i style="height:44%"></i><i style="height:38%"></i><i style="height:61%"></i><i style="height:52%"></i><i style="height:70%"></i><i style="height:58%"></i><i style="height:80%"></i><i style="height:66%"></i><i style="height:74%"></i><i style="height:55%"></i><i style="height:62%"></i><i style="height:48%"></i><i style="height:71%"></i><i style="height:59%"></i></div></div>
+        <table><thead><tr><th>Sig</th><th>Name</th><th>Address</th><th>Vendor</th><th class="r">Trk</th><th class="r">Age</th></tr></thead>
+          <tbody>
+            <tr><td class="mono green">&#9646;&#9646;&#9646;&#9646; -47</td><td>AirTag</td><td class="mono dim">e2:14:..</td><td>Apple, Inc.</td><td class="r" style="color:var(--red)">&#9873;</td><td class="r">now</td></tr>
+            <tr><td class="mono" style="color:var(--acc)">&#9646;&#9646;&#9646; -61</td><td>Tile</td><td class="mono dim">c8:3a:..</td><td>Tile, Inc.</td><td class="r" style="color:var(--red)">&#9873;</td><td class="r">2s</td></tr>
+            <tr><td class="mono" style="color:var(--orange)">&#9646;&#9646; -73</td><td>Galaxy Buds</td><td class="mono dim">44:91:..</td><td>Samsung</td><td class="r"></td><td class="r">5s</td></tr>
+          </tbody></table>
+      </div>
+    </div>
+    <div class="sub" data-sub="targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span></h3>
+      <table><thead><tr><th>Type</th><th>SSID / Name</th><th>MAC</th><th class="r">RSSI</th><th>Source</th><th></th></tr></thead><tbody>
+        <tr><td>AP</td><td>corp-guest</td><td class="mono dim">AA:BB:C1:..</td><td class="r">-58</td><td>COM4</td><td class="r"><button class="btn sm">Operate &#9656;</button></td></tr>
+        <tr><td>BLE</td><td>AirTag</td><td class="mono dim">e2:14:..</td><td class="r">-47</td><td>COM7</td><td class="r"><button class="btn sm">Operate &#9656;</button></td></tr>
+      </tbody></table></div></div>
+    <div class="sub" data-sub="tail"><div class="card"><h3><span class="t">Follower / Tail Detection</span><span class="r">counter-surveillance</span></h3>
+      <div class="footnote" style="margin:-4px 0 10px">Flags a device that keeps reappearing near you across time. Awareness-first &#8212; it never confirms a follower and never acts.</div>
+      <table><thead><tr><th>Device</th><th>Label</th><th class="r">Persistence</th><th class="r">Windows</th></tr></thead><tbody>
+        <tr><td class="mono">A1:B2:C3:..</td><td>probe &#183; iPhone</td><td class="r" style="color:var(--red)">1.00</td><td class="r">4</td></tr>
+        <tr><td class="mono">e2:14:9c:..</td><td>BLE &#183; AirTag</td><td class="r" style="color:var(--orange)">0.75</td><td class="r">3</td></tr>
+      </tbody></table>
+    </div></div>
+    <div class="sub" data-sub="graph"><div class="card"><h3><span class="t">Node Graph</span><span class="r">mesh topology &#183; 4 nodes</span></h3>
+      <div class="mapwrap">
+        <svg viewBox="0 0 1000 320" preserveAspectRatio="xMidYMid meet" role="img" aria-label="mesh node graph">
+          <rect width="1000" height="320" fill="#0b0f14"/>
+          <g stroke="#a371f7" stroke-width="2">
+            <line x1="500" y1="160" x2="250" y2="90" opacity="0.7"/>
+            <line x1="500" y1="160" x2="760" y2="110" opacity="0.7"/>
+            <line x1="500" y1="160" x2="300" y2="250" opacity="0.45" stroke-dasharray="5 5"/>
+          </g>
+          <g font-family="ui-monospace,Consolas,monospace" font-size="12" text-anchor="middle">
+            <g><circle cx="500" cy="160" r="26" fill="#161b22" stroke="#3fb950" stroke-width="2.5"/><text x="500" y="164" fill="#f0f6fc">base</text></g>
+            <g><circle cx="250" cy="90" r="22" fill="#161b22" stroke="#a371f7" stroke-width="2"/><text x="250" y="94" fill="#c9d1d9">!7c19</text></g>
+            <g><circle cx="760" cy="110" r="22" fill="#161b22" stroke="#a371f7" stroke-width="2"/><text x="760" y="114" fill="#c9d1d9">relay-N</text></g>
+            <g><circle cx="300" cy="250" r="20" fill="#161b22" stroke="#58a6ff" stroke-width="2"/><text x="300" y="254" fill="#c9d1d9">!22b8</text></g>
+          </g>
+        </svg>
+        <div class="maplegend"><div class="li"><span class="dot9" style="background:#3fb950"></span>this node</div><div class="li"><span class="dot9" style="background:#a371f7"></span>direct RF</div><div class="li"><span class="dot9" style="background:#58a6ff"></span>multi-hop</div></div>
+      </div>
+    </div></div>
+  </section>
+
+  <!-- ============ OPERATE (design preview) ============ -->
+  <section class="view" data-view="operate">
+    <div class="subtabs" data-tabs="operate">
+      <button class="on" data-sub="console">Console</button>
+      <button data-sub="macros">Macros</button>
+    </div>
+    <div class="sub on" data-sub="console">
+      <div class="card" style="margin-bottom:12px">
+        <div class="between">
+          <div class="row" style="align-items:center">
+            <span class="muted">Device</span>
+            <select class="field" style="width:auto"><option>COM4 &#8212; Marauder</option><option>COM7 &#8212; Flipper</option></select>
+            <select class="field" style="width:auto"><option>Firmware: auto (Marauder)</option><option>Force GhostESP</option></select>
+            <span class="armlamp"><span class="d"></span> SAFE</span>
+          </div>
+          <div class="pill-row" id="op-pills"><button class="on" data-opane="single">Single-device</button><button data-opane="broadcast">Broadcast</button></div>
+        </div>
+        <div class="row" style="margin-top:10px;align-items:center">
+          <span class="dim" style="font-size:11px">Offensive-TX arm gate (two-factor):</span>
+          <button class="btn sm">Arm&#8230;</button><input class="field" style="width:130px" placeholder="token from device"><button class="btn sm">Confirm</button><button class="btn sm danger">Disarm</button>
+        </div>
+      </div>
+      <div class="opane on" data-opane="single">
+        <div class="card" style="margin-bottom:12px">
+          <h3><span class="t">Quick actions</span><span class="r">one-tap &#183; Marauder</span></h3>
+          <div class="row">
+            <button class="cmdbtn" style="flex:1 1 150px">Show firmware info<span class="raw">info</span></button>
+            <button class="cmdbtn" style="flex:1 1 150px">Scan for APs and stations<span class="raw">scanall</span></button>
+            <button class="cmdbtn" style="flex:1 1 150px">Tag a GPS POI<span class="raw">wardrivepoi &lt;label&gt;</span></button>
+            <button class="cmdbtn danger" style="flex:1 1 150px">Deauthentication attack<span class="raw">attack -t deauth</span></button>
+            <button class="btn danger" style="flex:0 0 auto">&#9632; STOP</button>
+          </div>
+        </div>
+        <div class="split side">
+          <div class="card">
+            <h3><span class="t">Commands &#8212; Marauder</span></h3>
+            <div class="cmdcats">
+              <div class="cat"><h4>Scanning</h4><div class="cmdgrid">
+                <button class="cmdbtn">Scan for APs and stations<span class="raw">scanall</span></button>
+                <button class="cmdbtn">List discovered APs<span class="raw">list -a</span></button>
+                <button class="cmdbtn">List discovered clients<span class="raw">list -c</span></button>
+                <button class="cmdbtn">Stop current scan<span class="raw">stopscan</span></button>
+              </div></div>
+              <div class="cat"><h4>Attack <span style="color:var(--amber);font-weight:600">&#183; lab-only</span></h4><div class="cmdgrid">
+                <button class="cmdbtn danger">Deauthentication attack<span class="raw">attack -t deauth</span></button>
+                <button class="cmdbtn danger">Beacon spam (SSID list)<span class="raw">attack -t beacon -l</span></button>
+                <button class="cmdbtn danger">Probe flood<span class="raw">attack -t probe</span></button>
+                <button class="cmdbtn danger">Karma attack<span class="raw">attack -t karma</span></button>
+              </div></div>
+            </div>
+          </div>
+          <div class="card"><h3><span class="t">Selected Operation</span><span class="r" style="color:var(--amber)">lab-only</span></h3>
+            <div style="font-weight:600;color:var(--tx2);margin-bottom:8px">Deauthentication attack <span class="dim mono" style="font-weight:400">attack -t deauth</span></div>
+            <div class="notebar warnbar" style="margin:0 0 10px">&#9888; Offensive TX &#8212; requires ARMED. Only on equipment you own or are authorized to test.</div>
+            <button class="btn danger wide" style="opacity:.6">Run  <span class="dim" style="font-weight:400">(arm the device first)</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="opane" data-opane="broadcast">
+        <div class="card">
+          <h3><span class="t">Broadcast &#8212; fan out to every connected device</span></h3>
+          <table><thead><tr><th>Device</th><th>Firmware</th><th>Native verb</th><th>Status</th></tr></thead><tbody>
+            <tr><td class="mono con">COM4</td><td>Marauder</td><td class="mono">scanall</td><td class="con">sent</td></tr>
+            <tr><td class="mono con">COM7</td><td>Flipper</td><td class="mono dim">&#8212;</td><td class="dim">no scan verb</td></tr>
+          </tbody></table>
+          <div class="footnote">Each device runs its OWN firmware&#8217;s verb; offensive broadcast verbs stay behind the arm gate.</div>
+        </div>
+      </div>
+    </div>
+    <div class="sub" data-sub="macros"><div class="card"><h3><span class="t">Saved Macros</span></h3><table><tbody>
+      <tr><td>Recon Sweep  <span class="dim">(6 steps)</span></td></tr>
+      <tr><td>&#128274; [TEMPLATE] Deauth Sweep  <span class="dim">(4 steps)</span></td></tr>
+    </tbody></table></div></div>
+  </section>
+
+  <!-- ============ CRACK (design preview) ============ -->
+  <section class="view" data-view="crack">
+    <div class="notebar">Offline WPA/WPA2 key recovery: capture &#8594; wordlist &#8594; per-run consent &#8594; crack. Dictionary-only; the consent gate is never bypassed.</div>
+    <div class="split side">
+      <div class="grid" style="align-content:start">
+        <div class="card">
+          <h3><span class="t">Engine</span><span class="r">native always works</span></h3>
+          <select class="field"><option>Built-in native cracker</option><option>hashcat (GPU) &#8212; detected</option><option>aircrack-ng (CPU) &#8212; not installed</option></select>
+          <div class="footnote">&#10003; native ready &#183; &#10003; hashcat 6.2 (GPU) &#183; &#10007; aircrack-ng not installed</div>
+        </div>
+        <div class="card">
+          <h3><span class="t">Run</span><span class="r">consent required per run</span></h3>
+          <label class="chip warn" style="border-color:#8a6100;color:var(--amber);white-space:normal;text-align:left;line-height:1.4">&#9744; I own this network or am explicitly authorized to test it</label>
+          <div class="row" style="margin-top:10px"><button class="btn green">Recover key&#8230;</button><button class="btn" disabled style="opacity:.5">Stop</button></div>
+        </div>
+      </div>
+      <div class="grid" style="align-content:start">
+        <div class="card">
+          <h3><span class="t">Captured Handshakes</span><span class="r">auto-logged &#183; Export&#8230;</span></h3>
+          <table>
+            <thead><tr><th>SSID</th><th>BSSID</th><th>Type</th><th>Source</th><th>Password</th></tr></thead>
+            <tbody>
+              <tr><td>HomeNet-5G</td><td class="mono dim">D4:6A:91:..</td><td>handshake</td><td class="mono">COM4</td><td class="con mono">hunter2!spring</td></tr>
+              <tr><td>corp-guest</td><td class="mono dim">AA:BB:C1:..</td><td>PMKID</td><td class="mono">COM4</td><td class="dim">&#8212;</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ MAP (design preview) ============ -->
+  <section class="view" data-view="map">
+    <div class="subtabs" data-tabs="map">
+      <button class="on" data-sub="wardrive">Wardrive</button>
+      <button data-sub="multi">Multi-Wardrive</button>
+      <button data-sub="flock">Flock / ALPR</button>
+    </div>
+    <div class="sub on" data-sub="wardrive"><div class="card"><h3><span class="t">Wardrive &#8212; GPS-tagged Wi-Fi survey</span><span class="r">&#8594; WiGLE CSV</span></h3>
+      <div class="row" style="margin-bottom:10px"><button class="btn green sm">Start survey</button><button class="btn sm">Export WiGLE CSV</button><span class="chip">42 APs tagged</span><span class="chip on">&#9679; GPS fix &#183; 8 sats</span></div>
+      <div class="mapwrap">
+        <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid slice" role="img" aria-label="wardrive map">
+          <defs>
+            <pattern id="grid" width="72" height="72" patternUnits="userSpaceOnUse"><path d="M72 0H0V72" fill="none" stroke="#171d25" stroke-width="1"/></pattern>
+            <filter id="glow"><feGaussianBlur stdDeviation="3"/></filter>
+          </defs>
+          <rect width="1000" height="380" fill="#0b0f14"/>
+          <rect width="1000" height="380" fill="url(#grid)"/>
+          <path d="M0 250 H1000 M0 130 H1000 M300 0 V380 M660 0 V380" stroke="#222a34" stroke-width="6"/>
+          <polyline points="60,320 180,300 210,220 340,205 360,120 520,112 560,190 700,196 720,92 860,84 906,176" fill="none" stroke="#a371f7" stroke-width="6" opacity="0.28" filter="url(#glow)"/>
+          <polyline points="60,320 180,300 210,220 340,205 360,120 520,112 560,190 700,196 720,92 860,84 906,176" fill="none" stroke="#a371f7" stroke-width="2.5" stroke-linejoin="round"/>
+          <g>
+            <circle cx="128" cy="308" r="4.5" fill="#3fb950"/><circle cx="204" cy="262" r="4.5" fill="#58a6ff"/>
+            <circle cx="252" cy="214" r="4.5" fill="#f0883e"/><circle cx="332" cy="238" r="4.5" fill="#3fb950"/>
+            <circle cx="362" cy="150" r="4.5" fill="#58a6ff"/><circle cx="428" cy="128" r="4.5" fill="#3fb950"/>
+            <circle cx="500" cy="150" r="4.5" fill="#f0883e"/><circle cx="560" cy="150" r="4.5" fill="#58a6ff"/>
+            <circle cx="694" cy="150" r="4.5" fill="#f0883e"/><circle cx="806" cy="96" r="4.5" fill="#3fb950"/>
+          </g>
+          <circle cx="906" cy="176" r="12" fill="#a371f7" opacity="0.18"/><circle cx="906" cy="176" r="5.5" fill="#a371f7" stroke="#0b0f14" stroke-width="2"/>
+        </svg>
+        <div class="maplegend">
+          <div class="li"><span class="dot9" style="background:#3fb950"></span>WPA3</div>
+          <div class="li"><span class="dot9" style="background:#58a6ff"></span>WPA2</div>
+          <div class="li"><span class="dot9" style="background:#f0883e"></span>Open</div>
+          <div class="li"><span class="dot9" style="background:#a371f7"></span>GPS track &#183; you</div>
+        </div>
+        <div class="mapover"><span class="chip">1.8 km</span><span class="chip">42 APs &#183; 6 open</span></div>
+      </div>
+    </div></div>
+    <div class="sub" data-sub="multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3><div class="dim" style="font-size:11px">Concurrent multi-board survey ports in Phase 2.</div></div></div>
+    <div class="sub" data-sub="flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r">located cameras</span></h3><div class="dim" style="font-size:11px">Awareness map of publicly-visible ALPR cameras. Detection is passive; CC transmits nothing.</div></div></div>
+  </section>
+
+  <!-- ============ TERMINAL (design preview) ============ -->
+  <section class="view" data-view="terminal">
+    <div class="split side">
+      <div class="card" style="align-self:start">
+        <h3><span class="t">Terminals</span></h3>
+        <div class="termlist" id="termlist">
+          <div class="termrow" data-term="local"><span class="sw" style="background:#c9d1d9"></span><span class="nm">Local (host shell)</span><span class="st">PowerShell</span></div>
+          <div class="termrow on" data-term="com4"><span class="sw" style="background:var(--green)"></span><span class="nm">COM4 &#8212; Marauder</span><span class="st con">&#9679; 115200</span></div>
+          <div class="termrow" data-term="shared"><span class="sw" style="background:var(--acc)"></span><span class="nm">Shared activity</span><span class="st">all &#183; merged</span></div>
+        </div>
+        <div class="footnote" style="margin-top:10px">Every serial port keeps its own colored, persistent terminal. Shared merges every channel&#8217;s activity in one stream.</div>
+      </div>
+      <div>
+        <div class="termpane" data-term="local">
+          <div class="term termbig"><div class="ok">PS C:\CyberController&gt;</div><div class="tx">esptool --version</div><div class="rx">esptool.py v4.7.0</div></div>
+        </div>
+        <div class="termpane on" data-term="com4">
+          <div class="between"><h3 style="margin:0"><span class="t">COM4 &#8212; Marauder</span> <span class="dim">&#183; serial 115200</span></h3></div>
+          <div class="term termbig">
+            <div class="p">[Connected to COM4 @ 115200]</div>
+            <div class="tx">&gt; scanall</div><div class="rx">Scanning APs + stations&#8230;</div>
+            <div class="rx">found 42 APs &#183; 71 clients</div>
+          </div>
+          <div class="terminput"><span class="pr">&gt;</span><input class="field mono" placeholder="type a raw Marauder command&#8230; (danger verbs still gated)"><button class="btn">Send</button></div>
+        </div>
+        <div class="termpane" data-term="shared">
+          <div class="term termbig"><div><span style="color:var(--green)">[COM4]</span> <span class="rx">scanall &#8594; 42 APs &#183; 71 clients</span></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SETTINGS (design preview) ============ -->
+  <section class="view" data-view="settings">
+    <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
+      <div class="card"><h3><span class="t">Serial Defaults</span></h3><label class="dim" style="font-size:11px">Default baud</label><select class="field"><option>115200</option><option>230400</option><option>921600</option></select></div>
+      <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field"><option>921600</option><option>460800</option></select></div>
+      <div class="card"><h3><span class="t">Interface</span></h3><label class="dim" style="font-size:11px">Touch mode</label><select class="field"><option>Auto (detect a touchscreen)</option><option>On</option><option>Off</option></select></div>
+      <div class="card pro"><h3><span class="t">Access Gate</span><span class="r">password / USB key</span></h3><div class="kv mono muted">configured=false &#183; policy=either &#183; password=not set</div><button class="btn sm acc" style="margin-top:7px">Set up access gate&#8230;</button></div>
+    </div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn">Reset to Defaults</button><button class="btn acc">Save Settings</button></div>
+  </section>
+
+  </main>
+</div>
+
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='reform.js') }}"></script>
+</body>
+</html>

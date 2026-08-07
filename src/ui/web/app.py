@@ -370,6 +370,64 @@ def create_app(
             target_count=target_pool.count,
         )
 
+    def _gauge_ctx() -> dict[str, Any]:
+        """Server-render seed for the reform Dashboard's System Health gauges. The reform.js poller
+        refreshes the same fields every 5s from /api/system-health; this is just the first paint so
+        the page is never momentarily blank."""
+        from src.core.health_monitor import HealthMonitor
+
+        def _color(v: float | None, invert: bool = False) -> str:
+            # High is bad for CPU/RAM/disk; for battery it's inverted (a full battery is good).
+            if v is None:
+                return "var(--dim)"
+            bad = (100 - v) if invert else v
+            if bad < 60:
+                return "var(--green)"
+            if bad < 85:
+                return "var(--yellow)"
+            return "var(--red)"
+
+        s = HealthMonitor.get_system_health()
+        cpu, ram, disk = s["cpu_percent"], s["memory_percent"], s["disk_percent"]
+        batt = s.get("battery_percent")
+        return {
+            "cpu_v": round(cpu), "cpu_c": _color(cpu), "cpu_n": round(cpu), "cpu_d": f"{cpu:.1f}%",
+            "ram_v": round(ram), "ram_c": _color(ram), "ram_n": round(ram),
+            "ram_d": f"{s['memory_used_mb'] / 1024:.1f}/{round(s['memory_total_mb'] / 1024)} GB",
+            "disk_v": round(disk), "disk_c": _color(disk), "disk_n": round(disk),
+            "disk_d": f"{s['disk_used_gb']}/{s['disk_total_gb']} GB",
+            "batt_v": round(batt) if batt is not None else 0,
+            "batt_c": _color(batt, invert=True) if batt is not None else "var(--dim)",
+            "batt_n": round(batt) if batt is not None else "--",
+            "batt_d": f"{round(batt)}%" if batt is not None else "no battery",
+            "gps": s.get("gps_fix", False),
+        }
+
+    @app.route("/reform")
+    @requires_auth
+    def reform_page():
+        # Ace's approved mockup, served from CC's own core (GUI-stack pivot, Phase-1 proof). The
+        # DEVICE Dashboard is wired to live data here; the other surfaces render the mockup as a
+        # design preview and get the same wiring in the Phase-2 port.
+        devices = _devices_for_display()
+        selected = next((d for d in devices if d.connected), None)
+        return render_template(
+            "reform.html",
+            devices=devices,
+            device_count=len(devices),
+            selected=selected,
+            targets=[t.to_dict() for t in target_pool.all()],
+            target_count=target_pool.count,
+            sys=_gauge_ctx(),
+        )
+
+    @app.route("/api/system-health")
+    @requires_auth
+    def api_system_health():
+        from src.core.health_monitor import HealthMonitor
+
+        return jsonify(HealthMonitor.get_system_health())
+
     @app.route("/devices")
     @requires_auth
     def devices_page():

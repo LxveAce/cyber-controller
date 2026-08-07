@@ -18,7 +18,7 @@ from pathlib import Path
 
 log = logging.getLogger("cyber-controller")
 
-_UI_CHOICES = ("qt", "tk", "tui", "web")
+_UI_CHOICES = ("qt", "tk", "tui", "web", "webview")
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE = "%H:%M:%S"
 
@@ -232,6 +232,17 @@ def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None,
         return 1
 
 
+def _launch_desktop(dm, fe, bus, pool, vault=None, health=None, macro=None, audit=None) -> int:
+    """Native desktop window over the web UI (GUI-stack pivot). Loopback-only, no LAN listener."""
+    log.info("Launching desktop shell (pywebview) over the web UI")
+    try:
+        from src.ui.web.desktop import launch_desktop
+        return launch_desktop(dm, fe, bus, pool, audit=audit)
+    except ImportError:
+        log.error("Flask/pywebview not installed. pip install cyber-controller[web] pywebview")
+        return 1
+
+
 def _open_browser_when_ready(host: str, port: int) -> None:
     """Open the default browser at the web-UI URL after a short delay (server warm-up), in a daemon
     thread so it never blocks the server. Localhost is used for display when bound to 0.0.0.0."""
@@ -258,6 +269,7 @@ _LAUNCHERS = {
     "tk": _launch_tk,
     "tui": _launch_tui,
     "web": _launch_web,
+    "webview": _launch_desktop,
 }
 
 
