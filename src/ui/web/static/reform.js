@@ -709,6 +709,81 @@
     initCrack();
   })();
 
+  // ── CRACK ▸ Wordlists: bundled + installed picker, on-demand catalog download, bring-your-own ─
+  function initWordlists() {
+    var sel = document.getElementById("wl-select");
+    if (!sel) return;
+    var panel = document.getElementById("wl-catalog-panel");
+    var foot = document.getElementById("wl-foot");
+    function wlOption(w, group) {
+      var size = w.size_human ? " (" + esc(w.size_human) + ")" : "";
+      return '<option value="' + esc(w.path || w.name) + '">' + esc(w.name) + size + (group ? " · " + group : "") + "</option>";
+    }
+    function load() {
+      getJSON("/api/wordlists").then(function (d) {
+        var opts = [];
+        (d.bundled || []).forEach(function (w) { opts.push(wlOption(w, "bundled")); });
+        (d.installed || []).forEach(function (w) { opts.push(wlOption(w, "installed")); });
+        sel.innerHTML = opts.length ? opts.join("") : '<option>no wordlists &#8212; Get more&#8230; or Bring your own&#8230;</option>';
+        if (foot && d.dir) foot.textContent = "Wordlists in " + d.dir + " · the bundled WPA core works offline.";
+        if (panel) { panel.__catalog = d.catalog || []; if (!panel.hidden) renderCatalog(); }
+      }).catch(function () { sel.innerHTML = '<option>wordlist listing unavailable</option>'; });
+    }
+    function renderCatalog() {
+      var cat = panel.__catalog || [];
+      panel.innerHTML = '<div class="dim" style="font-size:11px;margin-bottom:4px">Downloadable wordlists (integrity-checked on install):</div>' +
+        cat.map(function (c) {
+          var right = c.installed
+            ? '<span style="color:var(--green)">&#10003; installed</span>'
+            : '<button class="btn sm" data-dl="' + esc(c.id) + '">Download ' + esc(c.size_human) + "</button>";
+          return '<div class="row" style="align-items:center;margin:4px 0;font-size:11px">' +
+            '<span style="min-width:160px">' + esc(c.name) + ' <span class="dim">&#183; ' + esc(c.category) + "</span></span>" +
+            '<span class="dim" style="flex:1">' + esc(c.description || "") + "</span>" + right + "</div>";
+        }).join("") + '<div id="wl-msg" class="dim" style="font-size:11px;margin-top:4px"></div>';
+      var msg = panel.querySelector("#wl-msg");
+      panel.querySelectorAll("button[data-dl]").forEach(function (b) {
+        b.addEventListener("click", function () {
+          var id = b.getAttribute("data-dl");
+          b.disabled = true; b.textContent = "Downloading…";
+          if (msg) { msg.style.color = "var(--dim)"; msg.textContent = "Fetching " + id + "… (large lists take a while)"; }
+          postJSON("/api/wordlists/download", { id: id }).then(function () {
+            if (msg) { msg.style.color = "var(--green)"; msg.textContent = "✓ " + id + " installed"; }
+            load();
+          }).catch(function (err) {
+            b.disabled = false; b.textContent = "Download";
+            if (msg) { msg.style.color = "var(--amber)"; msg.textContent = "✗ " + (typeof err === "string" ? err : "download failed"); }
+          });
+        });
+      });
+    }
+    var catBtn = document.getElementById("wl-catalog");
+    if (catBtn && panel) catBtn.addEventListener("click", function () {
+      panel.hidden = !panel.hidden;
+      if (!panel.hidden) renderCatalog();
+    });
+    var byoRow = document.getElementById("wl-byo-row");
+    var byoBtn = document.getElementById("wl-byo");
+    if (byoBtn && byoRow) byoBtn.addEventListener("click", function () { byoRow.hidden = !byoRow.hidden; });
+    var byoAdd = document.getElementById("wl-byo-add");
+    var byoPath = document.getElementById("wl-byo-path");
+    function addByo() {
+      var p = (byoPath.value || "").trim();
+      if (!p) return;
+      postJSON("/api/wordlists/byo", { path: p }).then(function () {
+        if (foot) { foot.style.color = "var(--green)"; foot.textContent = "✓ added " + p; }
+        byoPath.value = ""; byoRow.hidden = true; load();
+      }).catch(function (err) {
+        if (foot) { foot.style.color = "var(--amber)"; foot.textContent = "✗ " + (typeof err === "string" ? err : "couldn't add that file"); }
+      });
+    }
+    if (byoAdd) byoAdd.addEventListener("click", addByo);
+    if (byoPath) byoPath.addEventListener("keydown", function (e) { if (e.key === "Enter") addByo(); });
+    var refreshBtn = document.getElementById("wl-refresh");
+    if (refreshBtn) refreshBtn.addEventListener("click", load);
+    load();
+  }
+  initWordlists();
+
   // ── Mesh ▸ Provisioned Nodes: live vault status + management (keys redacted server-side) ─
   // Renders the key-free node table with per-node actions (Rotate / Deprovision / Attach / Detach) and a
   // Provision form, wired to the existing /api/nodes/* endpoints. Rotate + Deprovision are two-click confirm

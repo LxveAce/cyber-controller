@@ -611,6 +611,63 @@ def create_app(
             return jsonify({"ok": False, "tool": tool, "error": str(exc), "log": log_lines}), 502
         return jsonify({"ok": True, "tool": tool, "path": exe, "log": log_lines})
 
+    @app.route("/api/wordlists")
+    @requires_auth
+    def api_wordlists():
+        """Wordlist inventory for the CRACK card: the bundled offline WPA core + whatever's installed on
+        disk + the downloadable catalog (each flagged installed?). Read-only — downloading a list is the
+        separate POST below, and a crack RUN keeps its own consent gate regardless of what's installed."""
+        from src.core import wordlist_manager as wl
+        return jsonify({
+            "bundled": wl.bundled_wordlists(),
+            "installed": wl.scan_installed(),
+            "catalog": [
+                {"id": s.id, "name": s.name, "description": s.description, "category": s.category,
+                 "size_human": wl.format_size(s.size_bytes), "installed": wl.is_installed(s)}
+                for s in wl.catalog()
+            ],
+            "dir": wl.default_wordlist_dir(),
+        })
+
+    @app.route("/api/wordlists/download", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_wordlists_download():
+        """Download ONE catalog wordlist by id into the wordlist dir (verify + install, fail-closed). The
+        id must be in the curated catalog; large lists (rockyou ~134 MiB) stream with a size cap. Opt-in —
+        nothing downloads without this explicit call."""
+        from src.core import wordlist_manager as wl
+        data = _json_body()
+        wid = str(data.get("id", "")).strip()
+        spec = wl.spec_by_id(wid)
+        if spec is None:
+            return jsonify({"error": f"unknown wordlist id: {wid or '(none)'}"}), 400
+        _audit("wordlist_download", user=session.get("user"), wordlist=wid)
+        log_lines: list[str] = []
+        try:
+            path = wl.download_wordlist(spec, on_line=lambda line: log_lines.append(str(line)))
+        except Exception as exc:  # noqa: BLE001 — surface the honest failure, install nothing
+            return jsonify({"ok": False, "id": wid, "error": str(exc), "log": log_lines}), 502
+        return jsonify({"ok": True, "id": wid, "path": path, "log": log_lines})
+
+    @app.route("/api/wordlists/byo", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_wordlists_byo():
+        """Register a bring-your-own wordlist by path — validated + read in place (no copy, no network).
+        The path is only ever passed to validate_wordlist; the response echoes it back, never file bytes."""
+        from src.core import wordlist_manager as wl
+        data = _json_body()
+        path = str(data.get("path", "")).strip()
+        if not path:
+            return jsonify({"error": "path is required"}), 400
+        try:
+            resolved = wl.register_byo(path)
+        except Exception as exc:  # noqa: BLE001 — the validation message (missing/empty file) is safe to show
+            return jsonify({"ok": False, "error": str(exc)}), 400
+        _audit("wordlist_byo", user=session.get("user"))
+        return jsonify({"ok": True, "path": resolved})
+
     @app.route("/api/gate-status")
     @requires_auth
     def api_gate_status():
