@@ -121,8 +121,13 @@ def create_app(
     nodes_controller: NodesController | None = None,
     trusted_proxies: list[str] | None = None,
     desktop_token: str | None = None,
+    capture_store: Any = None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
+
+    ``capture_store`` (optional): the shared CaptureStore from the cross-comm spine (P0-1). Threaded so
+    the CRACK captures surface can read it once wired (P1-5); ``None`` keeps every existing caller (and
+    the tests) unchanged.
 
     ``desktop_token`` (loopback desktop shell only): a one-time bootstrap secret. When set, the
     ``/desktop-auth?token=`` route consumes it once to establish a session WITHOUT credentials in the
@@ -1225,11 +1230,23 @@ def launch_web(
     trusted_proxies = [
         p for p in os.environ.get("CC_WEB_TRUSTED_PROXIES", "").split(",") if p.strip()
     ]
+    # Composition-root unlock (P0-1): build the cross-comm spine so the shared TargetPool + CaptureStore
+    # actually populate under the web/desktop UIs. CrossCommHub auto-attaches a TargetIngestor to every
+    # opened connection (a scan on any device -> target.added -> the shared pool), builds the CaptureStore,
+    # and owns the AutoRouter / Broadcast / Meshtastic backends — the same spine the Qt window assembles.
+    # Without it the web pool stayed empty forever, starving Dashboard cross-comm, all of HUNT, and CRACK
+    # captures. It reuses the SAME dm/bus/pool create_app gets, so this is behavior-additive: a device that
+    # scans now feeds the existing target.added subscriber. Held for the process lifetime (launch_web blocks
+    # on socketio.run below); also stashed on app.config so it can't be GC'd and future code can reach it.
+    from src.core.cross_comm_hub import CrossCommHub
+    hub = CrossCommHub(device_manager, event_bus, target_pool)
+
     app, socketio = create_app(
         device_manager, flash_engine, event_bus, target_pool,
         audit=audit, allowed_origins=origins, trusted_proxies=trusted_proxies,
-        desktop_token=desktop_token,
+        desktop_token=desktop_token, capture_store=hub.captures,
     )
+    app.config["cc_hub"] = hub
 
     ssl_args: dict[str, Any] = {}
     certfile = os.environ.get("CC_WEB_CERT")
