@@ -225,23 +225,14 @@
     <div class="sub" data-sub="mesh">
       <div class="split two">
         <div class="card">
-          <h3><span class="t">&#9673; Meshtastic &#8212; LoRa mesh</span></h3>
+          <h3><span class="t">&#9673; Meshtastic &#8212; LoRa mesh</span><span class="r">preview</span></h3>
           <div class="footnote" style="margin:-4px 0 10px">Licensed ISM-band comms (US 915 MHz). CC reads nodes/channels and sends text over the node&#8217;s own StreamAPI &#8212; it authors no RF/interference frames.</div>
-          <div class="kv muted mono" style="margin-bottom:9px">4 nodes &#183; US/LongFast &#183; 2 channels &#183; config synced &#183; me !a3f2</div>
-          <table>
-            <thead><tr><th>Node</th><th>Name</th><th class="r">SNR</th><th class="r">Batt</th><th class="r">Hops</th></tr></thead>
-            <tbody>
-              <tr><td class="mono">!a3f2</td><td>base (this node)</td><td class="r">&#8212;</td><td class="r">ext</td><td class="r">0</td></tr>
-              <tr><td class="mono">!7c19</td><td>trail-1</td><td class="r">8.5</td><td class="r">74%</td><td class="r">1</td></tr>
-              <tr><td class="mono">!22b8</td><td>relay-N</td><td class="r">4.2</td><td class="r">&#9729;</td><td class="r">&#9729;</td></tr>
-            </tbody>
-          </table>
-          <div class="row" style="margin-top:9px"><select class="field" style="width:auto"><option>[0] default &#183;PRIMARY</option></select><input class="field" placeholder="Type a message to the mesh&#8230;"><button class="btn green sm">Send</button></div>
+          <div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">Connect a Meshtastic node to read its mesh (nodes / channels / SNR). Live read wiring lands next.</div>
         </div>
         <div class="card">
-          <h3><span class="t">Provisioned Nodes</span><span class="r">access gate</span></h3>
+          <h3><span class="t">Provisioned Nodes</span><span class="r" id="mesh-nodes-state">access gate</span></h3>
           <div class="notebar warnbar" style="margin:-2px 0 10px">&#9888; Node/relay ESP32 sketches ship as source &#8212; compile + flash them yourself. Provision/attach here runs over a gateway you&#8217;ve opened in Devices.</div>
-          <div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">&#128274;  Unlock the access gate to manage nodes.</div>
+          <div id="mesh-nodes-body"><div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">&#128274;  reading vault status&#8230;</div></div>
           <div class="footnote">Node keys are never shown. Rotate / Deprovision / Attach / Detach each confirm.</div>
         </div>
       </div>

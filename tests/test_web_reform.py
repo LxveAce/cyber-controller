@@ -133,6 +133,20 @@ def test_crack_tools_requires_auth():
     assert c.get("/api/crack-tools").status_code == 401
 
 
+def test_nodes_status_fails_closed_locked():
+    # With no unlocked vault the Mesh nodes endpoint returns unlocked=false + NO rows (fail-closed);
+    # list_rows() is key-redacted so no key byte can leak regardless.
+    c = _client(DeviceManager())
+    data = c.get("/api/nodes-status").get_json()
+    assert data["unlocked"] is False
+    assert data["rows"] == []
+
+
+def test_nodes_status_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/api/nodes-status").status_code == 401
+
+
 def _client_with_desktop_token(token):
     app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
                            desktop_token=token)

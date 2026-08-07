@@ -496,6 +496,21 @@ def create_app(
 
         return jsonify(HealthMonitor.get_system_health())
 
+    @app.route("/api/nodes-status")
+    @requires_auth
+    def api_nodes_status():
+        """Provisioned-node status for the reform Mesh card. Fails CLOSED: a locked/unreadable vault
+        returns unlocked=false with no rows, and list_rows() is already key-redacted, so no key byte
+        can reach the response on any path."""
+        try:
+            unlocked = nodes.is_unlocked()
+            rows = nodes.list_rows() if unlocked else []
+            gateways = nodes.available_gateways() if unlocked else []
+        except Exception:
+            log.exception("nodes-status read failed")
+            unlocked, rows, gateways = False, [], []
+        return jsonify({"unlocked": unlocked, "rows": rows, "gateways": gateways})
+
     @app.route("/api/crack-tools")
     @requires_auth
     def api_crack_tools():

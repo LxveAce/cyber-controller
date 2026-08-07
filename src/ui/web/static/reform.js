@@ -585,6 +585,28 @@
   }
   initCrack();
 
+  // ── Mesh ▸ Provisioned Nodes: live vault status (key-redacted server-side) ─
+  function initNodes() {
+    var body = document.getElementById("mesh-nodes-body");
+    var state = document.getElementById("mesh-nodes-state");
+    if (!body) return;
+    getJSON("/api/nodes-status").then(function (d) {
+      if (state) state.textContent = d.unlocked ? "unlocked" : "locked";
+      if (!d.unlocked) {
+        body.innerHTML = '<div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">🔒  Unlock the access gate to manage nodes.</div>';
+        return;
+      }
+      var rows = d.rows || [];
+      if (!rows.length) { body.innerHTML = '<div class="dim" style="font-size:12px;padding:6px">No provisioned nodes yet.</div>'; return; }
+      body.innerHTML = '<table><thead><tr><th>Node</th><th>Label</th><th>Gateway</th></tr></thead><tbody>' +
+        rows.map(function (r) {
+          return "<tr><td class=\"mono\">" + esc(r.node_id != null ? r.node_id : (r.id != null ? r.id : "—")) +
+            "</td><td>" + esc(r.label || r.name || "—") + "</td><td class=\"mono\">" + esc(r.gateway || r.port || "—") + "</td></tr>";
+        }).join("") + "</tbody></table>";
+    }).catch(function () { body.innerHTML = '<div class="er" style="font-size:12px;padding:6px">nodes status unavailable</div>'; });
+  }
+  initNodes();
+
   // initial hydrate + 5s cadence (matches the mockup's "live 5s")
   refreshHealth(); refreshDevices(); refreshTargets();
   setInterval(refreshHealth, 5000);
