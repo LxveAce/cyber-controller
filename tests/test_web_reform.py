@@ -103,6 +103,22 @@ def test_quick_commands_requires_auth():
     assert c.get("/api/quick-commands?firmware=marauder").status_code == 401
 
 
+def test_gate_status_returns_booleans_never_secrets():
+    # SETTINGS reads the access-gate status — booleans + policy only, never a secret byte.
+    c = _client(DeviceManager())
+    data = c.get("/api/gate-status").get_json()
+    expected = {"configured", "policy", "has_password", "has_key", "locked", "remaining_secs"}
+    assert set(data) == expected
+    assert isinstance(data["configured"], bool)
+    # no verifier/secret fields leak
+    assert "password" not in data and "key" not in data and "verifier" not in data
+
+
+def test_gate_status_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/api/gate-status").status_code == 401
+
+
 def _client_with_desktop_token(token):
     app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
                            desktop_token=token)

@@ -511,6 +511,7 @@
       inp.innerHTML = '<span class="pr">&gt;</span>';
       var field = document.createElement("input");
       field.className = "field mono";
+      field.setAttribute("aria-label", "Command for " + port);
       field.placeholder = "type a raw command (danger verbs still confirm)…";
       var btn = document.createElement("button");
       btn.className = "btn";
@@ -551,6 +552,20 @@
     });
   }
   initTerminal();
+
+  // ── SETTINGS: live access-gate status (read-only, no secrets) ───────
+  function initSettings() {
+    var el = document.getElementById("set-gate");
+    if (!el) return;
+    getJSON("/api/gate-status").then(function (g) {
+      var factors = [];
+      if (g.has_password) factors.push("password");
+      if (g.has_key) factors.push("USB key");
+      el.textContent = "configured=" + g.configured + " · policy=" + g.policy +
+        " · factors=" + (factors.join("+") || "none") + (g.locked ? " · LOCKED (" + g.remaining_secs + "s)" : "");
+    }).catch(function () { el.textContent = "gate status unavailable"; });
+  }
+  initSettings();
 
   // initial hydrate + 5s cadence (matches the mockup's "live 5s")
   refreshHealth(); refreshDevices(); refreshTargets();

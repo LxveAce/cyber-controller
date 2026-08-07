@@ -496,6 +496,27 @@ def create_app(
 
         return jsonify(HealthMonitor.get_system_health())
 
+    @app.route("/api/gate-status")
+    @requires_auth
+    def api_gate_status():
+        """Read-only access-gate status for the reform SETTINGS card. Returns ONLY booleans/policy —
+        never a password, key, or verifier byte."""
+        try:
+            cfg = physical_key.load_config()
+            lock = physical_key.lockout_status()
+            return jsonify({
+                "configured": bool(cfg.get("password") or cfg.get("key")),
+                "policy": cfg.get("policy", "either"),
+                "has_password": bool(cfg.get("password")),
+                "has_key": bool(cfg.get("key")),
+                "locked": bool(lock.get("locked")),
+                "remaining_secs": lock.get("remaining_secs", 0),
+            })
+        except Exception:
+            log.exception("gate-status read failed")
+            return jsonify({"configured": False, "policy": "either", "has_password": False,
+                            "has_key": False, "locked": False, "remaining_secs": 0})
+
     @app.route("/api/quick-commands")
     @requires_auth
     def api_quick_commands():

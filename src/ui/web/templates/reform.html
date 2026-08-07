@@ -37,7 +37,7 @@
     <div class="grow"></div>
     <div class="navitem" data-view="terminal"><span class="g">&#10095;</span><span class="lbl">TERMINAL</span><span class="sub">{{ device_count }}</span></div>
     <div class="navitem" data-view="settings"><span class="g">&#9881;</span><span class="lbl">SETTINGS</span></div>
-    <div class="hint">DEVICE &#9656; Dashboard = live data<br>other surfaces = design preview</div>
+    <div class="hint">live: Device &#183; Operate &#183; Firmware &#183; Terminal &#183; Hunt<br>preview: Crack &#183; Map &#183; Software-OS &#183; Mesh</div>
   </nav>
 
   <main class="main" id="main">
@@ -183,7 +183,7 @@
               {% for name in flash_profiles %}
               <tr>
                 <td>{{ name }}</td>
-                <td><select class="field fw-variant" data-profile="{{ name }}" style="min-width:150px"><option value="">Default (auto)</option></select></td>
+                <td><select class="field fw-variant" data-profile="{{ name }}" aria-label="Variant for {{ name }}" style="min-width:150px"><option value="">Default (auto)</option></select></td>
                 <td class="r"><button class="btn sm green fw-flash" data-profile="{{ name }}">Flash</button></td>
               </tr>
               {% else %}
@@ -313,7 +313,7 @@
         <div class="between">
           <div class="row" style="align-items:center">
             <span class="muted">Device</span>
-            <select class="field" id="op-device" style="width:auto"><option value="">no connected device</option></select>
+            <select class="field" id="op-device" aria-label="Operate device" style="width:auto"><option value="">no connected device</option></select>
             <span class="armlamp"><span class="d"></span> SAFE</span>
           </div>
           <span class="dim" id="op-status" style="font-size:11px"></span>
@@ -328,7 +328,7 @@
         <div class="card">
           <h3><span class="t">Activity</span><span class="r">shared terminal</span></h3>
           <div class="term" id="op-term" style="height:300px"><div class="p">Sent commands and device output appear here.</div></div>
-          <div class="terminput" style="margin-top:8px"><span class="pr">&gt;</span><input class="field mono" id="op-input" placeholder="type a raw command (danger verbs still confirm)&#8230;"><button class="btn" id="op-send">Send</button></div>
+          <div class="terminput" style="margin-top:8px"><span class="pr">&gt;</span><input class="field mono" id="op-input" aria-label="Raw command" placeholder="type a raw command (danger verbs still confirm)&#8230;"><button class="btn" id="op-send">Send</button></div>
         </div>
       </div>
     </div>
@@ -425,15 +425,18 @@
     </div>
   </section>
 
-  <!-- ============ SETTINGS (design preview) ============ -->
+  <!-- ============ SETTINGS ============ -->
   <section class="view" data-view="settings">
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
-      <div class="card"><h3><span class="t">Serial Defaults</span></h3><label class="dim" style="font-size:11px">Default baud</label><select class="field"><option>115200</option><option>230400</option><option>921600</option></select></div>
-      <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field"><option>921600</option><option>460800</option></select></div>
-      <div class="card"><h3><span class="t">Interface</span></h3><label class="dim" style="font-size:11px">Touch mode</label><select class="field"><option>Auto (detect a touchscreen)</option><option>On</option><option>Off</option></select></div>
-      <div class="card pro"><h3><span class="t">Access Gate</span><span class="r">password / USB key</span></h3><div class="kv mono muted">configured=false &#183; policy=either &#183; password=not set</div><button class="btn sm acc" style="margin-top:7px">Set up access gate&#8230;</button></div>
+      <div class="card"><h3><span class="t">Access Gate</span><span class="r">status</span></h3>
+        <div class="kv mono muted" id="set-gate">reading gate status&#8230;</div>
+        <div class="footnote">The access gate is configured from the desktop app / console. This shows its live state (never a secret).</div>
+      </div>
+      <div class="card"><h3><span class="t">About</span></h3>
+        <div class="kv mono muted">Cyber Controller &#183; reform web UI</div>
+        <div class="footnote">Served from the app&#8217;s own core over loopback. Live surfaces: Device, Operate, Firmware, Terminal, Hunt.</div>
+      </div>
     </div>
-    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn">Reset to Defaults</button><button class="btn acc">Save Settings</button></div>
   </section>
 
   </main>
