@@ -633,7 +633,10 @@
     initCrack();
   })();
 
-  // ── Mesh ▸ Provisioned Nodes: live vault status (key-redacted server-side) ─
+  // ── Mesh ▸ Provisioned Nodes: live vault status + management (keys redacted server-side) ─
+  // Renders the key-free node table with per-node actions (Rotate / Deprovision / Attach / Detach) and a
+  // Provision form, wired to the existing /api/nodes/* endpoints. Rotate + Deprovision are two-click confirm
+  // (destructive: a key rotation / a registration removal); Attach/Detach are reversible so they fire direct.
   function initNodes() {
     var body = document.getElementById("mesh-nodes-body");
     var state = document.getElementById("mesh-nodes-state");
@@ -644,14 +647,84 @@
         body.innerHTML = '<div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">🔒  Unlock the access gate to manage nodes.</div>';
         return;
       }
-      var rows = d.rows || [];
-      if (!rows.length) { body.innerHTML = '<div class="dim" style="font-size:12px;padding:6px">No provisioned nodes yet.</div>'; return; }
-      body.innerHTML = '<table><thead><tr><th>Node</th><th>Label</th><th>Gateway</th></tr></thead><tbody>' +
-        rows.map(function (r) {
-          return "<tr><td class=\"mono\">" + esc(r.node_id != null ? r.node_id : (r.id != null ? r.id : "—")) +
-            "</td><td>" + esc(r.label || r.name || "—") + "</td><td class=\"mono\">" + esc(r.gateway || r.port || "—") + "</td></tr>";
-        }).join("") + "</tbody></table>";
+      renderNodes(body, d.rows || [], d.gateways || []);
     }).catch(function () { body.innerHTML = '<div class="er" style="font-size:12px;padding:6px">nodes status unavailable</div>'; });
+  }
+  function renderNodes(body, rows, gateways) {
+    var gwOpts = gateways.map(function (g) { return '<option>' + esc(g) + '</option>'; }).join("");
+    var tableRows = rows.length ? rows.map(function (r) {
+      var id = r.node_id != null ? r.node_id : "—";
+      var attached = !!r.attached;
+      var stateTxt = attached ? '<span class="con">&#9679; attached</span>' : '<span class="off">&#9675; detached</span>';
+      var gw = attached ? esc(r.port || "—") : "—";
+      var attachBtn = attached
+        ? '<button class="btn sm" data-act="detach" data-id="' + esc(id) + '">Detach</button>'
+        : '<button class="btn sm" data-act="attach" data-id="' + esc(id) + '"' + (gwOpts ? '' : ' disabled title="open a gateway in Devices first"') + '>Attach</button>';
+      return '<tr><td class="mono">' + esc(id) + '</td><td>' + esc(r.label || "—") + '</td><td class="dim">' + esc(r.role || "—") +
+        '</td><td>' + stateTxt + ' <span class="mono dim">' + gw + '</span></td>' +
+        '<td class="r"><div class="row" style="justify-content:flex-end;gap:5px">' + attachBtn +
+        '<button class="btn warn sm" data-act="rotate" data-id="' + esc(id) + '">Rotate</button>' +
+        '<button class="btn danger sm" data-act="deprovision" data-id="' + esc(id) + '">Deprovision</button>' +
+        '</div></td></tr>';
+    }).join("") : '<tr><td class="off" colspan="5">No provisioned nodes yet — provision one below.</td></tr>';
+
+    body.innerHTML =
+      '<table><thead><tr><th>Node</th><th>Label</th><th>Role</th><th>State</th><th class="r">Actions</th></tr></thead><tbody>' + tableRows + '</tbody></table>' +
+      '<div class="row" style="margin-top:10px;align-items:center;gap:6px;flex-wrap:wrap">' +
+        '<label class="dim" style="font-size:11px">Attach gateway</label>' +
+        '<select class="field" id="mesh-gw" style="width:auto"' + (gwOpts ? '' : ' disabled') + '>' + (gwOpts || '<option>no open gateway</option>') + '</select>' +
+        '<span class="dim" style="font-size:11px">— open a gateway in Devices, then Attach a node over it</span>' +
+      '</div>' +
+      '<div class="row" style="margin-top:8px;align-items:center;gap:6px;flex-wrap:wrap">' +
+        '<input class="field mono" id="mesh-prov-id" placeholder="node id 0–65535" style="width:120px" inputmode="numeric">' +
+        '<select class="field" id="mesh-prov-role" style="width:auto"><option value="host">host</option><option value="node">node</option></select>' +
+        '<input class="field" id="mesh-prov-label" placeholder="label (optional)" maxlength="64" style="width:150px">' +
+        '<button class="btn green sm" id="mesh-prov-btn">Provision&#8230;</button>' +
+      '</div>' +
+      '<div id="mesh-nodes-msg" class="footnote" style="min-height:14px;margin-top:6px"></div>';
+
+    var msg = body.querySelector("#mesh-nodes-msg");
+    var gwSel = body.querySelector("#mesh-gw");
+    function act(path, payload) {
+      if (msg) { msg.style.color = "var(--dim)"; msg.textContent = "working…"; }
+      postJSON(path, payload).then(function () {
+        if (msg) { msg.style.color = "var(--green)"; msg.textContent = "✓ done"; }
+        initNodes();
+      }).catch(function (err) {
+        if (msg) { msg.style.color = "var(--amber)"; msg.textContent = "✗ " + (typeof err === "string" ? err : "action failed"); }
+      });
+    }
+    body.querySelectorAll("button[data-act]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var actName = b.getAttribute("data-act");
+        var id = parseInt(b.getAttribute("data-id"), 10);
+        if (actName === "detach") { act("/api/nodes/detach", { node_id: id }); return; }
+        if (actName === "attach") {
+          var gw = gwSel && gwSel.value;
+          if (!gw || gwSel.disabled) { if (msg) { msg.style.color = "var(--amber)"; msg.textContent = "open a gateway in Devices first"; } return; }
+          act("/api/nodes/attach", { node_id: id, gateway_port: gw }); return;
+        }
+        // rotate / deprovision — two-click confirm (matches the card's "each confirm" promise)
+        if (b.dataset.armed === "1") { act("/api/nodes/" + actName, { node_id: id }); return; }
+        var orig = b.textContent;
+        b.dataset.armed = "1";
+        b.textContent = "Confirm " + orig + "?";
+        setTimeout(function () { if (b.dataset.armed === "1") { b.dataset.armed = ""; b.textContent = orig; } }, 4000);
+      });
+    });
+    var provBtn = body.querySelector("#mesh-prov-btn");
+    if (provBtn) provBtn.addEventListener("click", function () {
+      var raw = (body.querySelector("#mesh-prov-id").value || "").trim();
+      if (!/^\d+$/.test(raw) || parseInt(raw, 10) > 65535) {
+        if (msg) { msg.style.color = "var(--amber)"; msg.textContent = "node id must be a whole number 0–65535"; }
+        return;
+      }
+      act("/api/nodes/provision", {
+        node_id: parseInt(raw, 10),
+        role: body.querySelector("#mesh-prov-role").value,
+        label: (body.querySelector("#mesh-prov-label").value || "").trim(),
+      });
+    });
   }
   initNodes();
 
