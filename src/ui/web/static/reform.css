@@ -23,12 +23,12 @@ body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--ui);font-si
 .crumb{color:var(--mut);font-size:12px}
 .crumb b{color:var(--tx);font-weight:600}
 .spacer{flex:1}
-.lamp{display:inline-flex;align-items:center;gap:7px;padding:3px 10px;border:1px solid #238636;border-radius:20px;background:#0f2417;color:var(--green);font-weight:650;font-size:11.5px;letter-spacing:.4px}
+.lamp{display:inline-flex;align-items:center;gap:7px;padding:3px 10px;border:1px solid #238636;border-radius:20px;background:#0f2417;color:var(--green);font-weight:650;font-size:11.5px;letter-spacing:.4px;white-space:nowrap;flex-shrink:0;margin-right:4px}
 .lamp .dot{width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 7px var(--green)}
 .seg{display:inline-flex;border:1px solid var(--bd);border-radius:7px;overflow:hidden;font-size:11.5px}
 .seg button{background:transparent;color:var(--mut);border:0;padding:4px 11px;cursor:pointer;font:inherit}
 .seg button.on{background:var(--acc);color:#fff;font-weight:600}
-.icon-btn{width:28px;height:28px;border:1px solid var(--bd);border-radius:7px;background:transparent;color:var(--mut);cursor:pointer;display:grid;place-items:center;font-size:14px}
+.icon-btn{width:28px;height:28px;border:1px solid var(--bd);border-radius:7px;background:transparent;color:var(--mut);cursor:pointer;display:grid;place-items:center;font-size:14px;line-height:1}
 
 /* rail */
 .rail{background:var(--rail);border-right:1px solid var(--bd2);padding:8px 8px;display:flex;flex-direction:column;gap:2px;overflow:auto}
