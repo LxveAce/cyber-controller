@@ -27,6 +27,17 @@ All notable changes to Cyber Controller are documented here. This project adhere
   that keeps reappearing; never confirms a follower and never acts).
 - **Software-OS tab** — a live OS-image catalog + removable-drive detection; the destructive flash is
   owner-gated by design (a host-CLI hand-off, `cyber-controller --flash-os …`, not a web action).
+- **OPERATE — Broadcast fan-out + categorized commands.** Send one verb to every connected device at once
+  (each device runs its OWN firmware's native verb; STOP-ALL always available), **doubly gated when the verb
+  is offensive**. The quick-command grid is grouped into Scanning / Attack / Network buckets.
+- **Live Settings + version/update surfaces.** `GET/POST /api/settings` reads and writes operator settings
+  against the real settings store (the WiGLE token is exposed as a boolean over the wire — its value is never
+  echoed), plus `GET /api/version` and `POST /api/updates/check` — all behind auth + CSRF.
+- **Wi-Fi CSI sensing node firmware — experimental (compile-validated, not yet HW-validated).**
+  `firmware/node/node.ino` now does real ESP32 Wi-Fi CSI presence/motion and emits a sealed
+  `csi presence/motion/conf` verdict matching `src/core/sensing.py` (occupancy/motion, **not a camera** — no
+  pixels). Compiled against esp32:esp32@2.0.11; not yet validated on the full node→relay→host chain, so it
+  ships behind the capability gate and is labeled experimental.
 - **Kismet `.kismet` (SQLite) wardrive import — HW-unverified.** A stdlib-only reader
   (`wardrive_import.kismet_db_to_points`) parses Kismet's native `.kismet` log — the `devices` table,
   one AP per row, opened read-only and streamed so a multi-GB log never loads whole — into the same map
@@ -96,6 +107,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   offensive verbs (both independently gated lab-only by `safety.py`, unchanged). Fixed the WiGLE credential
   verb to `wigle API <name>:<token>` — the real subcommand is case-sensitive (`API`) and takes
   `APIName:APIToken`, so the old lowercase `wigle api <token>` would have failed on a real board.
+- **GhostESP auto-detection on real silicon (HIL-surfaced).** `match_firmware` returned `None` for a live
+  GhostESP board — it matched on a version banner the firmware doesn't print — so CC failed to identify a
+  connected GhostESP. Added a command-fingerprint fallback grounded on the real "Ghost ESP Command
+  Categories:" banner and confirmed end-to-end on hardware.
+- **Reform honesty pass.** Wired the topbar "Pop out (detach)" control + `#view` deep-linking; corrected stale
+  "design preview" labels that understated now-wired surfaces; added SETTINGS to the live rail hint.
 
 ### Security
 - **Auto-router rules gate hardened (red-team finding).** The rules gate trusted only `safety.classify()`,
