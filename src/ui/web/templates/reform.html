@@ -25,7 +25,7 @@
     <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"/></svg></span> Cyber Controller</div>
     <span class="crumb" id="crumb"><b>DEVICE</b> &#9656; Dashboard</span>
     <span class="spacer"></span>
-    <span class="lamp"><span class="dot"></span> SAFE</span>
+    <span class="lamp" id="lamp-top"><span class="dot"></span> <span class="lt">SAFE</span></span>
     <span class="seg" id="depth"><button class="on" data-depth="pro">Pro</button><button data-depth="simple">Simple</button></span>
     <button class="icon-btn" title="Pop out (detach)" aria-label="Pop out"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5M14 2 8.5 7.5M7 14H2V9M2 14l5.5-5.5"/></svg></button>
     <button class="icon-btn" title="Settings" aria-label="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9v.09a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
@@ -109,7 +109,7 @@
             <h3><span class="t">Selected Device</span><span class="r" id="sel-title">{% if selected %}{{ selected.port }} &#183; {{ selected.firmware }}{% else %}none connected{% endif %}</span></h3>
             {% if selected %}
             <div class="between" style="margin-bottom:9px">
-              <span class="armlamp"><span class="d"></span> SAFE</span>
+              <span class="armlamp" id="armlamp-sel"><span class="d"></span> <span class="lt">SAFE</span></span>
               <span class="chip on">&#9679; {{ selected.health if selected.health and selected.health != 'unknown' else 'connected' }}</span>
             </div>
             {% if sel_caps %}
@@ -120,13 +120,13 @@
             {% if sel_detail %}<div class="kv mono muted" style="margin-bottom:6px">{{ sel_detail }}</div>{% endif %}
             <div class="kv mono" style="color:var(--blue)">airspace: {{ target_count }} targets in the shared pool</div>
             {% else %}
-            <div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">Connect a device to see its capabilities, health, and airspace.</div>
+            <div class="card2">Connect a device to see its capabilities, health, and airspace.</div>
             {% endif %}
           </div>
 
           <div class="card">
             <h3><span class="t">Relay Link</span><span class="r">LxveNode</span></h3>
-            <div class="card2" style="text-align:center;color:var(--mut);padding:18px;border:1px dashed var(--bd);border-radius:7px">No relay link. Attach an LxveNode gateway under Devices to arm Wi-Fi &#8594; LoRa failover.</div>
+            <div class="card2" style="padding:18px">No relay link. Attach an LxveNode gateway under Devices to arm Wi-Fi &#8594; LoRa failover.</div>
           </div>
         </div>
 
@@ -230,7 +230,8 @@
           <h3><span class="t">Target USB (removable)</span><span class="r"><a href="#" id="os-rescan" style="color:var(--acc)">Rescan</a></span></h3>
           <select class="field" id="os-drive" aria-label="Target USB drive"><option value="">scanning removable drives…</option></select>
           <div class="notebar warnbar" style="margin:10px 0 0">THE ENTIRE DRIVE IS ERASED. Only removable drives are listed (system/boot disks are never shown).</div>
-          <button class="btn danger wide" id="os-flash" style="margin-top:10px;padding:9px">Flash OS</button>
+          <button class="btn danger wide" id="os-flash" style="margin-top:10px;padding:9px">Get flash command</button>
+          <div class="footnote" style="margin-top:6px">Hands off to the CLI &#8212; prints the exact <span class="mono">cyber-controller --flash-os</span> command to run; the web UI never erases a drive itself.</div>
         </div>
       </div>
       <div class="card" style="margin-top:12px"><h3><span class="t">Log</span></h3>
@@ -244,12 +245,12 @@
         <div class="card">
           <h3><span class="t">&#9673; Meshtastic &#8212; LoRa mesh</span><span class="r">preview</span></h3>
           <div class="footnote" style="margin:-4px 0 10px">Licensed ISM-band comms (US 915 MHz). CC reads nodes/channels and sends text over the node&#8217;s own StreamAPI &#8212; it authors no RF/interference frames.</div>
-          <div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">Connect a Meshtastic node to read its mesh (nodes / channels / SNR). Live read wiring lands next.</div>
+          <div class="card2">Connect a Meshtastic node to read its mesh (nodes / channels / SNR). Live read wiring lands next.</div>
         </div>
         <div class="card">
           <h3><span class="t">Provisioned Nodes</span><span class="r" id="mesh-nodes-state">access gate</span></h3>
           <div class="notebar warnbar" style="margin:-2px 0 10px">&#9888;&#xFE0E; Node/relay ESP32 sketches ship as source &#8212; compile + flash them yourself. Provision/attach here runs over a gateway you&#8217;ve opened in Devices.</div>
-          <div id="mesh-nodes-body"><div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">reading vault status&#8230;</div></div>
+          <div id="mesh-nodes-body"><div class="card2">reading vault status&#8230;</div></div>
           <div class="footnote">Node keys are never shown. Rotate / Deprovision / Attach / Detach each confirm.</div>
         </div>
       </div>
@@ -326,13 +327,13 @@
           <div class="row" style="align-items:center">
             <span class="muted">Device</span>
             <select class="field" id="op-device" aria-label="Operate device" style="width:auto"><option value="">no connected device</option></select>
-            <span class="armlamp"><span class="d"></span> SAFE</span>
+            <span class="armlamp" id="armlamp-op"><span class="d"></span> <span class="lt">SAFE</span></span>
           </div>
           <span class="dim" id="op-status" style="font-size:11px"></span>
         </div>
         <div class="footnote" style="margin-top:8px">Commands come from the selected firmware&#8217;s own protocol registry. Flagged verbs warn + require a confirm (label-never-block); nothing is hard-blocked.</div>
       </div>
-      <div class="split side">
+      <div class="split ops">
         <div class="card">
           <h3><span class="t">Commands</span><span class="r" id="op-fw">&#8212;</span></h3>
           <div class="cmdcats" id="op-cmdgrid"><div class="dim" style="font-size:12px">Connect a device (DEVICE &#9656; Dashboard) to load its command set.</div></div>
@@ -395,7 +396,7 @@
       </div>
       <div class="grid" style="align-content:start">
         <div class="card">
-          <h3><span class="t">Captured Handshakes</span><span class="r">auto-logged &#183; Export&#8230;</span></h3>
+          <h3><span class="t">Captured Handshakes</span><span class="r">auto-logged</span></h3>
           <div class="footnote" style="margin:-4px 0 9px">Auto-logged as your devices capture &#8212; click a crackable row to load it into the run.</div>
           <table>
             <thead><tr><th>SSID</th><th>BSSID</th><th>Type</th><th>Source</th><th>Captured</th><th>Password</th></tr></thead>
@@ -448,8 +449,9 @@
           <div class="li"><span class="dot9" style="background:#f0883e"></span>Open</div>
           <div class="li"><span class="dot9" style="background:#a371f7"></span>GPS track &#183; you</div>
         </div>
-        <div class="mapover"><span class="chip">1.8 km</span><span class="chip">42 APs &#183; 6 open</span></div>
+        <div class="mapover"><span class="chip" style="background:#2a2109;color:var(--amber)">sample</span><span class="chip">1.8 km</span><span class="chip">42 APs &#183; 6 open</span></div>
       </div>
+      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample track + counts. A real survey renders live once a GPS device is attached.</div>
     </div></div>
     <div class="sub" data-sub="multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3>
       <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-multi-start">Start all</button><span class="chip">merged &#8594; 1 CSV</span><span class="dim" id="wd-multi-msg" style="font-size:11px"></span></div>
@@ -462,7 +464,9 @@
           <g><circle cx="204" cy="262" r="4.5" fill="#3fb950"/><circle cx="362" cy="150" r="4.5" fill="#f0883e"/><circle cx="500" cy="150" r="4.5" fill="#58a6ff"/><circle cx="700" cy="200" r="4.5" fill="#3fb950"/><circle cx="820" cy="140" r="4.5" fill="#f0883e"/></g>
         </svg>
         <div class="maplegend"><div class="li"><span class="dot9" style="background:#a371f7"></span>COM4 track</div><div class="li"><span class="dot9" style="background:#58a6ff"></span>COM7 track</div></div>
+        <div class="mapover"><span class="chip" style="background:#2a2109;color:var(--amber)">sample</span></div>
       </div>
+      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample tracks. Live per-board tracks render once GPS devices are attached.</div>
     </div></div>
     <div class="sub" data-sub="flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r" id="flock-count">awareness &#183; OSINT</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Awareness map of publicly-visible ALPR cameras, imported from OpenStreetMap (Overpass). Passive OSINT &#8212; CC transmits nothing and drives no device.</div>

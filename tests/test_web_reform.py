@@ -56,6 +56,27 @@ def test_reform_lists_connected_device():
     dm.add_device(Device(port="COM9", name="Marauder", firmware="marauder", connected=True))
     body = _client(dm).get("/reform").get_data(as_text=True)
     assert "COM9" in body
+    # the Selected-Device armed lamp only renders when a device is selected (F2 hook)
+    assert 'id="armlamp-sel"' in body
+
+
+def test_reform_polish_batch_honesty_and_wiring():
+    # Guards the 2026-08-08 get-everything polish batch so it can't silently regress.
+    body = _client(DeviceManager()).get("/reform").get_data(as_text=True)
+    # F2 armed-state: always-present lamps carry ids + a .lt span so JS can flip SAFE<->ARMED
+    for needle in ('id="lamp-top"', 'id="armlamp-op"', 'class="lt"'):
+        assert needle in body, f"armed-state hook missing: {needle}"
+    # F5: the OS button no longer claims to flash from the web UI
+    assert "Flash OS" not in body and "Get flash command" in body
+    # phantom "Export…" affordance removed from the Captured Handshakes header
+    assert "Export&#8230;" not in body and "Export…" not in body
+    # wardrive maps are labelled as illustration/sample, not passed off as live telemetry
+    assert body.count(">sample<") >= 2
+    # card2 empty-state panels use the component class, not the duplicated inline style string
+    assert 'class="card2"' in body
+    assert "text-align:center;color:var(--mut);padding:22px;border:1px dashed" not in body
+    # OPERATE command grid gets the flexible track so its auto-fill grid can form >1 column
+    assert 'class="split ops"' in body
 
 
 def test_reform_selected_device_card_binds_live_fields():

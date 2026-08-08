@@ -74,6 +74,9 @@ body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--ui);font-si
 /* cards / grid */
 .grid{display:grid;gap:12px}
 .card{background:var(--card);border:1px solid var(--bd);border-radius:8px;padding:12px 13px}
+/* Empty-state / placeholder panel — one component instead of the inline string duped across surfaces.
+   Uses the previously-dead --card2 token. Override padding inline where a tighter panel is wanted. */
+.card2{background:var(--card2);text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px}
 .card > h3{margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--mut);display:flex;align-items:center;gap:8px}
 .card > h3 .t{color:var(--acc)}
 .card > h3 .r{margin-left:auto;color:var(--dim);font-weight:600;letter-spacing:.3px}
@@ -98,6 +101,7 @@ body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--ui);font-si
 .chip.on{border-color:#238636;color:var(--green)}
 .armlamp{display:inline-flex;align-items:center;gap:8px;padding:5px 12px;border-radius:7px;font-weight:700;letter-spacing:.5px;font-size:12px;border:1px solid #238636;background:#0f2417;color:var(--green)}
 .armlamp .d{width:9px;height:9px;border-radius:50%;background:currentColor;box-shadow:0 0 7px currentColor}
+.armlamp.armed{border-color:var(--red);background:linear-gradient(#2a1113,#1f0d0f);color:var(--red)}
 .kv{font-size:12px}.kv b{color:var(--tx2);font-weight:600}
 .pill-row{display:inline-flex;background:#0d1117;border:1px solid var(--bd);border-radius:8px;padding:3px;gap:3px}
 .pill-row button{background:transparent;border:0;color:var(--mut);padding:5px 12px;border-radius:6px;cursor:pointer;font:inherit;font-weight:600;font-size:12px}
@@ -177,6 +181,10 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
   .dash{grid-template-columns:232px 1.15fr 1fr}
   .split.two{grid-template-columns:1fr 1fr}
   .split.side{grid-template-columns:260px 1fr}
+  /* OPERATE: give the command grid the FLEXIBLE track (so its auto-fill minmax can pack 2–3 columns)
+     and pin the activity terminal at a fixed width — the reverse of .split.side. */
+  .split.ops{grid-template-columns:1fr 360px}
 }
 .pro-hidden .pro{display:none!important}
+.pro-hidden .pro-tab{display:none!important}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#30363d;border-radius:6px}::-webkit-scrollbar-track{background:transparent}

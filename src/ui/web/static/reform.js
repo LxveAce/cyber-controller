@@ -57,22 +57,23 @@
     });
   });
 
-  var opPills = document.getElementById("op-pills");
-  if (opPills) {
-    opPills.addEventListener("click", function (e) {
-      var b = e.target.closest("button");
-      if (!b) return;
-      document.querySelectorAll("#op-pills button").forEach(function (x) { x.classList.toggle("on", x === b); });
-      document.querySelectorAll(".opane").forEach(function (p) { p.classList.toggle("on", p.dataset.opane === b.dataset.opane); });
-    });
-  }
-
-
   document.getElementById("depth").addEventListener("click", function (e) {
     var b = e.target.closest("button");
     if (!b) return;
     document.querySelectorAll("#depth button").forEach(function (x) { x.classList.toggle("on", x === b); });
-    document.getElementById("app").classList.toggle("pro-hidden", b.dataset.depth === "simple");
+    var simple = b.dataset.depth === "simple";
+    document.getElementById("app").classList.toggle("pro-hidden", simple);
+    // Simple mode hides .pro-tab buttons (CSS); if a pro-tab was the active one its pane is now hidden
+    // with nothing shown, so fall back to the first non-pro tab in each affected subtab bar.
+    if (simple) {
+      document.querySelectorAll(".subtabs").forEach(function (bar) {
+        var active = bar.querySelector("button.on");
+        if (active && active.classList.contains("pro-tab")) {
+          var firstPlain = bar.querySelector("button:not(.pro-tab)");
+          if (firstPlain) firstPlain.click();
+        }
+      });
+    }
   });
 
   // B9: topbar gear ⚙ → open SETTINGS (reuse the rail handler by clicking its navitem).
@@ -81,6 +82,48 @@
     var s = document.querySelector('.navitem[data-view="settings"]');
     if (s) s.click();
   });
+
+  // F2 armed-state: the SAFE lamps flip to ARMED whenever a transmit-consent is currently affirmed
+  // (Broadcast or Macro "authorized use"). There is no persistent hidden arm — the lamps track the
+  // live consent checkboxes and revert to SAFE the instant they're cleared, so the operator always
+  // sees whether transmitting actions are armed. safety.py's per-action gate is unaffected; this is
+  // an honest visual mirror, not a new control.
+  function setArmed(on) {
+    ["lamp-top", "armlamp-sel", "armlamp-op"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.classList.toggle("armed", on);
+      var t = el.querySelector(".lt");
+      if (t) t.textContent = on ? "ARMED" : "SAFE";
+    });
+  }
+  function refreshArmed() {
+    var bc = document.getElementById("bc-consent");
+    var mc = document.getElementById("macro-consent");
+    setArmed(!!((bc && bc.checked) || (mc && mc.checked)));
+  }
+  ["bc-consent", "macro-consent"].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (el) el.addEventListener("change", refreshArmed);
+  });
+
+  // Raw free-text sends promise "danger verbs still confirm" — this is that confirm. It mirrors the
+  // command-grid's data-danger friction for typed commands (the grid buttons already confirm via the
+  // server's danger label). Substring match on transmitting-verb tokens; it errs toward asking, since
+  // a UX prompt that over-confirms is safe. It is NOT a security gate (safety.py is the server floor);
+  // it just makes the raw inputs honor the promise printed under them.
+  var _DANGER_HINTS = ["deauth", "disassoc", "attack", "jam", "beacon", "spam", "flood", "evil",
+    "portal", "karma", "pwn", "inject", "spoof", "rickroll", "badusb", "subghz tx", "rfid emulate",
+    "nfc emulate"];
+  function looksDangerous(cmd) {
+    var c = (cmd || "").trim().toLowerCase();
+    return _DANGER_HINTS.some(function (w) { return c.indexOf(w) !== -1; });
+  }
+  function confirmIfDangerous(cmd) {
+    if (!looksDangerous(cmd)) return true;
+    return window.confirm("This looks like a transmitting / offensive command:\n\n" + cmd +
+      "\n\nControlled / authorized use only. Proceed?");
+  }
 
   // Topbar "Pop out (detach)" → open the CURRENT surface in its own window, deep-linked by #view.
   // Same-origin, so the new window shares this session's auth cookie (no re-login in a browser).
@@ -455,6 +498,7 @@
     if (sendBtn) sendBtn.addEventListener("click", function () {
       var cmd = (input.value || "").trim();
       if (!cmd || !sel.value) { if (statusEl) statusEl.textContent = "select a device + type a command"; return; }
+      if (!confirmIfDangerous(cmd)) return;
       sendCommand(sel.value, cmd, termEl, statusEl);
       input.value = "";
     });
@@ -643,6 +687,7 @@
       function doSend() {
         var cmd = (field.value || "").trim();
         if (!cmd) return;
+        if (!confirmIfDangerous(cmd)) return;
         sendCommand(port, cmd, term, null);
         field.value = "";
       }
@@ -1346,9 +1391,19 @@
     function addByo() {
       var p = (byoPath.value || "").trim();
       if (!p) return;
-      postJSON("/api/wordlists/byo", { path: p }).then(function () {
-        if (foot) { foot.style.color = "var(--green)"; foot.textContent = "✓ added " + p; }
-        byoPath.value = ""; byoRow.hidden = true; load();
+      postJSON("/api/wordlists/byo", { path: p }).then(function (r) {
+        // The server reads a BYO list IN PLACE (no copy), so load() — which only lists bundled+installed
+        // from the wordlist dir — would never show it. Append the validated path as a selected option so
+        // it's usable in the crack run right now (the run sends the option's value = the full path).
+        var resolved = (r && r.path) || p;
+        var name = resolved.replace(/\\/g, "/").split("/").pop() || resolved;
+        var opt = document.createElement("option");
+        opt.value = resolved;
+        opt.textContent = name + " · BYO";
+        sel.appendChild(opt);
+        sel.value = resolved;
+        if (foot) { foot.style.color = "var(--green)"; foot.textContent = "✓ added + selected " + name; }
+        byoPath.value = ""; byoRow.hidden = true;
       }).catch(function (err) {
         if (foot) { foot.style.color = "var(--amber)"; foot.textContent = "✗ " + (typeof err === "string" ? err : "couldn't add that file"); }
       });
@@ -1488,7 +1543,7 @@
     getJSON("/api/nodes-status").then(function (d) {
       if (state) state.textContent = d.unlocked ? "unlocked" : "locked";
       if (!d.unlocked) {
-        body.innerHTML = '<div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">🔒  Unlock the access gate to manage nodes.</div>';
+        body.innerHTML = '<div class="card2">Unlock the access gate to manage nodes.</div>';
         return;
       }
       renderNodes(body, d.rows || [], d.gateways || []);
