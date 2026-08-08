@@ -458,8 +458,8 @@ def main(argv: list[str] | None = None) -> int:
             from src.ui.launcher import select_ui
             args.ui = select_ui()
         except Exception:
-            log.warning("Launcher dialog unavailable, defaulting to qt")
-            args.ui = "qt"
+            log.warning("Launcher dialog unavailable, defaulting to qtweb")
+            args.ui = "qtweb"
 
     log.info("Cyber Controller starting — ui=%s", args.ui)
 

@@ -91,9 +91,12 @@ class LauncherDialog(QDialog):
         self._group = QButtonGroup(self)
 
         options = [
-            ("qt", "Full GUI (Recommended)",
-             "Complete PyQt5 interface with all features, sidebar, persistent terminal, "
-             "command palette, and custom widgets."),
+            ("qtweb", "Full GUI (Recommended)",
+             "The current Cyber Controller interface — the reformed single-window workspace "
+             "(Device, Hunt, Operate, Crack, Map, Terminal, Settings) in a native desktop shell."),
+            ("qt", "Classic GUI",
+             "The earlier PyQt5 interface with sidebar, persistent terminal, command palette, "
+             "and custom widgets. Kept as a fallback while the reformed UI settles."),
             ("tk", "Lightweight GUI",
              "Tkinter-based interface with core features. Lower resource usage. "
              "Good for older hardware or when PyQt5 is unavailable."),
@@ -171,7 +174,7 @@ def select_ui() -> str:
 
     dialog = LauncherDialog()
     dialog.exec_()
-    result = dialog.selected_ui or "qt"
+    result = dialog.selected_ui or "qtweb"
 
     if own_app:
         pass

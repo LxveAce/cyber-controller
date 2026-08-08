@@ -188,6 +188,16 @@ def _build() -> int:
         # Without this the module + its qsvg icon-engine plugin can be dropped from the frozen build and the
         # icons render blank. Assets themselves already ship via --add-data assets above.
         "--hidden-import", "PyQt5.QtSvg",
+        # QtWebEngine powers the reformed `--ui qtweb` "Full GUI" (now the default). Importing
+        # QtWebEngineWidgets triggers PyInstaller's PyQt5 hook to bundle QtWebEngineProcess + the Chromium
+        # resources/ICU; the rest are used by the desktop shell + the QWebChannel bridge
+        # (src/ui/web/desktop_qt.py). Without these the packaged app has no reformed GUI at all — it was
+        # falling back to the legacy `qt` interface on every release.
+        "--hidden-import", "PyQt5.QtWebEngineWidgets",
+        "--hidden-import", "PyQt5.QtWebEngineCore",
+        "--hidden-import", "PyQt5.QtWebChannel",
+        "--hidden-import", "PyQt5.QtNetwork",
+        "--hidden-import", "PyQt5.QtPrintSupport",
         # Tkinter (lightweight GUI)
         "--hidden-import", "tkinter",
         "--hidden-import", "tkinter.ttk",
@@ -225,6 +235,17 @@ def _build() -> int:
         cmd.extend(["--collect-all", "pyzipper"])
     except ImportError:
         print("note: pyzipper not installed — bundled crack-tool packs can't be unpacked in this build.")
+
+    # Flask + Flask-SocketIO serve the reformed `--ui qtweb` GUI (now the default) and `--ui web`: the
+    # desktop shell runs an in-process Flask/SocketIO server that QtWebEngine renders. Collect them and the
+    # Engine.IO / Socket.IO stack fully so the frozen app can serve reform.html. Guarded so a --no-deps
+    # build env (e.g. the linux-arm job) still builds; the qtweb/web UI just isn't bundled there.
+    for _webpkg in ("flask", "flask_socketio", "engineio", "socketio", "jinja2", "werkzeug"):
+        try:
+            __import__(_webpkg)
+            cmd.extend(["--collect-all", _webpkg])
+        except ImportError:
+            print(f"note: {_webpkg} not installed — the qtweb/web UI won't be fully bundled in this build.")
 
     # Collect submodules for all UI variants
     cmd.extend([
