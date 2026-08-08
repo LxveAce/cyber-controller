@@ -258,8 +258,9 @@
     <div class="sub on" data-sub="ble">
       <div class="card"><h3><span class="t">BLE Analyzer</span><span class="r" id="hunt-ble-sub">from the shared target pool</span></h3>
         <div class="tiles" id="hunt-ble-tiles" style="margin-bottom:12px"></div>
-        <table><thead><tr><th>Name</th><th>Address</th><th>Vendor</th><th class="r">RSSI</th></tr></thead>
-          <tbody id="hunt-ble-rows"><tr><td class="off" colspan="4">no BLE targets yet &#8212; scan BLE from a connected device</td></tr></tbody></table>
+        <div class="graphbox" id="hunt-ble-spark" style="margin-bottom:12px"><div class="bars"></div></div>
+        <table><thead><tr><th>Name</th><th>Address</th><th>Vendor</th><th class="r">RSSI</th><th class="r">Age</th></tr></thead>
+          <tbody id="hunt-ble-rows"><tr><td class="off" colspan="5">no BLE targets yet &#8212; scan BLE from a connected device</td></tr></tbody></table>
       </div>
     </div>
     <div class="sub" data-sub="targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span><span class="r"><span id="hunt-tgt-count">0</span> targets &#183; <a href="/api/targets/export" download="cc-targets.csv" style="color:var(--acc)">Export CSV</a></span></h3>

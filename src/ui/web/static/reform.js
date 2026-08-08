@@ -86,6 +86,16 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
     });
   }
+  function ageOf(iso) {
+    if (!iso) return "—";
+    var t = Date.parse(iso);
+    if (isNaN(t)) return "—";
+    var s = Math.max(0, Math.round((Date.now() - t) / 1000));
+    if (s < 2) return "now";
+    if (s < 60) return s + "s";
+    if (s < 3600) return Math.round(s / 60) + "m";
+    return Math.round(s / 3600) + "h";
+  }
   function gaugeColor(v, invert) {
     if (v == null) return "var(--dim)";
     // For most metrics a HIGH reading is bad (CPU/RAM/disk pegged); for battery it's the opposite —
@@ -273,11 +283,20 @@
     var bt = document.getElementById("hunt-ble-tiles");
     if (bt) bt.innerHTML = tile("green", ble.length, "Present") + tile("", named.length, "Named") +
       tile("green", strongest > -999 ? strongest : "—", "Strongest");
+    // signal sparkline: one bar per BLE device, height scaled from RSSI (~-100..-30 dBm → 0..100%)
+    var spark = document.querySelector("#hunt-ble-spark .bars");
+    if (spark) {
+      spark.innerHTML = ble.length ? ble.map(function (t) {
+        var h = t.rssi == null ? 5 : Math.max(5, Math.min(100, Math.round((t.rssi + 100) / 70 * 100)));
+        return '<i style="height:' + h + '%"></i>';
+      }).join("") : "";
+    }
     var br = document.getElementById("hunt-ble-rows");
     if (br) br.innerHTML = ble.length ? ble.map(function (t) {
       return "<tr><td>" + esc(t.ssid || "(unnamed)") + '</td><td class="mono dim">' + esc(t.mac || "—") +
-        "</td><td>" + esc(t.vendor || "—") + '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") + "</td></tr>";
-    }).join("") : '<tr><td class="off" colspan="4">no BLE targets yet — scan BLE from a connected device</td></tr>';
+        "</td><td>" + esc(t.vendor || "—") + '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") +
+        '</td><td class="r dim">' + esc(ageOf(t.last_seen)) + "</td></tr>";
+    }).join("") : '<tr><td class="off" colspan="5">no BLE targets yet — scan BLE from a connected device</td></tr>';
 
     var TL = { ap: "AP", client: "Client", ble: "BLE", subghz: "SubGHz", nfc: "NFC", rfid: "RFID", alpr: "ALPR" };
     var tc = document.getElementById("hunt-tgt-count");
