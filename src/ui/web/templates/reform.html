@@ -248,8 +248,8 @@
         </div>
         <div class="card">
           <h3><span class="t">Provisioned Nodes</span><span class="r" id="mesh-nodes-state">access gate</span></h3>
-          <div class="notebar warnbar" style="margin:-2px 0 10px">&#9888; Node/relay ESP32 sketches ship as source &#8212; compile + flash them yourself. Provision/attach here runs over a gateway you&#8217;ve opened in Devices.</div>
-          <div id="mesh-nodes-body"><div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">&#128274;  reading vault status&#8230;</div></div>
+          <div class="notebar warnbar" style="margin:-2px 0 10px">&#9888;&#xFE0E; Node/relay ESP32 sketches ship as source &#8212; compile + flash them yourself. Provision/attach here runs over a gateway you&#8217;ve opened in Devices.</div>
+          <div id="mesh-nodes-body"><div class="card2" style="text-align:center;color:var(--mut);padding:22px;border:1px dashed var(--bd);border-radius:7px">reading vault status&#8230;</div></div>
           <div class="footnote">Node keys are never shown. Rotate / Deprovision / Attach / Detach each confirm.</div>
         </div>
       </div>
@@ -502,16 +502,16 @@
   <section class="view" data-view="settings">
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
       <div class="card"><h3><span class="t">Serial Defaults</span></h3><label class="dim" style="font-size:11px">Default baud</label><select class="field" id="set-serial-baud" aria-label="Default baud"><option>9600</option><option>115200</option><option>230400</option><option>460800</option><option>921600</option></select></div>
-      <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field" id="set-flash-baud" aria-label="Flash baud"><option>921600</option><option>460800</option><option>230400</option><option>115200</option></select><label class="chip on" id="set-flash-verify" data-key="verify" style="margin-top:8px">&#9745; Verify after flash</label><br><label class="chip on" id="set-flash-backup" data-key="auto_backup" style="margin-top:4px">&#9745; Back up flash before write</label></div>
+      <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field" id="set-flash-baud" aria-label="Flash baud"><option>921600</option><option>460800</option><option>230400</option><option>115200</option></select><label class="chip on" id="set-flash-verify" data-key="verify" style="margin-top:8px">&#9745;&#xFE0E; Verify after flash</label><br><label class="chip on" id="set-flash-backup" data-key="auto_backup" style="margin-top:4px">&#9745;&#xFE0E; Back up flash before write</label></div>
       <div class="card"><h3><span class="t">Interface</span></h3><label class="dim" style="font-size:11px">Touch mode</label><select class="field" id="set-touch-mode" aria-label="Touch mode"><option value="auto">Auto (detect a touchscreen)</option><option value="on">On</option><option value="off">Off</option></select></div>
-      <div class="card"><h3><span class="t">Updates</span></h3><label class="chip on" id="set-updates-enabled" data-key="enabled" style="margin-bottom:6px">&#9745; Auto-check for updates</label><div class="kv mono muted" id="set-update-status">checking version&#8230;</div><button class="btn sm" id="set-check-now" style="margin-top:6px">Check now</button></div>
+      <div class="card"><h3><span class="t">Updates</span></h3><label class="chip on" id="set-updates-enabled" data-key="enabled" style="margin-bottom:6px">&#9745;&#xFE0E; Auto-check for updates</label><div class="kv mono muted" id="set-update-status">checking version&#8230;</div><button class="btn sm" id="set-check-now" style="margin-top:6px">Check now</button></div>
       <div class="card pro"><h3><span class="t">Wardrive Uploads</span></h3><label class="dim" style="font-size:11px">WiGLE token <span class="muted" id="set-wigle-state">&#183; not set</span></label><input class="field" id="set-wigle-token" type="password" aria-label="WiGLE token" placeholder="paste WiGLE 'Encoded for use' token"></div>
-      <div class="card pro"><h3><span class="t">Safety &amp; Disclaimers</span></h3><label class="chip on" id="set-confirm-dangerous" data-key="confirm_dangerous" style="margin-bottom:6px">&#9745; Confirm dangerous commands</label><br><label class="chip" id="set-suppress-warnings" data-key="suppress_all_warnings">&#9744; Suppress all safety warnings</label></div>
+      <div class="card pro"><h3><span class="t">Safety &amp; Disclaimers</span></h3><label class="chip on" id="set-confirm-dangerous" data-key="confirm_dangerous" style="margin-bottom:6px">&#9745;&#xFE0E; Confirm dangerous commands</label><br><label class="chip" id="set-suppress-warnings" data-key="suppress_all_warnings">&#9744;&#xFE0E; Suppress all safety warnings</label></div>
       <div class="card pro"><h3><span class="t">Access Gate</span><span class="r">password / USB key</span></h3>
         <div class="kv mono muted" id="set-gate">reading gate status&#8230;</div>
         <div class="footnote" style="margin:6px 0 0">Configured from the desktop app / console &#8212; this shows its live state (never a secret).</div>
         <button class="btn sm acc" id="set-gate-setup" style="margin-top:7px">Set up access gate&#8230;</button></div>
-      <div class="card pro"><h3><span class="t">Secure Container</span></h3><label class="chip" id="set-secure-container" data-key="secure_container">&#9744; Encrypt saves at rest</label></div>
+      <div class="card pro"><h3><span class="t">Secure Container</span></h3><label class="chip" id="set-secure-container" data-key="secure_container">&#9744;&#xFE0E; Encrypt saves at rest</label></div>
       <div class="card pro"><h3><span class="t">Firmware Vault</span></h3><input class="field mono" id="set-vault-dir" aria-label="Firmware vault path" value="~/.cyber-controller/firmware_vault"></div>
     </div>
     <div class="row" style="margin-top:14px;justify-content:flex-end;align-items:center;gap:10px"><span class="muted" id="set-status" style="font-size:12px"></span><button class="btn" id="set-reset">Reset to Defaults</button><button class="btn acc" id="set-save">Save Settings</button></div>

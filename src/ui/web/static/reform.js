@@ -699,8 +699,8 @@
   function setChip(el, on) {
     if (!el) return;
     el.classList.toggle("on", !!on);
-    var t = el.textContent.replace(/^[☐☑]\s*/, "");
-    el.textContent = (on ? "☑ " : "☐ ") + t;
+    var t = el.textContent.replace(/^[☐☑☒]︎?\s*/, "");
+    el.textContent = (on ? "☑︎ " : "☐︎ ") + t;
   }
   function setSelect(el, val) {
     if (!el) return;
