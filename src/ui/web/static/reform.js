@@ -38,6 +38,8 @@
     var subName = tabs ? tabs.textContent : "";
     crumb.innerHTML = "<b>" + crumbNames[v] + "</b>" + (subName ? " ▸ " + subName : "");
     document.getElementById("main").scrollTop = 0;
+    // Reflect the active surface in the URL (no scroll jump) so "Pop out" can deep-link to it.
+    if (window.history && history.replaceState) history.replaceState(null, "", "#" + v);
     if (window.__ccPollTick) { window.__ccPollTick(); }   // instant refresh for the surface just shown
     if (v === "crack" && window.__ccRefreshCaptures) { window.__ccRefreshCaptures(); }
   });
@@ -79,6 +81,24 @@
     var s = document.querySelector('.navitem[data-view="settings"]');
     if (s) s.click();
   });
+
+  // Topbar "Pop out (detach)" → open the CURRENT surface in its own window, deep-linked by #view.
+  // Same-origin, so the new window shares this session's auth cookie (no re-login in a browser).
+  var popBtn = document.querySelector('.topbar .icon-btn[title="Pop out (detach)"]');
+  if (popBtn) popBtn.addEventListener("click", function () {
+    var on = document.querySelector('.rail .navitem.on');
+    var v = on ? on.dataset.view : "device";
+    window.open(location.pathname + "#" + v, "cc_" + v, "width=1200,height=820");
+  });
+
+  // Deep-link on load: if the URL carries #<view>, open that surface (used by Pop out).
+  (function () {
+    var h = (location.hash || "").replace(/^#/, "");
+    if (h && crumbNames[h]) {
+      var it = document.querySelector('.rail .navitem[data-view="' + h + '"]');
+      if (it) it.click();
+    }
+  })();
 
   // ── live hydration ────────────────────────────────────────────────
   function esc(s) {
