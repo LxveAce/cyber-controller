@@ -24,6 +24,7 @@ import functools
 import logging
 import os
 import secrets
+import tempfile
 import threading
 from pathlib import Path
 from typing import Any
@@ -684,9 +685,15 @@ def create_app(
             except Exception:  # noqa: BLE001 — a bad/absent timestamp just renders blank
                 return ""
 
+        from src.core import crack_pipeline
         out = []
         for c in capture_store.all():
+            # "crackable from here" = a retrieved local .pcap OR an inline PMKID line; a capture still on
+            # a device's SD (path we can't read) can't be run yet, and the UI shouldn't pretend otherwise.
+            crackable = bool((c.pcap_path and os.path.isfile(c.pcap_path))
+                             or crack_pipeline.hashline_from_capture(c))
             out.append({
+                "key": c.key,
                 "ssid": c.ssid or "",
                 "bssid": c.bssid or "",
                 "type": "PMKID" if c.capture_type == "pmkid" else "handshake",
@@ -694,8 +701,108 @@ def create_app(
                 "captured": _hhmm(c.captured_at),
                 "crack_status": c.crack_status,
                 "password": c.password if c.crack_status == "cracked" else "",
+                "crackable": crackable,
             })
         return jsonify({"captures": out})
+
+    # One crack at a time. The flag is read by the worker's should_stop and guarded by the lock; a UI can
+    # only ever have one run in flight (409 otherwise), so we don't track per-run identity.
+    _crack_run = {"busy": False, "stop": False}
+    _crack_lock = threading.Lock()
+
+    @app.route("/api/crack/run", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_crack_run():
+        """Launch a consent-gated dictionary crack of a captured handshake, streamed to the CRACK log over
+        the `crack_log` / `crack_done` socket events. The per-run authorized-use consent is RE-CHECKED here
+        server-side — the UI checkbox only gates the button; a run whose body lacks `consent: true` is
+        refused (403). Dictionary-only, native engine (no external tool), one run at a time. safety.py is
+        untouched; this recovers a key the operator affirms they own or are authorized to test."""
+        from src.core import crack_pipeline
+        if not cmd_limiter.allow(_client_ip()):
+            return jsonify({"error": "rate limited"}), 429
+        data = _json_body()
+        if data.get("consent") is not True:
+            return jsonify({"error": "per-run authorized-use consent is required"}), 403
+        if capture_store is None:
+            return jsonify({"error": "no capture store"}), 400
+        key = str(data.get("capture_key", "")).strip()
+        rec = capture_store.get(key)
+        if rec is None:
+            return jsonify({"error": "select a captured handshake first"}), 400
+        wordlist = str(data.get("wordlist", "")).strip()
+        try:
+            crack_pipeline.validate_wordlist(wordlist)
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        # Materialize a crackable input: a retrieved local .pcap, else the inline hc22000 (PMKID) line.
+        tmp_hc = ""
+        if rec.pcap_path and os.path.isfile(rec.pcap_path):
+            capture_path = rec.pcap_path
+        else:
+            hashline = crack_pipeline.hashline_from_capture(rec)
+            if not hashline:
+                return jsonify({"error": "this capture has no local .pcap and no crackable inline PMKID — "
+                                "retrieve its capture file first"}), 400
+            fd, tmp_hc = tempfile.mkstemp(prefix="cc-crack-", suffix=crack_pipeline.HASHFILE_EXT)
+            os.close(fd)
+            crack_pipeline.write_hc22000(hashline, tmp_hc)
+            capture_path = tmp_hc
+
+        with _crack_lock:
+            if _crack_run["busy"]:
+                if tmp_hc:
+                    try:
+                        os.remove(tmp_hc)
+                    except OSError:
+                        pass
+                return jsonify({"error": "a crack is already running"}), 409
+            _crack_run["busy"] = True
+            _crack_run["stop"] = False
+        _audit("crack_run", user=session.get("user"), ssid=rec.ssid, bssid=rec.bssid)
+
+        def _emit(line: Any) -> None:
+            socketio.emit("crack_log", {"line": str(line)})
+
+        def _worker() -> None:
+            try:
+                _emit(f"[consent affirmed] {rec.ssid or rec.bssid} · {os.path.basename(wordlist)}")
+                res = crack_pipeline.run_native(
+                    capture_path, wordlist, _emit, bssid=rec.bssid,
+                    should_stop=lambda: _crack_run["stop"])
+                if res.cracked:
+                    capture_store.mark_cracked(key, res.password, res.detail, wordlist)
+                    _emit(f"RECOVERED -> {res.ssid or rec.ssid}: {res.password}")
+                    socketio.emit("crack_done", {"cracked": True, "key": key,
+                                                 "ssid": res.ssid or rec.ssid, "password": res.password,
+                                                 "detail": res.detail})
+                else:
+                    _emit(f"[done] {res.detail or 'key not in wordlist'}")
+                    socketio.emit("crack_done", {"cracked": False, "key": key, "detail": res.detail})
+            except Exception as exc:  # noqa: BLE001 — surface honestly to the log, never fake a result
+                _emit(f"[error] {exc}")
+                socketio.emit("crack_done", {"cracked": False, "key": key, "detail": str(exc)})
+            finally:
+                if tmp_hc:
+                    try:
+                        os.remove(tmp_hc)
+                    except OSError:
+                        pass
+                with _crack_lock:
+                    _crack_run["busy"] = False
+
+        socketio.start_background_task(_worker)
+        return jsonify({"started": True}), 202
+
+    @app.route("/api/crack/stop", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_crack_stop():
+        """Cooperatively cancel the in-flight crack (the native engine polls should_stop)."""
+        with _crack_lock:
+            _crack_run["stop"] = True
+        return jsonify({"stopping": True})
 
     @app.route("/api/gate-status")
     @requires_auth

@@ -785,7 +785,28 @@
   }
   initWordlists();
 
-  // ── CRACK ▸ Captured Handshakes: live from the shared CaptureStore (auto-logged as devices capture) ─
+  // ── CRACK ▸ Run state (shared by the captures table + the Run card) ─
+  var crackSel = null;   // selected capture: { key, ssid, bssid, crackable }
+  function crackUpdateRunEnabled() {
+    var runBtn = document.getElementById("crack-run");
+    var consent = document.getElementById("crack-consent");
+    if (!runBtn) return;
+    var ok = !!(crackSel && crackSel.crackable && consent && consent.checked);
+    runBtn.disabled = !ok;
+    runBtn.style.opacity = ok ? "1" : ".6";
+  }
+  function crackSelect(c) {
+    crackSel = c;
+    var selEl = document.getElementById("crack-sel");
+    if (selEl) {
+      if (!c) selEl.textContent = "Select a captured handshake below to load it into the run.";
+      else if (!c.crackable) { selEl.style.color = "var(--amber)"; selEl.textContent = "“" + (c.ssid || c.bssid) + "” has no local capture to crack yet — retrieve its .pcap first."; }
+      else { selEl.style.color = "var(--dim)"; selEl.textContent = "Loaded: " + (c.ssid || c.bssid) + " (" + c.type + ")"; }
+    }
+    crackUpdateRunEnabled();
+  }
+
+  // ── CRACK ▸ Captured Handshakes: live from the shared CaptureStore (click a crackable row to load it) ─
   function initCaptures() {
     var body = document.getElementById("crack-captures-body");
     if (!body) return;
@@ -794,25 +815,91 @@
       if (c.crack_status === "running") return '<td style="color:var(--amber)">cracking&#8230;</td>';
       return '<td class="dim">&#8212;</td>';
     }
+    var lastList = [];
     function render(list) {
+      lastList = list;
       if (!list.length) {
         body.innerHTML = '<tr><td class="off" colspan="6">no captures yet &#8212; they auto-log as your devices capture handshakes / PMKIDs</td></tr>';
         return;
       }
-      body.innerHTML = list.map(function (c) {
-        return "<tr><td>" + esc(c.ssid || "—") + '</td><td class="mono dim">' + esc(c.bssid || "—") +
+      body.innerHTML = list.map(function (c, i) {
+        var st = [];
+        if (c.crackable) st.push("cursor:pointer");
+        if (crackSel && crackSel.key === c.key) st.push("background:#141b24");
+        var style = st.length ? ' style="' + st.join(";") + '"' : "";
+        return "<tr data-i=\"" + i + "\"" + style + "><td>" + esc(c.ssid || "—") + '</td><td class="mono dim">' + esc(c.bssid || "—") +
           "</td><td>" + esc(c.type || "—") + '</td><td class="mono">' + esc(c.source || "—") +
           '</td><td class="dim">' + esc(c.captured || "—") + "</td>" + pwCell(c) + "</tr>";
       }).join("");
     }
+    body.addEventListener("click", function (e) {
+      var tr = e.target.closest("tr[data-i]");
+      if (!tr) return;
+      var c = lastList[parseInt(tr.getAttribute("data-i"), 10)];
+      if (c && c.crackable) { crackSelect(c); render(lastList); }
+    });
     function load() {
-      getJSON("/api/captures").then(function (d) { render(d.captures || []); })
-        .catch(function () { body.innerHTML = '<tr><td class="er" colspan="6">captures unavailable</td></tr>'; });
+      getJSON("/api/captures").then(function (d) {
+        render(d.captures || []);
+        // keep the loaded capture's live status (e.g. it just cracked) in sync
+        if (crackSel) {
+          var still = (d.captures || []).filter(function (x) { return x.key === crackSel.key; })[0];
+          if (!still) crackSelect(null);
+        }
+      }).catch(function () { body.innerHTML = '<tr><td class="er" colspan="6">captures unavailable</td></tr>'; });
     }
     window.__ccRefreshCaptures = load;   // the rail handler re-pulls this when CRACK is opened
     load();
   }
   initCaptures();
+
+  // ── CRACK ▸ Run: consent-gated native crack, streamed to the Log card ─
+  function initCrackRun() {
+    var runBtn = document.getElementById("crack-run");
+    var stopBtn = document.getElementById("crack-stop");
+    var consent = document.getElementById("crack-consent");
+    var logEl = document.getElementById("crack-log");
+    if (!runBtn) return;
+    if (consent) consent.addEventListener("change", crackUpdateRunEnabled);
+    function logLine(text, cls) {
+      if (!logEl) return;
+      var d = document.createElement("div");
+      d.className = cls || "rx";
+      d.textContent = text;
+      logEl.appendChild(d);
+      while (logEl.childNodes.length > 300) logEl.removeChild(logEl.firstChild);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+    function running(on) {
+      if (stopBtn) { stopBtn.disabled = !on; stopBtn.style.opacity = on ? "1" : ".5"; }
+      if (on) { runBtn.disabled = true; runBtn.style.opacity = ".6"; } else { crackUpdateRunEnabled(); }
+    }
+    ensureSocket();
+    if (socket) {
+      socket.on("crack_log", function (m) { if (m) logLine(m.line || ""); });
+      socket.on("crack_done", function (m) {
+        if (m && m.cracked) logLine("RECOVERED → " + (m.ssid || "") + " : " + (m.password || ""), "ok");
+        else if (m) logLine("[done] " + (m.detail || "key not in wordlist"), "wa");
+        running(false);
+        if (window.__ccRefreshCaptures) window.__ccRefreshCaptures();
+      });
+    }
+    runBtn.addEventListener("click", function () {
+      if (!crackSel || !consent || !consent.checked) return;
+      var wl = document.getElementById("wl-select");
+      var wordlist = wl && wl.value ? wl.value : "";
+      if (logEl) logEl.innerHTML = "";
+      logLine("[launch] " + (crackSel.ssid || crackSel.bssid), "tx");
+      running(true);
+      postJSON("/api/crack/run", { consent: true, capture_key: crackSel.key, wordlist: wordlist, engine: "native", bssid: crackSel.bssid || "" })
+        .catch(function (err) { logLine("✗ " + (typeof err === "string" ? err : "run refused"), "wa"); running(false); });
+    });
+    if (stopBtn) stopBtn.addEventListener("click", function () {
+      postJSON("/api/crack/stop", {}).then(function () { logLine("[stopping…]", "wa"); }).catch(function () {});
+    });
+    crackUpdateRunEnabled();
+  }
+  initCrackRun();
 
   // ── Mesh ▸ Provisioned Nodes: live vault status + management (keys redacted server-side) ─
   // Renders the key-free node table with per-node actions (Rotate / Deprovision / Attach / Detach) and a

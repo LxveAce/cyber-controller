@@ -56,9 +56,10 @@ def test_captures_display_fields_only_and_secrets_hidden():
     body = _client(store).get("/api/captures").get_json()
     caps = body["captures"]
     assert len(caps) == 2
-    allowed = {"ssid", "bssid", "type", "source", "captured", "crack_status", "password"}
+    # display fields + the run-wiring fields (key to select a row, crackable flag); still no raw secrets
+    allowed = {"ssid", "bssid", "type", "source", "captured", "crack_status", "password", "key", "crackable"}
     for cap in caps:
-        assert set(cap) == allowed        # ONLY display fields, no extras leak
+        assert set(cap) == allowed        # ONLY these fields, no raw pcap/hashline/serial leak
     # crackable/raw material never crosses the wire
     blob = json.dumps(body)
     for secret in ("hc22000", "deadbeef", "/sd/secret.pcap", "RAW SERIAL"):

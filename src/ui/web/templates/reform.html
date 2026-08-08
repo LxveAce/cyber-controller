@@ -354,21 +354,25 @@
         </div>
         <div class="card">
           <h3><span class="t">Run</span><span class="r">consent required per run</span></h3>
-          <label class="chip warn" style="border-color:#8a6100;color:var(--amber);white-space:normal;text-align:left;line-height:1.4">&#9744; I own this network or am explicitly authorized to test it</label>
-          <div class="row" style="margin-top:10px"><button class="btn green" disabled style="opacity:.6" title="Capture + run wiring lands next">Recover key&#8230;</button></div>
-          <div class="footnote">Engine detection is live. The crack RUN keeps its per-run authorized-use consent gate &#8212; wiring lands with the capture pipeline.</div>
+          <label class="chip warn" for="crack-consent" style="border-color:#8a6100;color:var(--amber);white-space:normal;text-align:left;line-height:1.4"><input type="checkbox" id="crack-consent" style="margin-right:6px;vertical-align:middle"> I own this network or am explicitly authorized to test it</label>
+          <div class="footnote" id="crack-sel" style="margin-top:8px">Select a captured handshake below to load it into the run.</div>
+          <div class="row" style="margin-top:10px"><button class="btn green" id="crack-run" disabled style="opacity:.6">Recover key&#8230;</button><button class="btn" id="crack-stop" disabled style="opacity:.5">Stop</button></div>
         </div>
       </div>
       <div class="grid" style="align-content:start">
         <div class="card">
           <h3><span class="t">Captured Handshakes</span><span class="r">auto-logged &#183; Export&#8230;</span></h3>
-          <div class="footnote" style="margin:-4px 0 9px">Auto-logged as your devices capture &#8212; double-click a row to load it into the run.</div>
+          <div class="footnote" style="margin:-4px 0 9px">Auto-logged as your devices capture &#8212; click a crackable row to load it into the run.</div>
           <table>
             <thead><tr><th>SSID</th><th>BSSID</th><th>Type</th><th>Source</th><th>Captured</th><th>Password</th></tr></thead>
             <tbody id="crack-captures-body">
               <tr><td class="off" colspan="6">reading captures&#8230;</td></tr>
             </tbody>
           </table>
+        </div>
+        <div class="card">
+          <h3><span class="t">Log</span><span class="r">tool output</span></h3>
+          <div class="term" id="crack-log" style="height:150px"><div class="p">Run a crack to see live output here.</div></div>
         </div>
       </div>
     </div>
