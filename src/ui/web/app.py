@@ -794,7 +794,7 @@ def create_app(
 
     # One crack at a time. The flag is read by the worker's should_stop and guarded by the lock; a UI can
     # only ever have one run in flight (409 otherwise), so we don't track per-run identity.
-    _crack_run = {"busy": False, "stop": False}
+    _crack_run = {"busy": False, "stop": False, "proc": None}
     _crack_lock = threading.Lock()
 
     @app.route("/api/crack/run", methods=["POST"])
@@ -847,17 +847,52 @@ def create_app(
                 return jsonify({"error": "a crack is already running"}), 409
             _crack_run["busy"] = True
             _crack_run["stop"] = False
+        engine = str(data.get("engine", "native")).strip().lower() or "native"
         _audit("crack_run", user=session.get("user"), ssid=rec.ssid, bssid=rec.bssid)
 
         def _emit(line: Any) -> None:
             socketio.emit("crack_log", {"line": str(line)})
 
+        def _register_proc(proc: Any) -> None:
+            # Hold the external tool's process so /api/crack/stop can kill it (native cancels via should_stop).
+            with _crack_lock:
+                _crack_run["proc"] = proc
+
         def _worker() -> None:
+            tmp_hash = ""
             try:
-                _emit(f"[consent affirmed] {rec.ssid or rec.bssid} · {os.path.basename(wordlist)}")
-                res = crack_pipeline.run_native(
-                    capture_path, wordlist, _emit, bssid=rec.bssid,
-                    should_stop=lambda: _crack_run["stop"])
+                _emit(f"[consent affirmed] {rec.ssid or rec.bssid} · {os.path.basename(wordlist)} · engine={engine}")
+                # Dispatch on the chosen backend, mirroring the Classic Crack Lab tab. native = CC's pure-Python
+                # cracker (cooperative stop); aircrack/hashcat are external engines (killed on stop via on_proc).
+                if engine == "aircrack":
+                    tools = crack_pipeline.detect_tools()
+                    res = crack_pipeline.run_aircrack(
+                        capture_path, wordlist, _emit, tools=tools, bssid=rec.bssid, on_proc=_register_proc)
+                elif engine == "hashcat":
+                    tools = crack_pipeline.detect_tools()
+                    if os.path.splitext(capture_path)[1].lower() == crack_pipeline.HASHFILE_EXT:
+                        hash_file = capture_path
+                        res = None
+                    else:
+                        fd, hash_file = tempfile.mkstemp(prefix="cc-crack-", suffix=crack_pipeline.HASHFILE_EXT)
+                        os.close(fd)
+                        tmp_hash = hash_file
+                        n = crack_pipeline.convert_capture(capture_path, hash_file, _emit, tools=tools,
+                                                           on_proc=_register_proc)
+                        _emit(f"[convert] {n} crackable hash(es) extracted.")
+                        if n == 0:
+                            hash_file = None
+                            res = crack_pipeline.CrackResult(
+                                cracked=False, detail="no PMKID or handshake found in this capture")
+                        else:
+                            res = None
+                    if hash_file is not None:
+                        res = crack_pipeline.run_hashcat(hash_file, wordlist, _emit, tools=tools,
+                                                         on_proc=_register_proc)
+                else:  # native (default)
+                    res = crack_pipeline.run_native(
+                        capture_path, wordlist, _emit, bssid=rec.bssid,
+                        should_stop=lambda: _crack_run["stop"])
                 if res.cracked:
                     capture_store.mark_cracked(key, res.password, res.detail, wordlist)
                     _emit(f"RECOVERED -> {res.ssid or rec.ssid}: {res.password}")
@@ -871,13 +906,15 @@ def create_app(
                 _emit(f"[error] {exc}")
                 socketio.emit("crack_done", {"cracked": False, "key": key, "detail": str(exc)})
             finally:
-                if tmp_hc:
-                    try:
-                        os.remove(tmp_hc)
-                    except OSError:
-                        pass
+                for _t in (tmp_hc, tmp_hash):
+                    if _t:
+                        try:
+                            os.remove(_t)
+                        except OSError:
+                            pass
                 with _crack_lock:
                     _crack_run["busy"] = False
+                    _crack_run["proc"] = None
 
         socketio.start_background_task(_worker)
         return jsonify({"started": True}), 202
@@ -886,9 +923,16 @@ def create_app(
     @requires_auth
     @requires_csrf
     def api_crack_stop():
-        """Cooperatively cancel the in-flight crack (the native engine polls should_stop)."""
+        """Cancel the in-flight crack: the native engine polls should_stop; an external engine
+        (aircrack/hashcat) is killed via the process handle registered during the run."""
         with _crack_lock:
             _crack_run["stop"] = True
+            proc = _crack_run.get("proc")
+        if proc is not None:
+            try:
+                proc.terminate()
+            except Exception:  # noqa: BLE001 — best-effort kill; the worker's finally still cleans up
+                pass
         return jsonify({"stopping": True})
 
     @app.route("/api/gate-status")

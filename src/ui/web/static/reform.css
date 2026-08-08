@@ -14,7 +14,7 @@
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--ui);font-size:13px;line-height:1.45;-webkit-font-smoothing:antialiased}
-.app{display:grid;grid-template-columns:196px 1fr;grid-template-rows:44px 1fr;height:100vh;min-height:560px}
+.app{display:grid;grid-template-columns:196px 1fr;grid-template-rows:44px 1fr;height:100vh;overflow:hidden}
 
 /* top bar */
 .topbar{grid-column:1 / 3;display:flex;align-items:center;gap:14px;padding:0 14px;background:var(--rail);border-bottom:1px solid var(--bd2)}
@@ -76,7 +76,7 @@ body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--ui);font-si
 .card > h3 .t{color:var(--acc)}
 .card > h3 .r{margin-left:auto;color:var(--dim);font-weight:600;letter-spacing:.3px}
 .muted{color:var(--mut)} .dim{color:var(--dim)} .mono{font-family:var(--mono)}
-.row{display:flex;gap:10px;flex-wrap:wrap} .between{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center} .between{display:flex;align-items:center;justify-content:space-between;gap:10px}
 
 /* gauges */
 .gauges{display:flex;gap:16px;flex-wrap:wrap;align-items:center}

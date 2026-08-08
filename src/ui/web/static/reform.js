@@ -1264,7 +1264,7 @@
     getJSON("/api/crack-tools").then(function (d) {
       var backends = d.backends || [];
       var labels = { native: "Built-in native cracker", hashcat: "hashcat (GPU)", aircrack: "aircrack-ng (CPU)" };
-      eng.innerHTML = backends.map(function (b) { return '<option>' + esc(labels[b] || b) + "</option>"; }).join("");
+      eng.innerHTML = backends.map(function (b) { return '<option value="' + esc(b) + '">' + esc(labels[b] || b) + "</option>"; }).join("");
       foot.innerHTML = (d.tools || []).map(function (t) {
         var mark = t.present ? "✓" : "✗";
         var col = t.present ? "var(--green)" : "var(--dim)";
@@ -1467,7 +1467,7 @@
       if (logEl) logEl.innerHTML = "";
       logLine("[launch] " + (crackSel.ssid || crackSel.bssid), "tx");
       running(true);
-      postJSON("/api/crack/run", { consent: true, capture_key: crackSel.key, wordlist: wordlist, engine: "native", bssid: crackSel.bssid || "" })
+      postJSON("/api/crack/run", { consent: true, capture_key: crackSel.key, wordlist: wordlist, engine: (document.getElementById("crack-engine") || {}).value || "native", bssid: crackSel.bssid || "" })
         .catch(function (err) { logLine("✗ " + (typeof err === "string" ? err : "run refused"), "wa"); running(false); });
     });
     if (stopBtn) stopBtn.addEventListener("click", function () {
