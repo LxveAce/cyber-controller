@@ -100,6 +100,11 @@ _COMMAND_FINGERPRINTS: Dict[str, Tuple[str, ...]] = {
     # Marauder's serial command set — these tokens co-occur in no other supported firmware's help,
     # so requiring several together makes a false positive effectively impossible.
     "marauder": ("sniffbeacon", "sniffdeauth", "evilportal", "wardrive"),
+    # GhostESP: the version regex (`GhostESP v…`) MISSES the real firmware. HIL capture (2026-08-08,
+    # COM35, freshly flashed GhostESP): its `help` prints "Ghost ESP Command Categories:" (a SPACE,
+    # no version) with a `ghost>` prompt, so nothing matched → unidentified. These help tokens co-occur
+    # only in GhostESP (its YouTube-`cast` + Evil-`portal` categories under that header).
+    "ghostesp": ("ghost esp command categories", "help cast", "help portal"),
 }
 
 
