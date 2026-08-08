@@ -97,12 +97,6 @@ class LauncherDialog(QDialog):
             ("qt", "Classic GUI",
              "The earlier PyQt5 interface with sidebar, persistent terminal, command palette, "
              "and custom widgets. Kept as a fallback while the reformed UI settles."),
-            ("tk", "Lightweight GUI",
-             "Tkinter-based interface with core features. Lower resource usage. "
-             "Good for older hardware or when PyQt5 is unavailable."),
-            ("tui", "Terminal UI",
-             "Textual-based terminal interface. Runs in any terminal emulator. "
-             "Ideal for SSH sessions, headless servers, and cyberdeck deployments."),
             ("web", "Web Remote",
              "Flask + SocketIO server you drive from a browser or phone. Perfect for a headless "
              "Raspberry Pi cyberdeck — control it from any device on your network."),
