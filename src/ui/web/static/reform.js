@@ -675,6 +675,29 @@
   }
   initMacros();
 
+  // B14 (stream half): Cross-Comm live event stream — read-only fan-out of the bus events the app
+  // already emits (target_discovered / device connect+disconnect). The auto-routing RULES half stays
+  // deferred (a rule can auto-fire an offensive command — that needs its own consent/gating pass).
+  function initCrossCommStream() {
+    var el = document.getElementById("xc-stream");
+    if (!el) return;
+    var s = ensureSocket();
+    if (!s) return;
+    var first = true;
+    function line(cls, text) {
+      if (first) { el.innerHTML = ""; first = false; }
+      appendLine(el, cls, text);
+    }
+    s.on("target_discovered", function (t) {
+      t = t || {};
+      line("rx", "[target] " + (t.target_type || "?") + " " + (t.ssid || t.mac || "?") +
+        (t.rssi != null ? " rssi=" + t.rssi : ""));
+    });
+    s.on("device_connected", function (d) { line("ok", "[device] connected " + ((d || {}).port || "?")); });
+    s.on("device_disconnected", function (d) { line("wa", "[device] disconnected " + ((d || {}).port || "?")); });
+  }
+  initCrossCommStream();
+
   // ── CRACK: live engine detection + optional-tool fetch (the RUN stays consent-gated) ─
   function crackToolRow(a) {
     var mark = a.present ? "✓" : "✗";
