@@ -204,14 +204,14 @@
       <div class="split two">
         <div class="card">
           <h3><span class="t">Operating System</span></h3>
-          <select class="field"><option>Kali Linux  [pentest]</option><option>Parrot OS  [pentest]</option><option>Tails  [privacy]</option><option>Ubuntu  [general]</option></select>
+          <select class="field" aria-label="Operating system"><option>Kali Linux  [pentest]</option><option>Parrot OS  [pentest]</option><option>Tails  [privacy]</option><option>Ubuntu  [general]</option></select>
           <div class="footnote">Downloaded from the official source and integrity-verified (SHA-256 + OpenPGP) before writing.</div>
           <div class="kv" style="margin-top:8px">2024.3  <span class="dim">(source: online, verify: image_sig)</span></div>
           <div class="row" style="margin-top:8px"><button class="btn sm">Check latest</button><label class="chip pro">&#9744; use bundled (offline)</label></div>
         </div>
         <div class="card">
           <h3><span class="t">Target USB (removable)</span></h3>
-          <select class="field"><option>\\.\PhysicalDrive3  SanDisk Ultra  28.8 GB</option><option>\\.\PhysicalDrive4  Kingston  14.4 GB</option></select>
+          <select class="field" aria-label="Target USB drive"><option>\\.\PhysicalDrive3  SanDisk Ultra  28.8 GB</option><option>\\.\PhysicalDrive4  Kingston  14.4 GB</option></select>
           <div class="notebar warnbar" style="margin:10px 0 0">THE ENTIRE DRIVE IS ERASED. Only removable drives are listed.</div>
           <button class="btn danger wide" style="margin-top:10px;padding:9px">Flash OS</button>
         </div>
@@ -466,18 +466,18 @@
   <!-- ============ SETTINGS ============ -->
   <section class="view" data-view="settings">
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
-      <div class="card"><h3><span class="t">Serial Defaults</span></h3><label class="dim" style="font-size:11px">Default baud</label><select class="field"><option>115200</option><option>230400</option><option>921600</option></select></div>
-      <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field"><option>921600</option><option>460800</option></select></div>
-      <div class="card"><h3><span class="t">Interface</span></h3><label class="dim" style="font-size:11px">Touch mode</label><select class="field"><option>Auto (detect a touchscreen)</option><option>On</option><option>Off</option></select></div>
+      <div class="card"><h3><span class="t">Serial Defaults</span></h3><label class="dim" style="font-size:11px">Default baud</label><select class="field" aria-label="Default baud"><option>115200</option><option>230400</option><option>921600</option></select></div>
+      <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field" aria-label="Flash baud"><option>921600</option><option>460800</option></select></div>
+      <div class="card"><h3><span class="t">Interface</span></h3><label class="dim" style="font-size:11px">Touch mode</label><select class="field" aria-label="Touch mode"><option>Auto (detect a touchscreen)</option><option>On</option><option>Off</option></select></div>
       <div class="card"><h3><span class="t">Updates</span></h3><label class="chip on" style="margin-bottom:6px">&#9745; Auto-check for updates</label><div class="kv mono muted">Current v2.1.0 &#183; up to date</div><button class="btn sm" style="margin-top:6px">Check now</button></div>
-      <div class="card pro"><h3><span class="t">Wardrive Uploads</span></h3><label class="dim" style="font-size:11px">WiGLE token</label><input class="field" type="password" value="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"></div>
+      <div class="card pro"><h3><span class="t">Wardrive Uploads</span></h3><label class="dim" style="font-size:11px">WiGLE token</label><input class="field" type="password" aria-label="WiGLE token" value="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"></div>
       <div class="card pro"><h3><span class="t">Safety &amp; Disclaimers</span></h3><label class="chip on" style="margin-bottom:6px">&#9745; Confirm dangerous commands</label><br><label class="chip">&#9744; Suppress all safety warnings</label></div>
       <div class="card pro"><h3><span class="t">Access Gate</span><span class="r">password / USB key</span></h3>
         <div class="kv mono muted" id="set-gate">reading gate status&#8230;</div>
         <div class="footnote" style="margin:6px 0 0">Configured from the desktop app / console &#8212; this shows its live state (never a secret).</div>
         <button class="btn sm acc" style="margin-top:7px">Set up access gate&#8230;</button></div>
       <div class="card pro"><h3><span class="t">Secure Container</span></h3><label class="chip">&#9744; Encrypt my saved macros</label></div>
-      <div class="card pro"><h3><span class="t">Firmware Vault</span></h3><input class="field mono" value="~/.cyber-controller/firmware_vault"></div>
+      <div class="card pro"><h3><span class="t">Firmware Vault</span></h3><input class="field mono" aria-label="Firmware vault path" value="~/.cyber-controller/firmware_vault"></div>
     </div>
     <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn">Reset to Defaults</button><button class="btn acc">Save Settings</button></div>
   </section>
