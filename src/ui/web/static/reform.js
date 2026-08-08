@@ -256,6 +256,7 @@
       var xc = document.getElementById("xc-count");
       if (xc) xc.textContent = ts.length;
       renderHunt(ts);
+      if (window.__ccRefreshTails) window.__ccRefreshTails();
     }).catch(function () {});
   }
 
@@ -909,6 +910,30 @@
     });
   }
   initSoftwareOS();
+
+  // B11: HUNT Tail Detect — live follower/persistence table from /api/tails (fed by the pool's BLE +
+  // client discoveries). Awareness-only; empty until a device reappears across windows.
+  function refreshTails() {
+    var body = document.getElementById("tail-rows");
+    var summary = document.getElementById("tail-summary");
+    if (!body) return;
+    getJSON("/api/tails").then(function (hits) {
+      if (summary) {
+        summary.textContent = hits.length
+          ? hits.length + (hits.length === 1 ? " device keeps reappearing" : " devices keep reappearing")
+          : "none reappearing";
+        summary.style.color = hits.length ? "var(--orange)" : "var(--dim)";
+      }
+      body.innerHTML = hits.length ? hits.map(function (h) {
+        var col = h.persistence >= 0.9 ? "var(--red)" : (h.persistence >= 0.7 ? "var(--orange)" : "var(--amber)");
+        return '<tr><td class="mono">' + esc(h.device) + "</td><td>" + esc(h.label || "—") +
+          '</td><td class="r" style="color:' + col + '">' + h.persistence.toFixed(2) +
+          '</td><td class="r">' + esc(h.windows) + "</td></tr>";
+      }).join("") : '<tr><td class="off" colspan="4">no persistent followers — a device must reappear across time windows to flag</td></tr>';
+    }).catch(function () {});
+  }
+  window.__ccRefreshTails = refreshTails;
+  refreshTails();
 
   // ── CRACK: live engine detection + optional-tool fetch (the RUN stays consent-gated) ─
   function crackToolRow(a) {

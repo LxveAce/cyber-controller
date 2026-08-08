@@ -26,6 +26,7 @@ import os
 import secrets
 import tempfile
 import threading
+import time
 from pathlib import Path
 from typing import Any
 
@@ -126,6 +127,7 @@ def create_app(
     host_shell_loopback: bool = False,
     macro_recorder: Any = None,
     auto_router: Any = None,
+    tail_tracker: Any = None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
 
@@ -192,6 +194,15 @@ def create_app(
         from src.core.macro_recorder import MacroRecorder
 
         macro_recorder = MacroRecorder()
+
+    # Tail/follower detection (B11): a persistence scorer fed from the shared pool's BLE + client
+    # discoveries (APs excluded — a stationary AP isn't a tail). Injectable for tests. Read via
+    # /api/tails; it stays empty until a personal device reappears across time windows (awareness-
+    # only, never acts). Wall-clock-free — the caller passes time.time().
+    if tail_tracker is None:
+        from src.core.tail_detect import PersistenceTracker
+
+        tail_tracker = PersistenceTracker()
 
     # L-2: the web remote drives attack hardware; auth/flash/serial events must be auditable.
     # The normal launch path threads a durable AuditTrail through, but an embedder using the
@@ -372,6 +383,17 @@ def create_app(
 
     def _on_target_added(_topic: str, payload: dict) -> None:
         socketio.emit("target_discovered", payload)
+        # Feed tail/follower detection from personal/mobile discoveries only (BLE + client stations);
+        # a stationary AP is never a tail. Awareness-only — observe() just records a sighting.
+        try:
+            ttype = str(payload.get("target_type", ""))
+            if ttype in ("ble", "client"):
+                mac = str(payload.get("mac", ""))
+                if mac:
+                    label = payload.get("ssid") or payload.get("vendor") or mac
+                    tail_tracker.observe(f"{ttype}:{mac}", time.time(), label=str(label))
+        except Exception:
+            log.debug("tail observe skipped", exc_info=True)
 
     def _on_device_connected(device) -> None:
         socketio.emit("device_connected", device.to_dict())
@@ -1484,14 +1506,32 @@ def create_app(
         rule = next((r for r in auto_router.list_rules() if r.name == name), None)
         if rule is None:
             return jsonify({"error": f"Unknown rule: {name}"}), 404
-        # Arming (enabling) an offensive rule is the consent-gated act — the moment it can auto-fire.
-        if enabled and _rule_is_offensive(rule.command_template) and data.get("consent") is not True:
+        # Arming (enabling) an offensive rule is the consent-gated act — when it can auto-fire.
+        arming_offensive = enabled and _rule_is_offensive(rule.command_template)
+        if arming_offensive and data.get("consent") is not True:
             return jsonify({"error": "Arming an offensive rule needs authorized-use consent."}), 403
         auto_router.remove_rule(name)
         rule.enabled = enabled
         auto_router.add_rule(rule)
         _audit("rule_toggle", user=session.get("user"), name=name, enabled=enabled)
         return jsonify({"status": "ok", "name": name, "enabled": enabled})
+
+    @app.route("/api/tails")
+    @requires_auth
+    def api_tails():
+        """Follower/tail detection (B11): personal devices (BLE/clients) that keep reappearing across
+        recent time windows, strongest-first. Awareness-only — it flags, never acts. Empty until a
+        device actually reappears; wall-clock-free scorer (we pass time.time())."""
+        try:
+            hits = tail_tracker.tails(time.time(), min_persistence=0.5)
+        except Exception:
+            log.exception("tail read failed")
+            hits = []
+        return jsonify([
+            {"device": h.device, "label": h.label, "persistence": round(h.persistence, 2),
+             "windows": h.windows}
+            for h in hits
+        ])
 
     @app.route("/api/os/images")
     @requires_auth

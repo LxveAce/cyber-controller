@@ -282,11 +282,9 @@
         <tbody id="hunt-targets-rows"><tr><td class="off" colspan="6">pool empty</td></tr></tbody></table></div></div>
     <div class="sub" data-sub="tail"><div class="card"><h3><span class="t">Follower / Tail Detection</span><span class="r">counter-surveillance</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Flags a device that keeps reappearing near you across time. Awareness-first &#8212; it never confirms a follower and never acts. Method: ArgeliusLabs/Chasing-Your-Tail-NG (MIT).</div>
-      <div class="between" style="margin-bottom:8px"><span>Min persistence <b class="mono">0.50</b></span><span style="color:var(--orange)">2 devices keep reappearing</span></div>
-      <table><thead><tr><th>Device</th><th>Label</th><th class="r">Persistence</th><th class="r">Windows</th></tr></thead><tbody>
-        <tr><td class="mono">A1:B2:C3:..</td><td>probe &#183; iPhone</td><td class="r" style="color:var(--red)">1.00</td><td class="r">4</td></tr>
-        <tr><td class="mono">e2:14:9c:..</td><td>BLE &#183; AirTag</td><td class="r" style="color:var(--orange)">0.75</td><td class="r">3</td></tr>
-      </tbody></table>
+      <div class="between" style="margin-bottom:8px"><span>Min persistence <b class="mono">0.50</b></span><span id="tail-summary" class="dim">&#8212;</span></div>
+      <table><thead><tr><th>Device</th><th>Label</th><th class="r">Persistence</th><th class="r">Windows</th></tr></thead>
+        <tbody id="tail-rows"><tr><td class="off" colspan="4">no persistent followers &#8212; a device must reappear across time windows to flag</td></tr></tbody></table>
     </div></div>
     <div class="sub" data-sub="graph"><div class="card"><h3><span class="t">Node Graph</span><span class="r">mesh topology &#183; 4 nodes</span></h3>
       <div class="mapwrap">

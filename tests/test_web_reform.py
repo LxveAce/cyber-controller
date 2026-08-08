@@ -400,6 +400,34 @@ def test_os_read_endpoints_require_auth():
     assert c.get("/api/os/drives").status_code == 401
 
 
+def test_tails_reports_a_persistent_device():
+    # Inject a tracker with a device seen across the last few windows (relative to real now, so the
+    # endpoint's time.time() query lands in the same span) → it flags as a persistent tail.
+    import time as _t
+
+    from src.core.tail_detect import PersistenceTracker
+
+    tracker = PersistenceTracker(window_seconds=300, num_windows=4)
+    now = _t.time()
+    for i in range(4):  # one sighting in each of the last 4 windows → persistence 1.0
+        tracker.observe("ble:e2:14:9c", now - i * 300 - 1, label="AirTag")
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
+                           tail_tracker=tracker)
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["csrf"] = "tok"
+    data = c.get("/api/tails").get_json()
+    assert any(h["device"] == "ble:e2:14:9c" and h["persistence"] >= 0.5 for h in data)
+
+
+def test_tails_empty_by_default_and_requires_auth():
+    c = _client(DeviceManager())
+    assert c.get("/api/tails").get_json() == []
+    c2 = _client(DeviceManager(), authed=False)
+    assert c2.get("/api/tails").status_code == 401
+
+
 def _client_with_desktop_token(token):
     app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
                            desktop_token=token)
