@@ -44,6 +44,7 @@ from flask import (
 )
 from flask_socketio import SocketIO, emit
 
+from src.config import settings as app_settings
 from src.core import host_shell, node_provision
 from src.core.channel_survey import survey_channels
 from src.core.cross_comm import EventBus, TargetPool
@@ -856,6 +857,171 @@ def create_app(
             log.exception("gate-status read failed")
             return jsonify({"configured": False, "policy": "either", "has_password": False,
                             "has_key": False, "locked": False, "remaining_secs": 0})
+
+    # ── SETTINGS (B17): live read + owner write-back to the real settings store ──
+    # The reform SETTINGS surface reads and writes ~/.cyber-controller/settings.json via the same
+    # src.config.settings store the desktop app uses (deep-merge + atomic 0600 write). Secrets never
+    # cross the wire in the clear: the WiGLE token is exposed ONLY as a "set" boolean, and a write
+    # skips the token unless the client sends a real new value (not the masked placeholder).
+    _SETTINGS_BAUDS = (9600, 115200, 230400, 460800, 921600)
+    _TOUCH_MODES = ("auto", "on", "off")
+    _FLASH_MODES = ("dio", "qio", "dout", "qout")
+
+    def _settings_public(s: dict) -> dict:
+        """A secret-free projection of the settings the reform surface shows."""
+        return {
+            "serial": {"default_baud": s["serial"]["default_baud"]},
+            "flash": {
+                "flash_baud": s["flash"]["flash_baud"],
+                "verify": s["flash"]["verify"],
+                "auto_backup": s["flash"]["auto_backup"],
+                "mode": s["flash"]["mode"],
+            },
+            "interface": {"touch_mode": s["interface"]["touch_mode"]},
+            "updates": {"enabled": s["updates"]["enabled"]},
+            "safety": {
+                "confirm_dangerous": s["safety"]["confirm_dangerous"],
+                "suppress_all_warnings": s["safety"]["suppress_all_warnings"],
+            },
+            "security": {"secure_container": s["security"]["secure_container"]},
+            "vault": {"dir": s["vault"]["dir"]},
+            # secret → boolean only; the token value itself never leaves the host.
+            "uploads": {"wigle_token_set": bool(s["uploads"]["wigle_token"])},
+        }
+
+    @app.route("/api/settings")
+    @requires_auth
+    def api_settings_get():
+        """Live settings for the reform SETTINGS surface (secret-free). GET only, no mutation."""
+        return jsonify({"ok": True, "settings": _settings_public(app_settings.load_settings())})
+
+    @app.route("/api/settings", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_settings_post():
+        """Owner write-back for the reform SETTINGS surface (B17). Whitelists + validates each
+        field, merges onto the current settings, then persists atomically. ``{"reset": true}``
+        restores defaults. Out-of-range values 400 (nothing saved); unknown keys are not applied.
+        These are the owner's own preferences — the safety toggles set confirm-friction, they do NOT
+        weaken safety.py's command classification (which stays label/warn-only, never blocked)."""
+        data = _json_body()
+        if data.get("reset") is True:
+            app_settings.save_settings(dict(app_settings.DEFAULTS))
+            _audit("web_settings_reset")
+            return jsonify({"ok": True, "reset": True,
+                            "settings": _settings_public(app_settings.load_settings())})
+
+        s = app_settings.load_settings()
+        errors: list[str] = []
+
+        def _sec(name: str) -> dict:
+            v = data.get(name)
+            return v if isinstance(v, dict) else {}
+
+        def _apply_int(section: str, key: str, allowed) -> None:
+            v = _sec(section).get(key)
+            if v is None:
+                return
+            try:
+                iv = int(v)
+            except (TypeError, ValueError):
+                errors.append(f"{section}.{key}")
+                return
+            if iv not in allowed:
+                errors.append(f"{section}.{key}")
+                return
+            s[section][key] = iv
+
+        def _apply_choice(section: str, key: str, allowed) -> None:
+            v = _sec(section).get(key)
+            if v is None:
+                return
+            if v not in allowed:
+                errors.append(f"{section}.{key}")
+                return
+            s[section][key] = v
+
+        def _apply_bool(section: str, key: str) -> None:
+            v = _sec(section).get(key)
+            if v is not None:
+                s[section][key] = bool(v)
+
+        _apply_int("serial", "default_baud", _SETTINGS_BAUDS)
+        _apply_int("flash", "flash_baud", _SETTINGS_BAUDS)
+        _apply_choice("flash", "mode", _FLASH_MODES)
+        _apply_bool("flash", "verify")
+        _apply_bool("flash", "auto_backup")
+        _apply_choice("interface", "touch_mode", _TOUCH_MODES)
+        _apply_bool("updates", "enabled")
+        _apply_bool("safety", "confirm_dangerous")
+        _apply_bool("safety", "suppress_all_warnings")
+        _apply_bool("security", "secure_container")
+
+        vdir = _sec("vault").get("dir")
+        if vdir is not None:
+            if isinstance(vdir, str) and vdir.strip():
+                s["vault"]["dir"] = vdir.strip()
+            else:
+                errors.append("vault.dir")
+
+        tok = _sec("uploads").get("wigle_token")
+        if isinstance(tok, str):
+            stripped = tok.strip()
+            # A body of only bullet/star chars is the masked placeholder — keep the stored token.
+            if stripped and set(stripped) <= {"•", "*", "·"}:
+                pass
+            else:
+                s["uploads"]["wigle_token"] = stripped
+
+        if errors:
+            return jsonify({"ok": False, "errors": errors}), 400
+
+        try:
+            app_settings.save_settings(s)
+        except Exception:
+            log.exception("settings write failed")
+            return jsonify({"ok": False, "errors": ["write_failed"]}), 500
+        _audit("web_settings_saved")
+        return jsonify({"ok": True, "settings": _settings_public(app_settings.load_settings())})
+
+    @app.route("/api/version")
+    @requires_auth
+    def api_version():
+        """Running build version for the reform SETTINGS ▸ Updates card. GET only, no network."""
+        from src.version import __version__
+        return jsonify({"version": __version__})
+
+    @app.route("/api/updates/check", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_updates_check():
+        """Manual 'Check now' for the Updates card — runs the same network check the desktop app
+        uses (updater.check, SSRF-guarded to GitHub). Deep-link only: returns the latest tag + URL,
+        never self-downloads. Records last_check_iso/last_seen_latest so the state stays honest."""
+        from src.core import updater
+        from src.version import __version__
+        s = app_settings.load_settings()
+        try:
+            res = updater.check(__version__, s.get("updates"))
+        except Exception:
+            log.exception("update check failed")
+            return jsonify({"ok": False, "status": "OFFLINE"}), 200
+        upd = s.setdefault("updates", {})
+        upd["last_check_iso"] = updater.now_iso()
+        if res.latest_tag:
+            upd["last_seen_latest"] = res.latest_tag
+        try:
+            app_settings.save_settings(s)
+        except Exception:
+            log.debug("could not persist update-check bookkeeping", exc_info=True)
+        return jsonify({
+            "ok": True,
+            "status": res.status,           # UP_TO_DATE | NEWER | OFFLINE
+            "current": __version__,
+            "latest_tag": res.latest_tag,
+            "latest_url": updater.apply_update_url(res) if res.status == "NEWER" else "",
+            "behind": res.behind,
+        })
 
     @app.route("/api/host-shell")
     @requires_auth

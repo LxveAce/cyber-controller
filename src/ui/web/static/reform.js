@@ -667,17 +667,147 @@
   }
   initTerminal();
 
-  // ── SETTINGS: live access-gate status (read-only, no secrets) ───────
-  function initSettings() {
-    var el = document.getElementById("set-gate");
+  // ── SETTINGS (B17): live read + owner write-back to the real settings store ─────────
+  // Hydrates every control from /api/settings, then Save posts the whole form back (secret-free:
+  // the WiGLE token only leaves the box when the user types a NEW one). Gate status stays read-only.
+  function chipOn(el) { return !!(el && el.classList.contains("on")); }
+  function setChip(el, on) {
     if (!el) return;
+    el.classList.toggle("on", !!on);
+    var t = el.textContent.replace(/^[☐☑]\s*/, "");
+    el.textContent = (on ? "☑ " : "☐ ") + t;
+  }
+  function setSelect(el, val) {
+    if (!el) return;
+    var v = String(val);
+    for (var i = 0; i < el.options.length; i++) {
+      if ((el.options[i].value || el.options[i].text) === v) { el.selectedIndex = i; return; }
+    }
+  }
+
+  function initSettings() {
+    var gate = document.getElementById("set-gate");
+    if (!gate) return;   // not the reform SETTINGS view
+
+    // Access gate — read-only live status (never a secret).
     getJSON("/api/gate-status").then(function (g) {
       var factors = [];
       if (g.has_password) factors.push("password");
       if (g.has_key) factors.push("USB key");
-      el.textContent = "configured=" + g.configured + " · policy=" + g.policy +
-        " · factors=" + (factors.join("+") || "none") + (g.locked ? " · LOCKED (" + g.remaining_secs + "s)" : "");
-    }).catch(function () { el.textContent = "gate status unavailable"; });
+      gate.textContent = "configured=" + g.configured + " · policy=" + g.policy +
+        " · factors=" + (factors.join("+") || "none") +
+        (g.locked ? " · LOCKED (" + g.remaining_secs + "s)" : "");
+    }).catch(function () { gate.textContent = "gate status unavailable"; });
+
+    // Every chip toggles on click (Save reads its state).
+    ["set-flash-verify", "set-flash-backup", "set-updates-enabled", "set-confirm-dangerous",
+     "set-suppress-warnings", "set-secure-container"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener("click", function () { setChip(el, !chipOn(el)); });
+    });
+
+    var statusEl = document.getElementById("set-status");
+    function setStatus(t, err) {
+      if (!statusEl) return;
+      statusEl.textContent = t || "";
+      statusEl.style.color = err ? "var(--red)" : "var(--dim)";
+    }
+
+    // Hydrate from the real store.
+    function hydrate(s) {
+      if (!s) return;
+      setSelect(document.getElementById("set-serial-baud"), s.serial.default_baud);
+      setSelect(document.getElementById("set-flash-baud"), s.flash.flash_baud);
+      setChip(document.getElementById("set-flash-verify"), s.flash.verify);
+      setChip(document.getElementById("set-flash-backup"), s.flash.auto_backup);
+      setSelect(document.getElementById("set-touch-mode"), s.interface.touch_mode);
+      setChip(document.getElementById("set-updates-enabled"), s.updates.enabled);
+      setChip(document.getElementById("set-confirm-dangerous"), s.safety.confirm_dangerous);
+      setChip(document.getElementById("set-suppress-warnings"), s.safety.suppress_all_warnings);
+      setChip(document.getElementById("set-secure-container"), s.security.secure_container);
+      var vd = document.getElementById("set-vault-dir");
+      if (vd) vd.value = s.vault.dir;
+      var wt = document.getElementById("set-wigle-state");
+      if (wt) wt.textContent = s.uploads.wigle_token_set ? "· set" : "· not set";
+      var wi = document.getElementById("set-wigle-token");
+      if (wi) wi.value = "";   // never echo the token back; blank = "leave unchanged"
+    }
+    getJSON("/api/settings").then(function (r) { hydrate(r.settings); })
+      .catch(function () { setStatus("could not load settings", true); });
+
+    // Gather the form into the /api/settings shape.
+    function gather() {
+      var tok = document.getElementById("set-wigle-token");
+      var body = {
+        serial: { default_baud: parseInt(valOf("set-serial-baud"), 10) },
+        flash: {
+          flash_baud: parseInt(valOf("set-flash-baud"), 10),
+          verify: chipOn(document.getElementById("set-flash-verify")),
+          auto_backup: chipOn(document.getElementById("set-flash-backup")),
+        },
+        interface: { touch_mode: valOf("set-touch-mode") },
+        updates: { enabled: chipOn(document.getElementById("set-updates-enabled")) },
+        safety: {
+          confirm_dangerous: chipOn(document.getElementById("set-confirm-dangerous")),
+          suppress_all_warnings: chipOn(document.getElementById("set-suppress-warnings")),
+        },
+        security: { secure_container: chipOn(document.getElementById("set-secure-container")) },
+        vault: { dir: valOf("set-vault-dir") },
+      };
+      // Only send the token when the user typed a new one (blank field = leave the stored one alone).
+      if (tok && tok.value.trim()) body.uploads = { wigle_token: tok.value.trim() };
+      return body;
+    }
+    function valOf(id) { var el = document.getElementById(id); return el ? (el.value || "") : ""; }
+
+    var saveBtn = document.getElementById("set-save");
+    if (saveBtn) saveBtn.addEventListener("click", function () {
+      setStatus("saving…");
+      postJSON("/api/settings", gather()).then(function (r) {
+        hydrate(r.settings);
+        setStatus("saved ✓");
+      }).catch(function () { setStatus("save failed — check the values", true); });
+    });
+
+    var resetBtn = document.getElementById("set-reset");
+    if (resetBtn) resetBtn.addEventListener("click", function () {
+      if (!window.confirm("Reset all settings to defaults?")) return;
+      setStatus("resetting…");
+      postJSON("/api/settings", { reset: true }).then(function (r) {
+        hydrate(r.settings);
+        setStatus("reset to defaults ✓");
+      }).catch(function () { setStatus("reset failed", true); });
+    });
+
+    // Updates card — real current version + a live "Check now".
+    var updStatus = document.getElementById("set-update-status");
+    getJSON("/api/version").then(function (v) {
+      if (updStatus) updStatus.textContent = "Current v" + v.version;
+    }).catch(function () { if (updStatus) updStatus.textContent = "version unavailable"; });
+
+    var checkBtn = document.getElementById("set-check-now");
+    if (checkBtn) checkBtn.addEventListener("click", function () {
+      if (updStatus) updStatus.textContent = "checking…";
+      postJSON("/api/updates/check", {}).then(function (r) {
+        if (!updStatus) return;
+        if (r.status === "NEWER") {
+          updStatus.innerHTML = "v" + esc(r.current) + " · update available: " +
+            '<a href="' + esc(r.latest_url) + '" target="_blank" rel="noopener">' +
+            esc(r.latest_tag) + "</a>";
+        } else if (r.status === "OFFLINE") {
+          updStatus.textContent = "v" + r.current + " · offline (couldn’t reach GitHub)";
+        } else {
+          updStatus.textContent = "v" + r.current + " · up to date";
+        }
+      }).catch(function () { if (updStatus) updStatus.textContent = "check failed"; });
+    });
+
+    // "Set up access gate…" — the gate is configured from the desktop app/console by design.
+    var gateBtn = document.getElementById("set-gate-setup");
+    if (gateBtn) gateBtn.addEventListener("click", function () {
+      setStatus("The access gate is set up in the desktop app / console (Security ▸ Access Gate) — " +
+        "it never takes a password over the web.", false);
+    });
   }
   initSettings();
 
