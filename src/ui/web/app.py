@@ -1493,6 +1493,37 @@ def create_app(
         _audit("rule_toggle", user=session.get("user"), name=name, enabled=enabled)
         return jsonify({"status": "ok", "name": name, "enabled": enabled})
 
+    @app.route("/api/os/images")
+    @requires_auth
+    def api_os_images():
+        """The flashable PC/USB OS catalog for the Software-OS tab (read-only metadata)."""
+        from src.core import os_catalog
+
+        try:
+            return jsonify(os_catalog.list_images())
+        except Exception:
+            log.exception("os catalog read failed")
+            return jsonify([])
+
+    @app.route("/api/os/drives")
+    @requires_auth
+    def api_os_drives():
+        """Detected REMOVABLE drives for the Software-OS target picker. Uses the hardened sd_backend
+        detector, which excludes system/boot disks and non-USB/SD/MMC buses — a fixed/system disk is
+        never listed. Read-only enumeration; no write happens here."""
+        from src.core.backends import sd_backend
+
+        try:
+            drives = sd_backend.detect_sd_cards(lambda _l: None)
+        except Exception:
+            log.exception("removable drive scan failed")
+            drives = []
+        return jsonify([
+            {"device": d.get("device", ""), "name": d.get("name", ""),
+             "size": d.get("size", 0), "bus": d.get("bus", "")}
+            for d in drives
+        ])
+
     @app.route("/api/channels")
     @requires_auth
     def api_channels():

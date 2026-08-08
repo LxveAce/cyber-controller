@@ -219,21 +219,19 @@
       <div class="notebar">Write a verified bootable OS to a USB stick. Board firmware lives under DEVICE &#9656; Firmware &#8212; this is for PC/USB operating systems.</div>
       <div class="split two">
         <div class="card">
-          <h3><span class="t">Operating System</span></h3>
-          <select class="field" aria-label="Operating system"><option>Kali Linux  [pentest]</option><option>Parrot OS  [pentest]</option><option>Tails  [privacy]</option><option>Ubuntu  [general]</option></select>
-          <div class="footnote">Downloaded from the official source and integrity-verified (SHA-256 + OpenPGP) before writing.</div>
-          <div class="kv" style="margin-top:8px">2024.3  <span class="dim">(source: online, verify: image_sig)</span></div>
-          <div class="row" style="margin-top:8px"><button class="btn sm">Check latest</button><label class="chip pro">&#9744; use bundled (offline)</label></div>
+          <h3><span class="t">Operating System</span><span class="r" id="os-count"></span></h3>
+          <select class="field" id="os-select" aria-label="Operating system"><option>loading catalog…</option></select>
+          <div class="footnote" id="os-desc">Downloaded from the official source and integrity-verified (SHA-256 + OpenPGP) before writing.</div>
         </div>
         <div class="card">
-          <h3><span class="t">Target USB (removable)</span></h3>
-          <select class="field" aria-label="Target USB drive"><option>\\.\PhysicalDrive3  SanDisk Ultra  28.8 GB</option><option>\\.\PhysicalDrive4  Kingston  14.4 GB</option></select>
-          <div class="notebar warnbar" style="margin:10px 0 0">THE ENTIRE DRIVE IS ERASED. Only removable drives are listed.</div>
-          <button class="btn danger wide" style="margin-top:10px;padding:9px">Flash OS</button>
+          <h3><span class="t">Target USB (removable)</span><span class="r"><a href="#" id="os-rescan" style="color:var(--acc)">Rescan</a></span></h3>
+          <select class="field" id="os-drive" aria-label="Target USB drive"><option value="">scanning removable drives…</option></select>
+          <div class="notebar warnbar" style="margin:10px 0 0">THE ENTIRE DRIVE IS ERASED. Only removable drives are listed (system/boot disks are never shown).</div>
+          <button class="btn danger wide" id="os-flash" style="margin-top:10px;padding:9px">Flash OS</button>
         </div>
       </div>
       <div class="card" style="margin-top:12px"><h3><span class="t">Log</span></h3>
-        <div class="term" style="height:90px"><div class="p">Idle &#8212; pick an OS + USB, then Flash.</div></div>
+        <div class="term" id="os-log" style="height:90px"><div class="p">Pick an OS + a removable USB. The catalog + drive list are live.</div></div>
       </div>
     </div>
 

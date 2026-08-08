@@ -852,6 +852,64 @@
   }
   initRules();
 
+  // Software-OS tab: live OS catalog + live REMOVABLE-drive detection. The destructive write (erases a
+  // whole drive) is owner-gated, so Flash hands over the exact reviewed host command rather than firing
+  // an unvetted web drive-erase — honest, not a dead button, not an irreversible action taken blind.
+  function initSoftwareOS() {
+    var osSel = document.getElementById("os-select");
+    var drvSel = document.getElementById("os-drive");
+    var desc = document.getElementById("os-desc");
+    var log = document.getElementById("os-log");
+    var flash = document.getElementById("os-flash");
+    var rescan = document.getElementById("os-rescan");
+    var count = document.getElementById("os-count");
+    if (!osSel || !drvSel) return;
+    var images = [];
+    function human(sz) { return sz ? (sz / 1e9).toFixed(1) + " GB" : "?"; }
+
+    getJSON("/api/os/images").then(function (imgs) {
+      images = imgs || [];
+      if (count) count.textContent = images.length + " images";
+      osSel.innerHTML = images.length
+        ? images.map(function (i) { return '<option value="' + esc(i.id) + '">' + esc(i.name) + " [" + esc(i.category) + "]</option>"; }).join("")
+        : '<option value="">catalog unavailable</option>';
+      updateDesc();
+    }).catch(function () { osSel.innerHTML = '<option value="">catalog unavailable</option>'; });
+
+    function updateDesc() {
+      var img = images.filter(function (i) { return i.id === osSel.value; })[0];
+      if (desc && img) desc.textContent = (img.description || "") + " — verified (SHA-256 + OpenPGP) before writing.";
+    }
+    osSel.addEventListener("change", updateDesc);
+
+    function loadDrives() {
+      drvSel.innerHTML = '<option value="">scanning…</option>';
+      getJSON("/api/os/drives").then(function (drives) {
+        drvSel.innerHTML = drives.length
+          ? drives.map(function (d) { return '<option value="' + esc(d.device) + '">' + esc(d.device) + "  " + esc(d.name || "") + "  " + human(d.size) + "</option>"; }).join("")
+          : '<option value="">no removable drives detected</option>';
+      }).catch(function () { drvSel.innerHTML = '<option value="">drive scan unavailable</option>'; });
+    }
+    loadDrives();
+    if (rescan) rescan.addEventListener("click", function (e) { e.preventDefault(); loadDrives(); });
+
+    if (flash) flash.addEventListener("click", function () {
+      var id = osSel.value, dev = drvSel.value;
+      if (log) {
+        log.innerHTML = "";
+        if (!id || !dev) {
+          appendLine(log, "er", "Pick an OS and a removable drive first.");
+          return;
+        }
+        appendLine(log, "wa", "Writing an OS erases the ENTIRE drive — this is owner-gated in the web UI.");
+        appendLine(log, "p", "Run this on the host (it verifies SHA-256 + OpenPGP, then writes):");
+        appendLine(log, "tx", "cyber-controller --flash-os " + id + " --target " + dev);
+        appendLine(log, "p", "Add --yes to skip the confirm. Only removable drives are ever accepted.");
+      }
+    });
+  }
+  initSoftwareOS();
+
   // ── CRACK: live engine detection + optional-tool fetch (the RUN stays consent-gated) ─
   function crackToolRow(a) {
     var mark = a.present ? "✓" : "✗";

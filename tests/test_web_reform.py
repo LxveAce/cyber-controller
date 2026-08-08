@@ -337,7 +337,8 @@ def test_rule_add_offensive_lands_disabled_with_consent():
 def test_rule_add_recon_enabled():
     c, _ = _rules_client()
     r = c.post("/api/rules",
-               json={"name": "s", "command_template": "scanall", "device_port": "COM4"}, headers=_HDR)
+               json={"name": "s", "command_template": "scanall", "device_port": "COM4"},
+               headers=_HDR)
     assert r.status_code == 201
     assert r.get_json()["enabled"] is True
 
@@ -351,7 +352,8 @@ def test_rule_arm_offensive_needs_consent():
     r = c.post("/api/rules/toggle", json={"name": "d", "enabled": True}, headers=_HDR)
     assert r.status_code == 403
     # with consent it arms
-    r2 = c.post("/api/rules/toggle", json={"name": "d", "enabled": True, "consent": True}, headers=_HDR)
+    r2 = c.post("/api/rules/toggle",
+                json={"name": "d", "enabled": True, "consent": True}, headers=_HDR)
     assert r2.status_code == 200
 
 
@@ -360,12 +362,42 @@ def test_rules_list_and_remove():
     c.post("/api/rules",
            json={"name": "s", "command_template": "scanall", "device_port": "COM4"}, headers=_HDR)
     assert any(x["name"] == "s" for x in c.get("/api/rules").get_json())
-    assert c.post("/api/rules/remove", json={"name": "s"}, headers=_HDR).get_json()["status"] == "removed"
+    rm = c.post("/api/rules/remove", json={"name": "s"}, headers=_HDR)
+    assert rm.get_json()["status"] == "removed"
 
 
 def test_rules_require_csrf():
     c = _client(DeviceManager())
     assert c.post("/api/rules").status_code == 403
+
+
+def test_os_images_lists_catalog():
+    c = _client(DeviceManager())
+    r = c.get("/api/os/images")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert isinstance(data, list) and data  # bundled catalog is non-empty
+    assert all("id" in i and "name" in i for i in data)
+
+
+def test_os_drives_removable_only_shape(monkeypatch):
+    # The drive list comes from the hardened removable-only detector; the endpoint exposes device/
+    # name/size/bus only. Monkeypatch the detector so the test never depends on real hardware.
+    from src.core.backends import sd_backend
+
+    monkeypatch.setattr(sd_backend, "detect_sd_cards",
+                        lambda _l: [{"device": "\\\\.\\PhysicalDrive9", "name": "USB", "size": 8e9,
+                                     "bus": "USB", "removable": True}])
+    c = _client(DeviceManager())
+    data = c.get("/api/os/drives").get_json()
+    assert data and data[0]["device"] == "\\\\.\\PhysicalDrive9"
+    assert set(data[0]) == {"device", "name", "size", "bus"}
+
+
+def test_os_read_endpoints_require_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/api/os/images").status_code == 401
+    assert c.get("/api/os/drives").status_code == 401
 
 
 def _client_with_desktop_token(token):
