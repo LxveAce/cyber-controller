@@ -412,6 +412,26 @@ def test_os_read_endpoints_require_auth():
     assert c.get("/api/os/drives").status_code == 401
 
 
+def test_every_mutating_route_is_csrf_gated():
+    # App-wide security invariant (audit 2026-08-07): EVERY state-changing route (POST/PUT/DELETE)
+    # must reject an authed request that carries no CSRF token. Catches a future POST route shipping
+    # without @requires_csrf. Parametric paths are skipped (none of ours take a mutating URL arg).
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool())
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True  # authed, but deliberately NO csrf token in the request
+    checked = 0
+    for rule in app.url_map.iter_rules():
+        methods = rule.methods - {"GET", "HEAD", "OPTIONS"}
+        if not methods or "{" in rule.rule.replace("<", "{"):  # skip GET-only + parametric paths
+            continue
+        method = "POST" if "POST" in methods else sorted(methods)[0]
+        resp = c.open(rule.rule, method=method)
+        assert resp.status_code == 403, f"{method} {rule.rule} not CSRF-gated ({resp.status_code})"
+        checked += 1
+    assert checked >= 10  # sanity: we actually exercised the mutating routes
+
+
 def test_tails_reports_a_persistent_device():
     # Inject a tracker with a device seen across the last few windows (relative to real now, so the
     # endpoint's time.time() query lands in the same span) → it flags as a persistent tail.
