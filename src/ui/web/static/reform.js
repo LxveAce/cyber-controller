@@ -1333,6 +1333,20 @@
   }
   initFlock();
 
+  // MAP Wardrive: honest gating (no dead buttons). A survey needs a connected GPS-equipped device
+  // running wardrive firmware; there's no web wardrive backend yet, so the buttons say so plainly
+  // rather than doing nothing. (Honest-functionality audit, 2026-08-07.)
+  function initWardrive() {
+    var msg = document.getElementById("wd-msg");
+    var multiMsg = document.getElementById("wd-multi-msg");
+    var need = "Wardrive needs a connected GPS-equipped device running wardrive firmware. Connect one " +
+      "under DEVICE, then survey + export to WiGLE CSV. (Web wardrive wiring lands with that device.)";
+    wireBtn("wd-start", function () { if (msg) msg.textContent = need; });
+    wireBtn("wd-export", function () { if (msg) msg.textContent = "No survey to export yet — start a GPS survey first."; });
+    wireBtn("wd-multi-start", function () { if (multiMsg) multiMsg.textContent = "Needs 2+ connected GPS devices."; });
+  }
+  initWardrive();
+
   // Surface-gated, visibility-aware live cadence (P0-6): one tick that refreshes ONLY the visible
   // surface's data, and stops entirely while the window is hidden/minimized — so an idle or
   // backgrounded app costs nothing on hardware. (The mockup's "live 5s", only where it's on screen.)

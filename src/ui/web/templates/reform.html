@@ -407,7 +407,8 @@
       <button data-sub="flock">Flock / ALPR</button>
     </div>
     <div class="sub on" data-sub="wardrive"><div class="card"><h3><span class="t">Wardrive &#8212; GPS-tagged Wi-Fi survey</span><span class="r">&#8594; WiGLE CSV</span></h3>
-      <div class="row" style="margin-bottom:10px"><button class="btn green sm">Start survey</button><button class="btn sm">Export WiGLE CSV</button><span class="chip">42 APs tagged</span><span class="chip on">&#9679; GPS fix &#183; 8 sats</span></div>
+      <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-start">Start survey</button><button class="btn sm" id="wd-export">Export WiGLE CSV</button><span class="chip" id="wd-status">needs a GPS device</span></div>
+      <div class="footnote" id="wd-msg" style="margin:-4px 0 8px;min-height:14px"></div>
       <div class="mapwrap">
         <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid slice" role="img" aria-label="wardrive map">
           <defs>
@@ -438,7 +439,7 @@
       </div>
     </div></div>
     <div class="sub" data-sub="multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3>
-      <div class="row" style="margin-bottom:10px"><button class="btn green sm">Start all</button><span class="chip on">COM4 &#9679; Marauder</span><span class="chip on">COM7 &#9679; Flipper</span><span class="chip">merged &#8594; 1 CSV</span></div>
+      <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-multi-start">Start all</button><span class="chip">merged &#8594; 1 CSV</span><span class="dim" id="wd-multi-msg" style="font-size:11px"></span></div>
       <div class="mapwrap">
         <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid slice" role="img" aria-label="multi-wardrive map">
           <rect width="1000" height="380" fill="#0b0f14"/><rect width="1000" height="380" fill="url(#grid)"/>
