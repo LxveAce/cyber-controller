@@ -7,6 +7,20 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [2.0.0-beta] — 2026-08-08
 
+### Fixed
+- **The packaged app now launches the reformed GUI.** The launcher offered only the legacy qt/tk/tui/web
+  interfaces (with the old PyQt UI labeled "Full GUI"), and the frozen build bundled no QtWebEngine/Flask — so
+  every release opened the un-reformed GUI and `--ui qtweb` could not run packaged at all. The build now bundles
+  QtWebEngine (the Chromium runtime) plus the Flask/SocketIO stack, and the reform (`qtweb`) is the default Full GUI.
+- **Launcher offers exactly three interfaces** — Full GUI (the reform, default), Classic (PyQt), and Web Remote.
+  Lightweight (Tkinter) and Terminal (Textual) were removed from the picker.
+- **Crack Lab engine install works offline.** The reform installer only did a network download (the vendor host
+  is unreliable) and ignored the encrypted pack CC ships precisely because Defender deletes the raw binary at
+  rest. It now enables the bundled pack offline and offers a one-click Defender folder exclusion, matching the
+  Classic GUI's design path.
+- SAFE indicator and top bar polished — the SAFE pill matches the neighboring control heights and rounding (with
+  an armed/red state), and a divider separates the brand from the breadcrumb.
+
 ### Added
 - **Reform web UI — the whole app rebuilt as a single-frame SPA rendered in a native PyQt/QtWebEngine desktop
   shell (`--ui qtweb`).** A 6-rail workspace (Device / Hunt / Operate / Crack / Map / Terminal / Settings) that
