@@ -5,7 +5,12 @@ the tier honesty, never that RF actually senses (verify-never-fake; live sensing
 """
 from __future__ import annotations
 
+import re
+from pathlib import Path
+
 from src.core import sensing as S
+
+_NODE_INO = Path(__file__).resolve().parents[1] / "firmware" / "node" / "node.ino"
 
 
 # ── the honesty table: the physics-locked tiers must not silently drift ──
@@ -84,3 +89,31 @@ def test_verdict_fits_nodelink():
     assert S.verdict_fits_nodelink("x" * S.NODELINK_MAX_PLAINTEXT) is True            # exactly 219
     assert S.verdict_fits_nodelink("x" * (S.NODELINK_MAX_PLAINTEXT + 1)) is False     # 220 -> over
     assert S.NODELINK_MAX_PLAINTEXT == 219                                    # node_crypto cap
+
+
+# ── firmware parity: the node's emitted verdict must parse on the host (WS1 end-to-end) ──
+# Grounded in the firmware SOURCE, not a guess: we read node.ino's real snprintf format so a change
+# to either side that breaks the contract fails here (the "ground parser formats in firmware source"
+# lesson). node.ino is compile-validated against esp32:esp32@2.0.11; this pins the wire format.
+def test_node_firmware_emits_a_host_parseable_verdict():
+    src = _NODE_INO.read_text(encoding="utf-8")
+    m = re.search(r'snprintf\(line,[^,]+,\s*\n?\s*"([^"]*csi[^"]*)"', src)
+    assert m, "could not find the CSI verdict snprintf format in node.ino"
+    fmt = m.group(1)
+    # the C printf format -> a representative concrete line (presence=%d, motion/conf=%.2f)
+    assert "presence=%d" in fmt and "motion=%.2f" in fmt and "conf=%.2f" in fmt
+    line = fmt.replace("presence=%d", "presence=1").replace("motion=%.2f", "motion=0.42") \
+              .replace("conf=%.2f", "conf=0.82")
+    v = S.parse_verdict(line, node_id="1")
+    assert v is not None and v.presence is True
+    assert abs(v.motion - 0.42) < 1e-6 and abs(v.confidence - 0.82) < 1e-6
+    assert v.tier == S.PROVEN
+    # the emitted line must ride the sealed frame (node.ino sizes line[48]; parser cap is 219)
+    assert S.verdict_fits_nodelink(line)
+
+
+def test_node_firmware_idle_verdict_parses():
+    # the all-zero window ("csi presence=0 motion=0.00 conf=0.00") must parse to an empty room
+    v = S.parse_verdict("csi presence=0 motion=0.00 conf=0.00", node_id="1")
+    assert v is not None and v.presence is False
+    assert v.motion == 0.0 and v.confidence == 0.0

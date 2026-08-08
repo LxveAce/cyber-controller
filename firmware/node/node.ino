@@ -12,14 +12,22 @@
  * NONCE SAFETY: GCM's one hard rule is never reuse a (key, nonce) pair.  The counter is monotonic and the
  * epoch is persisted to NVS and bumped on every boot, so a reset can never replay an old (epoch, counter).
  *
- * STATUS: real implementation, but NOT compiled or flashed in this environment (no arduino-cli/toolchain
- * here) and NOT hardware-validated.  Reviewed against ../PROTOCOL.md + node_crypto.py.  Target: ESP32
- * Arduino core 2.x (classic esp_now recv-cb signature).  On core 3.x update onEspNowRecv's first arg.
+ * SENSING (WS1): this node also runs Wi-Fi CSI presence/motion sensing. It turns received-packet
+ * channel-state info into ONE compact verdict line — "csi presence=1 motion=0.42 conf=0.82" — and
+ * emits only that (sealed) over the SAME bridge; raw CSI (~256 B) never leaves the node. The verdict
+ * is byte-compatible with src/core/sensing.py parse_verdict(). This is the PROVEN tier of
+ * SENSING_TIERS (commodity 2.4 GHz presence/motion), NOT through-wall imaging.
+ *
+ * STATUS: real implementation. COMPILE-VALIDATED against esp32:esp32@2.0.11 (arduino-cli), but NOT
+ * yet HARDWARE-validated (no on-silicon CSI capture run here). Reviewed against ../PROTOCOL.md +
+ * node_crypto.py + sensing.py. Target: ESP32 Arduino core 2.x (classic esp_now recv-cb + IDF 4.4
+ * CSI API). On core 3.x update onEspNowRecv's first arg and re-check the wifi_csi_config_t fields.
  */
 #include <WiFi.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
 #include <Preferences.h>
+#include <math.h>
 #include "mbedtls/gcm.h"
 
 // ── provisioned identity — host node_provision.py OVERWRITES these at flash time. Never ship the demo key.
@@ -118,6 +126,84 @@ static void sendLine(const char *s) {
   if (n > 0) esp_now_send(BROADCAST, wire, n);
 }
 
+// ── CSI sensing (WS1) ────────────────────────────────────────────────────────────────────────
+// The node turns received-packet CSI into a compact presence/motion verdict and emits ONLY that.
+// Metric: per-packet CSI amplitude energy -> an EWMA baseline + the mean packet-to-packet energy
+// flux over a ~1 s window. Motion tracks flux; presence trips when motion OR the baseline deviation
+// crosses a threshold. CSI only updates while Wi-Fi packets arrive on CHANNEL (relay/peer ESP-NOW
+// frames or ambient traffic), so confidence scales with the packet count seen in the window — a
+// silent RF environment honestly reports low confidence instead of a confident guess. Thresholds
+// are first-cut and meant to be tuned on-site once hardware CSI is captured.
+static const float    CSI_MOTION_SCALE    = 6.0f;    // mean-flux -> motion normalizer
+static const float    CSI_PRESENCE_MOTION = 0.15f;   // motion at/above this = occupied
+static const float    CSI_PRESENCE_DEV    = 0.08f;   // |energy-baseline|/baseline at/above = occupied
+static const uint32_t CSI_CONF_SAT_PKTS   = 50;      // packets that saturate confidence to 1.0
+static const uint32_t CSI_MIN_PKTS        = 5;       // fewer than this -> hedge the confidence
+
+static portMUX_TYPE csiMux = portMUX_INITIALIZER_UNLOCKED;
+static volatile uint32_t csiPkts = 0;          // packets seen this window
+static volatile float    csiEnergyAcc = 0.0f;  // sum of per-packet energies this window
+static volatile float    csiFluxAcc   = 0.0f;  // sum of |energy - prevEnergy| this window
+static float             csiPrevEnergy = 0.0f; // touched only inside the callback
+static float             csiBaseline = 0.0f;   // EWMA of window mean-energy (the "empty room")
+static bool              csiBaselineInit = false;
+
+// Wi-Fi CSI receive callback (WiFi task context). Keep it cheap: fold each packet into the window
+// accumulators under the spinlock and return; all thresholding happens later in emitVerdict().
+static void onCsi(void *ctx, wifi_csi_info_t *info) {
+  (void)ctx;
+  if (!info || !info->buf || info->len <= 0) return;
+  const int8_t *buf = info->buf;
+  int n = info->len / 2;                        // raw CSI is (imag, real) int8 pairs per subcarrier
+  if (n <= 0) return;
+  float energy = 0.0f;
+  for (int i = 0; i < n; i++) {
+    int im = buf[2 * i];
+    int re = buf[2 * i + 1];
+    energy += sqrtf((float)(re * re + im * im));
+  }
+  energy /= (float)n;                           // mean subcarrier amplitude for this packet
+  float flux = fabsf(energy - csiPrevEnergy);
+  csiPrevEnergy = energy;
+  portENTER_CRITICAL_ISR(&csiMux);
+  csiPkts++;
+  csiEnergyAcc += energy;
+  csiFluxAcc   += flux;
+  portEXIT_CRITICAL_ISR(&csiMux);
+}
+
+// Drain the window, derive presence/motion/confidence, and emit the sealed verdict line.
+static void emitVerdict() {
+  uint32_t pkts;
+  float energySum, fluxSum;
+  portENTER_CRITICAL(&csiMux);
+  pkts = csiPkts;  energySum = csiEnergyAcc;  fluxSum = csiFluxAcc;
+  csiPkts = 0;  csiEnergyAcc = 0.0f;  csiFluxAcc = 0.0f;
+  portEXIT_CRITICAL(&csiMux);
+
+  float motion = 0.0f, conf = 0.0f;
+  bool presence = false;
+  if (pkts > 0) {
+    float meanEnergy = energySum / (float)pkts;
+    float meanFlux   = fluxSum / (float)pkts;
+    if (!csiBaselineInit) { csiBaseline = meanEnergy; csiBaselineInit = true; }
+    float dev = csiBaseline > 0.0f ? fabsf(meanEnergy - csiBaseline) / csiBaseline : 0.0f;
+    motion = meanFlux / CSI_MOTION_SCALE;
+    if (motion > 1.0f) motion = 1.0f;
+    presence = (motion >= CSI_PRESENCE_MOTION) || (dev >= CSI_PRESENCE_DEV);
+    // Adapt the baseline SLOWLY while occupied so a present body isn't absorbed into "normal".
+    float alpha = presence ? 0.01f : 0.1f;
+    csiBaseline = (1.0f - alpha) * csiBaseline + alpha * meanEnergy;
+    conf = (float)pkts / (float)CSI_CONF_SAT_PKTS;
+    if (conf > 1.0f) conf = 1.0f;
+    if (pkts < CSI_MIN_PKTS) conf *= 0.4f;      // too little evidence this window
+  }
+  char line[48];                                // "csi presence=1 motion=0.42 conf=0.82" = 36 B < 219
+  snprintf(line, sizeof(line), "csi presence=%d motion=%.2f conf=%.2f",
+           presence ? 1 : 0, motion, conf);
+  sendLine(line);
+}
+
 // Handle one authenticated command. Customise per deployment; the default proves the round-trip.
 static void handleCommand(const uint8_t *pt, size_t len) {
   char cmd[MAX_PT + 1];
@@ -160,13 +246,34 @@ void setup() {
   peer.encrypt = false;                      // frames are already sealed end-to-end
   esp_now_add_peer(&peer);
 
+  // WS1 CSI: capture channel-state on received packets and route it to onCsi(). lltf+htltf give the
+  // most subcarriers; channel_filter keeps only the operating channel; manu_scale off lets the radio
+  // auto-scale amplitudes (we only compare relative energy, so absolute scale doesn't matter).
+  wifi_csi_config_t csiCfg = {};
+  csiCfg.lltf_en          = true;
+  csiCfg.htltf_en         = true;
+  csiCfg.stbc_htltf2_en   = true;
+  csiCfg.ltf_merge_en     = true;
+  csiCfg.channel_filter_en = true;
+  csiCfg.manu_scale       = false;
+  csiCfg.shift            = 0;
+  esp_wifi_set_csi_config(&csiCfg);
+  esp_wifi_set_csi_rx_cb(onCsi, NULL);
+  esp_wifi_set_csi(true);
+
   sendLine("online");                        // announce ourselves through the relay
 }
 
 void loop() {
-  static uint32_t last = 0;
-  if (millis() - last > 30000) {             // heartbeat every 30 s
-    last = millis();
+  static uint32_t lastVerdict = 0;
+  static uint32_t lastBeat = 0;
+  uint32_t now = millis();
+  if (now - lastVerdict >= 1000) {           // one CSI verdict per second
+    lastVerdict = now;
+    emitVerdict();
+  }
+  if (now - lastBeat >= 30000) {             // liveness heartbeat every 30 s
+    lastBeat = now;
     sendLine("heartbeat");
   }
   delay(10);
