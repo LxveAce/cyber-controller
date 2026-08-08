@@ -1278,6 +1278,29 @@ def create_app(
             headers={"Content-Disposition": "attachment; filename=cc-targets.csv"},
         )
 
+    @app.route("/api/macros")
+    @requires_auth
+    def api_macros():
+        """Saved macros for the OPERATE Macros card. Display metadata only — name/steps/protocol/
+        secured; the filesystem PATH is redacted (never leak a server path to the client). Running a
+        macro (replays commands, possibly offensive) is device-dependent + gated — not here."""
+        from src.core.macro_recorder import MacroRecorder
+
+        try:
+            rows = MacroRecorder().list_saved_macros()
+        except Exception:
+            log.exception("macro listing failed")
+            rows = []
+        return jsonify([
+            {
+                "name": m.get("name", ""),
+                "step_count": m.get("step_count", 0),
+                "protocol": m.get("protocol", ""),
+                "secured": bool(m.get("secured", False)),
+            }
+            for m in rows
+        ])
+
     @app.route("/api/channels")
     @requires_auth
     def api_channels():

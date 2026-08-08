@@ -219,6 +219,23 @@ def test_targets_export_requires_auth():
     assert c.get("/api/targets/export").status_code == 401
 
 
+def test_macros_list_is_display_only_no_path_leak():
+    # The Macros card lists saved macros as display metadata — never the filesystem path.
+    c = _client(DeviceManager())
+    r = c.get("/api/macros")
+    assert r.status_code == 200
+    data = r.get_json()
+    assert isinstance(data, list)
+    for m in data:
+        assert set(m) <= {"name", "step_count", "protocol", "secured"}
+        assert "path" not in m  # server path never crosses the wire
+
+
+def test_macros_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/api/macros").status_code == 401
+
+
 def _client_with_desktop_token(token):
     app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
                            desktop_token=token)

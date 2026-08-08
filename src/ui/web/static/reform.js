@@ -659,6 +659,22 @@
   }
   initSettings();
 
+  // B12: OPERATE Macros card — real saved macros from /api/macros (list only; run is device-gated).
+  function initMacros() {
+    var body = document.getElementById("macros-body");
+    var count = document.getElementById("macros-count");
+    if (!body) return;
+    getJSON("/api/macros").then(function (ms) {
+      if (count) count.textContent = ms.length + (ms.length === 1 ? " macro" : " macros");
+      body.innerHTML = ms.length ? ms.map(function (m) {
+        var lock = m.secured ? "🔒 " : "";
+        return "<tr><td>" + lock + esc(m.name) + '</td><td class="dim">' + esc(m.protocol || "—") +
+          '</td><td class="r">' + esc(m.step_count) + "</td></tr>";
+      }).join("") : '<tr><td class="off" colspan="3">no saved macros yet — record one in the desktop app</td></tr>';
+    }).catch(function () { body.innerHTML = '<tr><td class="off" colspan="3">macros unavailable</td></tr>'; });
+  }
+  initMacros();
+
   // ── CRACK: live engine detection + optional-tool fetch (the RUN stays consent-gated) ─
   function crackToolRow(a) {
     var mark = a.present ? "✓" : "✗";
