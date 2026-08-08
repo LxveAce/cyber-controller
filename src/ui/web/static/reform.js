@@ -1174,26 +1174,85 @@
   }
   function renderCrackPanel(panel) {
     var avail = panel.__avail || [];
-    if (!avail.length) {
-      panel.innerHTML = '<div class="dim" style="font-size:11px">No optional tools to fetch here — the built-in native cracker is always ready.</div>';
-      return;
+    var packs = panel.__packs || [];
+    var dfn = panel.__defender || {};
+    var html = '<div class="dim" style="font-size:11px;margin-bottom:4px">Optional engines. The built-in native cracker needs none of these, and everything here is bundled (no download).</div>';
+    // Windows Defender flags these standard tools as PUA — offer the one-time folder exclusion up front.
+    if (dfn.is_windows && dfn.pua_on) {
+      html +=
+        '<div class="dim" style="font-size:11px;margin:4px 0">Windows Defender flags these standard tools as PUA and deletes them unless you add a one-time exclusion for CC\'s tools folder (that folder only). Prefer not to? The native cracker already does the job.</div>' +
+        '<div class="row" style="align-items:center;gap:6px;margin:4px 0">' +
+        '<input class="field mono" id="crack-excl-cmd" readonly style="flex:1;font-size:10.5px" value="' + esc(dfn.exclusion_command || "") + '">' +
+        '<button class="btn sm" id="crack-excl-copy">Copy</button>' +
+        '<button class="btn sm" id="crack-excl-add">Add exclusion (admin)</button></div>';
     }
-    panel.innerHTML =
-      '<div class="dim" style="font-size:11px;margin-bottom:4px">Optional accelerators (the native cracker needs none of these):</div>' +
-      avail.map(crackToolRow).join("") +
-      '<div id="crack-panel-msg" class="dim" style="font-size:11px;margin-top:4px"></div>';
+    // Bundled packs — Enable unpacks the encrypted pack (offline). The design path, no vendor fetch.
+    packs.forEach(function (p) {
+      html += '<div class="row" style="align-items:center;margin:4px 0;font-size:11px">' +
+        '<span style="flex:1"><b>' + esc(p.tool) + '</b> ' + esc(p.version) + ' &#8212; bundled, encrypted, no download. Enable to unpack it and use its full CLI.</span>' +
+        '<button class="btn sm" data-enable="' + esc(p.name) + '">Enable</button></div>';
+    });
+    // Detected tools + guidance for anything without a bundled pack.
+    avail.forEach(function (a) {
+      var hasPack = packs.some(function (p) { return p.tool === a.tool; });
+      if (a.present) {
+        html += '<div class="row" style="font-size:11px;margin:3px 0"><span style="color:var(--green)">&#10003; ' + esc(a.tool) + ' detected' + (a.source ? " (" + esc(a.source) + ")" : "") + ' &#8212; usable as-is</span></div>';
+      } else if (!hasPack) {
+        html += crackToolRow(a);
+      }
+    });
+    html += '<div id="crack-panel-msg" class="dim" style="font-size:11px;margin-top:6px"></div>';
+    panel.innerHTML = html;
     var msg = panel.querySelector("#crack-panel-msg");
+    function setMsg(color, text) { if (msg) { msg.style.color = color; msg.textContent = text; } }
+
+    // Enable a bundled pack (offline, no network).
+    panel.querySelectorAll("button[data-enable]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        var name = b.getAttribute("data-enable");
+        b.disabled = true; b.textContent = "Enabling...";
+        setMsg("var(--dim)", "Unpacking " + name + "...");
+        postJSON("/api/crack/enable-bundled", { pack: name }).then(function (res) {
+          b.textContent = res.ok ? "Enabled" : "Enable";
+          b.disabled = !!res.ok;
+          setMsg(res.ok ? "var(--green)" : "var(--amber)", (res.ok ? "✓ " : "✗ ") + (res.message || (res.ok ? "enabled" : "enable failed")));
+          if (res.ok) initCrack();
+        }).catch(function (err) {
+          b.disabled = false; b.textContent = "Enable";
+          setMsg("var(--amber)", "✗ " + ((err && err.message) || (typeof err === "string" ? err : "enable failed")));
+        });
+      });
+    });
+
+    // Defender exclusion: copy the command, or one-click elevated add.
+    var copyBtn = panel.querySelector("#crack-excl-copy");
+    if (copyBtn) copyBtn.addEventListener("click", function () {
+      var f = panel.querySelector("#crack-excl-cmd");
+      if (f) { f.select(); try { document.execCommand("copy"); } catch (e) {} }
+      setMsg("var(--dim)", "exclusion command copied");
+    });
+    var addBtn = panel.querySelector("#crack-excl-add");
+    if (addBtn) addBtn.addEventListener("click", function () {
+      addBtn.disabled = true;
+      setMsg("var(--dim)", "Requesting an elevated exclusion - approve the UAC prompt...");
+      postJSON("/api/crack/defender-exclusion", {}).then(function (res) {
+        addBtn.disabled = false;
+        setMsg(res.ok ? "var(--green)" : "var(--amber)", res.ok ? "✓ exclusion added - now Enable a tool" : "not added (declined/failed) - run the command manually");
+      }).catch(function () { addBtn.disabled = false; setMsg("var(--amber)", "exclusion request failed - run the command manually"); });
+    });
+
+    // Fallback: network install only for a tool with no bundled pack that CC can still auto-fetch.
     panel.querySelectorAll("button[data-install]").forEach(function (b) {
       b.addEventListener("click", function () {
         var tool = b.getAttribute("data-install");
-        b.disabled = true; b.textContent = "Installing…";
-        if (msg) { msg.style.color = "var(--dim)"; msg.textContent = "Fetching " + tool + "… (download + verify + extract)"; }
+        b.disabled = true; b.textContent = "Installing...";
+        setMsg("var(--dim)", "Fetching " + tool + "...");
         postJSON("/api/crack/install-tool", { tool: tool }).then(function (res) {
-          if (msg) { msg.style.color = "var(--green)"; msg.textContent = "✓ " + tool + " installed → " + (res.path || "tools dir"); }
+          setMsg("var(--green)", "✓ " + tool + " installed → " + (res.path || "tools dir"));
           initCrack();
         }).catch(function (err) {
           b.disabled = false; b.textContent = "Install";
-          if (msg) { msg.style.color = "var(--amber)"; msg.textContent = "✗ " + (typeof err === "string" ? err : "install failed"); }
+          setMsg("var(--amber)", "✗ " + ((err && err.message) || (typeof err === "string" ? err : "install failed")));
         });
       });
     });
@@ -1212,7 +1271,7 @@
         return '<span style="color:' + col + '">' + mark + " " + esc(t.name) + (t.present && t.version ? " " + esc(t.version.split(" ")[0]) : "") + "</span>";
       }).join(" · ") || "native ready";
       var panel = document.getElementById("crack-tools-panel");
-      if (panel) { panel.__avail = d.availability || []; if (!panel.hidden) renderCrackPanel(panel); }
+      if (panel) { panel.__avail = d.availability || []; panel.__packs = d.packs || []; panel.__defender = d.defender || {}; if (!panel.hidden) renderCrackPanel(panel); }
     }).catch(function () { foot.textContent = "engine detection unavailable"; });
   }
   (function wireCrack() {

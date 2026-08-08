@@ -601,8 +601,10 @@ def create_app(
         from src.core.crack_pipeline import available_backends, detect_tools
         from src.core.tool_installer import (
             default_tools_dir, installable_tools, tool_availability)
+        from src.core import defender, tool_bundle
 
         tools = detect_tools()
+        enable_dir = tool_bundle.enable_dir()
         return jsonify({
             "backends": available_backends(tools),
             "tools": [
@@ -615,6 +617,19 @@ def create_app(
                  "can_autofetch": a.can_autofetch, "guidance": a.guidance}
                 for a in tool_availability()
             ],
+            # Bundled encrypted packs — the DESIGN path (offline, no unreliable vendor fetch). Enable
+            # unpacks one into the tools dir; on Windows that dir needs a one-time Defender exclusion
+            # (below) or the extracted PUA binary is re-quarantined.
+            "packs": [
+                {"tool": p.tool, "version": p.version, "name": p.name, "platform": p.platform}
+                for p in tool_bundle.list_packs()
+            ],
+            "defender": {
+                "is_windows": defender.is_windows(),
+                "pua_on": defender.pua_protection_on() is not False,
+                "enable_dir": enable_dir,
+                "exclusion_command": defender.exclusion_command(enable_dir),
+            },
             "installable": installable_tools(),
             "tools_dir": default_tools_dir(),
         })
@@ -644,6 +659,45 @@ def create_app(
         except Exception as exc:  # noqa: BLE001 — surface the honest failure to the panel, install nothing
             return jsonify({"ok": False, "tool": tool, "error": str(exc), "log": log_lines}), 502
         return jsonify({"ok": True, "tool": tool, "path": exe, "log": log_lines})
+
+    @app.route("/api/crack/enable-bundled", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_crack_enable_bundled():
+        """Enable a crack engine from its BUNDLED encrypted pack — offline, no network. This is the design
+        path: the vendor host is unreliable, and Defender deletes the raw binary at rest, so CC ships it
+        encrypted and unpacks it only into the user's Defender-excluded tools folder. Grants NO
+        authorization to crack; a RUN keeps its own separate per-run consent gate."""
+        from src.core import tool_bundle
+        data = _json_body()
+        name = str(data.get("pack") or data.get("tool", "")).strip()
+        pack = next((p for p in tool_bundle.list_packs()
+                     if p.name == name or p.tool == name), None)
+        if pack is None:
+            return jsonify({"ok": False, "error": f"no bundled pack for {name or 'that tool'}"}), 400
+        _audit("crack_enable_bundled", user=session.get("user"), tool=pack.tool)
+        log_lines: list[str] = []
+        ok, msg = tool_bundle.enable_bundled(pack, on_line=lambda line: log_lines.append(str(line)))
+        # 200 even on a non-fatal enable failure (e.g. Defender quarantine): the honest message is the
+        # point of the panel, so the UI shows it via .then rather than losing it in a reject.
+        return jsonify({"ok": ok, "tool": pack.tool, "message": msg, "log": log_lines})
+
+    @app.route("/api/crack/defender-exclusion", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_crack_defender_exclusion():
+        """One-click: add a Windows Defender folder exclusion for CC's tools dir via an elevated (UAC)
+        PowerShell, so an enabled PUA engine isn't re-quarantined. The user sees and can decline the UAC
+        prompt; the exact command is also returned so they can run it manually instead."""
+        from src.core import defender, tool_bundle
+        enable_dir = tool_bundle.enable_dir()
+        if not defender.is_windows():
+            return jsonify({"ok": False, "error": "Defender exclusions are Windows-only",
+                            "dir": enable_dir}), 400
+        _audit("crack_defender_exclusion", user=session.get("user"))
+        ok = defender.add_exclusion_elevated(enable_dir)
+        return jsonify({"ok": bool(ok), "dir": enable_dir,
+                        "command": defender.exclusion_command(enable_dir)})
 
     @app.route("/api/wordlists")
     @requires_auth
