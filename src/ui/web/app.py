@@ -1419,10 +1419,10 @@ def create_app(
     # ── Cross-Comm auto-routing rules (B14) — offensive-automation, doubly gated ──
     # A rule auto-fires its command on a matching target with NO human in the loop per shot. So an
     # offensive rule (safety.classify hits its command) is (1) refused unless the add carries
-    # consent:true AND (2) forced to land DISABLED — it never auto-fires on add. Enabling one later is
+    # consent:true AND (2) forced to land DISABLED — never auto-fires on add. Enabling one later is
     # itself a consent-gated act (the arm). Recon rules add + enable freely. safety.py is untouched.
     def _rule_is_offensive(command: str) -> bool:
-        # Must match is_offensive_macro's coverage: safety.classify catches most offensive verbs, but
+        # Must match is_offensive_macro's coverage: classify catches most offensive verbs, but
         # some transmitting verbs (evilportal/startportal/subghz tx/rfid|nfc emulate/probe/…) carry
         # their danger in CommandInfo metadata and classify() returns '' for the bare string. Union
         # with the same _ATTACK_PREFIXES floor so an offensive rule can't slip in as "recon" and
