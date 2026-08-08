@@ -6,6 +6,27 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Reform web UI — the whole app rebuilt as a single-frame SPA rendered in a native PyQt/QtWebEngine desktop
+  shell (`--ui qtweb`).** A 6-rail workspace (Device / Hunt / Operate / Crack / Map / Terminal / Settings) that
+  lands on Device with no nav bounce-pad, live-hydrated from CC's own hardened Flask + Socket.IO core over
+  loopback (a one-time `/desktop-auth` bootstrap token → clean URL, so the browser never carries credentials in
+  the address). The bottom terminal echoes activity with a send-target selector.
+- **CRACK Lab — end-to-end offline WPA/WPA2 key recovery.** Engine detection + one-click accelerator install
+  (aircrack-ng on Windows), wordlist management (bundled offline core + on-demand catalog download + bring-your-
+  own), a live Captured-Handshakes table fed from the shared CaptureStore, and a **consent-gated native
+  dictionary run** streamed line-by-line to a live log that marks the capture cracked in place on a hit.
+  Dictionary-only; the per-run authorized-use consent is re-checked server-side, never bypassed.
+- **Host-shell TERMINAL tab — a console onto the machine CC runs on (opt-in, loopback-only).** A "Local (host
+  shell)" terminal gated fail-closed: OFF unless `CC_WEB_HOST_SHELL=1`, **refused whenever the server is
+  LAN-exposed**, behind the auth gate — the socket handlers don't exist at all unless enabled.
+- **Mesh node management** — provision / rotate / deprovision / attach / detach for provisioned LxveNode
+  entries; node keys are never rendered (server-redacted), and rotate + deprovision are two-click confirm.
+- **Cross-Comm live surfaces** — a live target-pool event stream, pool Clear / Refresh + Targets CSV export,
+  and **consent-gated auto-routing Rules** (offensive rules refused without consent and forced to land disabled).
+- **Tail Detect** — live follower / persistence tracking off the shared bus, awareness-only (flags a device
+  that keeps reappearing; never confirms a follower and never acts).
+- **Software-OS tab** — a live OS-image catalog + removable-drive detection; the destructive flash is
+  owner-gated by design (a host-CLI hand-off, `cyber-controller --flash-os …`, not a web action).
 - **Kismet `.kismet` (SQLite) wardrive import — HW-unverified.** A stdlib-only reader
   (`wardrive_import.kismet_db_to_points`) parses Kismet's native `.kismet` log — the `devices` table,
   one AP per row, opened read-only and streamed so a multi-GB log never loads whole — into the same map
@@ -36,6 +57,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   and the `verdict_fits_nodelink` ≤219 B assertion (a node emits only the verdict, never raw CSI — it can't
   ride the sealed NodeLink frame). Pure + Qt-free, 12 tests; not wired into any UI yet. Occupancy/motion
   SENSING, **not a camera** — no pixels, no images of people. Design: `WIFI-CAMERA-DESIGN-BRIEF-2026-07-29.md`.
+
+### Changed
+- **Version → 2.0.0-beta** — the 2.0 feature beta. (2.0 was reserved for the features + GUI overhaul; the
+  reform SPA + CRACK Lab + the wired surfaces above are those features. `beta` = work continues toward 2.0 final.)
+- **Settings** now reads the live access-gate status and writes operator settings back to the real store
+  (was a read-only/placeholder surface).
 
 ### Removed
 - **WS5 debloat — the per-firmware GUI pop-outs (Device View skins + Cardputer Remote).** Removed the
@@ -69,6 +96,18 @@ All notable changes to Cyber Controller are documented here. This project adhere
   offensive verbs (both independently gated lab-only by `safety.py`, unchanged). Fixed the WiGLE credential
   verb to `wigle API <name>:<token>` — the real subcommand is case-sensitive (`API`) and takes
   `APIName:APIToken`, so the old lowercase `wigle api <token>` would have failed on a real board.
+
+### Security
+- **Auto-router rules gate hardened (red-team finding).** The rules gate trusted only `safety.classify()`,
+  which returns empty for metadata-danger verbs (`subghz tx`, `evilportal`, `rfid emulate`, `startportal`, …),
+  so an offensive auto-router rule could have landed **enabled** and auto-fired un-gated. The gate now unions
+  with the same attack-prefix floor the macro gate uses, and a regression test covers it. `safety.py` untouched
+  (the fix only strengthens gating).
+- **App-wide CSRF regression guard** — a test that walks the live URL map and asserts every state-changing
+  (POST) route rejects an authenticated-but-CSRF-less request.
+- **Consent gating on offensive automation is enforced server-side.** Macro playback and auto-router rules
+  require `consent: true` verified on the server (the UI checkbox only gates the button); an offensive macro is
+  independently refused by the engine unless armed. The host shell and offensive verbs keep their gates.
 
 ## [1.9.0] — 2026-08-01
 
