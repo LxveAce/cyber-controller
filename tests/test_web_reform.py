@@ -371,6 +371,18 @@ def test_rules_require_csrf():
     assert c.post("/api/rules").status_code == 403
 
 
+def test_rule_metadata_offensive_verbs_are_gated():
+    # Red-team regression: transmitting verbs whose danger is in metadata (classify returns '' for
+    # the bare string) must STILL be treated offensive by the rules gate — else a "subghz tx" /
+    # "evilportal" rule would add enabled and auto-fire un-gated.
+    for verb in ("subghz tx", "evilportal", "rfid emulate", "startportal"):
+        c, _ = _rules_client()
+        r = c.post("/api/rules",
+                   json={"name": "x", "command_template": verb, "device_port": "COM4"},
+                   headers=_HDR)
+        assert r.status_code == 403, f"{verb!r} should be refused without consent"
+
+
 def test_os_images_lists_catalog():
     c = _client(DeviceManager())
     r = c.get("/api/os/images")

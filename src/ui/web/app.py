@@ -1416,15 +1416,22 @@ def create_app(
         macro_recorder.stop_playback()
         return jsonify({"status": "stopping"})
 
-    # ── Cross-Comm auto-routing rules (B14 rules) — offensive-automation, doubly gated ──────────────
+    # ── Cross-Comm auto-routing rules (B14) — offensive-automation, doubly gated ──
     # A rule auto-fires its command on a matching target with NO human in the loop per shot. So an
     # offensive rule (safety.classify hits its command) is (1) refused unless the add carries
     # consent:true AND (2) forced to land DISABLED — it never auto-fires on add. Enabling one later is
     # itself a consent-gated act (the arm). Recon rules add + enable freely. safety.py is untouched.
     def _rule_is_offensive(command: str) -> bool:
+        # Must match is_offensive_macro's coverage: safety.classify catches most offensive verbs, but
+        # some transmitting verbs (evilportal/startportal/subghz tx/rfid|nfc emulate/probe/…) carry
+        # their danger in CommandInfo metadata and classify() returns '' for the bare string. Union
+        # with the same _ATTACK_PREFIXES floor so an offensive rule can't slip in as "recon" and
+        # auto-fire un-gated. (Red-team finding, 2026-08-07.)
         from src.core import safety
+        from src.core.macro_recorder import _ATTACK_PREFIXES
 
-        return bool(safety.classify(command or ""))
+        c = (command or "").strip().lower()
+        return bool(safety.classify(command or "")) or any(c.startswith(p) for p in _ATTACK_PREFIXES)
 
     def _rule_to_dict(r: Any) -> dict:
         tt = r.target_type.value if getattr(r, "target_type", None) is not None else ""
