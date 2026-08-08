@@ -318,6 +318,7 @@
     <div class="subtabs" data-tabs="operate">
       <button class="on" data-sub="console">Console</button>
       <button data-sub="macros">Macros</button>
+      <button data-sub="broadcast" class="pro-tab">Broadcast</button>
     </div>
     <div class="sub on" data-sub="console">
       <div class="card" style="margin-bottom:12px">
@@ -354,6 +355,14 @@
       <tbody id="macros-body"><tr><td class="off" colspan="4">loading macros&#8230;</td></tr></tbody></table>
       <div class="footnote" id="macro-status" style="min-height:14px"></div>
       <div class="footnote">Playback replays the steps to the selected device. A transmitting/offensive macro is refused unless "authorized use" is checked (the engine hard-gates it too); every step still passes the serial write-guard.</div>
+    </div>
+    <div class="sub pro" data-sub="broadcast"><div class="card"><h3><span class="t">Broadcast</span><span class="r">one command &#8594; many devices</span></h3>
+      <div class="footnote" style="margin:-2px 0 10px">Sends the SAME command to every checked device at once. Because fan-out amplifies, a transmitting/offensive command is refused unless "authorized use" is checked (re-checked server-side); recon commands fan out freely. Each device is gated on its own &#8212; a busy/disconnected one is skipped, not a whole-batch failure.</div>
+      <div id="bc-devices" class="row" style="flex-wrap:wrap;gap:10px;margin-bottom:10px"><span class="dim" style="font-size:12px">no connected devices &#8212; connect some in DEVICE &#9656; Dashboard</span></div>
+      <div class="terminput" style="margin-bottom:9px"><span class="pr">&gt;</span><input class="field mono" id="bc-input" aria-label="Broadcast command" placeholder="command to send to all checked devices&#8230;"><button class="btn" id="bc-send">Broadcast</button></div>
+      <label class="chip warn" id="bc-consent-wrap" style="border-color:#8a6100;color:var(--amber)"><input type="checkbox" id="bc-consent" aria-label="Authorized use consent" style="vertical-align:-1px"> authorized use (arms transmitting commands)</label>
+      <div class="footnote" id="bc-status" style="min-height:14px;margin-top:8px"></div>
+      <table style="margin-top:4px"><thead><tr><th>Device</th><th>Result</th></tr></thead><tbody id="bc-results"></tbody></table>
     </div></div>
   </section>
 

@@ -301,6 +301,94 @@ def test_macro_run_requires_auth():
     assert c.post("/api/macros/run").status_code == 401
 
 
+# ── OPERATE Broadcast fan-out (A16) — one command → many devices, doubly gated when offensive ──
+def _broadcast_client():
+    dm = DeviceManager()
+    conns = {}
+    for port in ("COM9", "COM10"):
+        dm.add_device(Device(port=port, name="M", firmware="marauder", connected=True))
+        conns[port] = _FakeConn()
+        dm._connections[port] = conns[port]
+    # COM11 is registered but has NO active connection (per-port skip path)
+    dm.add_device(Device(port="COM11", name="M", firmware="marauder", connected=False))
+    app, _sio = create_app(dm, FlashEngine(), EventBus(), TargetPool())
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["csrf"] = "tok"
+    return c, conns
+
+
+def test_broadcast_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.post("/api/broadcast").status_code == 401
+
+
+def test_broadcast_requires_csrf():
+    assert _client(DeviceManager()).post("/api/broadcast").status_code == 403
+
+
+def test_broadcast_rejects_empty_ports():
+    c, _ = _broadcast_client()
+    r = c.post("/api/broadcast", json={"command": "scanall", "ports": []},
+               headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 400
+
+
+def test_broadcast_recon_fans_out_to_all_connected():
+    c, conns = _broadcast_client()
+    r = c.post("/api/broadcast", json={"command": "scanall", "ports": ["COM9", "COM10"]},
+               headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["offensive"] is False and body["sent"] == 2 and body["failed"] == 0
+    # the command actually reached both live connections
+    assert conns["COM9"].writes == ["scanall"] and conns["COM10"].writes == ["scanall"]
+
+
+def test_broadcast_offensive_refused_without_consent():
+    c, conns = _broadcast_client()
+    r = c.post("/api/broadcast", json={"command": "attack -t deauth", "ports": ["COM9", "COM10"]},
+               headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 403
+    # nothing was transmitted — the gate fired BEFORE any write
+    assert conns["COM9"].writes == [] and conns["COM10"].writes == []
+
+
+def test_broadcast_offensive_allowed_with_consent():
+    c, conns = _broadcast_client()
+    r = c.post("/api/broadcast",
+               json={"command": "attack -t deauth", "ports": ["COM9"], "consent": True},
+               headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["offensive"] is True and body["sent"] == 1
+    assert conns["COM9"].writes == ["attack -t deauth"]
+
+
+def test_broadcast_skips_disconnected_port_without_failing_batch():
+    c, conns = _broadcast_client()
+    r = c.post("/api/broadcast", json={"command": "scanall", "ports": ["COM9", "COM11"]},
+               headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["sent"] == 1 and body["failed"] == 1
+    results = {x["port"]: x for x in body["results"]}
+    assert results["COM9"]["status"] == "sent"
+    assert "error" in results["COM11"]          # disconnected → per-port skip, not a 500
+    assert conns["COM9"].writes == ["scanall"]
+
+
+def test_broadcast_metadata_danger_verb_is_gated_like_rules():
+    # startportal carries its danger in CommandInfo metadata (classify()=='' for the bare string);
+    # the shared _command_is_offensive floor must still gate it — parity with the rules gate.
+    c, conns = _broadcast_client()
+    r = c.post("/api/broadcast", json={"command": "startportal", "ports": ["COM9"]},
+               headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 403
+    assert conns["COM9"].writes == []
+
+
 def _rules_client():
     from src.core.cross_comm import AutoRouter
 

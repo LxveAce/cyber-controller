@@ -1297,6 +1297,19 @@ def create_app(
         _audit("device_disconnect", user=session.get("user"), port=port)
         return jsonify({"status": "disconnected", "port": port})
 
+    def _command_is_offensive(command: str) -> bool:
+        """The single offensive-verb floor shared by the auto-router rules gate AND the OPERATE
+        Broadcast fan-out. classify() catches most offensive verbs, but some transmitting verbs
+        (evilportal/startportal/subghz tx/rfid|nfc emulate/…) carry their danger in CommandInfo
+        metadata and classify() returns '' for the bare string — so union with the _ATTACK_PREFIXES
+        floor. ONE definition so the two gates can't drift apart (red-team finding, 2026-08-07)."""
+        from src.core import safety
+        from src.core.macro_recorder import _ATTACK_PREFIXES
+
+        c = (command or "").strip().lower()
+        return bool(safety.classify(command or "")) or \
+            any(c.startswith(p) for p in _ATTACK_PREFIXES)
+
     @app.route("/api/command", methods=["POST"])
     @requires_auth
     @requires_csrf
@@ -1335,6 +1348,69 @@ def create_app(
             # return a generic message.
             log.exception("serial command failed on %s", port)
             return jsonify({"error": "internal error sending command"}), 500
+
+    @app.route("/api/broadcast", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_broadcast():
+        """OPERATE Broadcast fan-out (A16 Broadcast half): send ONE command to MANY connected ports
+        at once. Because fan-out AMPLIFIES an offensive verb across every selected device, an
+        offensive command is refused unless the body carries consent:true (server-side re-check,
+        same floor as the auto-router rules + macros). Recon/benign commands fan out freely, like
+        the single-send /api/command. Each port is gated independently (busy/disconnected → per-port
+        skip, not a whole-batch failure); safety.py is untouched — LABELS + gates, never blocks."""
+        if not cmd_limiter.allow(_client_ip()):
+            return jsonify({"error": "rate limited"}), 429
+        data = _json_body()
+        command = str(data.get("command", ""))
+        ports = data.get("ports")
+        consent = data.get("consent") is True
+
+        if not command:
+            return jsonify({"error": "command is required"}), 400
+        if len(command) > _MAX_COMMAND_LEN:
+            return jsonify({"error": "command too long"}), 400
+        if not isinstance(ports, list) or not ports:
+            return jsonify({"error": "ports must be a non-empty list"}), 400
+        ports = [str(p) for p in ports]
+        if len(ports) > 64:
+            return jsonify({"error": "too many ports"}), 400
+
+        offensive = _command_is_offensive(command)
+        if offensive and not consent:
+            return jsonify({
+                "error": "This command transmits — confirm authorized use to broadcast it.",
+            }), 403
+
+        results = []
+        sent = 0
+        for port in ports:
+            if not _known_port(port):
+                results.append({"port": port, "error": "unknown/unregistered port"})
+                continue
+            if flash_engine.is_port_busy(port):
+                results.append({"port": port, "error": "busy with a flash operation"})
+                continue
+            conn = device_manager.get_connection(port)
+            if not conn or not conn.is_connected:
+                results.append({"port": port, "error": "no active connection"})
+                continue
+            try:
+                conn.write(command)  # SerialConnection.write rejects embedded control chars
+                _audit("serial_broadcast", user=session.get("user"), port=port,
+                       command=command, offensive=offensive)
+                results.append({"port": port, "status": "sent"})
+                sent += 1
+            except ValueError as exc:
+                results.append({"port": port, "error": str(exc)})
+            except Exception:
+                log.exception("broadcast command failed on %s", port)
+                results.append({"port": port, "error": "internal error"})
+
+        return jsonify({
+            "command": command, "offensive": offensive,
+            "sent": sent, "failed": len(ports) - sent, "results": results,
+        })
 
     # ── Node mutations (W1.1) — CSRF+auth-gated, delegate to the controller ──
 
@@ -1591,16 +1667,10 @@ def create_app(
     # consent:true AND (2) forced to land DISABLED — never auto-fires on add. Enabling one later is
     # itself a consent-gated act (the arm). Recon rules add + enable freely. safety.py is untouched.
     def _rule_is_offensive(command: str) -> bool:
-        # Must match is_offensive_macro's coverage: classify catches most offensive verbs, but
-        # some transmitting verbs (evilportal/startportal/subghz tx/rfid|nfc emulate/probe/…) carry
-        # their danger in CommandInfo metadata and classify() returns '' for the bare string. Union
-        # with the same _ATTACK_PREFIXES floor so an offensive rule can't slip in as "recon" and
-        # auto-fire un-gated. (Red-team finding, 2026-08-07.)
-        from src.core import safety
-        from src.core.macro_recorder import _ATTACK_PREFIXES
-
-        c = (command or "").strip().lower()
-        return bool(safety.classify(command or "")) or any(c.startswith(p) for p in _ATTACK_PREFIXES)
+        # Delegates to the shared _command_is_offensive floor (defined near /api/command) so the rules
+        # gate, the Broadcast fan-out, and the macro floor can't drift apart. (Red-team finding,
+        # 2026-08-07: classify() alone misses metadata-danger transmitting verbs.)
+        return _command_is_offensive(command)
 
     def _rule_to_dict(r: Any) -> dict:
         tt = r.target_type.value if getattr(r, "target_type", None) is not None else ""

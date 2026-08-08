@@ -259,6 +259,7 @@
       if (window.__termSyncDevices) window.__termSyncDevices(devs);
       if (window.__macroSyncDevices) window.__macroSyncDevices(devs);
       if (window.__rulesSyncDevices) window.__rulesSyncDevices(devs);
+      if (window.__bcSyncDevices) window.__bcSyncDevices(devs);
     }).catch(function () {});
   }
 
@@ -899,6 +900,78 @@
     }
   }
   initMacros();
+
+  // OPERATE ▸ Broadcast — one command → many checked devices (A16 Broadcast half). Offensive
+  // commands are gated by the "authorized use" chip + a server-side re-check; recon fans out freely.
+  function initBroadcast() {
+    var list = document.getElementById("bc-devices");
+    var input = document.getElementById("bc-input");
+    var sendBtn = document.getElementById("bc-send");
+    var consent = document.getElementById("bc-consent");
+    var statusEl = document.getElementById("bc-status");
+    var resultsEl = document.getElementById("bc-results");
+    if (!list || !sendBtn) return;
+
+    function setStatus(t, err) {
+      if (!statusEl) return;
+      statusEl.textContent = t || "";
+      statusEl.style.color = err ? "var(--red)" : "var(--dim)";
+    }
+
+    // Re-render the device checklist, preserving which ports were already checked.
+    window.__bcSyncDevices = function (devs) {
+      var checked = {};
+      list.querySelectorAll('input[type="checkbox"]:checked').forEach(function (cb) {
+        checked[cb.value] = true;
+      });
+      var connected = (devs || []).filter(function (d) { return d.connected; });
+      if (!connected.length) {
+        list.innerHTML = '<span class="dim" style="font-size:12px">no connected devices — connect some in DEVICE ▸ Dashboard</span>';
+        return;
+      }
+      list.innerHTML = connected.map(function (d) {
+        var on = checked[d.port] ? " checked" : "";
+        return '<label class="chip"><input type="checkbox" value="' + esc(d.port) + '"' + on +
+          ' style="vertical-align:-1px"> ' + esc(d.port) + " — " +
+          esc(d.firmware || d.name || "device") + "</label>";
+      }).join("");
+    };
+
+    function selectedPorts() {
+      return Array.prototype.map.call(
+        list.querySelectorAll('input[type="checkbox"]:checked'),
+        function (cb) { return cb.value; }
+      );
+    }
+
+    sendBtn.addEventListener("click", function () {
+      var cmd = (input.value || "").trim();
+      var ports = selectedPorts();
+      if (!cmd) { setStatus("type a command to broadcast", true); return; }
+      if (!ports.length) { setStatus("check at least one device", true); return; }
+      if (!window.confirm("Broadcast to " + ports.length + " device(s):\n\n" + cmd + "\n\nProceed?")) return;
+      setStatus("broadcasting to " + ports.length + " device(s)…");
+      if (resultsEl) resultsEl.innerHTML = "";
+      postJSON("/api/broadcast", { command: cmd, ports: ports, consent: !!(consent && consent.checked) })
+        .then(function (r) {
+          setStatus("sent to " + r.sent + " · failed " + r.failed +
+            (r.offensive ? " · flagged transmitting" : ""));
+          if (resultsEl) {
+            resultsEl.innerHTML = (r.results || []).map(function (x) {
+              var ok = x.status === "sent";
+              return "<tr><td class='mono'>" + esc(x.port) + "</td><td class='" +
+                (ok ? "con" : "off") + "'>" + esc(ok ? "sent" : (x.error || "failed")) + "</td></tr>";
+            }).join("");
+          }
+        })
+        .catch(function (err) {
+          // postJSON rejects with the server's `error` string (e.g. the offensive-gate 403), else a status.
+          setStatus(typeof err === "string" ? err : "broadcast refused (" + err + ")", true);
+        });
+    });
+    if (input) input.addEventListener("keydown", function (e) { if (e.key === "Enter") sendBtn.click(); });
+  }
+  initBroadcast();
 
   // B14 (stream half): Cross-Comm live event stream — read-only fan-out of the bus events the app
   // already emits (target_discovered / device connect+disconnect). The auto-routing RULES half stays
