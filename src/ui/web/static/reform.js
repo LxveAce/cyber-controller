@@ -237,6 +237,7 @@
       if (window.__opSyncDevices) window.__opSyncDevices(devs);
       if (window.__fwSyncPorts) window.__fwSyncPorts(devs);
       if (window.__termSyncDevices) window.__termSyncDevices(devs);
+      if (window.__macroSyncDevices) window.__macroSyncDevices(devs);
     }).catch(function () {});
   }
 
@@ -682,15 +683,64 @@
   function initMacros() {
     var body = document.getElementById("macros-body");
     var count = document.getElementById("macros-count");
+    var sel = document.getElementById("macro-device");
+    var consent = document.getElementById("macro-consent");
+    var status = document.getElementById("macro-status");
+    var stopBtn = document.getElementById("macro-stop");
     if (!body) return;
+
+    function setStatus(t, err) { if (status) { status.textContent = t || ""; status.style.color = err ? "var(--red)" : "var(--dim)"; } }
+
+    function run(name, offensive) {
+      if (!sel || !sel.value) { setStatus("select a connected device first", true); return; }
+      if (offensive && !(consent && consent.checked)) {
+        setStatus("this macro transmits — check “authorized use” to run it", true); return;
+      }
+      setStatus("running “" + name + "”…");
+      postJSON("/api/macros/run", { name: name, port: sel.value, consent: !!(consent && consent.checked) })
+        .then(function () { setStatus("started “" + name + "”"); })
+        .catch(function (err) { setStatus("run failed: " + err, true); });
+    }
+
     getJSON("/api/macros").then(function (ms) {
       if (count) count.textContent = ms.length + (ms.length === 1 ? " macro" : " macros");
-      body.innerHTML = ms.length ? ms.map(function (m) {
-        var lock = m.secured ? "🔒 " : "";
-        return "<tr><td>" + lock + esc(m.name) + '</td><td class="dim">' + esc(m.protocol || "—") +
-          '</td><td class="r">' + esc(m.step_count) + "</td></tr>";
-      }).join("") : '<tr><td class="off" colspan="3">no saved macros yet — record one in the desktop app</td></tr>';
-    }).catch(function () { body.innerHTML = '<tr><td class="off" colspan="3">macros unavailable</td></tr>'; });
+      body.innerHTML = ms.length ? "" : '<tr><td class="off" colspan="4">no saved macros yet — record one in the desktop app</td></tr>';
+      ms.forEach(function (m) {
+        var tr = document.createElement("tr");
+        var badge = m.offensive ? ' <span class="badge" style="background:#2b1416;color:var(--red)">transmits</span>' : "";
+        tr.innerHTML = "<td>" + (m.secured ? "🔒 " : "") + esc(m.name) + badge +
+          '</td><td class="dim">' + esc(m.protocol || "—") + '</td><td class="r">' + esc(m.step_count) + "</td>";
+        var td = document.createElement("td");
+        td.className = "r";
+        var play = document.createElement("button");
+        play.className = "btn sm green";
+        play.textContent = "▶ Play";
+        play.addEventListener("click", function () { run(m.name, m.offensive); });
+        td.appendChild(play);
+        tr.appendChild(td);
+        body.appendChild(tr);
+      });
+    }).catch(function () { body.innerHTML = '<tr><td class="off" colspan="4">macros unavailable</td></tr>'; });
+
+    if (stopBtn) stopBtn.addEventListener("click", function () {
+      postJSON("/api/macros/stop", {}).then(function () { setStatus("stopping…"); }).catch(function () {});
+    });
+
+    // device select tracks connected devices; playback progress streams over the socket
+    window.__macroSyncDevices = function (devs) {
+      if (!sel) return;
+      var connected = devs.filter(function (d) { return d.connected; });
+      var prev = sel.value;
+      sel.innerHTML = connected.length
+        ? connected.map(function (d) { return '<option value="' + esc(d.port) + '">' + esc(d.port) + " — " + esc(d.firmware || d.name || "device") + "</option>"; }).join("")
+        : '<option value="">no connected device</option>';
+      if (connected.some(function (d) { return d.port === prev; })) sel.value = prev;
+    };
+    var s = ensureSocket();
+    if (s) {
+      s.on("macro_progress", function (d) { d = d || {}; setStatus("step " + d.step + "/" + d.total + (d.message ? " · " + d.message : "")); });
+      s.on("macro_done", function (d) { d = d || {}; setStatus(d.success ? "✓ " + (d.message || "done") : "✗ " + (d.message || "failed"), !d.success); });
+    }
   }
   initMacros();
 

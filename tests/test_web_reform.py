@@ -227,13 +227,75 @@ def test_macros_list_is_display_only_no_path_leak():
     data = r.get_json()
     assert isinstance(data, list)
     for m in data:
-        assert set(m) <= {"name", "step_count", "protocol", "secured"}
+        assert set(m) <= {"name", "step_count", "protocol", "secured", "offensive"}
         assert "path" not in m  # server path never crosses the wire
 
 
 def test_macros_requires_auth():
     c = _client(DeviceManager(), authed=False)
     assert c.get("/api/macros").status_code == 401
+
+
+class _FakeConn:
+    is_connected = True
+
+    def __init__(self):
+        self.writes = []
+
+    def write(self, s):
+        self.writes.append(s)
+
+
+def _macro_run_client(tmp_path):
+    from src.core.macro_recorder import Macro, MacroRecorder, MacroStep
+
+    rec = MacroRecorder(macros_dir=tmp_path)
+    rec.save_macro(Macro(name="Recon Sweep", steps=[MacroStep(command="scanall")],
+                         device_protocol="marauder"))
+    rec.save_macro(Macro(name="[TEMPLATE] Deauth", steps=[MacroStep(command="attack -t deauth")],
+                         device_protocol="marauder"))
+    dm = DeviceManager()
+    dm.add_device(Device(port="COM9", name="M", firmware="marauder", connected=True))
+    dm._connections["COM9"] = _FakeConn()
+    app, _sio = create_app(dm, FlashEngine(), EventBus(), TargetPool(), macro_recorder=rec)
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["csrf"] = "tok"
+    return c
+
+
+def test_macro_run_offensive_refused_without_consent(tmp_path):
+    # THE safety gate: a transmitting/offensive macro is refused (403) unless authorized-use is
+    # confirmed; the engine ALSO hard-refuses (armed=False) — defense in depth.
+    c = _macro_run_client(tmp_path)
+    r = c.post("/api/macros/run", json={"name": "[TEMPLATE] Deauth", "port": "COM9"},
+               headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 403
+
+
+def test_macro_run_offensive_allowed_with_consent(tmp_path):
+    c = _macro_run_client(tmp_path)
+    body = {"name": "[TEMPLATE] Deauth", "port": "COM9", "consent": True}
+    r = c.post("/api/macros/run", json=body, headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 202
+
+
+def test_macro_run_recon_no_consent_needed(tmp_path):
+    c = _macro_run_client(tmp_path)
+    r = c.post("/api/macros/run", json={"name": "Recon Sweep", "port": "COM9"},
+               headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 202
+
+
+def test_macro_run_requires_csrf():
+    c = _client(DeviceManager())
+    assert c.post("/api/macros/run").status_code == 403
+
+
+def test_macro_run_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.post("/api/macros/run").status_code == 401
 
 
 def _client_with_desktop_token(token):

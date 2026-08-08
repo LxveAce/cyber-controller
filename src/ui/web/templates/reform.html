@@ -328,9 +328,16 @@
       </div>
     </div>
     <div class="sub" data-sub="macros"><div class="card"><h3><span class="t">Saved Macros</span><span class="r" id="macros-count"></span></h3>
-      <table><thead><tr><th>Name</th><th>Firmware</th><th class="r">Steps</th></tr></thead>
-      <tbody id="macros-body"><tr><td class="off" colspan="3">loading macros&#8230;</td></tr></tbody></table>
-      <div class="footnote">Saved command sequences from the desktop app. Playback (which replays the steps to a device, offensive verbs still gated) runs from a connected device &#8212; wiring lands with the OPERATE run pass.</div>
+      <div class="row" style="align-items:center;margin-bottom:9px">
+        <span class="muted">Play on</span>
+        <select class="field" id="macro-device" aria-label="Macro playback device" style="width:auto"><option value="">no connected device</option></select>
+        <label class="chip warn" id="macro-consent-wrap" style="border-color:#8a6100;color:var(--amber)"><input type="checkbox" id="macro-consent" aria-label="Authorized use consent" style="vertical-align:-1px"> authorized use (arms transmitting macros)</label>
+        <button class="btn danger sm" id="macro-stop">Stop</button>
+      </div>
+      <table><thead><tr><th>Name</th><th>Firmware</th><th class="r">Steps</th><th></th></tr></thead>
+      <tbody id="macros-body"><tr><td class="off" colspan="4">loading macros&#8230;</td></tr></tbody></table>
+      <div class="footnote" id="macro-status" style="min-height:14px"></div>
+      <div class="footnote">Playback replays the steps to the selected device. A transmitting/offensive macro is refused unless "authorized use" is checked (the engine hard-gates it too); every step still passes the serial write-guard.</div>
     </div></div>
   </section>
 

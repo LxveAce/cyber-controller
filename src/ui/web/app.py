@@ -124,6 +124,7 @@ def create_app(
     desktop_token: str | None = None,
     capture_store: Any = None,
     host_shell_loopback: bool = False,
+    macro_recorder: Any = None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
 
@@ -182,6 +183,14 @@ def create_app(
     # default vault getter reads the gate-sealed vault, so the keys never reach this process' request path.
     # Injectable so tests can drive locked/unlocked states without a real gate.
     nodes = nodes_controller if nodes_controller is not None else NodesController(device_manager)
+
+    # One recorder for the process so its one-playback-at-a-time guard spans requests (a fresh
+    # instance per request would let concurrent /api/macros/run calls both play). Injectable for tests;
+    # defaults to the real MacroRecorder. Used by the macros list + run routes below.
+    if macro_recorder is None:
+        from src.core.macro_recorder import MacroRecorder
+
+        macro_recorder = MacroRecorder()
 
     # L-2: the web remote drives attack hardware; auth/flash/serial events must be auditable.
     # The normal launch path threads a durable AuditTrail through, but an embedder using the
@@ -1283,23 +1292,106 @@ def create_app(
     def api_macros():
         """Saved macros for the OPERATE Macros card. Display metadata only — name/steps/protocol/
         secured; the filesystem PATH is redacted (never leak a server path to the client). Running a
-        macro (replays commands, possibly offensive) is device-dependent + gated — not here."""
-        from src.core.macro_recorder import MacroRecorder
+        macro replays commands (possibly offensive) — see /api/macros/run for the gated playback."""
+        from src.core.macro_recorder import is_offensive_macro
 
         try:
-            rows = MacroRecorder().list_saved_macros()
+            rows = macro_recorder.list_saved_macros()
         except Exception:
             log.exception("macro listing failed")
             rows = []
-        return jsonify([
-            {
+        out = []
+        for m in rows:
+            offensive = False
+            path = m.get("path")
+            if path:  # classify from the real steps so the UI can warn + arm; file-based only
+                try:
+                    offensive = is_offensive_macro(macro_recorder.load_macro(path))
+                except Exception:
+                    offensive = False
+            out.append({
                 "name": m.get("name", ""),
                 "step_count": m.get("step_count", 0),
                 "protocol": m.get("protocol", ""),
                 "secured": bool(m.get("secured", False)),
-            }
-            for m in rows
-        ])
+                "offensive": offensive,
+            })
+        return jsonify(out)
+
+    @app.route("/api/macros/run", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_macros_run():
+        # Play a saved macro on a CONNECTED device. Safety: the engine (macro_recorder.play)
+        # HARD-refuses an offensive macro unless armed=True; we set armed only after a server-side
+        # consent re-check (body consent:true, else 403 — parity with the crack RUN). Every step is
+        # written through the guarded serial connection (SerialConnection.write classifies danger +
+        # rejects control chars). safety.py is untouched. Recon macros play without consent.
+        from src.core.macro_recorder import is_offensive_macro
+
+        if not cmd_limiter.allow(_client_ip()):
+            return jsonify({"error": "rate limited"}), 429
+        data = _json_body()
+        name = str(data.get("name", ""))
+        port = str(data.get("port", ""))
+        consent = data.get("consent") is True
+        if not name or not port:
+            return jsonify({"error": "name and port are required"}), 400
+        if not _known_port(port):
+            return jsonify({"error": f"Unknown/unregistered port: {port}"}), 400
+        if flash_engine.is_port_busy(port):
+            return jsonify({"error": f"Port {port} is busy with a flash operation"}), 409
+        conn = device_manager.get_connection(port)
+        if not conn or not conn.is_connected:
+            return jsonify({"error": f"No active connection on {port}"}), 400
+        match = next(
+            (m for m in macro_recorder.list_saved_macros()
+             if m.get("name") == name and m.get("path")),
+            None,
+        )
+        if not match:
+            return jsonify({"error": f"Unknown macro: {name}"}), 404
+        try:
+            macro = macro_recorder.load_macro(match["path"])
+        except Exception:
+            log.exception("macro load failed")
+            return jsonify({"error": "Could not load that macro"}), 400
+        offensive = is_offensive_macro(macro)
+        if offensive and not consent:
+            # The consent chip is the arm; without it an offensive (transmitting) macro is refused.
+            return jsonify(
+                {"error": "This macro transmits — confirm authorized use to run it."}
+            ), 403
+
+        _audit("macro_run", user=session.get("user"), macro=name, port=port, offensive=offensive)
+
+        def _progress(idx: int, total: int, msg: str) -> None:
+            socketio.emit(
+                "macro_progress", {"macro": name, "step": idx, "total": total, "message": msg}
+            )
+
+        def _complete(ok: bool, msg: str) -> None:
+            socketio.emit("macro_done", {"macro": name, "success": bool(ok), "message": msg})
+
+        try:
+            macro_recorder.play(
+                macro,
+                send_command=lambda c: conn.write(c),
+                armed=(offensive and consent),
+                progress_callback=_progress,
+                complete_callback=_complete,
+            )
+        except Exception:
+            log.exception("macro playback failed to start on %s", port)
+            return jsonify({"error": "internal error starting playback"}), 500
+        return jsonify({"status": "started", "macro": name, "offensive": offensive}), 202
+
+    @app.route("/api/macros/stop", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_macros_stop():
+        macro_recorder.stop_playback()
+        return jsonify({"status": "stopping"})
 
     @app.route("/api/channels")
     @requires_auth
