@@ -414,10 +414,14 @@
       var btns = g.commands.map(function (c) {
         var dcls = c.danger ? " danger" : "";
         var badge = c.danger ? ' <span class="badge" style="background:#2a2109;color:var(--amber)">' + esc(c.danger) + "</span>" : "";
+        var title = c.native ? ' title="' + esc(c.native) + '"' : "";
         return '<button class="cmdbtn' + dcls + '" data-cmd="' + esc(c.command) + '" data-danger="' +
-          esc(c.danger || "") + '">' + esc(c.label) + badge + '<span class="raw">' + esc(c.command) + "</span></button>";
+          esc(c.danger || "") + '"' + title + ">" + esc(c.label) + badge +
+          '<span class="raw">' + esc(c.command) + "</span></button>";
       }).join("");
-      return '<div class="cat"><h4>' + esc(g.category) + '</h4><div class="cmdgrid">' + btns + "</div></div>";
+      // g.category is now a canonical bucket (Scanning/Attack/Network/Other) — A16.
+      var hcls = g.category === "Attack" ? ' class="atk"' : "";
+      return '<div class="cat"><h4' + hcls + ">" + esc(g.category) + '</h4><div class="cmdgrid">' + btns + "</div></div>";
     }).join("");
     gridEl.querySelectorAll(".cmdbtn").forEach(function (b) {
       b.addEventListener("click", function () {

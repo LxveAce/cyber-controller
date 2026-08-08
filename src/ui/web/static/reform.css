@@ -115,6 +115,7 @@ select.field{appearance:none}
 /* command grid (Operate console) */
 .cmdcats .cat{margin-bottom:12px}
 .cmdcats .cat h4{margin:0 0 7px;font-size:10.5px;letter-spacing:.6px;text-transform:uppercase;color:var(--dim);font-weight:700}
+.cmdcats .cat h4.atk{color:var(--amber)}
 .cmdgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(178px,1fr));gap:7px}
 .cmdbtn{background:#0d1117;border:1px solid var(--bd);border-radius:6px;color:var(--tx);padding:8px 10px;text-align:left;cursor:pointer;font:inherit;font-size:12px}
 .cmdbtn:hover{border-color:var(--acc-dim);background:#12161f}

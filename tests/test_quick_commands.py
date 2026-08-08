@@ -1,7 +1,14 @@
 """Quick-command catalog (MB Remote) — real protocol commands only, correctly classified, no phantoms."""
 from __future__ import annotations
 
-from src.core.quick_commands import QuickCommand, grouped_quick_commands, quick_commands_for
+from src.core.quick_commands import (
+    CANONICAL_GROUPS,
+    QuickCommand,
+    canonical_group,
+    canonical_grouped_quick_commands,
+    grouped_quick_commands,
+    quick_commands_for,
+)
 from src.protocols import get_protocol
 
 
@@ -75,3 +82,43 @@ def test_grouping_preserves_categories_and_membership():
     # every quick command appears exactly once across the groups
     flat = [c.command for _cat, cmds in groups for c in cmds]
     assert sorted(flat) == sorted(q.command for q in quick_commands_for("marauder"))
+
+
+# ── A16 canonical grouping: fold native categories into Scanning/Attack/Network/Other ──
+def test_canonical_group_forces_dangerous_into_attack():
+    # a dangerous command lands in Attack even if its name/category reads benign (mirrors the gate)
+    assert canonical_group("startportal", "General", danger="lab-only") == "Attack"
+    assert canonical_group("literally_anything", "", danger="illegal-tx") == "Attack"
+
+
+def test_canonical_group_keyword_mapping():
+    assert canonical_group("attack -t deauth", "Attack") == "Attack"
+    assert canonical_group("sniffbeacon", "WiFi") == "Attack"        # beacon spam -> Attack
+    assert canonical_group("scanall", "WiFi") == "Scanning"
+    assert canonical_group("list -a", "WiFi") == "Scanning"
+    assert canonical_group("sniffraw", "WiFi") == "Scanning"          # passive sniff -> Scanning
+    assert canonical_group("connect", "WiFi") == "Network"
+    assert canonical_group("dhcpstart", "Network") == "Network"
+    assert canonical_group("reboot", "System") == "Other"
+
+
+def test_canonical_groups_cover_all_commands_in_canonical_order():
+    groups = canonical_grouped_quick_commands("marauder")
+    assert groups, "expected canonical groups for marauder"
+    names = [g for g, _ in groups]
+    # every emitted bucket is a known canonical name, in CANONICAL_GROUPS order, no repeats/empties
+    assert names == [g for g in CANONICAL_GROUPS if g in names]
+    for _g, cmds in groups:
+        assert cmds
+    # bijection with the flat catalog — folding loses nothing and duplicates nothing
+    flat = [c.command for _g, cmds in groups for c in cmds]
+    assert sorted(flat) == sorted(q.command for q in quick_commands_for("marauder"))
+
+
+def test_canonical_attack_bucket_holds_every_dangerous_command():
+    # the load-bearing invariant: nothing safety flags as dangerous escapes the Attack bucket
+    groups = dict(canonical_grouped_quick_commands("marauder"))
+    attack = {c.command for c in groups.get("Attack", [])}
+    for q in quick_commands_for("marauder"):
+        if q.danger:
+            assert q.command in attack, f"dangerous {q.command!r} not grouped under Attack"

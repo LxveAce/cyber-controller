@@ -88,14 +88,17 @@ def test_system_health_requires_auth():
 
 def test_quick_commands_returns_real_registry_for_firmware():
     # The OPERATE console loads its command grid from the firmware's own protocol registry (no
-    # phantom verbs). Marauder has a rich set; each command carries a danger label for the gate.
+    # phantom verbs), folded into the canonical Scanning/Attack/Network/Other buckets (A16). Each
+    # command carries a danger label for the gate + its native category as a sub-label.
     c = _client(DeviceManager())
     data = c.get("/api/quick-commands?firmware=marauder").get_json()
     assert data["firmware"] == "marauder"
     assert data["groups"], "marauder should expose grouped commands"
+    # groups are the canonical buckets, never a raw firmware category
+    assert all(g["category"] in {"Scanning", "Attack", "Network", "Other"} for g in data["groups"])
     cmds = [cmd for g in data["groups"] for cmd in g["commands"]]
     assert any(cmd["command"] == "scanall" for cmd in cmds)
-    assert all(set(cmd) == {"command", "label", "danger"} for cmd in cmds)
+    assert all(set(cmd) == {"command", "label", "danger", "native"} for cmd in cmds)
 
 
 def test_quick_commands_requires_auth():

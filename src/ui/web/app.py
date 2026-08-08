@@ -1034,22 +1034,25 @@ def create_app(
     @app.route("/api/quick-commands")
     @requires_auth
     def api_quick_commands():
-        """The connected device's one-tap command set, grouped by category, for the reform OPERATE
-        console. Commands come from the firmware's own protocol registry (no phantom verbs); danger
+        """The connected device's one-tap command set for the reform OPERATE console, folded into the
+        canonical Scanning/Attack/Network/Other buckets (A16). Commands come from the firmware's own
+        protocol registry (no phantom verbs); each keeps its native category as a sub-label. Danger
         labels drive the client-side confirm (label-never-block). GET only, mutates nothing."""
-        from src.core.quick_commands import grouped_quick_commands
+        from src.core.quick_commands import canonical_grouped_quick_commands
 
         port = str(request.args.get("port", ""))
         dev = device_manager.get_device(port) if port else None
         firmware = getattr(dev, "firmware", "") if dev else str(request.args.get("firmware", ""))
         groups = [
             {
-                "category": cat,
+                "category": group,
                 "commands": [
-                    {"command": c.command, "label": c.label, "danger": c.danger} for c in cmds
+                    {"command": c.command, "label": c.label, "danger": c.danger,
+                     "native": c.category}
+                    for c in cmds
                 ],
             }
-            for cat, cmds in grouped_quick_commands(firmware or "")
+            for group, cmds in canonical_grouped_quick_commands(firmware or "")
         ]
         return jsonify({"port": port, "firmware": firmware, "groups": groups})
 
