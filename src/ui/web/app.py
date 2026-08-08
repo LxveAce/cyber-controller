@@ -125,6 +125,7 @@ def create_app(
     capture_store: Any = None,
     host_shell_loopback: bool = False,
     macro_recorder: Any = None,
+    auto_router: Any = None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
 
@@ -1393,6 +1394,105 @@ def create_app(
         macro_recorder.stop_playback()
         return jsonify({"status": "stopping"})
 
+    # ── Cross-Comm auto-routing rules (B14 rules) — offensive-automation, doubly gated ──────────────
+    # A rule auto-fires its command on a matching target with NO human in the loop per shot. So an
+    # offensive rule (safety.classify hits its command) is (1) refused unless the add carries
+    # consent:true AND (2) forced to land DISABLED — it never auto-fires on add. Enabling one later is
+    # itself a consent-gated act (the arm). Recon rules add + enable freely. safety.py is untouched.
+    def _rule_is_offensive(command: str) -> bool:
+        from src.core import safety
+
+        return bool(safety.classify(command or ""))
+
+    def _rule_to_dict(r: Any) -> dict:
+        tt = r.target_type.value if getattr(r, "target_type", None) is not None else ""
+        return {
+            "name": r.name, "target_type": tt, "ssid_pattern": r.ssid_pattern,
+            "min_rssi": r.min_rssi, "device_port": r.device_port,
+            "command_template": r.command_template, "enabled": r.enabled,
+            "offensive": _rule_is_offensive(r.command_template),
+        }
+
+    @app.route("/api/rules")
+    @requires_auth
+    def api_rules():
+        if auto_router is None:
+            return jsonify([])
+        return jsonify([_rule_to_dict(r) for r in auto_router.list_rules()])
+
+    @app.route("/api/rules", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_rules_add():
+        if auto_router is None:
+            return jsonify({"error": "auto-routing not available"}), 503
+        from src.core.cross_comm import RoutingRule
+        from src.models.target import TargetType
+
+        data = _json_body()
+        name = str(data.get("name", "")).strip()
+        command = str(data.get("command_template", "")).strip()
+        port = str(data.get("device_port", "")).strip()
+        if not name or not command or not port:
+            return jsonify({"error": "name, command_template and device_port are required"}), 400
+        offensive = _rule_is_offensive(command)
+        if offensive and data.get("consent") is not True:
+            return jsonify({"error": "This rule auto-fires an offensive command — confirm "
+                                     "authorized use to add it (it lands disabled until you arm it)."}), 403
+        tt_raw = str(data.get("target_type", "") or "")
+        try:
+            target_type = TargetType(tt_raw) if tt_raw else None
+        except ValueError:
+            return jsonify({"error": f"bad target_type: {tt_raw}"}), 400
+        try:
+            min_rssi = int(data.get("min_rssi", -100))
+            cooldown = float(data.get("cooldown", 30.0))
+        except (TypeError, ValueError):
+            return jsonify({"error": "min_rssi/cooldown must be numbers"}), 400
+        rule = RoutingRule(
+            name=name, target_type=target_type, ssid_pattern=str(data.get("ssid_pattern", "")),
+            min_rssi=min_rssi, device_port=port, command_template=command,
+            enabled=(not offensive),  # offensive rules land DISABLED — never auto-fire on add
+            cooldown=cooldown,
+        )
+        auto_router.add_rule(rule)
+        _audit("rule_add", user=session.get("user"), name=name, offensive=offensive,
+               enabled=rule.enabled)
+        return jsonify({"status": "added", "name": name, "offensive": offensive,
+                        "enabled": rule.enabled}), 201
+
+    @app.route("/api/rules/remove", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_rules_remove():
+        if auto_router is None:
+            return jsonify({"error": "auto-routing not available"}), 503
+        name = str(_json_body().get("name", ""))
+        ok = auto_router.remove_rule(name)
+        _audit("rule_remove", user=session.get("user"), name=name, removed=ok)
+        return jsonify({"status": "removed" if ok else "not_found", "name": name})
+
+    @app.route("/api/rules/toggle", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_rules_toggle():
+        if auto_router is None:
+            return jsonify({"error": "auto-routing not available"}), 503
+        data = _json_body()
+        name = str(data.get("name", ""))
+        enabled = data.get("enabled") is True
+        rule = next((r for r in auto_router.list_rules() if r.name == name), None)
+        if rule is None:
+            return jsonify({"error": f"Unknown rule: {name}"}), 404
+        # Arming (enabling) an offensive rule is the consent-gated act — the moment it can auto-fire.
+        if enabled and _rule_is_offensive(rule.command_template) and data.get("consent") is not True:
+            return jsonify({"error": "Arming an offensive rule needs authorized-use consent."}), 403
+        auto_router.remove_rule(name)
+        rule.enabled = enabled
+        auto_router.add_rule(rule)
+        _audit("rule_toggle", user=session.get("user"), name=name, enabled=enabled)
+        return jsonify({"status": "ok", "name": name, "enabled": enabled})
+
     @app.route("/api/channels")
     @requires_auth
     def api_channels():
@@ -1708,6 +1808,7 @@ def launch_web(
         desktop_token=desktop_token, capture_store=hub.captures,
         # Only a loopback bind is even a candidate for the host shell; the env opt-ins are checked inside.
         host_shell_loopback=is_local,
+        auto_router=hub.router,  # Cross-Comm rules surface (B14) — offensive rules are consent+arm gated
     )
     app.config["cc_hub"] = hub
 

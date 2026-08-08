@@ -151,7 +151,23 @@
               </table>
               <div class="row" style="margin-top:8px"><button class="btn sm" id="pool-refresh">Refresh</button><button class="btn sm danger" id="pool-clear">Clear Pool</button></div>
             </div>
-            <div class="sub pro" data-sub="rules"><div class="dim" style="font-size:11px">Cross-comm rules port in Phase 2.</div></div>
+            <div class="sub pro" data-sub="rules">
+              <div class="footnote" style="margin:-2px 0 8px">A rule auto-fires its command on a matching target. Offensive rules are added <b>disabled</b> and need "authorized use" to arm.</div>
+              <div id="xc-rules" style="margin-bottom:9px"><div class="dim" style="font-size:11px">no rules</div></div>
+              <div class="row" style="gap:5px">
+                <input class="field" id="rule-name" aria-label="Rule name" placeholder="name" style="max-width:90px">
+                <select class="field" id="rule-port" aria-label="Rule device" style="width:auto"><option value="">device</option></select>
+              </div>
+              <div class="row" style="gap:5px;margin-top:5px">
+                <input class="field mono" id="rule-ssid" aria-label="SSID contains" placeholder="ssid contains (any)" style="max-width:120px">
+                <input class="field mono" id="rule-cmd" aria-label="Rule command" placeholder="command (e.g. scanall)" style="flex:1">
+              </div>
+              <div class="row" style="gap:8px;margin-top:6px;align-items:center">
+                <label class="chip warn" style="border-color:#8a6100;color:var(--amber)"><input type="checkbox" id="rule-consent" aria-label="Authorized use" style="vertical-align:-1px"> authorized use</label>
+                <button class="btn sm acc" id="rule-add">Add rule</button>
+                <span class="dim" id="rule-msg" style="font-size:11px"></span>
+              </div>
+            </div>
             <div class="sub pro" data-sub="hist"><div class="dim" style="font-size:11px">Action history ports in Phase 2.</div></div>
             <div class="sub pro" data-sub="stream"><div class="term" id="xc-stream" style="height:120px"><div class="p">Bus events appear here in real time&#8230;</div></div></div>
           </div>

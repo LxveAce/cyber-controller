@@ -238,6 +238,7 @@
       if (window.__fwSyncPorts) window.__fwSyncPorts(devs);
       if (window.__termSyncDevices) window.__termSyncDevices(devs);
       if (window.__macroSyncDevices) window.__macroSyncDevices(devs);
+      if (window.__rulesSyncDevices) window.__rulesSyncDevices(devs);
     }).catch(function () {});
   }
 
@@ -766,6 +767,90 @@
     s.on("device_disconnected", function (d) { line("wa", "[device] disconnected " + ((d || {}).port || "?")); });
   }
   initCrossCommStream();
+
+  // B14 (rules half): Cross-Comm auto-routing rules — offensive rules are consent-gated on add AND
+  // land disabled; arming (enabling) an offensive rule is a second consent-gated act. Mirrors the
+  // server gates so the UI can't imply an offensive rule is live without the operator arming it.
+  function initRules() {
+    var listEl = document.getElementById("xc-rules");
+    var addBtn = document.getElementById("rule-add");
+    var msg = document.getElementById("rule-msg");
+    var portSel = document.getElementById("rule-port");
+    if (!listEl || !addBtn) return;
+    function setMsg(t, err) { if (msg) { msg.textContent = t || ""; msg.style.color = err ? "var(--red)" : "var(--dim)"; } }
+
+    function refresh() {
+      getJSON("/api/rules").then(function (rules) {
+        if (!rules.length) { listEl.innerHTML = '<div class="dim" style="font-size:11px">no rules</div>'; return; }
+        listEl.innerHTML = "";
+        rules.forEach(function (r) {
+          var row = document.createElement("div");
+          row.className = "between";
+          row.style.cssText = "font-size:11px;padding:3px 0;border-bottom:1px solid var(--bd2)";
+          var badge = r.offensive ? ' <span class="badge" style="background:#2b1416;color:var(--red)">offensive</span>' : "";
+          var state = r.enabled ? '<span class="con">● armed</span>' : '<span class="dim">○ disabled</span>';
+          row.innerHTML = "<span>" + esc(r.name) + badge + ' <span class="dim mono">' + esc(r.command_template) +
+            " → " + esc(r.device_port) + "</span></span>";
+          var ctrl = document.createElement("span");
+          ctrl.style.cssText = "display:flex;gap:6px;align-items:center;white-space:nowrap";
+          var toggle = document.createElement("button");
+          toggle.className = "btn sm";
+          toggle.innerHTML = r.enabled ? "Disable" : "Enable";
+          toggle.addEventListener("click", function () {
+            var body = { name: r.name, enabled: !r.enabled };
+            if (!r.enabled && r.offensive) {
+              if (!window.confirm("Arm the offensive rule “" + r.name + "”?\n\nIt will auto-fire “" +
+                r.command_template + "” on every matching target until disabled.")) return;
+              body.consent = true;
+            }
+            postJSON("/api/rules/toggle", body).then(refresh).catch(function (e) { setMsg(e, true); });
+          });
+          var rm = document.createElement("button");
+          rm.className = "btn sm danger";
+          rm.textContent = "×";
+          rm.addEventListener("click", function () {
+            postJSON("/api/rules/remove", { name: r.name }).then(refresh).catch(function () {});
+          });
+          ctrl.innerHTML = state + " ";
+          ctrl.appendChild(toggle); ctrl.appendChild(rm);
+          row.appendChild(ctrl);
+          listEl.appendChild(row);
+        });
+      }).catch(function () { listEl.innerHTML = '<div class="dim" style="font-size:11px">rules unavailable</div>'; });
+    }
+
+    addBtn.addEventListener("click", function () {
+      var name = (document.getElementById("rule-name").value || "").trim();
+      var cmd = (document.getElementById("rule-cmd").value || "").trim();
+      var port = portSel ? portSel.value : "";
+      var consent = document.getElementById("rule-consent");
+      if (!name || !cmd || !port) { setMsg("name, device + command required", true); return; }
+      var body = {
+        name: name, command_template: cmd, device_port: port,
+        ssid_pattern: (document.getElementById("rule-ssid").value || "").trim(),
+        consent: !!(consent && consent.checked),
+      };
+      postJSON("/api/rules", body).then(function (res) {
+        setMsg(res.offensive && !res.enabled ? "added (offensive → disabled; Enable to arm)" : "added");
+        document.getElementById("rule-name").value = "";
+        document.getElementById("rule-cmd").value = "";
+        refresh();
+      }).catch(function (e) { setMsg(typeof e === "string" ? e : "add failed", true); });
+    });
+
+    window.__rulesSyncDevices = function (devs) {
+      if (!portSel) return;
+      var connected = devs.filter(function (d) { return d.connected; });
+      var prev = portSel.value;
+      portSel.innerHTML = '<option value="">device</option>' + connected.map(function (d) {
+        return '<option value="' + esc(d.port) + '">' + esc(d.port) + "</option>";
+      }).join("");
+      if (connected.some(function (d) { return d.port === prev; })) portSel.value = prev;
+    };
+    refresh();
+    window.__ccRefreshRules = refresh;
+  }
+  initRules();
 
   // ── CRACK: live engine detection + optional-tool fetch (the RUN stays consent-gated) ─
   function crackToolRow(a) {

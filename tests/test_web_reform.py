@@ -298,6 +298,76 @@ def test_macro_run_requires_auth():
     assert c.post("/api/macros/run").status_code == 401
 
 
+def _rules_client():
+    from src.core.cross_comm import AutoRouter
+
+    bus = EventBus()
+    router = AutoRouter(bus, lambda port, command: None)
+    app, _sio = create_app(DeviceManager(), FlashEngine(), bus, TargetPool(bus), auto_router=router)
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["csrf"] = "tok"
+    return c, router
+
+
+_HDR = {"X-CSRF-Token": "tok"}
+
+
+def test_rule_add_offensive_refused_without_consent():
+    c, _ = _rules_client()
+    r = c.post("/api/rules",
+               json={"name": "d", "command_template": "attack -t deauth", "device_port": "COM4"},
+               headers=_HDR)
+    assert r.status_code == 403
+
+
+def test_rule_add_offensive_lands_disabled_with_consent():
+    # Even consented, an offensive rule is added DISABLED — it can never auto-fire on add.
+    c, router = _rules_client()
+    r = c.post("/api/rules",
+               json={"name": "d", "command_template": "attack -t deauth", "device_port": "COM4",
+                     "consent": True},
+               headers=_HDR)
+    assert r.status_code == 201
+    assert r.get_json()["enabled"] is False
+    assert all(not rr.enabled for rr in router.list_rules() if rr.name == "d")
+
+
+def test_rule_add_recon_enabled():
+    c, _ = _rules_client()
+    r = c.post("/api/rules",
+               json={"name": "s", "command_template": "scanall", "device_port": "COM4"}, headers=_HDR)
+    assert r.status_code == 201
+    assert r.get_json()["enabled"] is True
+
+
+def test_rule_arm_offensive_needs_consent():
+    c, _ = _rules_client()
+    c.post("/api/rules",
+           json={"name": "d", "command_template": "attack -t deauth", "device_port": "COM4",
+                 "consent": True}, headers=_HDR)
+    # enabling (arming) the offensive rule without consent is refused
+    r = c.post("/api/rules/toggle", json={"name": "d", "enabled": True}, headers=_HDR)
+    assert r.status_code == 403
+    # with consent it arms
+    r2 = c.post("/api/rules/toggle", json={"name": "d", "enabled": True, "consent": True}, headers=_HDR)
+    assert r2.status_code == 200
+
+
+def test_rules_list_and_remove():
+    c, _ = _rules_client()
+    c.post("/api/rules",
+           json={"name": "s", "command_template": "scanall", "device_port": "COM4"}, headers=_HDR)
+    assert any(x["name"] == "s" for x in c.get("/api/rules").get_json())
+    assert c.post("/api/rules/remove", json={"name": "s"}, headers=_HDR).get_json()["status"] == "removed"
+
+
+def test_rules_require_csrf():
+    c = _client(DeviceManager())
+    assert c.post("/api/rules").status_code == 403
+
+
 def _client_with_desktop_token(token):
     app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
                            desktop_token=token)
