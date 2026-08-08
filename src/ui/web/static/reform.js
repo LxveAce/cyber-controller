@@ -73,6 +73,13 @@
     document.getElementById("app").classList.toggle("pro-hidden", b.dataset.depth === "simple");
   });
 
+  // B9: topbar gear ⚙ → open SETTINGS (reuse the rail handler by clicking its navitem).
+  var gearBtn = document.querySelector('.topbar .icon-btn[title="Settings"]');
+  if (gearBtn) gearBtn.addEventListener("click", function () {
+    var s = document.querySelector('.navitem[data-view="settings"]');
+    if (s) s.click();
+  });
+
   // ── live hydration ────────────────────────────────────────────────
   function esc(s) {
     return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
@@ -145,6 +152,13 @@
     setDevMsg("scanning ports…");
     refreshDevices();
     setTimeout(function () { setDevMsg(""); }, 1200);
+  });
+
+  // B13: Cross-Comm pool Refresh + Clear (clears the operator's own scan results; re-scan repopulates).
+  wireBtn("pool-refresh", function () { refreshTargets(); });
+  wireBtn("pool-clear", function () {
+    if (!window.confirm("Clear the shared target pool?\n\nThis removes the current scan results (re-scanning repopulates them).")) return;
+    postJSON("/api/targets/clear", {}).then(function () { refreshTargets(); }).catch(function () {});
   });
 
   function setGauge(metric, v, num, det, invert) {

@@ -149,7 +149,7 @@
                   {% endfor %}
                 </tbody>
               </table>
-              <div class="row" style="margin-top:8px"><button class="btn sm">Refresh</button><button class="btn sm danger">Clear Pool</button></div>
+              <div class="row" style="margin-top:8px"><button class="btn sm" id="pool-refresh">Refresh</button><button class="btn sm danger" id="pool-clear">Clear Pool</button></div>
             </div>
             <div class="sub pro" data-sub="rules"><div class="dim" style="font-size:11px">Cross-comm rules port in Phase 2.</div></div>
             <div class="sub pro" data-sub="hist"><div class="dim" style="font-size:11px">Action history ports in Phase 2.</div></div>
@@ -262,7 +262,7 @@
           <tbody id="hunt-ble-rows"><tr><td class="off" colspan="4">no BLE targets yet &#8212; scan BLE from a connected device</td></tr></tbody></table>
       </div>
     </div>
-    <div class="sub" data-sub="targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span><span class="r"><span id="hunt-tgt-count">0</span> targets</span></h3>
+    <div class="sub" data-sub="targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span><span class="r"><span id="hunt-tgt-count">0</span> targets &#183; <a href="/api/targets/export" download="cc-targets.csv" style="color:var(--acc)">Export CSV</a></span></h3>
       <table><thead><tr><th>Type</th><th>SSID / Name</th><th>MAC</th><th class="r">RSSI</th><th class="r">Ch</th><th>Source</th></tr></thead>
         <tbody id="hunt-targets-rows"><tr><td class="off" colspan="6">pool empty</td></tr></tbody></table></div></div>
     <div class="sub" data-sub="tail"><div class="card"><h3><span class="t">Follower / Tail Detection</span><span class="r">counter-surveillance</span></h3>

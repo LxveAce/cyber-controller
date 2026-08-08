@@ -1255,6 +1255,29 @@ def create_app(
     def api_targets():
         return jsonify([t.to_dict() for t in target_pool.all()])
 
+    @app.route("/api/targets/clear", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_targets_clear():
+        # Clear the shared target pool (the operator's own scan results; re-populated by scanning).
+        # Not destructive to hardware; a client-side confirm guards accidental clicks.
+        n = target_pool.clear()
+        _audit("targets_clear", user=session.get("user"), count=n)
+        return jsonify({"status": "cleared", "count": n})
+
+    @app.route("/api/targets/export")
+    @requires_auth
+    def api_targets_export():
+        # Download the live target pool as a WiGLE-style CSV (read-only; same rows shown in the UI).
+        from src.core.target_export import targets_to_csv
+
+        csv_text = targets_to_csv(target_pool.all())
+        return Response(
+            csv_text,
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=cc-targets.csv"},
+        )
+
     @app.route("/api/channels")
     @requires_auth
     def api_channels():

@@ -174,6 +174,51 @@ def test_flock_requires_auth():
     assert c.get("/api/flock?bbox=0,0,1,1").status_code == 401
 
 
+def _client_with_pool(pool):
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), pool)
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["csrf"] = "tok-xyz"
+    return c
+
+
+def test_targets_clear_empties_the_pool():
+    from src.models.target import Target, TargetType
+
+    pool = TargetPool()
+    pool.add(Target(mac="AA:BB:CC:DD:EE:01", target_type=TargetType.AP, ssid="net", rssi=-50))
+    assert pool.count == 1
+    c = _client_with_pool(pool)
+    r = c.post("/api/targets/clear", headers={"X-CSRF-Token": "tok-xyz"})
+    assert r.status_code == 200
+    assert r.get_json()["count"] == 1  # one removed
+    assert pool.count == 0
+
+
+def test_targets_clear_requires_csrf():
+    c = _client(DeviceManager())  # authed but no CSRF header
+    assert c.post("/api/targets/clear").status_code == 403
+
+
+def test_targets_export_is_csv_download():
+    from src.models.target import Target, TargetType
+
+    pool = TargetPool()
+    pool.add(Target(mac="AA:BB:CC:DD:EE:02", target_type=TargetType.AP, ssid="MyNet", rssi=-60))
+    c = _client_with_pool(pool)
+    r = c.get("/api/targets/export")
+    assert r.status_code == 200
+    assert "text/csv" in r.content_type
+    assert "attachment" in r.headers.get("Content-Disposition", "")
+    assert "MyNet" in r.get_data(as_text=True)
+
+
+def test_targets_export_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/api/targets/export").status_code == 401
+
+
 def _client_with_desktop_token(token):
     app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
                            desktop_token=token)
