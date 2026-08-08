@@ -22,7 +22,7 @@
 #}
 <div class="app" id="app">
   <div class="topbar">
-    <div class="brand"><span class="mark">&#x25C8;</span> Cyber Controller</div>
+    <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"/></svg></span> Cyber Controller</div>
     <span class="crumb" id="crumb"><b>DEVICE</b> &#9656; Dashboard</span>
     <span class="spacer"></span>
     <span class="lamp"><span class="dot"></span> SAFE</span>
@@ -32,14 +32,14 @@
   </div>
 
   <nav class="rail" id="rail">
-    <div class="navitem on" data-view="device"><span class="g">&#9707;</span><span class="lbl">DEVICE</span><span class="sub" id="rail-device-count">{{ device_count }}</span></div>
-    <div class="navitem" data-view="hunt"><span class="g">&#9678;</span><span class="lbl">HUNT</span><span class="sub">live</span></div>
-    <div class="navitem" data-view="operate"><span class="g">&#8984;</span><span class="lbl">OPERATE</span></div>
-    <div class="navitem" data-view="crack"><span class="g">&#9911;</span><span class="lbl">CRACK</span></div>
-    <div class="navitem" data-view="map"><span class="g">&#8982;</span><span class="lbl">MAP</span></div>
+    <div class="navitem on" data-view="device"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg></span><span class="lbl">DEVICE</span><span class="sub" id="rail-device-count">{{ device_count }}</span></div>
+    <div class="navitem" data-view="hunt"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span><span class="lbl">HUNT</span><span class="sub">live</span></div>
+    <div class="navitem" data-view="operate"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></span><span class="lbl">OPERATE</span></div>
+    <div class="navitem" data-view="crack"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="9" r="4"/><path d="M12 12 4 20M7 17l2 2M5 19l1.5 1.5"/></svg></span><span class="lbl">CRACK</span></div>
+    <div class="navitem" data-view="map"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg></span><span class="lbl">MAP</span></div>
     <div class="grow"></div>
-    <div class="navitem" data-view="terminal"><span class="g">&#10095;</span><span class="lbl">TERMINAL</span><span class="sub">{{ device_count }}</span></div>
-    <div class="navitem" data-view="settings"><span class="g">&#9881;</span><span class="lbl">SETTINGS</span></div>
+    <div class="navitem" data-view="terminal"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l5 5-5 5M12 17h7"/></svg></span><span class="lbl">TERMINAL</span><span class="sub">{{ device_count }}</span></div>
+    <div class="navitem" data-view="settings"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><span class="lbl">SETTINGS</span></div>
     <div class="hint">live: Device &#183; Operate &#183; Firmware &#183; Terminal &#183; Hunt &#183; Crack &#183; Map &#183; Mesh &#183; Settings<br>needs hardware/owner: Wardrive &#183; Meshtastic &#183; Software-OS</div>
   </nav>
 
