@@ -13,9 +13,12 @@
 <body>
 {#
   Reform web shell — Ace's approved mockup rendered from CC's own Flask server.
-  DEVICE ▸ Dashboard is LIVE (devices, host gauges, target pool, serial stream fed by the real core).
-  The other rail views + DEVICE sub-tabs are the mockup verbatim (static design preview) — the Phase-2
-  port wires them to the core the same way the Dashboard is wired here. Honest split; the rail hint says so.
+  LIVE, wired to the real core: DEVICE (Dashboard gauges/devices/targets/serial + Firmware flash),
+  HUNT (Wi-Fi/BLE/Targets/Tail), OPERATE (quick-commands console + consent-gated Macros), CRACK
+  (tools/wordlists/captures + gated run), MAP (Flock/ALPR OSINT), TERMINAL (per-port serial),
+  SETTINGS (live read + owner write-back to the real settings store), plus the auto-router Rules and
+  Software-OS catalog. Anything not yet backed by hardware/live topology (e.g. the Mesh layout) is
+  labelled as an illustration in-place — never dressed up as live. Honest split.
 #}
 <div class="app" id="app">
   <div class="topbar">
@@ -37,7 +40,7 @@
     <div class="grow"></div>
     <div class="navitem" data-view="terminal"><span class="g">&#10095;</span><span class="lbl">TERMINAL</span><span class="sub">{{ device_count }}</span></div>
     <div class="navitem" data-view="settings"><span class="g">&#9881;</span><span class="lbl">SETTINGS</span></div>
-    <div class="hint">live: Device &#183; Operate &#183; Firmware &#183; Terminal &#183; Hunt &#183; Crack &#183; Map &#183; Mesh<br>needs hardware/owner: Wardrive &#183; Meshtastic &#183; Software-OS</div>
+    <div class="hint">live: Device &#183; Operate &#183; Firmware &#183; Terminal &#183; Hunt &#183; Crack &#183; Map &#183; Mesh &#183; Settings<br>needs hardware/owner: Wardrive &#183; Meshtastic &#183; Software-OS</div>
   </nav>
 
   <main class="main" id="main">
@@ -253,7 +256,7 @@
     </div>
   </section>
 
-  <!-- ============ HUNT (design preview) ============ -->
+  <!-- ============ HUNT (live: Wi-Fi/BLE/Targets/Tail from the pool) ============ -->
   <section class="view" data-view="hunt">
     <div class="subtabs" data-tabs="hunt">
       <button data-sub="wifi">Wi-Fi</button>
@@ -310,7 +313,7 @@
     </div></div>
   </section>
 
-  <!-- ============ OPERATE (design preview) ============ -->
+  <!-- ============ OPERATE (live: quick-commands console + consent-gated Macros) ============ -->
   <section class="view" data-view="operate">
     <div class="subtabs" data-tabs="operate">
       <button class="on" data-sub="console">Console</button>
@@ -354,7 +357,7 @@
     </div></div>
   </section>
 
-  <!-- ============ CRACK (design preview) ============ -->
+  <!-- ============ CRACK (live: tools/wordlists/captures + gated run) ============ -->
   <section class="view" data-view="crack">
     <div class="notebar">Offline WPA/WPA2 key recovery: capture &#8594; wordlist &#8594; per-run consent &#8594; crack. Dictionary-only; the consent gate is never bypassed.</div>
     <div class="split side">
@@ -400,7 +403,7 @@
     </div>
   </section>
 
-  <!-- ============ MAP (design preview) ============ -->
+  <!-- ============ MAP (live: Flock/ALPR OSINT import) ============ -->
   <section class="view" data-view="map">
     <div class="subtabs" data-tabs="map">
       <button class="on" data-sub="wardrive">Wardrive</button>
