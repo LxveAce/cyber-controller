@@ -5,6 +5,8 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [2.0.0-beta] — 2026-08-08
+
 ### Added
 - **Reform web UI — the whole app rebuilt as a single-frame SPA rendered in a native PyQt/QtWebEngine desktop
   shell (`--ui qtweb`).** A 6-rail workspace (Device / Hunt / Operate / Crack / Map / Terminal / Settings) that
@@ -2374,5 +2376,7 @@ A large feature + hardening release. Every change below was validated against th
 First official release: flash-core overhaul, web remote + security baseline, and the initial
 firmware/profile set.
 
+[Unreleased]: https://github.com/LxveAce/cyber-controller/compare/v2.0.0-beta...HEAD
+[2.0.0-beta]: https://github.com/LxveAce/cyber-controller/releases/tag/v2.0.0-beta
 [1.1.0]: https://github.com/LxveAce/cyber-controller/releases/tag/v1.1.0
 [1.0.0]: https://github.com/LxveAce/cyber-controller/releases/tag/v1.0.0
