@@ -1761,6 +1761,48 @@
   }
   initWardrive();
 
+  // HUNT ▸ Sense — live Wi-Fi CSI presence/motion from a connected sensing node (/api/sensing).
+  // Passive awareness: presence + motion only (the PROVEN tier), never identity, never a target.
+  function initSense() {
+    var rows = document.getElementById("sense-rows");
+    if (!rows) return;
+    var roomEl = document.getElementById("sense-room");
+    var occEl = document.getElementById("sense-occupied");
+    var sumEl = document.getElementById("sense-summary");
+    var empty = '<tr><td class="off" colspan="5">no sensing node connected &#8212; flash the CSI ' +
+      'node firmware + connect it to see live presence/motion</td></tr>';
+    function render(d) {
+      var s = (d && d.summary) || {};
+      var nodes = (d && d.nodes) || [];
+      if (occEl) {
+        var occ = !!s.any_occupied;
+        occEl.textContent = occ ? "● OCCUPIED" : "○ clear";
+        occEl.className = "chip" + (occ ? " on" : "");
+      }
+      if (roomEl) roomEl.textContent = nodes.length ? (s.occupied + "/" + s.total + " occupied") : "—";
+      if (sumEl) sumEl.textContent = nodes.length ? (s.fresh + " fresh · " + s.total + " node(s)") : "—";
+      if (!nodes.length) { rows.innerHTML = empty; return; }
+      rows.innerHTML = nodes.map(function (n) {
+        var pres = n.presence ? '<span class="con">● present</span>' : '<span class="off">○ empty</span>';
+        var stale = n.fresh ? "" : ' <span class="dim">(stale)</span>';
+        var mot = (typeof n.motion === "number") ? n.motion.toFixed(2) : "—";
+        var conf = (typeof n.confidence === "number") ? n.confidence.toFixed(2) : "—";
+        return "<tr><td class='mono'>" + esc(n.node_id) + "</td><td class='r'>" + pres + stale +
+          "</td><td class='r mono'>" + mot + "</td><td class='r mono'>" + conf +
+          "</td><td class='r dim'>" + esc(n.tier || "") + "</td></tr>";
+      }).join("");
+    }
+    function refresh() {
+      getJSON("/api/sensing").then(render).catch(function () {
+        rows.innerHTML = '<tr><td class="er" colspan="5">sensing unavailable</td></tr>';
+      });
+    }
+    window.__ccRefreshSense = refresh;
+    window.__ccRenderSense = render;   // exposed so a render-verify can inject seeded data
+    refresh();
+  }
+  initSense();
+
   // Surface-gated, visibility-aware live cadence (P0-6): one tick that refreshes ONLY the visible
   // surface's data, and stops entirely while the window is hidden/minimized — so an idle or
   // backgrounded app costs nothing on hardware. (The mockup's "live 5s", only where it's on screen.)
@@ -1772,7 +1814,7 @@
   function _pollTick() {
     var v = _activeView();
     if (v === "device") { refreshHealth(); refreshDevices(); refreshTargets(); }
-    else if (v === "hunt") { refreshTargets(); }
+    else if (v === "hunt") { refreshTargets(); if (window.__ccRefreshSense) window.__ccRefreshSense(); }
     // other surfaces are socket-driven or static — no periodic poll needed
   }
   var _pollTimer = null;

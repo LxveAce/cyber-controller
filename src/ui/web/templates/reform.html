@@ -264,6 +264,7 @@
       <button class="on" data-sub="ble">BLE</button>
       <button data-sub="targets">Targets</button>
       <button data-sub="tail">Tail Detect</button>
+      <button data-sub="sense" class="pro-tab">Sense</button>
       <button data-sub="graph">Node Graph</button>
     </div>
     <div class="sub" data-sub="wifi">
@@ -289,6 +290,12 @@
       <div class="between" style="margin-bottom:8px"><span>Min persistence <b class="mono">0.50</b></span><span id="tail-summary" class="dim">&#8212;</span></div>
       <table><thead><tr><th>Device</th><th>Label</th><th class="r">Persistence</th><th class="r">Windows</th></tr></thead>
         <tbody id="tail-rows"><tr><td class="off" colspan="4">no persistent followers &#8212; a device must reappear across time windows to flag</td></tr></tbody></table>
+    </div></div>
+    <div class="sub pro" data-sub="sense"><div class="card"><h3><span class="t">Wi-Fi Sense &#8212; presence &amp; motion</span><span class="r" id="sense-room">&#8212;</span></h3>
+      <div class="footnote" style="margin:-4px 0 10px">Passive Wi-Fi CSI occupancy/motion from a connected sensing node &#8212; it perturbs no one and is NOT a camera. Only presence + motion are real on commodity 2.4&nbsp;GHz (the PROVEN tier); it never identifies a person and a sensed body is never a scan target.</div>
+      <div class="between" style="margin-bottom:8px"><span id="sense-occupied" class="chip">room state &#8212;</span><span id="sense-summary" class="dim">&#8212;</span></div>
+      <table><thead><tr><th>Node</th><th class="r">Presence</th><th class="r">Motion</th><th class="r">Confidence</th><th class="r">Tier</th></tr></thead>
+        <tbody id="sense-rows"><tr><td class="off" colspan="5">no sensing node connected &#8212; flash the CSI node firmware + connect it to see live presence/motion</td></tr></tbody></table>
     </div></div>
     <div class="sub" data-sub="graph"><div class="card"><h3><span class="t">Node Graph</span><span class="r">mesh topology &#183; illustrative preview</span></h3>
       <div class="footnote" style="margin:-4px 0 8px">Illustration of the mesh layout. Live topology renders once a Meshtastic mesh is connected under DEVICE &#9656; Mesh.</div>
