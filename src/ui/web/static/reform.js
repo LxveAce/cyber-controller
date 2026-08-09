@@ -144,6 +144,30 @@
   }
   window.addEventListener("ccbridge-ready", revealNativeControls);
 
+  // Desktop notifications (#19): a long op finishing while the operator's attention is elsewhere
+  // (flash done, key recovered, macro finished). Native path = the QtWebEngine tray via the bridge;
+  // browser path = the web Notifications API (best-effort, permission-gated); otherwise silent. Never
+  // throws — a notification is a courtesy, never load-bearing.
+  var _notifyAsked = false;
+  function notifyDesktop(title, body) {
+    try {
+      if (window.ccbridge && typeof window.ccbridge.notify === "function") {
+        window.ccbridge.notify(String(title || "Cyber Controller"), String(body || ""));
+        return;
+      }
+      if (typeof Notification === "undefined") return;
+      if (Notification.permission === "granted") {
+        new Notification(title || "Cyber Controller", { body: body || "" });
+      } else if (Notification.permission === "default" && !_notifyAsked) {
+        _notifyAsked = true;   // ask once; if granted, later events notify
+        Notification.requestPermission().then(function (p) {
+          if (p === "granted") new Notification(title || "Cyber Controller", { body: body || "" });
+        }).catch(function () {});
+      }
+    } catch (e) { /* notifications are courtesy-only — never break the app over one */ }
+  }
+  window.__ccNotify = notifyDesktop;   // exposed so any surface (+ tests) can fire a desktop notice
+
   // Topbar "Pop out (detach)" → open the CURRENT surface in its own window, deep-linked by #view.
   // Same-origin, so the new window shares this session's auth cookie (no re-login in a browser).
   var popBtn = document.querySelector('.topbar .icon-btn[title="Pop out (detach)"]');
@@ -602,6 +626,8 @@
       if (!d || (fwPort && d.port && d.port !== fwPort)) return;
       if (bar && typeof d.percent === "number") bar.style.width = d.percent + "%";
       if (d.message) appendLine(logEl, d.done ? (d.success ? "ok" : "er") : "rx", d.message);
+      if (d.done) notifyDesktop(d.success ? "Flash complete" : "Flash failed",
+        (d.port || "device") + (d.message ? " — " + d.message : ""));
     });
   }
   initFirmware();
@@ -960,7 +986,12 @@
     var s = ensureSocket();
     if (s) {
       s.on("macro_progress", function (d) { d = d || {}; setStatus("step " + d.step + "/" + d.total + (d.message ? " · " + d.message : "")); });
-      s.on("macro_done", function (d) { d = d || {}; setStatus(d.success ? "✓ " + (d.message || "done") : "✗ " + (d.message || "failed"), !d.success); });
+      s.on("macro_done", function (d) {
+        d = d || {};
+        setStatus(d.success ? "✓ " + (d.message || "done") : "✗ " + (d.message || "failed"), !d.success);
+        notifyDesktop(d.success ? "Macro finished" : "Macro stopped",
+          (d.macro || "macro") + (d.message ? " — " + d.message : ""));
+      });
     }
   }
   initMacros();
@@ -1545,8 +1576,14 @@
     if (socket) {
       socket.on("crack_log", function (m) { if (m) logLine(m.line || ""); });
       socket.on("crack_done", function (m) {
-        if (m && m.cracked) logLine("RECOVERED → " + (m.ssid || "") + " : " + (m.password || ""), "ok");
-        else if (m) logLine("[done] " + (m.detail || "key not in wordlist"), "wa");
+        if (m && m.cracked) {
+          logLine("RECOVERED → " + (m.ssid || "") + " : " + (m.password || ""), "ok");
+          // notify the network name only — never the recovered password in an OS-level notice.
+          notifyDesktop("Key recovered", (m.ssid || m.key || "handshake") + " cracked");
+        } else if (m) {
+          logLine("[done] " + (m.detail || "key not in wordlist"), "wa");
+          notifyDesktop("Crack finished", m.detail || "key not in wordlist");
+        }
         running(false);
         if (window.__ccRefreshCaptures) window.__ccRefreshCaptures();
       });

@@ -74,7 +74,14 @@ def launch_desktop_qt(
             QWebEngineSettings,
             QWebEngineView,
         )
-        from PyQt5.QtWidgets import QAction, QApplication, QFileDialog, QMainWindow
+        from PyQt5.QtWidgets import (
+            QAction,
+            QApplication,
+            QFileDialog,
+            QMainWindow,
+            QMenu,
+            QSystemTrayIcon,
+        )
     except ImportError:
         log.error(
             "PyQtWebEngine is not installed — the Qt desktop shell needs it.\n"
@@ -158,6 +165,26 @@ def launch_desktop_qt(
     view = QWebEngineView(window)
     view.setPage(_ShellPage(view))
 
+    # System tray (#19): a guarded tray icon so the app lives in the tray + raises native notices.
+    # Guarded on isSystemTrayAvailable() — headless/no-tray environments simply get no tray (and
+    # notify() below silently no-ops), never an error.
+    _tray = None
+    if QSystemTrayIcon.isSystemTrayAvailable():
+        _tray = QSystemTrayIcon(window)
+        try:
+            _tray.setIcon(window.windowIcon())
+        except Exception:  # noqa: BLE001 — the tray works without a custom icon
+            pass
+        _tray.setToolTip("Cyber Controller")
+        _tray_menu = QMenu()
+        _tray_menu.addAction("Show", window.showNormal)
+        _tray_menu.addAction("Quit", app.quit)
+        _tray.setContextMenu(_tray_menu)
+        _tray.activated.connect(
+            lambda reason: window.showNormal() if reason == QSystemTrayIcon.Trigger else None
+        )
+        _tray.show()
+
     # QWebChannel native file bridge (#14, the linchpin): expose real OS file dialogs to the reform
     # UI so flash-by-path / wordlist / OS-image / capture selection use a QFileDialog (true absolute
     # path) instead of the browser <input type=file> (fakepath + multi-GB upload). Loopback-desktop
@@ -180,6 +207,15 @@ def launch_desktop_qt(
             """Open an OS save-file dialog and return the chosen path ('' if cancelled)."""
             path, _ = QFileDialog.getSaveFileName(window, title or "Save file", suggested or "")
             return path or ""
+
+        @pyqtSlot(str, str)
+        def notify(self, title: str, body: str) -> None:
+            """Raise a native tray notification (#19) for a finished op — flash done, key recovered,
+            macro finished. Called from reform.js on the relevant socket events. No-ops without a
+            tray. reform.js never sends the recovered PASSWORD here, only the network name."""
+            if _tray is not None:
+                _tray.showMessage(title or "Cyber Controller", body or "",
+                                  QSystemTrayIcon.Information, 5000)
 
     _bridge = _NativeBridge(window)
     _channel = QWebChannel(view.page())
