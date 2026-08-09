@@ -18,11 +18,24 @@ from src.protocols import PROTOCOLS, get_protocol
 _GATE_VERBS = {"arm", "disarm"}
 
 
+def _is_cease_subcommand(name: str) -> bool:
+    """A ``<verb> stop|disable|clear`` cease form (e.g. esp32-div-serial's ``evilportal stop`` /
+    ``capture stop``). ``safety._is_cease`` only matches the LEADING-prefix form (``stopportal``,
+    ``stopattack``), so the subcommand-style CLIs (verb then a cease sub-token) slip its check even
+    though they are genuine cease actions — and ``safety.classify`` already returns SAFE for them.
+    We widen ONLY the test's exemption, NOT ``safety._is_cease`` itself: broadening the real helper
+    would also flip ``ghost-esp:'karma stop'`` from lab-only → SAFE (un-gating a currently-gated
+    command = weakening the floor) — a human safety call, surfaced to Atlas, not auto-applied."""
+    toks = (name or "").strip().lower().split()
+    return len(toks) >= 2 and toks[-1] in safety._CEASE_PREFIXES
+
+
 def _is_gate_or_cease(name: str) -> bool:
     """arm/disarm (the gate) or any stop/clear/disable cease action. A cease verb that stops an
-    attack (e.g. `stopscan`) legitimately belongs in the Offensive group and is legitimately SAFE —
-    safety.py never escalates a cease action, so the guard excepts it too, not just arm/disarm."""
-    return name.strip().lower() in _GATE_VERBS or safety._is_cease(name)
+    attack (e.g. `stopscan`, `evilportal stop`) legitimately belongs in the Offensive group and is
+    legitimately SAFE — safety.py never escalates a cease action, so the guard excepts it too."""
+    return (name.strip().lower() in _GATE_VERBS or safety._is_cease(name)
+            or _is_cease_subcommand(name))
 
 
 def _offensive_commands():
@@ -57,6 +70,17 @@ def test_offensive_cease_action_is_excepted():
     stop = CommandInfo("stopscan", "Offensive", "Stop the current offensive op")
     assert safety.classify(stop.name, stop) == safety.SAFE  # a cease action is SAFE by design
     assert _is_gate_or_cease(stop.name)  # ...and the guard excepts it, so it is never "slipped"
+
+
+def test_subcommand_cease_form_is_excepted():
+    """The `<verb> stop` cease form (esp32-div-serial's `evilportal stop`) must be exempted like the
+    leading-prefix ceases — it stops an attack (no TX) and classify already returns SAFE. Locks the
+    CI-caught gap where the subcommand form slipped safety._is_cease's prefix-only check."""
+    assert _is_gate_or_cease("evilportal stop")      # the exact CI-flagged command
+    assert _is_gate_or_cease("capture stop")
+    assert _is_gate_or_cease("settings -s key disable")
+    assert not _is_gate_or_cease("startportal")      # an ACTIVE offensive verb is NOT a cease
+    assert not _is_gate_or_cease("evilportal start")
 
 
 def test_the_guard_actually_sees_the_offensive_category():
