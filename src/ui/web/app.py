@@ -129,6 +129,7 @@ def create_app(
     macro_recorder: Any = None,
     auto_router: Any = None,
     tail_tracker: Any = None,
+    sensing_model: Any = None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
 
@@ -1151,6 +1152,32 @@ def create_app(
             "latest_tag": res.latest_tag,
             "latest_url": updater.apply_update_url(res) if res.status == "NEWER" else "",
             "behind": res.behind,
+        })
+
+    @app.route("/api/sensing")
+    @requires_auth
+    def api_sensing():
+        """WS1 Wi-Fi CSI sensing rollup for a future Sense view: per-node presence/motion/confidence
+        + a room-occupied summary, from the shared SensingModel (fed by a connected sensing node).
+        Read-only, passive — CC authors no RF and a sensed person is NEVER a scan target. Reports
+        only the PROVEN tier (presence + motion) on commodity 2.4 GHz Wi-Fi CSI."""
+        import time as _time
+
+        empty = {"total": 0, "fresh": 0, "occupied": 0, "any_occupied": False}
+        if sensing_model is None:
+            return jsonify({"supported": True, "summary": empty, "nodes": []})
+        now = _time.monotonic()
+        rows = sensing_model.nodes(now=now)
+        return jsonify({
+            "supported": True,
+            "summary": sensing_model.summary(now),
+            "nodes": [
+                {"node_id": n.node_id, "presence": n.presence, "motion": round(n.motion, 3),
+                 "confidence": round(n.confidence, 3), "tier": n.tier,
+                 "occupied": n.occupied(now), "fresh": n.is_fresh(now),
+                 "freshness": round(n.freshness(now), 3), "verdicts": n.verdicts}
+                for n in rows
+            ],
         })
 
     @app.route("/api/host-shell")
@@ -2256,6 +2283,7 @@ def launch_web(
         # Only a loopback bind is even a candidate for the host shell; the env opt-ins are checked inside.
         host_shell_loopback=is_local,
         auto_router=hub.router,  # Cross-Comm rules surface (B14) — offensive rules are consent+arm gated
+        sensing_model=hub.sensing,  # WS1: CSI sensing-node rollup, read by /api/sensing
     )
     app.config["cc_hub"] = hub
 

@@ -19,12 +19,14 @@ cross-comm rework notes (stage S2).
 from __future__ import annotations
 
 import logging
+import time
 
 from src.core.capture_correlate import CaptureCorrelator
 from src.core.capture_store import CaptureStore
 from src.core.cross_comm import AutoRouter, EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.drivers import driver_for
+from src.core.sensing_model import SensingModel
 from src.core.target_ingest import TargetIngestor
 
 log = logging.getLogger(__name__)
@@ -74,6 +76,13 @@ class CrossCommHub:
         # It also feeds captured handshakes/PMKIDs into the shared capture log.
         self.ingestor = TargetIngestor(self.pool, captures=self.captures, devices=self.dm)
 
+        # WS1 Wi-Fi CSI sensing rollup: a connected sensing node's `sensing_verdict` events (parsed
+        # by csi_sensor) fold into per-node room state here — RX-only awareness, NEVER a Target row.
+        # The observer taps the full parsed-event stream (the seam BLE Analyzer uses) + a monotonic
+        # clock; a "Sense" view reads this model. No effect for any non-sensing firmware.
+        self.sensing = SensingModel()
+        self.ingestor.add_event_observer(self._on_parsed_event)
+
         # Per-port Meshtastic StreamAPI backends. A stream device has no text line channel, so instead of
         # the line ingestor it gets a MeshtasticBackend on the raw byte path (protobuf decode + typed send).
         # Decoded node/channel/text state fans onto the bus under ``mesh.*`` topics; the UI reads it via
@@ -110,6 +119,12 @@ class CrossCommHub:
             log.info("ActionResolver initialized")
         except Exception:  # noqa: BLE001 — optional layer; app runs without it
             log.warning("ActionResolver unavailable — actions disabled", exc_info=True)
+
+    def _on_parsed_event(self, ev, port: str) -> None:
+        """Fold a CSI ``sensing_verdict`` into the sensing model (RX-only). Fires on the serial
+        reader thread for every parsed event; a cheap event-type gate keeps other firmware clear."""
+        if getattr(ev, "event_type", "") == "sensing_verdict":
+            self.sensing.observe(getattr(ev, "data", None), time.monotonic())
 
     def _attach_ingestor(self, port: str, conn) -> None:
         """Attach the shared TargetIngestor to a newly-opened *conn*, parsing with the device's own
