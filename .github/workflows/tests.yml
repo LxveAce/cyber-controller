@@ -1,8 +1,14 @@
 name: Tests
-# The pytest suite (475+ tests: core, web/reform, sensing, red-team, Qt-offscreen render smokes) ran
-# LOCALLY only — lint.yml gated CI on Ruff-F alone, so a test regression could reach a release lint-green.
-# This closes that gap. The suite touches PyQt5 + QtWebEngine, so the runner needs the Qt/GL system libs
-# and a virtual display (xvfb) even though most Qt tests set QT_QPA_PLATFORM=offscreen themselves.
+# The pytest suite (475+ tests: core, web/reform, sensing, red-team, Qt render smokes) ran LOCALLY
+# only — lint.yml gated CI on Ruff-F alone, so a test regression could reach a release lint-green.
+# This closes that gap.
+#
+# Runs on windows-latest by design: CC is developed on Windows and ships as a Windows .exe (the primary
+# target), and a chunk of the suite encodes Windows behavior — exact error-message text (OSError vs
+# Linux FileNotFoundError in flash-argv goldens), native-render pixel metrics, and provision-lock timing.
+# Those pass on Windows and fail on a Linux runner purely from platform differences, so Windows is both
+# the correct and the more-meaningful runner. (A Linux `--ui web` leg could be added later if the suite
+# is made platform-agnostic.) The Windows runner has a desktop context, so PyQt5/QtWebEngine need no xvfb.
 on:
   push:
   pull_request:
@@ -10,21 +16,13 @@ on:
 
 jobs:
   pytest:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: System deps for headless PyQt5 / QtWebEngine
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            xvfb libegl1 libgl1 libopengl0 libglx0 libxkbcommon0 \
-            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
-            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-cursor0 \
-            libnss3 libxdamage1 libxcomposite1 libxrandr2 libxtst6 libasound2t64
       - name: Install app + test deps
         run: pip install -e ".[full,dev]"
-      - name: Run pytest (headless via xvfb)
-        run: xvfb-run -a python -m pytest -q
+      - name: Run pytest
+        run: python -m pytest -q
