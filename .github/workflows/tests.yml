@@ -21,7 +21,10 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install app + test deps
-        run: pip install -e ".[full,dev]"
+        # pytest-xdist gives per-worker process isolation: a Qt widget test that hard-exits the process
+        # kills only its worker (which restarts) instead of the whole run, so the suite completes and the
+        # JUnit report is written even when one test crashes — and it names the crasher.
+        run: pip install -e ".[full,dev]" pytest-xdist
       # A JUnit report uploaded as an artifact — the CI console truncates pytest's -q tail, and a
       # QtWebEngine test can hard-exit the process before the summary prints; the XML captures per-test
       # results either way so failures are always diagnosable.
@@ -34,7 +37,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           QT_OPENGL: software
           QTWEBENGINE_DISABLE_SANDBOX: "1"
-        run: python -m pytest -rf --tb=short --junit-xml=pytest-report.xml
+        run: python -m pytest -n auto --dist loadfile -rf --tb=short --junit-xml=pytest-report.xml
       - name: Upload test report
         if: always()
         uses: actions/upload-artifact@v4
