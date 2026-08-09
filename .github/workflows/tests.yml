@@ -4,11 +4,9 @@ name: Tests
 # This closes that gap.
 #
 # Runs on windows-latest by design: CC is developed on Windows and ships as a Windows .exe (the primary
-# target), and a chunk of the suite encodes Windows behavior — exact error-message text (OSError vs
-# Linux FileNotFoundError in flash-argv goldens), native-render pixel metrics, and provision-lock timing.
-# Those pass on Windows and fail on a Linux runner purely from platform differences, so Windows is both
-# the correct and the more-meaningful runner. (A Linux `--ui web` leg could be added later if the suite
-# is made platform-agnostic.) The Windows runner has a desktop context, so PyQt5/QtWebEngine need no xvfb.
+# target), and a chunk of the suite encodes Windows behavior (exact error text, native-render pixel
+# metrics, provision-lock timing) that fails on a Linux runner from platform differences alone. The
+# Windows runner has a desktop context, so PyQt5 needs no xvfb.
 on:
   push:
   pull_request:
@@ -24,5 +22,15 @@ jobs:
           python-version: "3.12"
       - name: Install app + test deps
         run: pip install -e ".[full,dev]"
+      # A JUnit report uploaded as an artifact — the CI console truncates pytest's -q tail, and a
+      # QtWebEngine test can hard-exit the process before the summary prints; the XML captures per-test
+      # results either way so failures are always diagnosable.
       - name: Run pytest
-        run: python -m pytest -q
+        run: python -m pytest -rf --tb=short --junit-xml=pytest-report.xml
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-report
+          path: pytest-report.xml
+          if-no-files-found: warn
