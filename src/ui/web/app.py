@@ -792,6 +792,38 @@ def create_app(
             })
         return jsonify({"captures": out})
 
+    @app.route("/api/captures/export")
+    @requires_auth
+    def api_captures_export():
+        """Download the Captured Handshakes table as CSV. DISPLAY FIELDS ONLY — never the raw pcap
+        path, the crackable hc22000 hashline, or the recovered password: an export file is portable
+        and leaves the box, so no secret is baked in (stricter than /api/captures, which shows a
+        cracked password on the loopback screen only). GET; mutates nothing."""
+        import csv
+        import io
+
+        def _hhmm(dt: Any) -> str:
+            try:
+                return dt.strftime("%Y-%m-%d %H:%M")
+            except Exception:  # noqa: BLE001 — a bad/absent timestamp just renders blank
+                return ""
+
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow(["ssid", "bssid", "type", "source", "captured", "crack_status"])
+        if capture_store is not None:
+            for c in capture_store.all():
+                writer.writerow([
+                    c.ssid or "", c.bssid or "",
+                    "PMKID" if c.capture_type == "pmkid" else "handshake",
+                    c.device_source or "", _hhmm(c.captured_at), c.crack_status,
+                ])
+        return Response(
+            buf.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=cc-captures.csv"},
+        )
+
     # One crack at a time. The flag is read by the worker's should_stop and guarded by the lock; a UI can
     # only ever have one run in flight (409 otherwise), so we don't track per-run identity.
     _crack_run = {"busy": False, "stop": False, "proc": None}

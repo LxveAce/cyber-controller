@@ -1480,6 +1480,17 @@
       }).catch(function () { body.innerHTML = '<tr><td class="er" colspan="6">captures unavailable</td></tr>'; });
     }
     window.__ccRefreshCaptures = load;   // the rail handler re-pulls this when CRACK is opened
+    // Export the captures table as CSV (display fields only — the server never writes secrets into it).
+    // A programmatic <a download> keeps the SPA in place; same-origin, so the session cookie authes it.
+    var exportBtn = document.getElementById("captures-export");
+    if (exportBtn) exportBtn.addEventListener("click", function () {
+      var a = document.createElement("a");
+      a.href = "/api/captures/export";
+      a.download = "cc-captures.csv";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    });
     load();
   }
   initCaptures();
