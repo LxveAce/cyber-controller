@@ -125,6 +125,25 @@
       "\n\nControlled / authorized use only. Proceed?");
   }
 
+  // Native file bridge (desktop shell only, #14): when the QtWebEngine QWebChannel bridge is present,
+  // open a REAL OS file dialog and hand back the true absolute path. On the browser build
+  // window.ccbridge is undefined, so callers fall back to the manual <input>/text field. Feature-
+  // detected per call (the bridge publishes itself on 'ccbridge-ready', well before any user click).
+  function hasNativeBridge() {
+    return !!(window.ccbridge && typeof window.ccbridge.pick === "function");
+  }
+  function nativePick(kind, cb) {
+    if (!hasNativeBridge()) return false;
+    window.ccbridge.pick(kind, function (path) { if (path) cb(path); });
+    return true;
+  }
+  // Reveal any element that only makes sense with the native bridge (a Browse button), once ready.
+  function revealNativeControls() {
+    if (!hasNativeBridge()) return;
+    document.querySelectorAll("[data-native-only]").forEach(function (el) { el.hidden = false; });
+  }
+  window.addEventListener("ccbridge-ready", revealNativeControls);
+
   // Topbar "Pop out (detach)" → open the CURRENT surface in its own window, deep-linked by #view.
   // Same-origin, so the new window shares this session's auth cookie (no re-login in a browser).
   var popBtn = document.querySelector('.topbar .icon-btn[title="Pop out (detach)"]');
@@ -1410,6 +1429,12 @@
     }
     if (byoAdd) byoAdd.addEventListener("click", addByo);
     if (byoPath) byoPath.addEventListener("keydown", function (e) { if (e.key === "Enter") addByo(); });
+    // Desktop shell: a real OS file picker fills the path (revealed only when the native bridge exists).
+    var byoBrowse = document.getElementById("wl-byo-browse");
+    if (byoBrowse) byoBrowse.addEventListener("click", function () {
+      nativePick("wordlist", function (path) { byoPath.value = path; addByo(); });
+    });
+    revealNativeControls();   // in case the bridge was already ready before this init ran
     var refreshBtn = document.getElementById("wl-refresh");
     if (refreshBtn) refreshBtn.addEventListener("click", load);
     load();

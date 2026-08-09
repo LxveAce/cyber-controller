@@ -65,10 +65,12 @@ def launch_desktop_qt(
     # Leanness (P1-10): trim Chromium before QtWebEngine loads. setdefault so an operator override wins.
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", _LEAN_CHROMIUM_FLAGS)
     try:
-        from PyQt5.QtCore import Qt, QSettings, QUrl
+        from PyQt5.QtCore import QFile, QIODevice, QObject, QSettings, Qt, QUrl, pyqtSlot
         from PyQt5.QtGui import QDesktopServices, QKeySequence
+        from PyQt5.QtWebChannel import QWebChannel
         from PyQt5.QtWebEngineWidgets import (
             QWebEnginePage,
+            QWebEngineScript,
             QWebEngineSettings,
             QWebEngineView,
         )
@@ -155,6 +157,63 @@ def launch_desktop_qt(
 
     view = QWebEngineView(window)
     view.setPage(_ShellPage(view))
+
+    # QWebChannel native file bridge (#14, the linchpin): expose real OS file dialogs to the reform
+    # UI so flash-by-path / wordlist / OS-image / capture selection use a QFileDialog (true absolute
+    # path) instead of the browser <input type=file> (fakepath + multi-GB upload). Loopback-desktop
+    # only; on the web build window.ccbridge is undefined and reform.js falls back to manual input.
+    from src.ui.web.native_bridge import open_picker_spec
+
+    class _NativeBridge(QObject):
+        """Registered on the web channel as ``ccbridge_native``; its slots open native dialogs."""
+
+        @pyqtSlot(str, result=str)
+        def pick(self, kind: str) -> str:
+            """Open an OS open-file dialog for *kind* and return the chosen absolute path ('' if
+            cancelled). Modal on the Qt main thread (the channel delivers slot calls here)."""
+            title, file_filter = open_picker_spec(kind)
+            path, _ = QFileDialog.getOpenFileName(window, title, "", file_filter)
+            return path or ""
+
+        @pyqtSlot(str, str, result=str)
+        def pickSave(self, title: str, suggested: str) -> str:  # noqa: N802 (JS-facing camelCase)
+            """Open an OS save-file dialog and return the chosen path ('' if cancelled)."""
+            path, _ = QFileDialog.getSaveFileName(window, title or "Save file", suggested or "")
+            return path or ""
+
+    _bridge = _NativeBridge(window)
+    _channel = QWebChannel(view.page())
+    _channel.registerObject("ccbridge_native", _bridge)
+    view.page().setWebChannel(_channel)
+
+    # Inject qwebchannel.js (shipped as a Qt resource) + a tiny bootstrap that publishes
+    # window.ccbridge, so the page can call the native pickers. DocumentReady = window exists; the
+    # bridge is ready well before any user click. Fires 'ccbridge-ready' so the UI reveals Browse.
+    def _read_qrc(qrc_path: str) -> str:
+        f = QFile(qrc_path)
+        if f.open(QIODevice.ReadOnly):
+            try:
+                return bytes(f.readAll()).decode("utf-8")
+            finally:
+                f.close()
+        return ""
+
+    _qwc_js = _read_qrc(":/qtwebchannel/qwebchannel.js")
+    if _qwc_js:
+        _boot = _qwc_js + (
+            "\nnew QWebChannel(qt.webChannelTransport, function(channel){"
+            "window.ccbridge = channel.objects.ccbridge_native;"
+            "window.dispatchEvent(new Event('ccbridge-ready'));});\n"
+        )
+        _script = QWebEngineScript()
+        _script.setName("cc-webchannel-bootstrap")
+        _script.setSourceCode(_boot)
+        _script.setInjectionPoint(QWebEngineScript.DocumentReady)
+        _script.setWorldId(QWebEngineScript.MainWorld)
+        _script.setRunsOnSubFrames(False)
+        view.page().profile().scripts().insert(_script)
+    else:
+        log.warning("qwebchannel.js resource missing — native file bridge off (web fallback used)")
 
     # Downloads (P0-3): route any download the page triggers to a native Save dialog.
     def _on_download(item) -> None:
