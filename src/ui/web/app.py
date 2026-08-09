@@ -800,8 +800,12 @@ def create_app(
         path, the crackable hc22000 hashline, or the recovered password: an export file is portable
         and leaves the box, so no secret is baked in (stricter than /api/captures, which shows a
         cracked password on the loopback screen only). GET; mutates nothing."""
-        import csv
-        import io
+        # Route every string cell through the SAME formula-injection-safe field encoder the target/
+        # wardrive CSV exporters use (OWASP CSV Injection): an attacker controls the SSID, so a
+        # value like ``=HYPERLINK(...)`` must be neutralized before it opens in a spreadsheet.
+        # _csv_field also does comma/quote/newline quoting, so rows are built by join (not writer)
+        # to avoid double-quoting — mirrors src/core/target_export.py.
+        from src.core.wardrive import _csv_field
 
         def _hhmm(dt: Any) -> str:
             try:
@@ -809,18 +813,17 @@ def create_app(
             except Exception:  # noqa: BLE001 — a bad/absent timestamp just renders blank
                 return ""
 
-        buf = io.StringIO()
-        writer = csv.writer(buf)
-        writer.writerow(["ssid", "bssid", "type", "source", "captured", "crack_status"])
+        lines = ["ssid,bssid,type,source,captured,crack_status"]
         if capture_store is not None:
             for c in capture_store.all():
-                writer.writerow([
-                    c.ssid or "", c.bssid or "",
+                lines.append(",".join([
+                    _csv_field(c.ssid), _csv_field(c.bssid),
                     "PMKID" if c.capture_type == "pmkid" else "handshake",
-                    c.device_source or "", _hhmm(c.captured_at), c.crack_status,
-                ])
+                    _csv_field(c.device_source), _csv_field(_hhmm(c.captured_at)),
+                    _csv_field(c.crack_status),
+                ]))
         return Response(
-            buf.getvalue(),
+            "\n".join(lines) + "\n",
             mimetype="text/csv",
             headers={"Content-Disposition": "attachment; filename=cc-captures.csv"},
         )
