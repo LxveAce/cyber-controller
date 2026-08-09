@@ -26,6 +26,14 @@ jobs:
       # QtWebEngine test can hard-exit the process before the summary prints; the XML captures per-test
       # results either way so failures are always diagnosable.
       - name: Run pytest
+        # Force every Qt test to the offscreen platform + software GL. The hosted runner's desktop
+        # session lacks a real GPU, so a widget test that hits the GL/render path hard-exits the whole
+        # process (~79% in, no summary, no report). Most tests set offscreen themselves; this makes it
+        # global so the ones that don't can't crash the runner. safety-net: --maxfail keeps a report.
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_OPENGL: software
+          QTWEBENGINE_DISABLE_SANDBOX: "1"
         run: python -m pytest -rf --tb=short --junit-xml=pytest-report.xml
       - name: Upload test report
         if: always()
