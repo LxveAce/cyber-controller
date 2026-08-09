@@ -1811,10 +1811,18 @@
     var el = document.querySelector(".main .view.on");
     return el ? el.dataset.view : "";
   }
+  function _activeHuntSub() {
+    var el = document.querySelector('.view[data-view="hunt"] .sub.on');
+    return el ? el.dataset.sub : "";
+  }
   function _pollTick() {
     var v = _activeView();
     if (v === "device") { refreshHealth(); refreshDevices(); refreshTargets(); }
-    else if (v === "hunt") { refreshTargets(); if (window.__ccRefreshSense) window.__ccRefreshSense(); }
+    else if (v === "hunt") {
+      refreshTargets();
+      // only poll /api/sensing while the Sense sub-tab is actually showing (not every HUNT sub-tab)
+      if (_activeHuntSub() === "sense" && window.__ccRefreshSense) window.__ccRefreshSense();
+    }
     // other surfaces are socket-driven or static — no periodic poll needed
   }
   var _pollTimer = null;
