@@ -22,6 +22,18 @@ All notable changes to Cyber Controller are documented here. This project adhere
   an armed/red state), and a divider separates the brand from the breadcrumb.
 
 ### Added
+- **QWebChannel native file bridge (desktop shell).** The `--ui qtweb` window exposes real OS file dialogs to
+  the web UI (`window.ccbridge.pick`), so wordlist/firmware/OS-image selection uses a true absolute path instead
+  of the browser `<input type=file>` fakepath; the browser build falls back to manual entry unchanged.
+- **System tray + desktop notifications (desktop shell).** A guarded tray icon (Show/Quit) and native notices
+  for finished ops — flash complete, key recovered, macro finished (browser build uses the web Notifications
+  API); the recovered password is never put in a notice, only the network name.
+- **Wi-Fi Sense surface (HUNT ▸ Sense).** A live occupancy/motion readout backed by `GET /api/sensing`: a
+  `csi-sensor` protocol parses a sensing node's verdict lines into a per-node presence/motion rollup
+  (`SensingModel`), read-only and passive — presence + motion only (the PROVEN tier), never a camera, never a
+  scan target. End-to-end host chain; live CSI needs the node hardware.
+- **Captured-Handshakes CSV export** (`GET /api/captures/export`) — display fields only; the recovered
+  password, pcap path, and hashline are never written into the portable file.
 - **Reform web UI — the whole app rebuilt as a single-frame SPA rendered in a native PyQt/QtWebEngine desktop
   shell (`--ui qtweb`).** A 6-rail workspace (Device / Hunt / Operate / Crack / Map / Terminal / Settings) that
   lands on Device with no nav bounce-pad, live-hydrated from CC's own hardened Flask + Socket.IO core over
@@ -131,6 +143,9 @@ All notable changes to Cyber Controller are documented here. This project adhere
   "design preview" labels that understated now-wired surfaces; added SETTINGS to the live rail hint.
 
 ### Security
+- **CSV formula-injection neutralized in exports (red-team finding).** An attacker-controlled SSID like
+  `=HYPERLINK(...)` written raw into the captures/targets CSV would execute when opened in a spreadsheet;
+  every string cell now routes through the shared formula-safe `_csv_field` encoder (OWASP CSV Injection).
 - **Auto-router rules gate hardened (red-team finding).** The rules gate trusted only `safety.classify()`,
   which returns empty for metadata-danger verbs (`subghz tx`, `evilportal`, `rfid emulate`, `startportal`, …),
   so an offensive auto-router rule could have landed **enabled** and auto-fired un-gated. The gate now unions
