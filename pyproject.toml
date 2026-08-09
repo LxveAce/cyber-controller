@@ -46,6 +46,10 @@ dependencies = [
     # encrypted so Windows Defender can't false-positive-delete the standard FOSS binaries at rest; CC
     # unpacks them only into a user-excluded folder on explicit opt-in (src/core/tool_bundle.py).
     "pyzipper>=0.3",
+    # defusedxml: hardened XML parsing for wardrive imports (Kismet .netxml) — refuses XXE / entity-
+    # expansion attacks in an untrusted survey file (src/core/wardrive_import.py). Runtime-required; was
+    # undeclared (present in dev envs, absent on a clean install → the netxml parser ImportError'd).
+    "defusedxml>=0.7",
 ]
 
 [project.optional-dependencies]
