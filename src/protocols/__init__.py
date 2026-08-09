@@ -27,6 +27,7 @@ from src.protocols.bluejammer import BlueJammerProtocol
 from src.protocols.bluestress import BlueStressProtocol
 from src.protocols.bruce import BruceProtocol
 from src.protocols.bw16 import BW16Protocol
+from src.protocols.csi_sensor import CsiSensorProtocol
 from src.protocols.drone_mesh import DroneMeshProtocol
 from src.protocols.esp32_div import Esp32DivProtocol
 from src.protocols.esp32_div_serial import Esp32DivSerialProtocol
@@ -94,6 +95,7 @@ PROTOCOLS: dict[str, type[BaseProtocol]] = {
     "bluestress": BlueStressProtocol,
     "flock-you": FlockYouProtocol,
     "drone-mesh": DroneMeshProtocol,
+    "csi-sensor": CsiSensorProtocol,
     "esp_at": EspAtProtocol,
     # Fallbacks (both names map to the same passthrough class).
     "generic": GenericProtocol,
@@ -130,6 +132,12 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     # parses into drone_found -> DroneWatchModel), but is intentionally NOT given a display name
     # yet — slice 1 is the parser + model only; the display name + the tab land in slice 2, so the
     # advertised parser/firmware count stays untouched. Same posture as esp32-div-serial.
+    # NOTE: "csi-sensor" (WS1 Wi-Fi CSI sensing node) is registered in PROTOCOLS above and works via
+    # identify()/get_protocol — a node's `csi presence/motion/conf` verdict lines parse into
+    # sensing_verdict events through src.core.sensing — but is intentionally NOT given a display
+    # name yet: the node firmware is compile-validated only, not HW-validated against a live CSI
+    # capture, so it must not inflate the advertised parser count. Add the name (+ csi_sensor.json
+    # profile + Sense viz) once HW-validated. Same posture as drone-mesh / lxvenode.
     "esp_at": "ESP-AT (Espressif)",
     "generic": "Generic / Raw",
     "raw": "Generic / Raw",
