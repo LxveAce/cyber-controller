@@ -1,7 +1,8 @@
 # Cyber Controller — Future Roadmap
 
-Where the flagship goes next. Grounded in the current shipped reality (v1.6.4: Qt/Tk/TUI/Web front-ends,
-5 flash backends, 12 protocol parsers, 31 profile JSONs, cross-comm AutoRouter, dead-man-switch submodule)
+Where the flagship goes next. Grounded in the current shipped reality (v1.8.0 stable / v2.0.0-beta: the
+reform web-SPA GUI plus Qt/Tk/TUI/Web front-ends, 5 flash backends, 14 protocol parsers, 51 profile JSONs,
+cross-comm AutoRouter, dead-man-switch submodule)
 and the planned support advertised on cybercontroller.org. **Principle that governs every line below:
 reliability over reach — a target is only marketed as *supported* once it is validated on real hardware.**
 Code can land ahead of validation, but it ships flagged `HW-validation pending`, never as "supported."
