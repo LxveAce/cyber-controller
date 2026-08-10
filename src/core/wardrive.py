@@ -813,9 +813,29 @@ def wigle_csv_to_gpx(text: str) -> str:
     return "\n".join(out) + "\n"
 
 
+def wigle_csv_to_geojson(text: str) -> str:
+    """Convert a WiGLE wardrive CSV into a GeoJSON FeatureCollection: one Point Feature per network
+    at its strongest-RSSI position (via :func:`wigle_csv_to_points`), ``properties`` = ``{ssid,
+    bssid}``. GeoJSON (RFC 7946) coordinates are ``[lon, lat]`` — longitude first. Deterministic
+    (sorted by BSSID). ``json.dumps`` escapes every string, so — unlike the KML/GPX siblings — there
+    is no markup-injection surface. Awareness-only: reads metadata, transmits nothing.
+    """
+    import json
+
+    features = [
+        {
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [round(lon, 7), round(lat, 7)]},
+            "properties": {"ssid": ssid, "bssid": bssid},
+        }
+        for lat, lon, ssid, bssid in sorted(wigle_csv_to_points(text), key=lambda p: p[3])
+    ]
+    return json.dumps({"type": "FeatureCollection", "features": features}, indent=2) + "\n"
+
+
 def wardrive_export_cli(csv_path: str, fmt: str) -> int:
-    """CLI for ``--wardrive-kml`` / ``--wardrive-gpx``: convert a WiGLE CSV to KML/GPX on stdout,
-    then exit (0 ok, 1 on a missing file or unknown format). Read-only; transmits nothing."""
+    """CLI for ``--wardrive-kml`` / ``--wardrive-gpx`` / ``--wardrive-geojson``: convert a WiGLE CSV
+    to KML/GPX/GeoJSON on stdout, then exit (0 ok, 1 on a missing file / bad format). Read-only."""
     if not os.path.isfile(csv_path):
         print(f"[wardrive] no such file: {csv_path}")
         return 1
@@ -825,6 +845,8 @@ def wardrive_export_cli(csv_path: str, fmt: str) -> int:
         print(wigle_csv_to_kml(text), end="")
     elif fmt == "gpx":
         print(wigle_csv_to_gpx(text), end="")
+    elif fmt == "geojson":
+        print(wigle_csv_to_geojson(text), end="")
     else:
         print(f"[wardrive] unknown export format: {fmt}")
         return 1

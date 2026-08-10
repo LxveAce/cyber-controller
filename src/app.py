@@ -121,6 +121,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--wardrive-plan-nodes", type=int, default=3, metavar="N", help="How many simultaneous radios/nodes --wardrive-plan should assign to the busiest channels (default 3).")
     parser.add_argument("--wardrive-kml", default=None, metavar="CSV", help="Convert a WiGLE wardrive CSV to KML (Google Earth) on stdout, then exit.")
     parser.add_argument("--wardrive-gpx", default=None, metavar="CSV", help="Convert a WiGLE wardrive CSV to GPX 1.1 waypoints on stdout, then exit.")
+    parser.add_argument("--wardrive-geojson", default=None, metavar="CSV", help="Convert a WiGLE wardrive CSV to a GeoJSON FeatureCollection on stdout, then exit.")
     parser.add_argument("--check-firmware-updates", action="store_true", help="Check GitHub for newer releases of your cached firmware (one call per cached profile), print any updates, then exit.")
     parser.add_argument("--mission", default=None, metavar="FILE", help="Dry-run a mission JSON: print the ordered schedule + any SAFE/ARMED refusals, then exit (no device I/O). Send with: python -m src.core.mission_runner FILE --execute.")
     return parser.parse_args(argv)
@@ -445,6 +446,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.wardrive_gpx:
         from src.core.wardrive import wardrive_export_cli
         return wardrive_export_cli(args.wardrive_gpx, "gpx")
+    if args.wardrive_geojson:
+        from src.core.wardrive import wardrive_export_cli
+        return wardrive_export_cli(args.wardrive_geojson, "geojson")
     if args.check_firmware_updates:
         from src.core.firmware_vault import check_updates_cli
         return check_updates_cli()
