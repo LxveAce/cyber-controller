@@ -5,6 +5,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Added
+- **POSEIDON flash profile** (`GeneralDussDuss/poseidon`) — keyboard-first pentest firmware for the M5Stack
+  Cardputer-Advance (ESP32-S3). Tracks the latest upstream release and flashes the `poseidon-factory.bin`
+  merged image at `0x0` (the same offset the project's own web installer uses); the `poseidon-launcher.bin`
+  app-slot variant is intentionally not selected. The v0.6.8 factory image is SHA-256-pinned. Labeled
+  `illegal-tx` (it ships a 2.4GHz CW/broadband + sub-GHz jammer among its features) per the same convention
+  as the other jammer-bearing profiles — flash-and-study for an authorized lab; CC authors no TX. Brings the
+  bundled profile count to **51**.
+
 ## [2.0.0-beta] — 2026-08-08
 
 ### Fixed

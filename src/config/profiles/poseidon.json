@@ -1,0 +1,49 @@
+{
+  "name": "POSEIDON",
+  "label": "POSEIDON (GeneralDussDuss)",
+  "id": "poseidon",
+  "core_id": "poseidon",
+  "description": "Keyboard-first pentesting firmware for the M5Stack Cardputer-Advance (ESP32-S3). 163 features across WiFi, BLE, sub-GHz, 2.4GHz, LoRa/Mesh, IR, LAN/network, BadUSB and recon, plus 'Argus' — an autonomous handshake-hunting gotchi. Same family as Bruce / Evil-M5Project / ESP32Marauder, built around a real QWERTY keyboard instead of a D-pad. Includes RF-transmit attacks (a 2.4GHz CW/broadband 'Data Flood Jammer' + a sub-GHz CC1101 jammer, deauth, BLE spam) — flash-and-study for an authorized lab only; jamming is illegal to transmit (FCC 47 U.S.C. §333).",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "illegal-tx",
+  "boards": [
+    {
+      "name": "M5Stack Cardputer-Advance",
+      "chip": "esp32s3",
+      "flash_size": "8MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "has_keyboard": true,
+      "has_display": true,
+      "display_type": "st7789"
+    }
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/GeneralDussDuss/poseidon",
+    "latest": "https://github.com/GeneralDussDuss/poseidon/releases/latest"
+  },
+  "note": "GeneralDussDuss/poseidon. The Cardputer-Adv factory image (poseidon-factory.bin) is a merged single .bin flashed at 0x0 — the exact offset the project's own web installer uses (esp-web-tools manifest.json, chipFamily ESP32-S3, part offset 0). The sibling poseidon-launcher.bin asset is the M5Launcher app-slot variant (0x10000) and is intentionally NOT matched by asset_match, so a flash always writes the full standalone image. The ESP32-C5 'TRIDENT' satellite is a separate chip and a 3-file flash (bootloader@0x2000/partitions@0x8000/app@0x10000); it is not shipped in the latest release, so it is out of scope for this profile. danger=illegal-tx: unlike the Marauder/Bruce multi-tools, Poseidon ships a real 2.4GHz CW/broadband 'Data Flood Jammer' + a sub-GHz CC1101 jammer among its 163 features, so it follows the repo convention that every jammer-bearing firmware (bluejammer_esp32/bluejammer_bw16/nrf_bluenullifier2) is illegal-tx — matching safety.py _ILLEGAL_TX_KEYWORDS (broadband/jam) and 47 U.S.C. §333. Per the label-never-block doctrine the capability is retained + labeled, not removed; CC flashes firmware only (protocol=null → CC authors no TX and drives no jam command). Real-hardware flash owner-gated.",
+  "repo": "GeneralDussDuss/poseidon",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "first"},
+  "firmware_sha256": {
+    "v0.6.8": "99f9fa82d83a0e783263d058b5f6dc430477c57e5e77c65b4eb7b04fd12fc41f"
+  },
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/GeneralDussDuss/poseidon/releases/latest",
+    "asset_match": {"include_regex": "^poseidon-factory\\.bin$"},
+    "chip_map": {"strategy": "fixed", "chip": "esp32s3"},
+    "emit": {
+      "offset": "0x0", "merged": true,
+      "label_template": "POSEIDON Cardputer-Adv"
+    },
+    "on_error": "source_only_empty"
+  }
+}

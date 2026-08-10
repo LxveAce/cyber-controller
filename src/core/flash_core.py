@@ -2524,7 +2524,7 @@ _MARAUDER = MarauderProfile()
 # kali_arm/pwnagotchi/raspyjack/rayhunter carry no engine block and are excluded. They are
 # keyed by canonical core id (cfg.core_id or cfg.id).
 _PROFILE_FILES = (
-    "marauder.json", "esp32_div.json", "bruce.json", "ghost_esp.json", "halehound.json",
+    "marauder.json", "esp32_div.json", "bruce.json", "poseidon.json", "ghost_esp.json", "halehound.json",
     "rtl8720.json", "bluejammer_esp32.json", "bluejammer_bw16.json", "meshtastic.json",
     # nRF BlueNullifier 2 (wirebits, GPL-3.0) — 2.4 GHz nRF24L01 jammer, LAB-ONLY/illegal to operate,
     # flash-and-study only (no serial control surface). Prebuilt bins are committed in the repo tree
