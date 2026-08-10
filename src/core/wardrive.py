@@ -744,3 +744,88 @@ def wardrive_summary_cli(csv_path: str) -> int:
     if s["top_channels"]:
         print("  busiest channels: " + ", ".join(f"ch{ch} x{n}" for ch, n in s["top_channels"]))
     return 0
+
+
+def _xml_text(s: str) -> str:
+    """Make an attacker-controlled string safe for XML element text: drop every code point the XML
+    1.0 ``Char`` production forbids (C0 controls except tab/LF/CR, the surrogate range, and the
+    noncharacters U+FFFE/U+FFFF) — any one in an SSID would otherwise yield a document no conformant
+    parser accepts — then escape ``& < >``. The XML analog of ``_csv_field``.
+    """
+    from xml.sax.saxutils import escape
+
+    def _ok(c: str) -> bool:
+        o = ord(c)
+        return (o in (0x09, 0x0A, 0x0D)
+                or 0x20 <= o <= 0xD7FF
+                or 0xE000 <= o <= 0xFFFD
+                or 0x10000 <= o <= 0x10FFFF)
+
+    return escape("".join(c for c in s if _ok(c)))
+
+
+def wigle_csv_to_kml(text: str) -> str:
+    """Convert a WiGLE wardrive CSV into KML (Google Earth): one ``<Placemark>`` per network at its
+    strongest-RSSI position (via :func:`wigle_csv_to_points`, so it inherits the header-aware
+    1.4/1.6 parsing + dedup + no-fix drops), SSID as the placemark name, BSSID in the description.
+
+    Pure + Qt-free. The SSID/BSSID are attacker-controlled (they come off the air), so every value
+    is XML-escaped to prevent KML/XML injection (the XML analog of the CSV-injection export rule).
+    Awareness-only: reads metadata, transmits nothing.
+    """
+    out = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<kml xmlns="http://www.opengis.net/kml/2.2"><Document>',
+        "<name>Cyber Controller wardrive</name>",
+    ]
+    for lat, lon, ssid, bssid in wigle_csv_to_points(text):
+        name = _xml_text(ssid) or "(hidden)"
+        out.append(
+            "<Placemark>"
+            f"<name>{name}</name>"
+            f"<description>BSSID {_xml_text(bssid)}</description>"
+            f"<Point><coordinates>{lon:.7f},{lat:.7f},0</coordinates></Point>"
+            "</Placemark>"
+        )
+    out.append("</Document></kml>")
+    return "\n".join(out) + "\n"
+
+
+def wigle_csv_to_gpx(text: str) -> str:
+    """Convert a WiGLE wardrive CSV into GPX 1.1 waypoints: one ``<wpt>`` per network at its
+    strongest-RSSI position, the SSID as ``<name>`` and the BSSID as ``<desc>``. Reuses
+    :func:`wigle_csv_to_points`. Pure; SSID/BSSID XML-escaped (attacker-controlled). Awareness-only.
+    """
+    out = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<gpx version="1.1" creator="Cyber Controller" '
+        'xmlns="http://www.topografix.com/GPX/1/1">',
+    ]
+    for lat, lon, ssid, bssid in wigle_csv_to_points(text):
+        name = _xml_text(ssid) or "(hidden)"
+        out.append(
+            f'<wpt lat="{lat:.7f}" lon="{lon:.7f}">'
+            f"<name>{name}</name>"
+            f"<desc>BSSID {_xml_text(bssid)}</desc>"
+            "</wpt>"
+        )
+    out.append("</gpx>")
+    return "\n".join(out) + "\n"
+
+
+def wardrive_export_cli(csv_path: str, fmt: str) -> int:
+    """CLI for ``--wardrive-kml`` / ``--wardrive-gpx``: convert a WiGLE CSV to KML/GPX on stdout,
+    then exit (0 ok, 1 on a missing file or unknown format). Read-only; transmits nothing."""
+    if not os.path.isfile(csv_path):
+        print(f"[wardrive] no such file: {csv_path}")
+        return 1
+    with open(csv_path, "r", encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    if fmt == "kml":
+        print(wigle_csv_to_kml(text), end="")
+    elif fmt == "gpx":
+        print(wigle_csv_to_gpx(text), end="")
+    else:
+        print(f"[wardrive] unknown export format: {fmt}")
+        return 1
+    return 0

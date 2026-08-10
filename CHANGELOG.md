@@ -6,6 +6,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Wardrive export to KML & GPX** — `--wardrive-kml <csv>` / `--wardrive-gpx <csv>` convert a WiGLE wardrive
+  CSV to KML (Google Earth) or GPX 1.1 waypoints on stdout (one feature per network at its strongest-RSSI
+  position). Pure serializers (`wigle_csv_to_kml` / `wigle_csv_to_gpx`) built on the existing header-aware
+  WiGLE reader, so 1.4/1.6/Kismet CSVs all work; the attacker-controlled SSID/BSSID are XML-escaped and
+  XML-1.0-illegal control chars stripped, so the output always parses. Read-only; transmits nothing.
 - **POSEIDON flash profile** (`GeneralDussDuss/poseidon`) — keyboard-first pentest firmware for the M5Stack
   Cardputer-Advance (ESP32-S3). Tracks the latest upstream release and flashes the `poseidon-factory.bin`
   merged image at `0x0` (the same offset the project's own web installer uses); the `poseidon-launcher.bin`
