@@ -828,6 +828,36 @@ def create_app(
             headers={"Content-Disposition": "attachment; filename=cc-captures.csv"},
         )
 
+    @app.route("/api/wardrive/upload", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_wardrive_upload():
+        """Upload a WigleWifi CSV the operator already has on disk to WiGLE. The survey itself still needs a
+        connected GPS device (there's no web survey backend), so this is the "I already exported a CSV, send
+        it" path — not a live survey. Credential-gated: nothing leaves the box until a WiGLE token is set in
+        Settings, and the target is wardrive_upload's one fixed HTTPS endpoint (no user-supplied URL, so it's
+        not an SSRF surface). Neither the token nor the file bytes are ever echoed back — only WiGLE's
+        transid/message."""
+        from src.core import wardrive_upload
+        data = _json_body()
+        path = str(data.get("path", "")).strip()
+        if not path:
+            return jsonify({"error": "path is required — pick a WiGLE CSV first"}), 400
+        if not os.path.isfile(path):
+            return jsonify({"error": "that file doesn't exist (or isn't a file)"}), 400
+        token = str(app_settings.load_settings().get("uploads", {}).get("wigle_token", "")).strip()
+        if not wardrive_upload.is_configured(token):
+            return jsonify({"error": "no WiGLE token set — add it in Settings ▸ Wardrive uploads first"}), 400
+        _audit("wardrive_upload", user=session.get("user"))
+        try:
+            res = wardrive_upload.upload_csv(path, token, provider="wigle",
+                                             donate=bool(data.get("donate", False)))
+        except wardrive_upload.UploadError as exc:
+            # The message is WiGLE's own rejection / an offline/credential error — safe to show, no secret in it.
+            return jsonify({"ok": False, "error": str(exc)}), 502
+        return jsonify({"ok": True, "transid": res.get("transid", ""),
+                        "message": res.get("message", "uploaded")})
+
     # One crack at a time. The flag is read by the worker's should_stop and guarded by the lock; a UI can
     # only ever have one run in flight (409 otherwise), so we don't track per-run identity.
     _crack_run = {"busy": False, "stop": False, "proc": None}

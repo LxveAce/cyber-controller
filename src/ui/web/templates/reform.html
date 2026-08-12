@@ -428,7 +428,8 @@
       <button data-sub="flock">Flock / ALPR</button>
     </div>
     <div class="sub on" data-sub="wardrive"><div class="card"><h3><span class="t">Wardrive &#8212; GPS-tagged Wi-Fi survey</span><span class="r">&#8594; WiGLE CSV</span></h3>
-      <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-start">Start survey</button><button class="btn sm" id="wd-export">Export WiGLE CSV</button><span class="chip" id="wd-status">needs a GPS device</span></div>
+      <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-start">Start survey</button><button class="btn sm" id="wd-export">Export WiGLE CSV</button><button class="btn sm" id="wd-upload">Upload saved CSV&#8230;</button><span class="chip" id="wd-status">needs a GPS device</span></div>
+      <div class="row" id="wd-upload-row" hidden style="margin-bottom:10px"><input class="field mono" id="wd-upload-path" placeholder="path to a WiGLE .csv you exported" aria-label="WiGLE CSV path"><button class="btn sm" id="wd-upload-browse" data-native-only hidden>Browse&#8230;</button><button class="btn green sm" id="wd-upload-go">Upload to WiGLE</button><label class="dim" style="font-size:11px;white-space:nowrap"><input type="checkbox" id="wd-upload-donate"> donate to WiGLE</label></div>
       <div class="footnote" id="wd-msg" style="margin:-4px 0 8px;min-height:14px"></div>
       <div class="mapwrap">
         <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid slice" role="img" aria-label="wardrive map">

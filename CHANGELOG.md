@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Wardrive: upload a saved WiGLE CSV from the reform UI** — MAP▸Wardrive now has an "Upload saved CSV" action
+  that hands an already-exported WigleWifi CSV to WiGLE through the existing `wardrive_upload` core
+  (`POST /api/wardrive/upload`, auth + CSRF gated). Credential-gated: nothing is sent until a WiGLE token is
+  set in Settings, and the target is the one fixed HTTPS endpoint (no user-supplied URL). The desktop shell's
+  file picker gets a `wardrive` CSV filter. Starting a live survey still needs a connected GPS device, so those
+  buttons stay honestly gated — only uploading an existing CSV is device-independent and now wired.
 - **Wardrive export to KML, GPX & GeoJSON** — `--wardrive-kml <csv>` / `--wardrive-gpx <csv>` /
   `--wardrive-geojson <csv>` convert a WiGLE wardrive CSV to KML (Google Earth), GPX 1.1 waypoints, or a
   GeoJSON FeatureCollection on stdout (one feature per network at its strongest-RSSI position). Pure

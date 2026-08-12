@@ -1758,6 +1758,37 @@
     wireBtn("wd-start", function () { if (msg) msg.textContent = need; });
     wireBtn("wd-export", function () { if (msg) msg.textContent = "No survey to export yet — start a GPS survey first."; });
     wireBtn("wd-multi-start", function () { if (multiMsg) multiMsg.textContent = "Needs 2+ connected GPS devices."; });
+
+    // Upload a WiGLE CSV you already have. The survey/export above still need a GPS device, but sending an
+    // already-exported CSV doesn't — so this path is live. The token comes from Settings (server-side); the
+    // server rejects with a plain message if it isn't set. Browse uses the native picker on the desktop shell.
+    var upRow = document.getElementById("wd-upload-row");
+    var upPath = document.getElementById("wd-upload-path");
+    wireBtn("wd-upload", function () { if (upRow) upRow.hidden = !upRow.hidden; });
+    function doUpload() {
+      var p = (upPath && upPath.value || "").trim();
+      if (!p) { if (msg) { msg.style.color = "var(--amber)"; msg.textContent = "Pick a WiGLE CSV first."; } return; }
+      var donate = document.getElementById("wd-upload-donate");
+      var go = document.getElementById("wd-upload-go");
+      if (go) { go.disabled = true; go.textContent = "Uploading…"; }
+      if (msg) { msg.style.color = "var(--dim)"; msg.textContent = "Uploading to WiGLE…"; }
+      postJSON("/api/wardrive/upload", { path: p, donate: !!(donate && donate.checked) }).then(function (r) {
+        if (msg) {
+          msg.style.color = "var(--green)";
+          var tid = r && r.transid ? " (transid " + esc(r.transid) + ")" : "";
+          msg.textContent = "✓ " + esc((r && r.message) || "uploaded") + tid;
+        }
+        notifyDesktop("WiGLE upload", (r && r.message) || "uploaded");
+        if (upRow) upRow.hidden = true;
+      }).catch(function (err) {
+        if (msg) { msg.style.color = "var(--amber)"; msg.textContent = "✗ " + (typeof err === "string" ? err : "upload failed"); }
+      }).then(function () { if (go) { go.disabled = false; go.textContent = "Upload to WiGLE"; } });
+    }
+    wireBtn("wd-upload-go", doUpload);
+    if (upPath) upPath.addEventListener("keydown", function (e) { if (e.key === "Enter") doUpload(); });
+    // Desktop shell only: a real OS file dialog fills the path (revealed when the native bridge is present).
+    wireBtn("wd-upload-browse", function () { nativePick("wardrive", function (path) { if (upPath) upPath.value = path; }); });
+    revealNativeControls();
   }
   initWardrive();
 

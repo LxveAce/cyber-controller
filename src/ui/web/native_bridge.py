@@ -18,6 +18,7 @@ NATIVE_OPEN_PICKERS: dict[str, tuple[str, str]] = {
     "wordlist": ("Select wordlist", "Wordlists (*.txt *.lst *.dic *.gz);;All files (*)"),
     "os_image": ("Select OS image", "Disk images (*.img *.iso *.gz *.xz *.zip);;All files (*)"),
     "capture": ("Select capture", "Captures (*.pcap *.pcapng *.cap *.hc22000);;All files (*)"),
+    "wardrive": ("Select WiGLE CSV", "WiGLE CSV (*.csv);;All files (*)"),
 }
 
 # Safe fallback for a kind the bridge doesn't recognize — never raise into the Qt slot.
