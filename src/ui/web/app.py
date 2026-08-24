@@ -578,6 +578,27 @@ def create_app(
             {"count": len(cams), "cameras": cams, "attribution": flock_osm.ODBL_ATTRIBUTION}
         )
 
+    @app.route("/api/antenna")
+    @requires_auth
+    def api_antenna():
+        """Antenna length calculator — pure math, no device I/O, transmits nothing. GET ?freq=433MHz (or
+        ?freq=433&unit=mhz), optional ?vf=0.95 velocity factor. Returns wavelength + element lengths
+        (full/5-8/half/quarter/eighth) in metric + imperial. Ready for a GUI card; UI layout comes later."""
+        from src.core import antenna_calc
+
+        freq = request.args.get("freq", "")
+        if not str(freq).strip():
+            return jsonify({"error": "freq is required (e.g. freq=433MHz, or freq=433&unit=mhz)"}), 400
+        unit = request.args.get("unit", "mhz")
+        try:
+            vf = float(request.args.get("vf", "1.0"))
+        except ValueError:
+            return jsonify({"error": "vf must be a number in (0, 1]"}), 400
+        try:
+            return jsonify(antenna_calc.compute(freq, unit, vf))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
     @app.route("/api/nodes-status")
     @requires_auth
     def api_nodes_status():

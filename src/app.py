@@ -122,6 +122,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--wardrive-kml", default=None, metavar="CSV", help="Convert a WiGLE wardrive CSV to KML (Google Earth) on stdout, then exit.")
     parser.add_argument("--wardrive-gpx", default=None, metavar="CSV", help="Convert a WiGLE wardrive CSV to GPX 1.1 waypoints on stdout, then exit.")
     parser.add_argument("--wardrive-geojson", default=None, metavar="CSV", help="Convert a WiGLE wardrive CSV to a GeoJSON FeatureCollection on stdout, then exit.")
+    parser.add_argument("--antenna", default=None, metavar="FREQ", help="Antenna length calculator: print full/half/quarter/etc element lengths (metric + imperial) for a frequency (e.g. 433, 433MHz, 2.4GHz), then exit.")
+    parser.add_argument("--antenna-unit", default="mhz", help="Unit for a bare --antenna number: hz/khz/mhz/ghz (default mhz). Ignored when the value carries its own unit.")
+    parser.add_argument("--antenna-vf", type=float, default=1.0, metavar="VF", help="Velocity factor for --antenna: 1.0 = free-space/theoretical; ~0.95 for a real bare wire; a coax's own VF (RG-58 ~0.66) for a stub.")
     parser.add_argument("--check-firmware-updates", action="store_true", help="Check GitHub for newer releases of your cached firmware (one call per cached profile), print any updates, then exit.")
     parser.add_argument("--mission", default=None, metavar="FILE", help="Dry-run a mission JSON: print the ordered schedule + any SAFE/ARMED refusals, then exit (no device I/O). Send with: python -m src.core.mission_runner FILE --execute.")
     return parser.parse_args(argv)
@@ -449,6 +452,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.wardrive_geojson:
         from src.core.wardrive import wardrive_export_cli
         return wardrive_export_cli(args.wardrive_geojson, "geojson")
+    if args.antenna:
+        from src.core.antenna_calc import antenna_cli
+        return antenna_cli(args.antenna, args.antenna_unit, args.antenna_vf)
     if args.check_firmware_updates:
         from src.core.firmware_vault import check_updates_cli
         return check_updates_cli()

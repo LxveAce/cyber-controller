@@ -6,6 +6,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 ## [Unreleased]
 
 ### Added
+- **Antenna length calculator** — `--antenna <freq>` (e.g. `433`, `433MHz`, `2.4GHz`) prints the free-space
+  wavelength and the full / 5-8 / half / quarter / eighth element lengths in cm, in, mm, and m, with a
+  best-effort band label and an optional `--antenna-vf` velocity factor (1.0 free-space, ~0.95 real wire,
+  a coax's VF for a stub). Also a GET `/api/antenna?freq=&vf=` route so a GUI card can reach it later. Pure
+  math (`src/core/antenna_calc.py`), no device I/O, transmits nothing; 23 tests pinned to the 433 MHz worked
+  example (69.2 cm / 17.3 cm quarter-wave). Rough-in — the GUI surface comes once the layout is decided.
 - **Wardrive: upload a saved WiGLE CSV from the reform UI** — MAP▸Wardrive now has an "Upload saved CSV" action
   that hands an already-exported WigleWifi CSV to WiGLE through the existing `wardrive_upload` core
   (`POST /api/wardrive/upload`, auth + CSRF gated). Credential-gated: nothing is sent until a WiGLE token is
