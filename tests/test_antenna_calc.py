@@ -86,6 +86,13 @@ def test_bad_frequency_raises(bad):
         normalize_freq(bad)
 
 
+@pytest.mark.parametrize("value", ["433", 433])  # a bare number (string or numeric)...
+def test_bad_unit_raises_for_both_input_types(value):
+    # ...with an unknown fallback unit must error, not silently default to MHz (string branch used to)
+    with pytest.raises(ValueError):
+        normalize_freq(value, unit="lightyears")
+
+
 @pytest.mark.parametrize("vf", [0, -0.1, 1.5, 2])
 def test_bad_velocity_factor_raises(vf):
     with pytest.raises(ValueError):

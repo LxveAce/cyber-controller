@@ -60,7 +60,12 @@ def normalize_freq(value, unit: str = "mhz") -> float:
             num = float(s)
         except ValueError as exc:
             raise ValueError(f"could not parse frequency {value!r}") from exc
-        mult = _UNITS[found] if found else _UNITS.get(unit.lower(), 1e6)
+        if found:
+            mult = _UNITS[found]
+        else:  # bare number in a string: validate the fallback unit, same as the numeric branch
+            mult = _UNITS.get(unit.lower())
+            if mult is None:
+                raise ValueError(f"unknown frequency unit {unit!r} (use hz/khz/mhz/ghz)")
     else:
         num = float(value)
         mult = _UNITS.get(unit.lower())
