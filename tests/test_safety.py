@@ -190,10 +190,17 @@ def test_worst_of_picks_highest_severity() -> None:
     assert worst_of() == SAFE
 
 
-def test_worst_of_ignores_unknown_levels() -> None:
-    # An unrecognised level must never lower a real danger.
-    assert worst_of("bogus", LAB_ONLY) == LAB_ONLY
-    assert worst_of("bogus") == SAFE
+def test_worst_of_treats_unknown_as_most_severe() -> None:
+    # Fail-closed hardening (ledger CC-SAFETY-WORSTOF-UNKNOWN-SAFE-0824): an unrecognised danger
+    # label is assumed the MOST severe, so a stray value or a future danger tier can never lower a
+    # real danger OR slip a fan-out (e.g. /api/broadcast) past the confirm gate. Previously an
+    # unknown level scored SAFE, which could have let a new TX tier through the batch gate while
+    # single-send still gated it.
+    assert worst_of("bogus") == "bogus"                      # non-empty -> gates
+    assert worst_of("bogus", LAB_ONLY) == "bogus"            # unknown outranks a known real level
+    assert worst_of(SAFE, "future-tx-tier") == "future-tx-tier"  # one unknown in an else-safe batch
+    # the load-bearing consequence: the combined danger actually trips the confirm gate
+    assert should_confirm(worst_of(SAFE, "future-tx-tier"), None) is True
 
 
 # ── should_confirm truth table ───────────────────────────────────────

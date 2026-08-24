@@ -270,14 +270,20 @@ def worst_of(*levels: str) -> str:
     """Return the highest-severity danger level among *levels*.
 
     Useful when a single user action expands into several commands (e.g. a macro
-    or a batch) and the UI wants a single gate for the whole action.  Unknown
-    levels are treated as :data:`SAFE` so a stray value can never *lower* the
-    result below a real danger.
+    or a batch) and the UI wants a single gate for the whole action.  **Unknown
+    levels are treated as the MOST severe (fail-closed):** a stray value or a
+    future danger tier that isn't in :data:`_SEVERITY` can never *lower* the
+    result below a real danger, nor slip a fan-out (e.g. ``/api/broadcast``) past
+    the confirm gate.  This matches :func:`should_confirm`, which gates on ANY
+    non-empty danger — so the only level that scores as safe is the empty-string
+    :data:`SAFE` (and the other known levels below the ceiling).
     """
     best = SAFE
     best_rank = 0
     for lvl in levels:
-        rank = _SEVERITY.get(lvl, 0)
+        # An unrecognised label ranks above every known level (len(_SEVERITY)), so it wins as
+        # "worst" and the combined action still gates. Known levels keep their defined order.
+        rank = _SEVERITY.get(lvl, len(_SEVERITY))
         if rank > best_rank:
             best, best_rank = lvl, rank
     return best
