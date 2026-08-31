@@ -1919,13 +1919,29 @@
     }
     // other surfaces are socket-driven or static — no periodic poll needed
   }
-  var _pollTimer = null;
-  function _startPoll() { if (!_pollTimer) _pollTimer = setInterval(_pollTick, 5000); }
-  function _stopPoll() { if (_pollTimer) { clearInterval(_pollTimer); _pollTimer = null; } }
+  // Adaptive cadence: poll fast (5s) while the operator is active, then back off toward 20s the longer
+  // the app just sits there, so an idle window costs a fraction of the requests on a small device. Any
+  // nav switch, action, or re-show snaps it straight back to fast (see _forcePoll). setTimeout (not
+  // setInterval) so the delay can vary tick to tick.
+  var _POLL_MIN = 5000, _POLL_MAX = 20000, _pollEvery = _POLL_MIN, _pollTimer = null;
+  function _schedule() {
+    _pollTimer = setTimeout(function () {
+      _pollTick();
+      _pollEvery = Math.min(Math.round(_pollEvery * 1.5), _POLL_MAX);   // idle → slower
+      _schedule();
+    }, _pollEvery);
+  }
+  function _startPoll() { if (!_pollTimer) { _pollEvery = _POLL_MIN; _schedule(); } }
+  function _stopPoll() { if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; } }
+  function _forcePoll() {                    // instant refresh + reset to the fast cadence
+    _pollEvery = _POLL_MIN;
+    _pollTick();
+    if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; _schedule(); }
+  }
   document.addEventListener("visibilitychange", function () {
     if (document.hidden) { _stopPoll(); }
-    else { _pollTick(); _startPoll(); }   // catch-up on re-show, then resume
+    else { _forcePoll(); _startPoll(); }   // catch-up on re-show, then resume fast
   });
-  window.__ccPollTick = _pollTick;         // let the nav handlers force an instant refresh on switch
+  window.__ccPollTick = _forcePoll;        // nav handlers + actions force an instant refresh on switch
   if (!document.hidden) { _startPoll(); }
 })();
