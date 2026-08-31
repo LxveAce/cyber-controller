@@ -27,11 +27,32 @@
   var crumbNames = { device: "DEVICE", hunt: "HUNT", operate: "OPERATE", crack: "CRACK", map: "MAP", terminal: "TERMINAL", settings: "SETTINGS" };
   var crumb = document.getElementById("crumb");
 
-  document.getElementById("rail").addEventListener("click", function (e) {
-    var it = e.target.closest(".navitem");
+  // The rail is a real tablist so keyboard/switch users can reach every surface, not just mouse
+  // users (WCAG 2.1.1 keyboard + 4.1.2 name/role/value). Roving tabindex: only the active tab is in
+  // the tab order; arrows move between tabs and activate them.
+  var rail = document.getElementById("rail");
+  var navitems = Array.prototype.slice.call(rail.querySelectorAll(".navitem"));
+  rail.setAttribute("role", "tablist");
+  rail.setAttribute("aria-orientation", "vertical");
+  rail.setAttribute("aria-label", "Primary");
+  navitems.forEach(function (n) {
+    var on = n.classList.contains("on");
+    n.setAttribute("role", "tab");
+    n.setAttribute("tabindex", on ? "0" : "-1");
+    n.setAttribute("aria-selected", on ? "true" : "false");
+    var g = n.querySelector(".g");
+    if (g) g.setAttribute("aria-hidden", "true");   // decorative glyph — the label carries the name
+  });
+
+  function activateNav(it, focusIt) {
     if (!it) return;
     var v = it.dataset.view;
-    document.querySelectorAll(".rail .navitem").forEach(function (n) { n.classList.toggle("on", n === it); });
+    navitems.forEach(function (n) {
+      var on = n === it;
+      n.classList.toggle("on", on);
+      n.setAttribute("aria-selected", on ? "true" : "false");
+      n.setAttribute("tabindex", on ? "0" : "-1");
+    });
     document.querySelectorAll(".main .view").forEach(function (sec) { sec.classList.toggle("on", sec.dataset.view === v); });
     var view = document.querySelector('.view[data-view="' + v + '"]');
     var tabs = view.querySelector(".subtabs button.on");
@@ -42,14 +63,43 @@
     if (window.history && history.replaceState) history.replaceState(null, "", "#" + v);
     if (window.__ccPollTick) { window.__ccPollTick(); }   // instant refresh for the surface just shown
     if (v === "crack" && window.__ccRefreshCaptures) { window.__ccRefreshCaptures(); }
+    if (focusIt) it.focus();
+  }
+
+  rail.addEventListener("click", function (e) {
+    var it = e.target.closest(".navitem");
+    if (it) activateNav(it, false);
+  });
+  rail.addEventListener("keydown", function (e) {
+    var cur = document.activeElement && document.activeElement.closest ? document.activeElement.closest(".navitem") : null;
+    var idx = navitems.indexOf(cur);
+    if (idx < 0) return;
+    var next = -1;
+    if (e.key === "ArrowDown" || e.key === "ArrowRight") next = (idx + 1) % navitems.length;
+    else if (e.key === "ArrowUp" || e.key === "ArrowLeft") next = (idx - 1 + navitems.length) % navitems.length;
+    else if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = navitems.length - 1;
+    else if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activateNav(navitems[idx], true); return; }
+    else return;
+    e.preventDefault();
+    activateNav(navitems[next], true);
   });
 
   document.querySelectorAll(".subtabs").forEach(function (bar) {
+    bar.setAttribute("role", "tablist");
+    bar.querySelectorAll("button").forEach(function (x) {
+      x.setAttribute("role", "tab");
+      x.setAttribute("aria-selected", x.classList.contains("on") ? "true" : "false");
+    });
     bar.addEventListener("click", function (e) {
       var b = e.target.closest("button");
       if (!b) return;
       var scope = bar.parentElement;
-      bar.querySelectorAll("button").forEach(function (x) { x.classList.toggle("on", x === b); });
+      bar.querySelectorAll("button").forEach(function (x) {
+        var on = x === b;
+        x.classList.toggle("on", on);
+        x.setAttribute("aria-selected", on ? "true" : "false");
+      });
       scope.querySelectorAll(":scope > .sub").forEach(function (s) { s.classList.toggle("on", s.dataset.sub === b.dataset.sub); });
       if (bar.dataset.tabs && crumbNames[scope.dataset.view]) {
         crumb.innerHTML = "<b>" + crumbNames[scope.dataset.view] + "</b> ▸ " + b.textContent;
@@ -57,10 +107,17 @@
     });
   });
 
+  document.querySelectorAll("#depth button").forEach(function (x) {
+    x.setAttribute("aria-pressed", x.classList.contains("on") ? "true" : "false");
+  });
   document.getElementById("depth").addEventListener("click", function (e) {
     var b = e.target.closest("button");
     if (!b) return;
-    document.querySelectorAll("#depth button").forEach(function (x) { x.classList.toggle("on", x === b); });
+    document.querySelectorAll("#depth button").forEach(function (x) {
+      var on = x === b;
+      x.classList.toggle("on", on);
+      x.setAttribute("aria-pressed", on ? "true" : "false");
+    });
     var simple = b.dataset.depth === "simple";
     document.getElementById("app").classList.toggle("pro-hidden", simple);
     // Simple mode hides .pro-tab buttons (CSS); if a pro-tab was the active one its pane is now hidden
@@ -789,6 +846,7 @@
   function setChip(el, on) {
     if (!el) return;
     el.classList.toggle("on", !!on);
+    el.setAttribute("aria-checked", on ? "true" : "false");
     var t = el.textContent.replace(/^[☐☑☒]︎?\s*/, "");
     el.textContent = (on ? "☑︎ " : "☐︎ ") + t;
   }
@@ -814,11 +872,20 @@
         (g.locked ? " · LOCKED (" + g.remaining_secs + "s)" : "");
     }).catch(function () { gate.textContent = "gate status unavailable"; });
 
-    // Every chip toggles on click (Save reads its state).
-    ["set-flash-verify", "set-flash-backup", "set-updates-enabled", "set-confirm-dangerous",
+    // Every chip is a keyboard-operable switch (WCAG 2.1.1/4.1.2); click OR Enter/Space toggles it,
+    // and Save reads its state.
+    ["set-updates-enabled", "set-confirm-dangerous",
      "set-suppress-warnings", "set-secure-container"].forEach(function (id) {
       var el = document.getElementById(id);
-      if (el) el.addEventListener("click", function () { setChip(el, !chipOn(el)); });
+      if (!el) return;
+      el.setAttribute("role", "switch");
+      el.setAttribute("tabindex", "0");
+      el.setAttribute("aria-checked", chipOn(el) ? "true" : "false");
+      function toggleChip() { setChip(el, !chipOn(el)); }
+      el.addEventListener("click", toggleChip);
+      el.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleChip(); }
+      });
     });
 
     var statusEl = document.getElementById("set-status");
@@ -833,8 +900,6 @@
       if (!s) return;
       setSelect(document.getElementById("set-serial-baud"), s.serial.default_baud);
       setSelect(document.getElementById("set-flash-baud"), s.flash.flash_baud);
-      setChip(document.getElementById("set-flash-verify"), s.flash.verify);
-      setChip(document.getElementById("set-flash-backup"), s.flash.auto_backup);
       setSelect(document.getElementById("set-touch-mode"), s.interface.touch_mode);
       setChip(document.getElementById("set-updates-enabled"), s.updates.enabled);
       setChip(document.getElementById("set-confirm-dangerous"), s.safety.confirm_dangerous);
@@ -857,8 +922,6 @@
         serial: { default_baud: parseInt(valOf("set-serial-baud"), 10) },
         flash: {
           flash_baud: parseInt(valOf("set-flash-baud"), 10),
-          verify: chipOn(document.getElementById("set-flash-verify")),
-          auto_backup: chipOn(document.getElementById("set-flash-backup")),
         },
         interface: { touch_mode: valOf("set-touch-mode") },
         updates: { enabled: chipOn(document.getElementById("set-updates-enabled")) },

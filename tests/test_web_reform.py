@@ -79,6 +79,24 @@ def test_reform_polish_batch_honesty_and_wiring():
     assert 'class="split ops"' in body
 
 
+def test_reform_a11y_and_inert_toggle_removal():
+    # Guards the 2026-08-24 sweep fixes so they can't silently regress.
+    body = _client(DeviceManager()).get("/reform").get_data(as_text=True)
+    # Honesty: the two inert flash toggles (no consumer in flash_engine) are gone, like the Qt tab.
+    assert "set-flash-verify" not in body and "set-flash-backup" not in body
+    assert "Verify after flash" not in body and "Back up flash before write" not in body
+    # A11y semantics in the template (roving-tabindex + roles are added by reform.js at runtime).
+    assert 'class="visually-hidden">Cyber Controller</h1>' in body  # one real h1
+    assert 'id="lamp-top" role="status"' in body                   # SAFE<->ARMED flip is announced
+    assert 'id="armlamp-op" role="status"' in body
+    assert body.count('role="status"') >= 2  # top + OPERATE lamp always render
+    assert 'rel="icon"' in body and "favicon.svg" in body            # favicon parity with base.html
+    assert 'name="theme-color"' in body
+    # Rescan is a real button, not an <a href="#"> (keyboard + role).
+    assert 'id="os-rescan" class="linkbtn"' in body
+    assert 'href="#" id="os-rescan"' not in body
+
+
 def test_reform_selected_device_card_binds_live_fields():
     # The Selected Device card mirrors the mockup: capability chips + a board/fw/ui/ops/heap detail
     # line, bound to the connected device's live runtime_capabilities + telemetry (not invented).

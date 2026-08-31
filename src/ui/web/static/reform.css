@@ -188,3 +188,8 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .pro-hidden .pro{display:none!important}
 .pro-hidden .pro-tab{display:none!important}
 ::-webkit-scrollbar{width:10px;height:10px}::-webkit-scrollbar-thumb{background:#30363d;border-radius:6px}::-webkit-scrollbar-track{background:transparent}
+/* Screen-reader-only text: reachable by assistive tech, off-screen for sighted users (the page h1). */
+.visually-hidden{position:absolute!important;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+/* A link-styled button — keeps the Rescan control a real <button> (keyboard + role) while looking inline. */
+.linkbtn{background:none;border:0;color:var(--acc);cursor:pointer;font:inherit;padding:0}
+.linkbtn:hover{text-decoration:underline}

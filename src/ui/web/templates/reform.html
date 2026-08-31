@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cyber Controller</title>
   <meta name="csrf-token" content="{{ csrf_token }}">
+  <meta name="theme-color" content="#a371f7">
+  <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='reform.css') }}">
   <!-- Socket.IO client is VENDORED + served same-origin (no CDN) — same policy as base.html. -->
   <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
@@ -21,11 +23,12 @@
   labelled as an illustration in-place — never dressed up as live. Honest split.
 #}
 <div class="app" id="app">
+  <h1 class="visually-hidden">Cyber Controller</h1>
   <div class="topbar">
     <div class="brand"><span class="mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"><path d="M12 3l9 9-9 9-9-9z"/></svg></span> Cyber Controller</div>
     <span class="crumb" id="crumb"><b>DEVICE</b> &#9656; Dashboard</span>
     <span class="spacer"></span>
-    <span class="lamp" id="lamp-top"><span class="dot"></span> <span class="lt">SAFE</span></span>
+    <span class="lamp" id="lamp-top" role="status"><span class="dot"></span> <span class="lt">SAFE</span></span>
     <span class="seg" id="depth"><button class="on" data-depth="pro">Pro</button><button data-depth="simple">Simple</button></span>
     <button class="icon-btn" title="Pop out (detach)" aria-label="Pop out"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 2h5v5M14 2 8.5 7.5M7 14H2V9M2 14l5.5-5.5"/></svg></button>
     <button class="icon-btn" title="Settings" aria-label="Settings"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.2"/><path d="M19.4 13a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 0 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 0 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1.04-1.56V3a2 2 0 0 1 4 0v.09A1.7 1.7 0 0 0 15 4.6a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9v.09a1.7 1.7 0 0 0 1.56 1.04H21a2 2 0 0 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
@@ -102,14 +105,14 @@
               <div class="gauge pro" data-metric="disk" style="--v:{{ sys.disk_v }};--c:{{ sys.disk_c }}"><div class="ring"><div class="num">{{ sys.disk_n }}</div></div><div class="cap">Disk</div><div class="det">{{ sys.disk_d }}</div></div>
               <div class="gauge pro" data-metric="batt" style="--v:{{ sys.batt_v }};--c:{{ sys.batt_c }}"><div class="ring"><div class="num">{{ sys.batt_n }}</div></div><div class="cap">Battery</div><div class="det">{{ sys.batt_d }}</div></div>
             </div>
-            <div class="gps"><span class="muted">GPS:</span> <span class="{{ 'con' if sys.gps else 'dim' }}" style="font-weight:600" id="dash-gps">{{ '&#9679; Fix Acquired'|safe if sys.gps else '&#9675; no fix'|safe }}</span></div>
+            <div class="gps"><span class="muted">GPS:</span> <span class="{{ 'con' if sys.gps else 'dim' }}" style="font-weight:600" id="dash-gps">{{ '&#9679; GPS fix'|safe if sys.gps else '&#9675; no fix'|safe }}</span></div>
           </div>
 
           <div class="card">
             <h3><span class="t">Selected Device</span><span class="r" id="sel-title">{% if selected %}{{ selected.port }} &#183; {{ selected.firmware }}{% else %}none connected{% endif %}</span></h3>
             {% if selected %}
             <div class="between" style="margin-bottom:9px">
-              <span class="armlamp" id="armlamp-sel"><span class="d"></span> <span class="lt">SAFE</span></span>
+              <span class="armlamp" id="armlamp-sel" role="status"><span class="d"></span> <span class="lt">SAFE</span></span>
               <span class="chip on">&#9679; {{ selected.health if selected.health and selected.health != 'unknown' else 'connected' }}</span>
             </div>
             {% if sel_caps %}
@@ -171,7 +174,7 @@
                 <span class="dim" id="rule-msg" style="font-size:11px"></span>
               </div>
             </div>
-            <div class="sub pro" data-sub="hist"><div class="dim" style="font-size:11px">Action history ports in Phase 2.</div></div>
+            <div class="sub pro" data-sub="hist"><div class="dim" style="font-size:11px">No action history yet.</div></div>
             <div class="sub pro" data-sub="stream"><div class="term" id="xc-stream" style="height:120px"><div class="p">Bus events appear here in real time&#8230;</div></div></div>
           </div>
 
@@ -219,7 +222,7 @@
 
     <!-- Software OS — design preview -->
     <div class="sub" data-sub="sw">
-      <div class="notebar">Write a verified bootable OS to a USB stick. Board firmware lives under DEVICE &#9656; Firmware &#8212; this is for PC/USB operating systems.</div>
+      <div class="notebar">Write a verified bootable OS to a USB stick &#8212; PC/USB operating systems only. Board firmware is under DEVICE &#9656; Firmware.</div>
       <div class="split two">
         <div class="card">
           <h3><span class="t">Operating System</span><span class="r" id="os-count"></span></h3>
@@ -227,7 +230,7 @@
           <div class="footnote" id="os-desc">Downloaded from the official source and integrity-verified (SHA-256 + OpenPGP) before writing.</div>
         </div>
         <div class="card">
-          <h3><span class="t">Target USB (removable)</span><span class="r"><a href="#" id="os-rescan" style="color:var(--acc)">Rescan</a></span></h3>
+          <h3><span class="t">Target USB (removable)</span><span class="r"><button type="button" id="os-rescan" class="linkbtn">Rescan</button></span></h3>
           <select class="field" id="os-drive" aria-label="Target USB drive"><option value="">scanning removable drives…</option></select>
           <div class="notebar warnbar" style="margin:10px 0 0">THE ENTIRE DRIVE IS ERASED. Only removable drives are listed (system/boot disks are never shown).</div>
           <button class="btn danger wide" id="os-flash" style="margin-top:10px;padding:9px">Get flash command</button>
@@ -334,7 +337,7 @@
           <div class="row" style="align-items:center">
             <span class="muted">Device</span>
             <select class="field" id="op-device" aria-label="Operate device" style="width:auto"><option value="">no connected device</option></select>
-            <span class="armlamp" id="armlamp-op"><span class="d"></span> <span class="lt">SAFE</span></span>
+            <span class="armlamp" id="armlamp-op" role="status"><span class="d"></span> <span class="lt">SAFE</span></span>
           </div>
           <span class="dim" id="op-status" style="font-size:11px"></span>
         </div>
@@ -514,7 +517,7 @@
   <section class="view" data-view="settings">
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
       <div class="card"><h3><span class="t">Serial Defaults</span></h3><label class="dim" style="font-size:11px">Default baud</label><select class="field" id="set-serial-baud" aria-label="Default baud"><option>9600</option><option>115200</option><option>230400</option><option>460800</option><option>921600</option></select></div>
-      <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field" id="set-flash-baud" aria-label="Flash baud"><option>921600</option><option>460800</option><option>230400</option><option>115200</option></select><label class="chip on" id="set-flash-verify" data-key="verify" style="margin-top:8px">&#9745;&#xFE0E; Verify after flash</label><br><label class="chip on" id="set-flash-backup" data-key="auto_backup" style="margin-top:4px">&#9745;&#xFE0E; Back up flash before write</label></div>
+      <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field" id="set-flash-baud" aria-label="Flash baud"><option>921600</option><option>460800</option><option>230400</option><option>115200</option></select></div>
       <div class="card"><h3><span class="t">Interface</span></h3><label class="dim" style="font-size:11px">Touch mode</label><select class="field" id="set-touch-mode" aria-label="Touch mode"><option value="auto">Auto (detect a touchscreen)</option><option value="on">On</option><option value="off">Off</option></select></div>
       <div class="card"><h3><span class="t">Updates</span></h3><label class="chip on" id="set-updates-enabled" data-key="enabled" style="margin-bottom:6px">&#9745;&#xFE0E; Auto-check for updates</label><div class="kv mono muted" id="set-update-status">checking version&#8230;</div><button class="btn sm" id="set-check-now" style="margin-top:6px">Check now</button></div>
       <div class="card pro"><h3><span class="t">Wardrive Uploads</span></h3><label class="dim" style="font-size:11px">WiGLE token <span class="muted" id="set-wigle-state">&#183; not set</span></label><input class="field" id="set-wigle-token" type="password" aria-label="WiGLE token" placeholder="paste WiGLE 'Encoded for use' token"></div>
