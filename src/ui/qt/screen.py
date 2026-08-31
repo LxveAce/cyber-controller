@@ -36,6 +36,10 @@ def enable_high_dpi() -> bool:
     try:
         QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
         QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+        # QtWebEngine (the desktop-window fallback shell) requires shared GL contexts, set BEFORE the
+        # QApplication exists. Setting it here — the app's earliest creation point — keeps the Qt shell
+        # from blank/gl-context failures on Linux/Mesa and ARM GPUs even when the launcher ran first.
+        QApplication.setAttribute(Qt.AA_ShareOpenGLContexts, True)
     except Exception:  # noqa: BLE001 — very old Qt; best-effort
         pass
     # Fractional rounding (Qt 5.14+): a 150%/175% 4K panel scales smoothly instead of snapping to 200%.

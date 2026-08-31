@@ -227,20 +227,38 @@ def _launch_desktop(dm, fe, bus, pool, vault=None, health=None, macro=None, audi
     so it runs the same on Windows and Linux, ARM and x86, without bundling a browser. Where a system
     webview isn't available it falls back to the QtWebEngine shell (heavier, but self-contained). Force
     one path with CC_DESKTOP_SHELL=pywebview|qtweb."""
+    import importlib.util
     import os
     shell = os.environ.get("CC_DESKTOP_SHELL", "").strip().lower()
     if shell == "qtweb":
         return _launch_desktop_qt(dm, fe, bus, pool, vault, health, macro, audit)
-    log.info("Launching the desktop window (system webview via pywebview) over the reform UI")
-    try:
-        from src.ui.web.desktop import launch_desktop
-        return launch_desktop(dm, fe, bus, pool, audit=audit)
-    except ImportError as exc:
-        if shell == "pywebview":
-            log.error("pywebview is not installed. pip install pywebview  (%s)", exc)
-            return 1
-        log.warning("pywebview unavailable (%s); falling back to the QtWebEngine desktop window", exc)
-        return _launch_desktop_qt(dm, fe, bus, pool, vault, health, macro, audit)
+
+    # Prefer the system webview (pywebview). It can fail two ways that must BOTH fall through: it isn't
+    # installed (desktop.launch_desktop returns 1, it doesn't raise), or its platform backend fails at
+    # runtime (no WebKit2GTK / no $DISPLAY on Linux → an exception from webview.start()). Handle both.
+    if importlib.util.find_spec("webview") is not None:
+        log.info("Launching the desktop window (system webview via pywebview) over the reform UI")
+        try:
+            from src.ui.web.desktop import launch_desktop
+            rc = launch_desktop(dm, fe, bus, pool, audit=audit)
+            if rc == 0:
+                return rc
+            log.warning("The system-webview shell did not start (rc=%s)", rc)
+        except Exception as exc:  # noqa: BLE001 — any backend failure should fall back, not crash
+            log.warning("The system-webview shell failed (%s)", exc)
+    else:
+        log.info("pywebview is not installed; trying the QtWebEngine desktop window")
+
+    if shell == "pywebview":
+        log.error("CC_DESKTOP_SHELL=pywebview but the system webview is unavailable. "
+                  "Install it (pip install pywebview; on Linux also WebKit2GTK), or run --ui web.")
+        return 1
+
+    rc = _launch_desktop_qt(dm, fe, bus, pool, vault, health, macro, audit)
+    if rc != 0:
+        log.error("No desktop window shell is available on this system. "
+                  "Run with --ui web to use the same interface in a browser.")
+    return rc
 
 
 def _launch_desktop_qt(dm, fe, bus, pool, vault=None, health=None, macro=None, audit=None) -> int:
@@ -467,8 +485,10 @@ def main(argv: list[str] | None = None) -> int:
             from src.ui.launcher import select_ui
             args.ui = select_ui()
         except Exception:
-            log.warning("Launcher dialog unavailable, defaulting to the desktop window")
-            args.ui = "desktop"
+            # No display to show the picker (headless Pi / SSH) → the browser mode is the one that
+            # actually works there, so default to it rather than a desktop window that can't render.
+            log.warning("Launcher dialog unavailable (no display?); defaulting to --ui web")
+            args.ui = "web"
 
     # Accept older --ui names (qt/qtweb/webview/tk/tui) but run them as one of the two current modes.
     if args.ui in _UI_LEGACY:

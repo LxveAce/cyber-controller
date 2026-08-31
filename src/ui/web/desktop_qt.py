@@ -140,6 +140,12 @@ def launch_desktop_qt(
             tmp.urlChanged.connect(lambda u, p=tmp: (QDesktopServices.openUrl(u), p.deleteLater()))
             return tmp
 
+    # Set the high-DPI + AA_ShareOpenGLContexts attributes BEFORE the QApplication exists (Qt reads them
+    # at construction). Needed for QtWebEngine on Linux/Mesa + ARM GPUs; no-ops if the launcher already
+    # created the app. When this shell is reached directly via --ui desktop (no launcher), this is the
+    # only place they get set.
+    from src.ui.qt.screen import enable_high_dpi
+    enable_high_dpi()
     app = QApplication.instance() or QApplication([])
     # Window identity (P0-4) — org/app name (also the base any future QSettings key hangs off) + CC icon.
     app.setOrganizationName("LxveAce")
