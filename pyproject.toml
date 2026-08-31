@@ -28,6 +28,12 @@ classifiers = [
     "Topic :: Security",
 ]
 dependencies = [
+    # Both UI modes (the desktop window and the browser) render the same Flask + SocketIO web app, so
+    # these are core, not optional — a bare install must be able to launch. PyQt5 backs the launcher
+    # dialog; the desktop window's system-webview shell (pywebview) and the QtWebEngine fallback stay
+    # optional (`[desktop]` / `[qtweb]`), since a headless `--ui web` box needs neither.
+    "flask>=3.0",
+    "flask-socketio>=5.3",
     "PyQt5>=5.15",
     "pyserial>=3.5",
     # esptool <6: v6 removes the chip_id / write_flash / --flash_size aliases the flash core relies on.

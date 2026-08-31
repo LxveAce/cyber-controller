@@ -91,15 +91,13 @@ class LauncherDialog(QDialog):
         self._group = QButtonGroup(self)
 
         options = [
-            ("qtweb", "Full GUI (Recommended)",
-             "The current Cyber Controller interface — the reformed single-window workspace "
-             "(Device, Hunt, Operate, Crack, Map, Terminal, Settings) in a native desktop shell."),
-            ("qt", "Classic GUI",
-             "The earlier PyQt5 interface with sidebar, persistent terminal, command palette, "
-             "and custom widgets. Kept as a fallback while the reformed UI settles."),
-            ("web", "Web Remote",
-             "Flask + SocketIO server you drive from a browser or phone. Perfect for a headless "
-             "Raspberry Pi cyberdeck — control it from any device on your network."),
+            ("desktop", "Normal GUI (Recommended)",
+             "Cyber Controller in a native desktop window — the single-window workspace (Device, "
+             "Hunt, Operate, Crack, Map, Terminal, Settings). Uses your system's own webview, so it "
+             "runs the same on Windows and Linux, ARM and x86."),
+            ("web", "Web based",
+             "The same interface served over your network, driven from a browser or phone. Ideal for "
+             "a headless Raspberry Pi cyberdeck — control it from any device on your LAN."),
         ]
 
         for i, (key, label, desc) in enumerate(options):
@@ -168,7 +166,7 @@ def select_ui() -> str:
 
     dialog = LauncherDialog()
     dialog.exec_()
-    result = dialog.selected_ui or "qtweb"
+    result = dialog.selected_ui or "desktop"
 
     if own_app:
         pass

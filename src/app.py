@@ -1,7 +1,7 @@
 """Cyber Controller — main entry point.
 
 Usage:
-    cyber-controller [--ui qt|tk|tui|web|webview|qtweb] [--log-level DEBUG|INFO|WARNING|ERROR]
+    cyber-controller [--ui desktop|web] [--log-level DEBUG|INFO|WARNING|ERROR]
     cyber-controller --ui web [--host 0.0.0.0] [--port 5000]
 
 Parses CLI arguments, initialises logging, and launches the selected UI.
@@ -18,7 +18,11 @@ from pathlib import Path
 
 log = logging.getLogger("cyber-controller")
 
-_UI_CHOICES = ("qt", "tk", "tui", "web", "webview", "qtweb")
+_UI_CHOICES = ("desktop", "web")
+# Older --ui values still work so existing shortcuts and docs don't break; they normalize to the two
+# current modes with a one-line deprecation notice. The old widget GUIs (qt/tk/tui) map to "desktop".
+_UI_LEGACY = {"qt": "desktop", "qtweb": "desktop", "webview": "desktop", "gui": "desktop",
+              "tk": "web", "tui": "web"}
 _LOG_FORMAT = "%(asctime)s  %(levelname)-8s  %(name)s  %(message)s"
 _LOG_DATE = "%H:%M:%S"
 
@@ -32,10 +36,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--ui",
-        choices=_UI_CHOICES,
+        choices=(*_UI_CHOICES, *_UI_LEGACY),
+        metavar="{desktop,web}",
         default=None,
-        help="UI backend to launch. If omitted, a graphical launcher dialog "
-             "is shown to select the interface.",
+        help="Interface to launch: 'desktop' (a native window) or 'web' (served for a browser). "
+             "If omitted, a launcher dialog asks which one.",
     )
     parser.add_argument(
         "--log-level",
@@ -197,31 +202,8 @@ def _bootstrap():
 
 
 # ── UI launchers ─────────────────────────────────────────────────────
-
-def _launch_qt(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
-    from src.ui.qt.main_window import launch_qt
-    return launch_qt(dm, fe, bus, pool, vault, health, macro)
-
-
-def _launch_tk(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
-    log.info("Launching Tkinter lightweight UI")
-    try:
-        from src.ui.tk.app import launch_tk
-        return launch_tk(dm, fe, bus, pool)
-    except ImportError:
-        log.error("Tkinter is not available on this system.")
-        return 1
-
-
-def _launch_tui(dm, fe, bus, pool, vault=None, health=None, macro=None) -> int:
-    log.info("Launching Textual TUI")
-    try:
-        from src.ui.tui.app import launch_tui
-        return launch_tui(dm, fe, bus, pool)
-    except ImportError:
-        log.error("textual is not installed.  pip install cyber-controller[tui]")
-        return 1
-
+# Two modes only: "desktop" (a native window over the reform web UI) and "web" (served for a browser).
+# The old widget interfaces (PyQt Classic, Tkinter, Textual) were retired from the launcher.
 
 def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None,
                 host="127.0.0.1", port=5000, audit=None) -> int:
@@ -239,25 +221,38 @@ def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None,
 
 
 def _launch_desktop(dm, fe, bus, pool, vault=None, health=None, macro=None, audit=None) -> int:
-    """Native desktop window over the web UI (GUI-stack pivot). Loopback-only, no LAN listener."""
-    log.info("Launching desktop shell (pywebview) over the web UI")
+    """The "Normal GUI": a native desktop window over the reform web UI. Loopback-only, no LAN listener.
+
+    Renders through the platform's own webview via pywebview (WebView2 on Windows, WebKitGTK on Linux),
+    so it runs the same on Windows and Linux, ARM and x86, without bundling a browser. Where a system
+    webview isn't available it falls back to the QtWebEngine shell (heavier, but self-contained). Force
+    one path with CC_DESKTOP_SHELL=pywebview|qtweb."""
+    import os
+    shell = os.environ.get("CC_DESKTOP_SHELL", "").strip().lower()
+    if shell == "qtweb":
+        return _launch_desktop_qt(dm, fe, bus, pool, vault, health, macro, audit)
+    log.info("Launching the desktop window (system webview via pywebview) over the reform UI")
     try:
         from src.ui.web.desktop import launch_desktop
         return launch_desktop(dm, fe, bus, pool, audit=audit)
-    except ImportError:
-        log.error("Flask/pywebview not installed. pip install cyber-controller[web] pywebview")
-        return 1
+    except ImportError as exc:
+        if shell == "pywebview":
+            log.error("pywebview is not installed. pip install pywebview  (%s)", exc)
+            return 1
+        log.warning("pywebview unavailable (%s); falling back to the QtWebEngine desktop window", exc)
+        return _launch_desktop_qt(dm, fe, bus, pool, vault, health, macro, audit)
 
 
 def _launch_desktop_qt(dm, fe, bus, pool, vault=None, health=None, macro=None, audit=None) -> int:
-    """PyQt + QtWebEngine window over the web UI — a genuine PyQt app rendering the reform HTML/CSS.
-    Loopback-only, no LAN listener. Heavier than pywebview (bundles Chromium); Windows/desktop path."""
-    log.info("Launching desktop shell (PyQt/QtWebEngine) over the web UI")
+    """QtWebEngine fallback for the desktop window — a PyQt app rendering the same reform HTML/CSS.
+    Loopback-only, no LAN listener. Self-contained (bundles Chromium) for platforms with no system
+    webview; used automatically when pywebview isn't available, or via CC_DESKTOP_SHELL=qtweb."""
+    log.info("Launching the desktop window (PyQt/QtWebEngine) over the reform UI")
     try:
         from src.ui.web.desktop_qt import launch_desktop_qt
         return launch_desktop_qt(dm, fe, bus, pool, audit=audit)
     except ImportError:
-        log.error("PyQtWebEngine not installed. pip install cyber-controller[web] PyQtWebEngine")
+        log.error("Neither pywebview nor PyQtWebEngine is installed. pip install pywebview")
         return 1
 
 
@@ -283,12 +278,8 @@ def _open_browser_when_ready(host: str, port: int) -> None:
 
 
 _LAUNCHERS = {
-    "qt": _launch_qt,
-    "tk": _launch_tk,
-    "tui": _launch_tui,
+    "desktop": _launch_desktop,
     "web": _launch_web,
-    "webview": _launch_desktop,
-    "qtweb": _launch_desktop_qt,
 }
 
 
@@ -476,8 +467,14 @@ def main(argv: list[str] | None = None) -> int:
             from src.ui.launcher import select_ui
             args.ui = select_ui()
         except Exception:
-            log.warning("Launcher dialog unavailable, defaulting to qtweb")
-            args.ui = "qtweb"
+            log.warning("Launcher dialog unavailable, defaulting to the desktop window")
+            args.ui = "desktop"
+
+    # Accept older --ui names (qt/qtweb/webview/tk/tui) but run them as one of the two current modes.
+    if args.ui in _UI_LEGACY:
+        mapped = _UI_LEGACY[args.ui]
+        log.warning("--ui %s is retired; launching '%s' instead", args.ui, mapped)
+        args.ui = mapped
 
     log.info("Cyber Controller starting — ui=%s", args.ui)
 
