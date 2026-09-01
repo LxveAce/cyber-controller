@@ -42,6 +42,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   carries its own profile + danger label. Brings the bundled profile count to **52**. (Requested: "add the
   ability to flash 'launcher' by bmorcelli"; also on ESP Terminator's supported list.)
 
+- **Marauder v1.15.x maintenance commands** — the Operate command palette now exposes the four device-local
+  verbs added since v1.14.0: `protocolinfo` (query the firmware's machine-protocol + backup capabilities),
+  `backupspiffs`, `backupstatus`, and `restorespiffs` (restore the device SPIFFS from an SD backup; the device
+  reboots on success). All SAFE — device-local filesystem/info, no RF — grounded against the real
+  `CommandLine.cpp` at tag v1.15.1. Closes the v1.14.0→v1.15.1 Marauder command gap (the rest was already covered).
+
 ### Changed
 - **ESP32 Dual-Band Wardriver profile updated v2.3.0 → v2.3.2** (`justcallmekoko/ESP32DualBandWardriver`,
   2026-08-19 release). The app image (`c5_wardriver_v2_3_2_20260819_c5_devkit.bin`) is re-pinned to its real,

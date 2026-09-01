@@ -498,6 +498,15 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("help", "System", "Show help text"),
             CommandInfo("save", "System", "Save settings to flash"),
             CommandInfo("load", "System", "Load settings from flash"),
+            # v1.15.x machine-protocol + SPIFFS backup verbs (CommandLine.cpp:516-575 @ v1.15.1,
+            # source-verified 2026-09-01, HW-unverified). All SAFE: device-local filesystem + info,
+            # no RF. restorespiffs overwrites the device's SPIFFS from the SD backup and reboots on
+            # success (the firmware calls ESP.restart()), so it's labeled but not danger-gated.
+            CommandInfo("protocolinfo", "System", "Query firmware machine-protocol + backup capabilities"),
+            CommandInfo("backupspiffs", "System", "Back up the device SPIFFS (config/data) to SD"),
+            CommandInfo("backupstatus", "System", "Report SPIFFS backup status / inspection"),
+            CommandInfo("restorespiffs", "System",
+                        "Restore device SPIFFS from an SD backup (device reboots on success)"),
             CommandInfo("ls <dir>", "System", "List a directory on the SD card", "dir"),
             CommandInfo("led -s <hexcolor>", "System", "Set LED colour (hex, e.g. FF0000)", "hexcolor"),
         ]
