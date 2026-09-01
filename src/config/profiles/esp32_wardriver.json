@@ -33,22 +33,22 @@
     }
   },
   "resolver_params": {
-    "tag": "v2.3.0",
+    "tag": "v2.3.2",
     "verify_sha256": true,
     "url_sources": {
-      "release": "https://github.com/justcallmekoko/ESP32DualBandWardriver/releases/download/v2.3.0"
+      "release": "https://github.com/justcallmekoko/ESP32DualBandWardriver/releases/download/v2.3.2"
     },
     "assets": [
       {
-        "name": "c5_wardriver_v2_3_0_20260709_c5_devkit.bin",
+        "name": "c5_wardriver_v2_3_2_20260819_c5_devkit.bin",
         "source": "release",
         "chip": "esp32c5",
         "offset": "0x10000",
         "merged": false,
-        "sha256": "8a0095590901b5439e1a98a1a0bf0b4c3b6019bcdc0f1494ad18b021736bb931",
+        "sha256": "12a4ec2812931b15b7afc840ee258c2db9d614cd6f79bbafb556eee762b7e2ac",
         "label": "ESP32 Dual-Band Wardriver app image (passive WiGLE logging)"
       }
     ]
   },
-  "note": "Assets live-verified via gh 2026-07-10 (tag v2.3.0, latest, prerelease:false): bootloader.bin (20464 B), partitions.bin (3072 B), c5_wardriver_v2_3_0_20260709_c5_devkit.bin (1820656 B). SHA-256 digests are REAL — computed from the downloaded v2.3.0 assets (bl 3e2b92a7… / part 0a8b5720… / app 8a009559…), so verify_sha256 passes against the pinned tag. Offsets are the known-correct ESP32-C5 values: bootloader 0x2000 (the central C5 gotcha — matches _bootloader_offset('esp32c5')), partitions 0x8000, app 0x10000, single-app layout (NO boot_app0). LICENSE: repo now ships an MIT LICENSE (the earlier 'no license' note is superseded); CC still only fetches the upstream release at flash time and never vendors the bins. SD card required for logging (Solo/Core mode). Offsets kept treat-as-verify: until a real ESP32-C5 flash confirms boot (Phase-F HW gate); the SHAs are final."
+  "note": "Assets live-verified via gh 2026-08-31 (tag v2.3.2, latest, prerelease:false): bootloader.bin (20464 B), partitions.bin (3072 B), c5_wardriver_v2_3_2_20260819_c5_devkit.bin (1825072 B). SHA-256 digests are REAL — recomputed from the freshly downloaded v2.3.2 assets (bl 3e2b92a7… / part 0a8b5720… / app 12a4ec28…), so verify_sha256 passes against the pinned tag. bootloader.bin + partitions.bin are byte-identical to v2.3.0 (same SHAs); only the app image changed. Cross-checked against the release firmware-manifest.json (sourceCommit 35b3c1b3): factory offsets bootloader 0x2000 (the central C5 gotcha — matches _bootloader_offset('esp32c5')), partition-table 0x8000, app 0x10000. The manifest also lists an ota-data segment at 0xE000 in its factory flow; CC keeps the proven 3-file layout (bootloader+partitions+app, NO boot_app0) — a blank ota-data partition boots ota_0/factory on first run, so ota-data is optional here (revisit only if a real-C5 first-boot fails). MIT LICENSE upstream; CC fetches the upstream release at flash time and never vendors the bins. SD card required for logging (Solo/Core mode). Offsets kept treat-as-verify until a real ESP32-C5 flash confirms boot (Phase-F HW gate); the SHAs are final."
 }

@@ -33,6 +33,20 @@ All notable changes to Cyber Controller are documented here. This project adhere
   as the other jammer-bearing profiles — flash-and-study for an authorized lab; CC authors no TX. Brings the
   bundled profile count to **51**.
 
+### Changed
+- **ESP32 Dual-Band Wardriver profile updated v2.3.0 → v2.3.2** (`justcallmekoko/ESP32DualBandWardriver`,
+  2026-08-19 release). The app image (`c5_wardriver_v2_3_2_20260819_c5_devkit.bin`) is re-pinned to its real,
+  freshly-downloaded SHA-256 (`12a4ec28…`); the ESP32-C5 bootloader (`0x2000`) and partition table (`0x8000`)
+  are byte-identical to v2.3.0 and keep their existing pinned digests. Offsets cross-checked against the
+  release's own `firmware-manifest.json` (sourceCommit `35b3c1b3`). Still passive receive-only — CC flashes
+  the upstream release and adds no capability. Profile count unchanged (**51** — this was already a bundled
+  profile, not a new one).
+
+### Security
+- **`safety.py` `worst_of()` now fails closed.** An unrecognised danger label ranks above every known level
+  (`_SEVERITY.get(lvl, len(_SEVERITY))`) instead of defaulting to `0`/SAFE, so a mislabeled or future danger
+  class is treated as most-severe and still hits the consent gate. Matches `should_confirm`; regression test added.
+
 ## [2.0.0-beta] — 2026-08-08
 
 ### Fixed
