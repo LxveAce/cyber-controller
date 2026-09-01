@@ -9,7 +9,7 @@
 **Flash. Control. Coordinate.** 51 firmware profiles, 5 flash backends, 4 interfaces, one screen.
 
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release&color=39FF14)](https://github.com/LxveAce/cyber-controller/releases)
-[![Firmwares](https://img.shields.io/badge/firmware%20profiles-51-success?style=for-the-badge)](#-supported-firmware)
+[![Firmwares](https://img.shields.io/badge/firmware%20profiles-52-success?style=for-the-badge)](#-supported-firmware)
 [![Platform](https://img.shields.io/badge/Windows%20·%20Linux%20·%20macOS%20·%20ARM-blue?style=for-the-badge)](#-interfaces)
 [![License](https://img.shields.io/github/license/LxveAce/cyber-controller?style=for-the-badge)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
@@ -38,7 +38,7 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 
 ## ✨ Highlights
 
-**🔥 Flash.** **51 firmware profiles** across 5 flash backends (esptool for ESP32, qFlipper for Flipper Zero, ADB for Android, SD-image for Pi/SBC boards, and the Realtek RTL8720 loader) — a few more (TI CC2652/Sniffle, HackRF/PortaPack, nRF52 DFU, RP2040 UF2) have their flow unit-tested but aren't validated on real silicon yet, so they don't count toward that 5. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress, see the beta caveats) auto-detects the chip (`esptool chip_id` first, never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+**🔥 Flash.** **52 firmware profiles** across 5 flash backends (esptool for ESP32, qFlipper for Flipper Zero, ADB for Android, SD-image for Pi/SBC boards, and the Realtek RTL8720 loader) — a few more (TI CC2652/Sniffle, HackRF/PortaPack, nRF52 DFU, RP2040 UF2) have their flow unit-tested but aren't validated on real silicon yet, so they don't count toward that 5. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress, see the beta caveats) auto-detects the chip (`esptool chip_id` first, never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
 
 **🎮 Control.** A protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **14 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
 
@@ -48,7 +48,7 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 
 ## 🧩 Supported firmware
 
-51 firmware profiles ship in `src/config/profiles/`. Each tracks its **latest upstream release** at flash time and auto-selects the correct per-board binary.
+52 firmware profiles ship in `src/config/profiles/`. Each tracks its **latest upstream release** at flash time and auto-selects the correct per-board binary.
 
 > 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)**: a per-firmware walkthrough for every entry below (what to buy, how to build it, how to flash & run it, how to wire it into Cyber Controller, and troubleshooting), each with a downloadable PDF.
 
@@ -57,6 +57,7 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 | **ESP32 Marauder** | Wi-Fi/BLE recon + attack suite | ESP32 / S2 / S3 / C5 | esptool |
 | **GhostESP** | Wi-Fi/BLE/SubGHz multitool | ESP32 / S2 / S3 / C-series | esptool (zip) |
 | **Bruce** | Pentest multitool | ESP32 / S3 / C-series | esptool (merged) |
+| **M5Launcher** | Multi-board firmware launcher / SD app loader (bmorcelli) | ESP32 / S3 / C5 / C6 (~70 boards) | esptool (merged) |
 | **POSEIDON** ⚠ *illegal-tx* | Keyboard-first pentest multitool (163 features) — includes a 2.4GHz CW/sub-GHz jammer + deauth/BLE-spam TX; authorized lab only, CC flashes firmware and authors no TX | ESP32-S3 (M5 Cardputer-Adv) | esptool (merged) |
 | **Nautilus** | Sub-GHz RF (CC1101 300–928 MHz RX/TX) | ESP32-S3 (LilyGo T-Embed CC1101) | esptool (merged) |
 | **ESP32-DIV** | Wi-Fi/RF Swiss-army firmware | ESP32-S3 (v2) | esptool |

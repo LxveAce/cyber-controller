@@ -33,6 +33,15 @@ All notable changes to Cyber Controller are documented here. This project adhere
   as the other jammer-bearing profiles — flash-and-study for an authorized lab; CC authors no TX. Brings the
   bundled profile count to **51**.
 
+- **M5Launcher flash profile** (`bmorcelli/Launcher`, formerly M5Stick-Launcher) — the multi-board firmware
+  launcher / SD app-loader that boots Marauder, Bruce, and any `.bin` from an SD card. Tracks the latest
+  upstream release (v2.8.0 ships ~70 per-board images) and flashes the matching `Launcher-<board>.bin` merged
+  image at `0x0`; the chip family is derived from the board name and esptool auto-detects at flash. Covers the
+  M5Stack Cardputer/CoreS3/StickC family, the Cheap Yellow Display fleet, and many LilyGo boards across
+  ESP32 / S3 / C5 / C6. Labeled non-dangerous — the launcher authors no TX; whatever firmware you load onto it
+  carries its own profile + danger label. Brings the bundled profile count to **52**. (Requested: "add the
+  ability to flash 'launcher' by bmorcelli"; also on ESP Terminator's supported list.)
+
 ### Changed
 - **ESP32 Dual-Band Wardriver profile updated v2.3.0 → v2.3.2** (`justcallmekoko/ESP32DualBandWardriver`,
   2026-08-19 release). The app image (`c5_wardriver_v2_3_2_20260819_c5_devkit.bin`) is re-pinned to its real,

@@ -65,5 +65,6 @@ def test_bundled_profiles_all_pass_url_validation():
     # + rnode_nrf + whad_butterfly (round-2 nrf_dfu/uf2 profiles bundled into 1.7.0).
     # + lxveos (LxveAce/lxveos ci-latest prerelease, github_release/esptool, esp32+esp32s3).
     # + poseidon (github_release/esptool, esp32s3 Cardputer-Adv, merged single-bin @ 0x0).
+    # + m5launcher (bmorcelli/Launcher, github_release/esptool, ~70 boards, merged single-bin @ 0x0).
     # (all drop-in JSON; github/raw hosts, or the local resolver with no URLs). ble_collector is pinned_release.
-    assert len(flash_core.PROFILES) == 47
+    assert len(flash_core.PROFILES) == 48

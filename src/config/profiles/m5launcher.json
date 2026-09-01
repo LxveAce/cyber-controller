@@ -1,0 +1,55 @@
+{
+  "name": "M5Launcher",
+  "id": "m5launcher",
+  "core_id": "m5launcher",
+  "label": "M5Launcher (bmorcelli) — multi-board firmware launcher",
+  "description": "bmorcelli's Launcher (formerly M5Stick-Launcher) — a multi-board boot menu that loads other firmwares (Marauder, Bruce, and any .bin) from an SD card, plus an over-the-air app store. One codebase, ~70 board targets from bare ESP32 through the M5Stack Cardputer/CoreS3/StickC family, the Cheap Yellow Display fleet, and many LilyGo boards. Per-board merged single .bin flashed at 0x0. The launcher itself transmits nothing; any offensive capability belongs to the firmware you subsequently load, which carries its own profile + danger label.",
+  "backend": "esptool",
+  "protocol": null,
+  "danger": "",
+  "boards": [
+    {"name": "ESP32 Generic (headless 4MB)", "chip": "esp32", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "80m"},
+    {"name": "M5Cardputer", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "dio", "flash_freq": "80m", "has_keyboard": true, "has_display": true},
+    {"name": "M5StickC Plus2", "chip": "esp32", "flash_size": "8MB", "flash_mode": "dio", "flash_freq": "80m", "has_display": true},
+    {"name": "M5Stack CoreS3", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "dio", "flash_freq": "80m", "has_display": true},
+    {"name": "ESP32 CYD (2432S028)", "chip": "esp32", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "80m", "has_display": true, "display_type": "ili9341"},
+    {"name": "ESP32-S3 CYD (8048S043)", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "dio", "flash_freq": "80m", "has_display": true},
+    {"name": "LilyGo T-Embed CC1101", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "external_modules": ["CC1101"]},
+    {"name": "LilyGo T-Dongle-C5", "chip": "esp32c5", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "80m", "dual_band": true},
+    {"name": "ESP32-C5 Generic (NM-CYD-C5)", "chip": "esp32c5", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "80m", "dual_band": true}
+  ],
+  "default_baud": 115200,
+  "firmware_urls": {
+    "repo": "https://github.com/bmorcelli/Launcher",
+    "latest": "https://github.com/bmorcelli/Launcher/releases/latest"
+  },
+  "note": "bmorcelli/Launcher (aka M5Launcher; the repo was renamed from M5Stick-Launcher). Live-verified via gh 2026-08-31: latest tag v2.8.0 ships 70 per-board Launcher-<board>.bin assets. Each is a MERGED single image flashed at 0x0 — confirmed by inspecting Launcher-m5stack-cardputer.bin (0xE9 image magic at 0x0, partition-table magic 0xAA50 at 0x8000). github_release resolver tracks the latest release and emits every matched asset as a board variant; chip family is derived from the filename fragments (default esp32, with s3/c5/c6 rules), and esptool auto-detects the real chip at flash time, so the merged-at-0x0 write is offset-correct on every board. No per-asset SHA pin (rolling latest, same model as bruce.json). danger=\"\": Launcher is a boot menu / app loader that authors no TX; the offensive capability lives in whatever firmware you load onto it, which brings its own profile + danger label. protocol=null (a boot menu has no persistent serial control grammar). Chip labels for a handful of newer boards (e.g. m5stack-tab5 = ESP32-P4, some large CYDs) fall back to the esp32 default and are cosmetic under merged-at-0x0 auto-detect; real-hardware flash owner-gated (Phase-F).",
+  "repo": "bmorcelli/Launcher",
+  "supports_suicide": false,
+  "image_model": "merged-single-bin",
+  "resolver": "github_release",
+  "app_offset": "0x0",
+  "support_files": null,
+  "variants_for_chip": "by_chip",
+  "default_variant": {"strategy": "first"},
+  "resolver_params": {
+    "api_url": "https://api.github.com/repos/bmorcelli/Launcher/releases/latest",
+    "asset_match": {"include_regex": "^Launcher-(.+)\\.bin$", "regex_flags": ["IGNORECASE"]},
+    "chip_map": {
+      "strategy": "fragments", "source": "regex_group:1", "default": "esp32",
+      "rules": [
+        ["esp32-s3", "esp32s3"], ["esp32s3", "esp32s3"], ["-s3", "esp32s3"], ["cardputer", "esp32s3"],
+        ["sticks3", "esp32s3"], ["cores3", "esp32s3"], ["dinmeter", "esp32s3"], ["smoochiee", "esp32s3"],
+        ["reaper", "esp32s3"], ["pancake", "esp32s3"], ["wavesentry", "esp32s3"], ["t-embed", "esp32s3"],
+        ["t-deck", "esp32s3"], ["t-watch", "esp32s3"], ["t-hmi", "esp32s3"], ["t-lora-pager", "esp32s3"],
+        ["t-display-s3", "esp32s3"], ["t5-epaper", "esp32s3"], ["8048", "esp32s3"], ["4827s043", "esp32s3"],
+        ["esp32-c5", "esp32c5"], ["esp32c5", "esp32c5"], ["nm-cyd-c5", "esp32c5"], ["dongle-c5", "esp32c5"],
+        ["-c5", "esp32c5"], ["esp32-c6", "esp32c6"], ["esp32c6", "esp32c6"], ["nesso-n1", "esp32c6"], ["-c6", "esp32c6"]
+      ]
+    },
+    "emit": {
+      "offset": "0x0", "merged": true,
+      "label_template": "M5Launcher {env}", "label_group": 1
+    }
+  }
+}
