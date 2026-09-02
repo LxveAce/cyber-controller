@@ -200,8 +200,8 @@
         <div class="card">
           <h3><span class="t">Firmware</span><span class="r">esptool bundled</span></h3>
           <div class="fw-controls" style="display:flex;gap:8px;margin-bottom:8px">
-            <input class="field" id="fw-search" type="search" placeholder="Search firmware&#8230;" aria-label="Search firmware" style="flex:1">
-            <select class="field" id="fw-cat" aria-label="Filter firmware by category" style="min-width:170px">
+            <input class="field" id="fw-search" type="search" placeholder="Search firmware&#8230;" aria-label="Search firmware" style="flex:1 1 auto;width:auto;min-width:0">
+            <select class="field" id="fw-cat" aria-label="Filter firmware by category" style="flex:0 0 auto;width:auto;min-width:190px">
               <option value="">All categories</option>
               {% for c in flash_cats %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
             </select>
