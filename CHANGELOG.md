@@ -61,6 +61,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
   `CommandLine.cpp` at tag v1.15.1. Closes the v1.14.0→v1.15.1 Marauder command gap (the rest was already covered).
 
 ### Changed
+- **GUI palette — "Ace Purple".** The reformed GUI's color system is retuned so **purple is the primary
+  action color** (buttons, active/selected states, titles), the neutrals carry a purple bias, and green is
+  reserved for the live / SAFE / ok signal. The old neutral blue-grays are gone; every color now flows from
+  the `:root` tokens in `reform.css`. Owner-picked from a five-way palette comparison. (No acid green — the
+  `test_no_acid_green` guard still holds.)
 - **ESP32 Dual-Band Wardriver profile updated v2.3.0 → v2.3.2** (`justcallmekoko/ESP32DualBandWardriver`,
   2026-08-19 release). The app image (`c5_wardriver_v2_3_2_20260819_c5_devkit.bin`) is re-pinned to its real,
   freshly-downloaded SHA-256 (`12a4ec28…`); the ESP32-C5 bootloader (`0x2000`) and partition table (`0x8000`)
