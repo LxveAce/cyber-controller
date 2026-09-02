@@ -57,6 +57,15 @@
       "dual_band": true
     },
     {
+      "name": "BFFB (Flipper Zero expansion, Dev Board Pro)",
+      "chip": "esp32c5",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "80m",
+      "dual_band": true,
+      "external_modules": ["CC1101 400MHz", "CC1101 900MHz", "NRF24 (Ebyte)", "GPS"]
+    },
+    {
       "name": "M5StickC Plus2",
       "chip": "esp32",
       "flash_size": "8MB",

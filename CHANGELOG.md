@@ -42,6 +42,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   carries its own profile + danger label. Brings the bundled profile count to **52**. (Requested: "add the
   ability to flash 'launcher' by bmorcelli"; also on ESP Terminator's supported list.)
 
+- **BFFB (Flipper Zero expansion) support** — the Marauder profile now lists the **BFFB** as its own ESP32-C5
+  board ("BFFB (Flipper Zero expansion, Dev Board Pro)"), so it flashes with one pick and the correct C5
+  `0x2000` offsets. New **[docs/BFFB.md](docs/BFFB.md)** guide (grounded in the koko wiki) covers the board's
+  radios (dual CC1101 400/900 MHz, Ebyte NRF24, onboard GPS), flashing via CC, the Flipper WiFi Marauder app
+  path, and an honest split of what CC drives over USB serial (Wi-Fi/BLE/GPS) vs. what the Flipper drives over
+  GPIO (the CC1101/NRF sub-GHz side).
 - **Marauder v1.15.x maintenance commands** — the Operate command palette now exposes the four device-local
   verbs added since v1.14.0: `protocolinfo` (query the firmware's machine-protocol + backup capabilities),
   `backupspiffs`, `backupstatus`, and `restorespiffs` (restore the device SPIFFS from an SD backup; the device
