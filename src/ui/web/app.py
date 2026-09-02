@@ -90,6 +90,40 @@ def _load_profiles() -> dict[str, Path]:
     return profiles
 
 
+# Presentation-only buckets for the flasher UI so the ~50-profile list groups + filters instead of
+# being one long scroll. Ordered = display order; keywords match the profile's display name (first hit
+# wins) and are kept non-overlapping. This never touches which binary flashes — purely how the picker reads.
+_FLASH_CATEGORY_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("Wi-Fi / BLE multitools", ("marauder", "ghost", "bruce", "esp32-div", "halehound", "nemo", "t-rex", "esp-at", "poseidon")),
+    ("Wardriving", ("wardriver", "wardrive")),
+    ("Mesh / LoRa", ("meshtastic", "meshcore", "mclite", "rnode")),
+    ("Sub-GHz / RF & SDR", ("nautilus", "portapack", "mayhem", "catsniffer", "sniffle", "z-stack", "bit pirate")),
+    ("Detectors & counter-surveillance", ("airtag", "oui-spy", "sky-spy", "drone", "flock", "rayhunter", "collector", "whad", "nrf sniffer", "chasing")),
+    ("Pwnagotchi", ("pwnagotchi", "gotchi")),
+    ("Flipper Zero", ("flipper",)),
+    ("Launchers & OS", ("launcher", "kali", "raspyjack", "lxveos")),
+    ("Offensive / lab-only", ("deauth", "jammer", "bluejammer", "nullifier", "wifiduck", "wifi duck", "porkchop", "bluestress", "penetration", "hydra")),
+)
+
+
+def _flash_category(name: str) -> str:
+    """Bucket a firmware profile by its display name for the flasher UI grouping/filter."""
+    n = name.lower()
+    for cat, keys in _FLASH_CATEGORY_RULES:
+        if any(k in n for k in keys):
+            return cat
+    return "Other"
+
+
+def _flash_rows(names: list[str]) -> tuple[list[dict[str, str]], list[str]]:
+    """Return (rows, categories-in-order) for the flasher picker. Rows sorted by category then name."""
+    order = [c for c, _ in _FLASH_CATEGORY_RULES] + ["Other"]
+    rows = [{"name": n, "cat": _flash_category(n)} for n in names]
+    rows.sort(key=lambda r: (order.index(r["cat"]), r["name"].lower()))
+    present = [c for c in order if any(r["cat"] == c for r in rows)]
+    return rows, present
+
+
 def _resolve_client_ip(remote_addr: str | None, forwarded_for: str,
                        trusted_proxy_ips: frozenset[str]) -> str:
     """Resolve the real client IP for rate-limiting + audit — proxy-aware but spoof-resistant (W2).
@@ -536,6 +570,8 @@ def create_app(
             target_count=target_pool.count,
             sys=_gauge_ctx(),
             flash_profiles=list(profiles.keys()),
+            flash_rows=_flash_rows(list(profiles.keys()))[0],
+            flash_cats=_flash_rows(list(profiles.keys()))[1],
         )
 
     @app.route("/api/system-health")

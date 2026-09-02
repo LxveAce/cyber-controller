@@ -199,20 +199,28 @@
         </div>
         <div class="card">
           <h3><span class="t">Firmware</span><span class="r">esptool bundled</span></h3>
+          <div class="fw-controls" style="display:flex;gap:8px;margin-bottom:8px">
+            <input class="field" id="fw-search" type="search" placeholder="Search firmware&#8230;" aria-label="Search firmware" style="flex:1">
+            <select class="field" id="fw-cat" aria-label="Filter firmware by category" style="min-width:170px">
+              <option value="">All categories</option>
+              {% for c in flash_cats %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+            </select>
+          </div>
           <table>
             <thead><tr><th>Firmware</th><th>Board / variant</th><th></th></tr></thead>
             <tbody id="fw-profiles">
-              {% for name in flash_profiles %}
-              <tr>
-                <td>{{ name }}</td>
-                <td><select class="field fw-variant" data-profile="{{ name }}" aria-label="Variant for {{ name }}" style="min-width:150px"><option value="">Default (auto)</option></select></td>
-                <td class="r"><button class="btn sm green fw-flash" data-profile="{{ name }}">Flash</button></td>
+              {% for row in flash_rows %}
+              <tr data-name="{{ row.name|lower }}" data-cat="{{ row.cat }}">
+                <td>{{ row.name }}</td>
+                <td><select class="field fw-variant" data-profile="{{ row.name }}" aria-label="Variant for {{ row.name }}" style="min-width:150px"><option value="">Default (auto)</option></select></td>
+                <td class="r"><button class="btn sm green fw-flash" data-profile="{{ row.name }}">Flash</button></td>
               </tr>
               {% else %}
               <tr><td class="off" colspan="3">no firmware profiles found</td></tr>
               {% endfor %}
             </tbody>
           </table>
+          <div class="footnote off" id="fw-nomatch" style="display:none">No firmware matches your search.</div>
           <div class="footnote">Variants load from each firmware&#8217;s own release. Leave on &#8220;Default&#8221; unless a board with a shared chip ID flashes a blank screen.</div>
           <div style="margin-top:10px"><div class="progress" style="height:6px;background:#0d1117;border:1px solid var(--bd);border-radius:4px;overflow:hidden"><div id="fw-bar" style="height:100%;width:0;background:var(--acc);transition:width .2s"></div></div></div>
           <div class="term" id="fw-log" style="height:130px;margin-top:8px"><div class="p">Pick a port + firmware, then Flash.</div></div>

@@ -627,6 +627,28 @@
     if (!portsBody) return;
     var fwPort = null;
 
+    // Firmware search + category filter (presentation only — never changes what flashes).
+    (function () {
+      var search = document.getElementById("fw-search");
+      var catSel = document.getElementById("fw-cat");
+      var noMatch = document.getElementById("fw-nomatch");
+      var rows = Array.prototype.slice.call(document.querySelectorAll("#fw-profiles tr[data-name]"));
+      if (!rows.length) return;
+      function apply() {
+        var q = ((search && search.value) || "").trim().toLowerCase();
+        var cat = (catSel && catSel.value) || "";
+        var shown = 0;
+        rows.forEach(function (r) {
+          var ok = (!q || r.dataset.name.indexOf(q) !== -1) && (!cat || r.dataset.cat === cat);
+          r.style.display = ok ? "" : "none";
+          if (ok) shown++;
+        });
+        if (noMatch) noMatch.style.display = shown ? "none" : "";
+      }
+      if (search) search.addEventListener("input", apply);
+      if (catSel) catSel.addEventListener("change", apply);
+    })();
+
     window.__fwSyncPorts = function (devs) {
       if (!devs.length) { portsBody.innerHTML = '<tr><td class="off">no ports — plug in a device</td></tr>'; return; }
       portsBody.innerHTML = devs.map(function (d) {

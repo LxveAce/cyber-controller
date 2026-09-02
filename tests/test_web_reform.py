@@ -632,3 +632,28 @@ def test_desktop_shell_module_importable():
     from src.ui.web import desktop
 
     assert callable(desktop.launch_desktop)
+
+
+def test_reform_flasher_grouped_search_and_categories():
+    # The flasher picker groups + filters (search box + category dropdown) so ~50 profiles don't
+    # render as one long scroll. Presentation only — the flash/variant wiring is untouched.
+    body = _client(DeviceManager()).get("/reform").get_data(as_text=True)
+    assert 'id="fw-search"' in body
+    assert 'id="fw-cat"' in body
+    assert "data-cat=" in body and "data-name=" in body
+    assert "Wi-Fi / BLE multitools" in body   # a category label from the classifier
+    assert "fw-flash" in body and "fw-variant" in body   # flash wiring intact
+
+
+def test_flash_category_classifier_buckets_are_sane():
+    from src.ui.web.app import _flash_category, _flash_rows
+
+    assert _flash_category("ESP32 Marauder") == "Wi-Fi / BLE multitools"
+    assert _flash_category("ESP32 Dual-Band Wardriver") == "Wardriving"
+    assert _flash_category("BW16 Deauther") == "Offensive / lab-only"
+    assert _flash_category("Meshtastic") == "Mesh / LoRa"
+    assert _flash_category("Custom / local `.bin`") == "Other"
+    # every row gets exactly one category, rows are grouped in category order
+    rows, cats = _flash_rows(["ESP32 Marauder", "BW16 Deauther", "Meshtastic"])
+    assert {r["cat"] for r in rows} <= set(cats)
+    assert len(rows) == 3

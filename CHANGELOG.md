@@ -42,6 +42,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
   carries its own profile + danger label. Brings the bundled profile count to **52**. (Requested: "add the
   ability to flash 'launcher' by bmorcelli"; also on ESP Terminator's supported list.)
 
+- **Flasher picker: search + category grouping.** The DEVICE ▸ Firmware list used to be one long
+  ~50-row scroll. It now has a **live search box** and a **category dropdown** (Wi-Fi/BLE multitools,
+  Wardriving, Mesh/LoRa, Sub-GHz/RF & SDR, Detectors, Pwnagotchi, Flipper Zero, Launchers & OS,
+  Offensive/lab-only), and the rows are grouped by category. Presentation only — the classifier keys off
+  the display name and never changes which binary flashes; the `/api/flash` + `/api/variants` contracts
+  are untouched.
 - **BFFB (Flipper Zero expansion) support** — the Marauder profile now lists the **BFFB** as its own ESP32-C5
   board ("BFFB (Flipper Zero expansion, Dev Board Pro)"), so it flashes with one pick and the correct C5
   `0x2000` offsets. New **[docs/BFFB.md](docs/BFFB.md)** guide (grounded in the koko wiki) covers the board's
