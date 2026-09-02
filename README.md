@@ -6,7 +6,9 @@
 
 ### One dashboard to flash, drive, and coordinate every radio in your cyberdeck.
 
-**Flash. Control. Coordinate.** 51 firmware profiles, 5 flash backends, 4 interfaces, one screen.
+**Flash. Control. Coordinate.** 52 firmware profiles, 5 flash backends, one screen.
+
+🚧 **Under heavy development** — moving fast; pin a release if you need stability.
 
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release&color=39FF14)](https://github.com/LxveAce/cyber-controller/releases)
 [![Firmwares](https://img.shields.io/badge/firmware%20profiles-52-success?style=for-the-badge)](#-supported-firmware)
@@ -32,6 +34,8 @@ Built to run a multi-device cyberdeck on a 7″ touchscreen, headless over SSH, 
 ## 📦 Latest release
 
 **[v2.0.0-beta](https://github.com/LxveAce/cyber-controller/releases)** *(beta prerelease; the current stable is [v1.8.0](https://github.com/LxveAce/cyber-controller/releases/latest))* is a broad feature beta. The bottom **terminal echoes everything** (every command and device reply) with a send-target selector; the **Flock map is a real OpenStreetMap street map** (native, offline-first); **wardrive upload** to WiGLE and WDG Wars from the Wardrive tab; a **Terms of Service & Use** dialog in Help; the crowded Operate surface is **regrouped** into Operate / Survey / Analyze; and **much fuller, honest per-firmware control**: the real CLI verbs each firmware actually supports were added and the fake ones removed (GhostESP 32→92, BlueStress's dead placeholders replaced with real dispatcher verbs, honest flash-and-monitor for the touch-only firmwares). Plus a canonical captures folder, a visible auto-update status, network-graph pan/zoom fixes, and an adversarial-review reliability pass. Backend/serial control only: CC issues firmware CLI commands and never authors radio frames.
+
+> ⚠️ **Running v1.8.0 on Windows?** The **installer (`setup`) exe is broken** — it won't launch the app. Use the **prepackaged portable `.exe`** from the release assets instead. (Fixed going into 2.0.)
 
 The full version-by-version history, down to every fix, hardening pass, and added firmware, is in the **[Changelog](CHANGELOG.md)** and the **[Releases](https://github.com/LxveAce/cyber-controller/releases)**. Where it's headed next is on the **[roadmap at cybercontroller.org](https://cybercontroller.org/#firmware)**.
 <!-- STATUS-ROADMAP:END -->

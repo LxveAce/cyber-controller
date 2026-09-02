@@ -29,9 +29,9 @@ CC verifies the download by SHA-256 and never vendors the binary.
 Be clear on the split — it's not all one control path:
 
 - **Cyber Controller (USB serial → the C5's Marauder):** Wi-Fi and BLE scan / sniff / attack, plus **GPS** (`gpsdata`, `nmea`, `gps -g`, `gpspoi`, `gpstracker`, `wardrive`). This is the standard Marauder serial CLI, already wired in CC's Marauder control surface.
-- **Flipper Zero (GPIO → the board):** the **WiFi Marauder** app (by 0xchocolate, prebuilt into Momentum / Unleashed / RogueMaster CFW) drives the board from the Flipper UI. The BFFB's **CC1101 sub-GHz (400/900 MHz)** and **NRF24** radios are operated on the Flipper side — the standard Marauder USB CLI does not expose sub-GHz/NRF control, so those aren't CC-serial-driven today.
+- **Flipper Zero (GPIO → the board):** the **WiFi Marauder** app (by 0xchocolate, prebuilt into Momentum / Unleashed / RogueMaster CFW) drives the board from the Flipper UI. The BFFB's **CC1101 sub-GHz (400/900 MHz)** and **NRF24** radios are operated on the Flipper side. That's the intended path for now — you control the sub-GHz side through the Flipper.
 
-> **Open item (owner):** if you want CC to drive the CC1101/NRF side directly, that needs a firmware that exposes those over serial (or a separate control path). Flagged, not built — see the pending list.
+> **Direct-from-CC control (future):** driving the CC1101/NRF directly from CC over USB is possible in principle — the standard Marauder USB CLI just doesn't expose those radios today. The likely route is a **simple adapter PCB** the BFFB headers plug into to break the board out to USB, so CC can talk to it without the Flipper in the loop. To be designed later; for now, use the Flipper for the sub-GHz side.
 
 ## Using it with the Flipper Zero
 
