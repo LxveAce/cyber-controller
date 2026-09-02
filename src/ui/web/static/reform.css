@@ -8,7 +8,7 @@
   /* Ace Purple — purple is the action color; the neutrals carry a purple bias, green stays semantic (live/SAFE/ok). */
   --bg:#0e0b14; --rail:#080510; --card:#171221; --card2:#120d1c;
   --bd:#2d2440; --bd2:#241b35; --tx:#ece8f5; --tx2:#faf8ff; --mut:#9a8fb5; --dim:#7a6f94;
-  --acc:#8b5cf6; --acc-dim:#4c357d; --acc-lt:#c4b5fd; --green:#34d399; --amber:#fbbf24; --orange:#f0883e;
+  --acc:#8257e6; --acc-dim:#4c357d; --acc-lt:#c4b5fd; --green:#34d399; --amber:#fbbf24; --orange:#f0883e;
   --red:#fb7185; --blue:#58a6ff; --yellow:#ffd700;
   --mono:ui-monospace,"Cascadia Code","Cascadia Mono",Consolas,"Courier New",monospace;
   --ui:-apple-system,"Segoe UI",system-ui,Roboto,Helvetica,Arial,sans-serif;
