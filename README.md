@@ -52,6 +52,11 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 
 > 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)**: a per-firmware walkthrough for every entry below (what to buy, how to build it, how to flash & run it, how to wire it into Cyber Controller, and troubleshooting), each with a downloadable PDF.
 
+<details>
+<summary><b>See all 52 firmware profiles</b> (click to expand)</summary>
+
+<br>
+
 | Firmware | Purpose | Chips / boards | Backend |
 |----------|---------|----------------|---------|
 | **ESP32 Marauder** | Wi-Fi/BLE recon + attack suite | ESP32 / S2 / S3 / C5 | esptool |
@@ -107,6 +112,8 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 | **ESP-AT** | Espressif AT-command Wi-Fi/BT modem firmware | ESP32 / S2 / S3 / C3 | esptool (zip) |
 | **Custom / local `.bin`** | Flash your own build | any ESP32 | esptool |
 
+</details>
+
 > ⚠ marks firmware that can transmit and is included for **authorized testing only**. ⚠⚠ **BlueJammer-V2** is a flash-and-study target for an authorized lab: RF jamming is **illegal to transmit** (FCC 47 U.S.C. §333). Per the *label, never block* doctrine its binaries are SHA-256-pinned + fetched at flash time (never vendored), and Cyber Controller exposes **no operate/transmit control** for it. The parser is telemetry-only.
 
 ## 🔌 Supported hardware
@@ -136,24 +143,23 @@ Merged single-image firmwares (Bruce, GhostESP `merged.bin`) flash at `0x0`. The
 
 ## 🖥 Interfaces
 
-| Mode | Framework | Best for |
-|------|-----------|----------|
-| **Full Dashboard** | PyQt5 | Primary — 7″ touchscreen, every feature |
-| **Lightweight** | Tkinter | Low-resource ARM systems |
-| **TUI** | Textual | SSH / headless |
-| **Web Remote** | Flask + SocketIO | Phone control of a headless Pi (auth + CSRF + `127.0.0.1` by default) |
+Two modes, one reformed single-window UI underneath — the same dashboard whether it runs in a native window or a browser.
 
-Launch with no `--ui` for a picker. A **Simple / Pro** depth toggle (Ctrl+M) trims or reveals controls with zero feature penalty. Which frontend suits which machine → [`docs/RECOMMENDED-SPECS.md`](docs/RECOMMENDED-SPECS.md).
+| Mode | How it renders | Best for |
+|------|----------------|----------|
+| **Normal GUI** | Native desktop window (pywebview → WebView2 / WebKitGTK, ARM + x64) | Day-to-day use on a laptop, mini-PC, or 7″ touchscreen |
+| **Web based** | Flask + SocketIO in your browser (auth + CSRF, binds `127.0.0.1` by default) | Phone control of a headless Pi, or any remote box |
+
+Launch with no `--ui` for a picker. A **Simple / Pro** depth toggle (Ctrl+M) trims or reveals controls with zero feature penalty. Which mode suits which machine → [`docs/RECOMMENDED-SPECS.md`](docs/RECOMMENDED-SPECS.md).
 
 ## 🚀 Quick start
 
 ```bash
-# Python 3.12+ — extras: tk / tui / web / full / dev
+# Python 3.12+ — extras: desktop / web / full / dev
 pip install -e ".[full]"
 
-cyber-controller                # full PyQt5 dashboard
-cyber-controller --ui tui       # terminal UI (SSH / headless)
-cyber-controller --ui web       # web remote, binds 127.0.0.1:5000
+cyber-controller                # Normal GUI (native desktop window)
+cyber-controller --ui web       # Web based, binds 127.0.0.1:5000
 ```
 
 Prefer a prebuilt binary? Grab the **[latest release](https://github.com/LxveAce/cyber-controller/releases/latest)** (Windows portable `.exe` + installer, Linux, macOS, ARM), each with `SHA256SUMS.txt` and a VirusTotal report. The build isn't code-signed yet, so Windows SmartScreen may warn; [`docs/WINDOWS-SECURITY.md`](docs/WINDOWS-SECURITY.md) explains why and gives three ways to verify your download.
@@ -194,7 +200,15 @@ Issues and PRs welcome. Run `python -m pytest` before submitting; the suite cove
 
 ## 🙏 Credits
 
-Cyber Controller flashes, drives, and coordinates firmware and tools it did not write. It builds on the work of many upstream authors, none of whom endorse it. Nothing upstream is vendored here; binaries are fetched from official releases, pinned and SHA-256 verified. Full acknowledgments + licenses in **[CREDITS.md](CREDITS.md)**. Special thanks to **RedneckNetrunner** (GOS Discord), whose coverage requests and real-device testing shaped the M5 / Cardputer support. Trademarks belong to their respective owners.
+Cyber Controller flashes, drives, and coordinates firmware and tools it did not write. It builds on the work of many upstream authors, none of whom endorse it. Nothing upstream is vendored here; binaries are fetched from official releases, pinned and SHA-256 verified. Full acknowledgments + licenses in **[CREDITS.md](CREDITS.md)**.
+
+A few shout-outs for pointing the way:
+
+- **[ESP Terminator](https://espterminator.com)** — a great map of which ESP32 firmwares are worth supporting; it helped shape our flasher's coverage list.
+- **[JustCallMeKoko](https://github.com/justcallmekoko/ESP32Marauder)** — the ESP32 Marauder project and its wiki are the reference we ground our Marauder support (commands, boards, offsets) against.
+- **RedneckNetrunner** (GOS Discord) — coverage requests and real-device testing that shaped the M5 / Cardputer support.
+
+Trademarks belong to their respective owners.
 
 ## 📄 License
 
