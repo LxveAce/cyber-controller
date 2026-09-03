@@ -176,6 +176,15 @@ Cyber Controller drives real RF and flashing hardware, so it's hardened to match
 
 [Dead Man's Switch](https://github.com/LxveAce/deadmans-switch) ships as a submodule for **owner-only** anti-forensic provisioning (boot-password gate, fail-count wipe, GPIO trigger, eFuse + flash encryption). Provision it from **`cyber-controller --deadman-setup`** or **Tools ▸ Dead Man's Switch Setup**; the password is hashed **host-side** (PBKDF2, never stored). Bundles flash with TOCTOU-safe per-file SHA-256 verification. Cyber Controller only *flashes* a bundle the provisioner already built; it never burns eFuses itself. Honest scope in the [DMS docs](https://github.com/LxveAce/deadmans-switch).
 
+## 🔭 What's next
+
+A few things in the works (no dates, but they're coming):
+
+- A **browser-based flasher** on [cybercontroller.org](https://cybercontroller.org) — flash any supported firmware from the site, no install.
+- **OUI vendor lookup** in the device/scan views, deeper per-firmware command coverage, and live Meshtastic reads.
+- A **big UI + website overhaul** — the current look is a work in progress, not the destination.
+- **LxveLabs hardware** — open-source PCBs and buildable kits, starting with a multi-node Xiao-C5 wardriver.
+
 ## 📚 Learn more / get help
 
 | For… | Go to |
