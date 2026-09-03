@@ -247,6 +247,18 @@ def _build() -> int:
         except ImportError:
             print(f"note: {_webpkg} not installed — the qtweb/web UI won't be fully bundled in this build.")
 
+    # pywebview is the system-webview shell for the DEFAULT "Normal GUI" (WebView2 on Windows,
+    # WebKitGTK on Linux). It is a LAZY import inside launch_desktop, so PyInstaller's static analysis
+    # never sees it — collect it explicitly (with its per-platform backends) or the packaged app has NO
+    # webview, the Normal GUI can't open a window, and a --windowed build "installs but won't launch".
+    # (The install step must include the [desktop] extra so pywebview is present to collect.)
+    try:
+        __import__("webview")
+        cmd.extend(["--collect-all", "webview"])
+    except ImportError:
+        print("note: pywebview not installed — the Normal GUI (system webview) will NOT be bundled; "
+              "the packaged app would fall back to the browser UI. Install .[desktop] before building.")
+
     # Collect submodules for all UI variants
     cmd.extend([
         "--collect-submodules", "src.ui.qt",

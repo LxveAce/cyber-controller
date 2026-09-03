@@ -40,7 +40,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install .
+          pip install ".[desktop]"
       - name: Build executable (onefile)
         run: python build.py
       - name: Rename binary
@@ -102,7 +102,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller
-          pip install .
+          pip install ".[desktop]"
       - name: Build executable
         run: python build.py
       - name: Rename binary
@@ -181,7 +181,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller pillow
-          pip install .
+          pip install ".[desktop]"
       - name: Build executable
         run: python build.py
       - name: Rename binary
