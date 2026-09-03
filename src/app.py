@@ -255,10 +255,13 @@ def _launch_desktop(dm, fe, bus, pool, vault=None, health=None, macro=None, audi
         return 1
 
     rc = _launch_desktop_qt(dm, fe, bus, pool, vault, health, macro, audit)
-    if rc != 0:
-        log.error("No desktop window shell is available on this system. "
-                  "Run with --ui web to use the same interface in a browser.")
-    return rc
+    if rc == 0:
+        return rc
+    # No native window shell could open at all (no system webview, and QtWebEngine isn't bundled). Never
+    # leave a --windowed build dead with no window and no message — fall back to the browser UI so the
+    # app always lands somewhere usable.
+    log.warning("No native desktop window shell available; falling back to the browser UI.")
+    return _launch_web(dm, fe, bus, pool, vault, health, macro, audit=audit)
 
 
 def _launch_desktop_qt(dm, fe, bus, pool, vault=None, health=None, macro=None, audit=None) -> int:

@@ -11,6 +11,14 @@ The 2.0 line graduates from beta. This is the first stable cut of the reformed s
 first release the in-app updater offers to everyone on 1.8.0. See `[2.0.0-beta]` below for the reform's full
 scope; the items here are what landed on top of it.
 
+### Fixed
+- **"Installs but won't launch" on machines without the WebView2 runtime.** The Normal GUI opens a native
+  window through the system webview (WebView2 on Windows); when that runtime is missing the window couldn't
+  open and the packaged (windowed) build exited with no window and no message. It now falls back to opening
+  the same UI in your default browser — auto-authenticated, no password — so the app always lands somewhere
+  usable. For the native window on Windows, install WebView2:
+  https://developer.microsoft.com/microsoft-edge/webview2/
+
 ### Added
 - **Antenna length calculator** — `--antenna <freq>` (e.g. `433`, `433MHz`, `2.4GHz`) prints the free-space
   wavelength and the full / 5-8 / half / quarter / eighth element lengths in cm, in, mm, and m, with a

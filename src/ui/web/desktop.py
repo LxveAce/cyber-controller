@@ -110,12 +110,33 @@ def launch_desktop(
     url = f"http://127.0.0.1:{port}/desktop-auth?token={quote(token, safe='')}"
 
     log.info("Opening Cyber Controller desktop window (loopback :%d)", port)
-    webview.create_window(
-        "Cyber Controller",
-        url,
-        width=1280,
-        height=820,
-        min_size=(900, 600),
-    )
-    webview.start()  # blocks until the window is closed
-    return 0
+    try:
+        webview.create_window(
+            "Cyber Controller",
+            url,
+            width=1280,
+            height=820,
+            min_size=(900, 600),
+        )
+        webview.start()  # blocks until the window is closed
+        return 0
+    except Exception as exc:  # noqa: BLE001 — the system webview backend failed at RUNTIME
+        # The most common Windows cause: the WebView2 runtime isn't installed, so pywebview can import
+        # but can't open a window. A --windowed build would otherwise crash here with NO window and NO
+        # message ("installs but won't launch"). The loopback server is already up, so instead of dying
+        # we open the same UI in the user's default browser. The desktop-auth token in the URL logs the
+        # window in, so no password is needed, and we keep the process alive so the server keeps serving.
+        log.warning(
+            "The native desktop window could not open (%s); showing the UI in your browser instead. "
+            "On Windows this usually means the WebView2 runtime is missing "
+            "(https://developer.microsoft.com/microsoft-edge/webview2/).", exc,
+        )
+        import webbrowser
+
+        webbrowser.open(url)
+        try:
+            while True:
+                time.sleep(1.0)
+        except KeyboardInterrupt:
+            pass
+        return 0
