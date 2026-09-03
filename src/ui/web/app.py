@@ -1501,6 +1501,23 @@ def create_app(
         ]
         return jsonify({"variants": variants})
 
+    # Live GPS position — one tracker fed by every connection's serial stream (see /api/connect), read
+    # by /api/gps so the Flock map can follow the operator's own location instead of a typed bbox.
+    from src.core.gps_tracker import get_tracker
+
+    _gps_tracker = get_tracker()
+    _gps_line_cb = _gps_tracker.update  # stable reference so remove/re-add on reconnect is idempotent
+
+    @app.route("/api/gps")
+    @requires_auth
+    def api_gps():
+        """The current GPS fix from any connected device streaming NMEA, or an honest no-fix.
+
+        Read-only: it reflects serial the device already sends; CC drives no device and transmits
+        nothing here. The Flock GPS-follow map polls this to recenter as the operator moves.
+        """
+        return jsonify(_gps_tracker.snapshot())
+
     @app.route("/api/connect", methods=["POST"])
     @requires_auth
     @requires_csrf
@@ -1527,6 +1544,12 @@ def create_app(
         except Exception:  # noqa: BLE001 — surface a clean 400; the OS/serial error text is logged, not leaked
             log.exception("web connect failed on %s", port)
             return jsonify({"error": f"Could not open a connection on {port}"}), 400
+        # Feed the GPS tracker from this device's serial (independent of any terminal subscription), so a
+        # connected GPS-capable board updates the Flock follow map even with no terminal open. Idempotent.
+        conn = device_manager.get_connection(port)
+        if conn is not None and hasattr(conn, "on_line"):
+            conn.remove_line_callback(_gps_line_cb)  # idempotent; avoids a duplicate on reconnect
+            conn.on_line(_gps_line_cb)
         _audit("device_connect", user=session.get("user"), port=port)
         return jsonify({"status": "connected", "port": port})
 

@@ -490,8 +490,11 @@
     <div class="sub" data-sub="flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r" id="flock-count">awareness &#183; OSINT</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Awareness map of publicly-visible ALPR cameras, imported from OpenStreetMap (Overpass). Passive OSINT &#8212; CC transmits nothing and drives no device.</div>
       <div class="row" style="margin-bottom:10px;align-items:center">
-        <label class="dim" style="font-size:11px">Area (S,W,N,E)</label>
-        <input class="field mono" id="flock-bbox" aria-label="Bounding box S,W,N,E" style="max-width:280px" placeholder="e.g. 40.70,-74.02,40.75,-73.96">
+        <button class="btn sm" id="flock-follow" aria-pressed="false" title="Center the map on a connected device's GPS and load only the area around you, freeing areas you leave">&#9678; Follow GPS</button>
+        <span class="dim" id="flock-gps" style="font-size:11px">GPS: no device</span>
+        <span class="dim" style="font-size:11px">&#183;</span>
+        <label class="dim" style="font-size:11px">or area</label>
+        <input class="field mono" id="flock-bbox" aria-label="Bounding box S,W,N,E" style="max-width:220px" placeholder="S,W,N,E e.g. 40.70,-74.02,40.75,-73.96">
         <button class="btn green sm" id="flock-load">Load cameras</button>
         <span class="dim" id="flock-msg" style="font-size:11px"></span>
       </div>

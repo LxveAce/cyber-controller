@@ -645,6 +645,35 @@ def test_reform_flasher_grouped_search_and_categories():
     assert "fw-flash" in body and "fw-variant" in body   # flash wiring intact
 
 
+def test_api_gps_requires_auth():
+    from src.core.gps_tracker import get_tracker
+
+    get_tracker().reset()
+    assert _client(DeviceManager(), authed=False).get("/api/gps").status_code == 401
+
+
+def test_api_gps_reports_no_fix_by_default():
+    from src.core.gps_tracker import get_tracker
+
+    get_tracker().reset()
+    data = _client(DeviceManager()).get("/api/gps").get_json()
+    assert data == {"has_fix": False}
+
+
+def test_api_gps_returns_a_fed_fix():
+    from src.core.gps_tracker import get_tracker
+
+    tr = get_tracker()
+    tr.reset()
+    try:
+        tr.update("$GPGGA,123519,3751.65,N,12212.00,W,1,08,0.9,545.4,M,46.9,M,,*47")
+        data = _client(DeviceManager()).get("/api/gps").get_json()
+        assert data["has_fix"] is True
+        assert round(data["lat"], 2) == 37.86
+    finally:
+        tr.reset()   # don't leak a fix into other tests (module-singleton tracker)
+
+
 def test_flash_category_classifier_buckets_are_sane():
     from src.ui.web.app import _flash_category, _flash_rows
 

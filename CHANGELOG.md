@@ -42,6 +42,13 @@ All notable changes to Cyber Controller are documented here. This project adhere
   carries its own profile + danger label. Brings the bundled profile count to **52**. (Requested: "add the
   ability to flash 'launcher' by bmorcelli"; also on ESP Terminator's supported list.)
 
+- **Flock map: Follow GPS.** The ALPR-camera map can now center on a connected device's live GPS instead of a
+  typed bounding box. Toggle **Follow GPS** and it loads only a small window (~1 km) around you, drops a "you"
+  marker, and recenters as you move. Heavily optimized: it re-fetches from OpenStreetMap only after you've moved
+  ~800 m (hysteresis), keeps a small cache of recent windows, and **evicts (sleeps) any area you've moved away
+  from** so memory stays bounded. New `/api/gps` serves the live fix from a `GpsTracker` fed by every
+  connection's NMEA stream (read-only; drives no device, transmits nothing). The manual bbox still works when not
+  following. (`GpsTracker` + endpoint + classifier are unit-tested; the live follow needs a GPS-equipped board.)
 - **Flasher picker: search + category grouping.** The DEVICE ▸ Firmware list used to be one long
   ~50-row scroll. It now has a **live search box** and a **category dropdown** (Wi-Fi/BLE multitools,
   Wardriving, Mesh/LoRa, Sub-GHz/RF & SDR, Detectors, Pwnagotchi, Flipper Zero, Launchers & OS,

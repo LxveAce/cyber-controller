@@ -1796,22 +1796,33 @@
     if (!btn || !markers) return;
     var SVGNS = "http://www.w3.org/2000/svg";
 
-    function render(cams, bbox) {
+    function render(cams, bbox, you) {
       while (markers.firstChild) markers.removeChild(markers.firstChild);
       var s = bbox[0], w = bbox[1], n = bbox[2], e = bbox[3];
       var lonSpan = (e - w) || 1e-6, latSpan = (n - s) || 1e-6;
+      var toXY = function (lat, lon) { return [((lon - w) / lonSpan) * 1000, (1 - (lat - s) / latSpan) * 380]; };
       cams.forEach(function (c) {
-        var x = ((c.lon - w) / lonSpan) * 1000;
-        var y = (1 - (c.lat - s) / latSpan) * 380;   // lat up = y down
+        var p = toXY(c.lat, c.lon);
         var halo = document.createElementNS(SVGNS, "circle");
-        halo.setAttribute("cx", x); halo.setAttribute("cy", y); halo.setAttribute("r", 14);
+        halo.setAttribute("cx", p[0]); halo.setAttribute("cy", p[1]); halo.setAttribute("r", 14);
         halo.setAttribute("fill", "#f85149"); halo.setAttribute("opacity", "0.12");
         var dot = document.createElementNS(SVGNS, "circle");
-        dot.setAttribute("cx", x); dot.setAttribute("cy", y); dot.setAttribute("r", 4.5);
+        dot.setAttribute("cx", p[0]); dot.setAttribute("cy", p[1]); dot.setAttribute("r", 4.5);
         dot.setAttribute("fill", "#f85149");
         if (c.label) { var t = document.createElementNS(SVGNS, "title"); t.textContent = c.label; dot.appendChild(t); }
         markers.appendChild(halo); markers.appendChild(dot);
       });
+      if (you) {   // the operator's own position (centered), drawn last so it sits on top
+        var yp = toXY(you.lat, you.lon);
+        var yr = document.createElementNS(SVGNS, "circle");
+        yr.setAttribute("cx", yp[0]); yr.setAttribute("cy", yp[1]); yr.setAttribute("r", 16);
+        yr.setAttribute("fill", "var(--acc)"); yr.setAttribute("opacity", "0.18");
+        var yd = document.createElementNS(SVGNS, "circle");
+        yd.setAttribute("cx", yp[0]); yd.setAttribute("cy", yp[1]); yd.setAttribute("r", 5);
+        yd.setAttribute("fill", "var(--acc)"); yd.setAttribute("stroke", "#fff"); yd.setAttribute("stroke-width", "1.5");
+        var yt = document.createElementNS(SVGNS, "title"); yt.textContent = "you"; yd.appendChild(yt);
+        markers.appendChild(yr); markers.appendChild(yd);
+      }
     }
     btn.addEventListener("click", function () {
       var raw = (input.value || "").trim();
@@ -1828,6 +1839,93 @@
         msg.style.color = "var(--red)";
         msg.textContent = typeof err === "string" ? err : "import failed (offline or rate-limited)";
       }).then(function () { btn.disabled = false; });
+    });
+
+    // ── GPS follow ──────────────────────────────────────────────────
+    // Center on a connected device's live GPS and load only a small window around the operator.
+    // Optimized: fetch a ~4km box only after moving ~800m (hysteresis), keep a tiny cache of recent
+    // windows, and EVICT (sleep) any that fall far behind as you move — so memory stays bounded.
+    var followBtn = document.getElementById("flock-follow");
+    var gpsLabel = document.getElementById("flock-gps");
+    var FETCH_HALF = 0.02, VIEW_HALF = 0.009, REFETCH = 0.008, EVICT = 0.05, MAX_CACHE = 8;
+    var following = false, pollTimer = null, cache = new Map(), lastFetch = null, curPos = null, fetching = false;
+    var keyOf = function (lat, lon) { return lat.toFixed(3) + "," + lon.toFixed(3); };
+
+    function evict(lat, lon) {   // sleep windows the operator has moved away from + cap the cache
+      cache.forEach(function (v, k) {
+        if (Math.abs(v.lat - lat) > EVICT || Math.abs(v.lon - lon) > EVICT) cache.delete(k);
+      });
+      while (cache.size > MAX_CACHE) {
+        var fk = null, fd = -1;
+        cache.forEach(function (v, k) {
+          var d = Math.abs(v.lat - lat) + Math.abs(v.lon - lon);
+          if (d > fd) { fd = d; fk = k; }
+        });
+        if (fk) cache.delete(fk); else break;
+      }
+    }
+
+    function renderFollow() {
+      if (!curPos) return;
+      var lat = curPos.lat, lon = curPos.lon;
+      var view = [lat - VIEW_HALF, lon - VIEW_HALF, lat + VIEW_HALF, lon + VIEW_HALF];
+      var seen = {}, cams = [];
+      cache.forEach(function (v) {
+        v.cams.forEach(function (c) {
+          if (c.lat >= view[0] && c.lat <= view[2] && c.lon >= view[1] && c.lon <= view[3]) {
+            var k = c.lat.toFixed(6) + "," + c.lon.toFixed(6);
+            if (!seen[k]) { seen[k] = 1; cams.push(c); }
+          }
+        });
+      });
+      render(cams, view, curPos);
+      if (count) count.textContent = cams.length + " ALPR nearby";
+      if (attr) attr.textContent = "";
+    }
+
+    function fetchAround(lat, lon) {
+      if (fetching) return;
+      fetching = true;
+      var bbox = [lat - FETCH_HALF, lon - FETCH_HALF, lat + FETCH_HALF, lon + FETCH_HALF].join(",");
+      getJSON("/api/flock?bbox=" + encodeURIComponent(bbox)).then(function (d) {
+        cache.set(keyOf(lat, lon), { lat: lat, lon: lon, cams: d.cameras || [] });
+        lastFetch = { lat: lat, lon: lon };
+        evict(lat, lon);
+        renderFollow();
+      }).catch(function () { /* offline/rate-limited: keep showing the cache */ })
+        .then(function () { fetching = false; });
+    }
+
+    function gpsTick() {
+      getJSON("/api/gps").then(function (g) {
+        if (!g.has_fix) {
+          gpsLabel.textContent = g.stale ? "GPS: fix lost" : "GPS: waiting for a fix…";
+          return;
+        }
+        curPos = { lat: g.lat, lon: g.lon };
+        gpsLabel.textContent = "GPS: " + g.lat.toFixed(4) + ", " + g.lon.toFixed(4) + " · " + (g.sats || 0) + " sat";
+        var moved = !lastFetch || Math.abs(g.lat - lastFetch.lat) > REFETCH || Math.abs(g.lon - lastFetch.lon) > REFETCH;
+        if (moved) fetchAround(g.lat, g.lon); else renderFollow();
+      }).catch(function () { gpsLabel.textContent = "GPS: unavailable"; });
+    }
+
+    if (followBtn) followBtn.addEventListener("click", function () {
+      following = !following;
+      followBtn.setAttribute("aria-pressed", String(following));
+      followBtn.classList.toggle("acc", following);
+      if (following) {
+        if (input) input.disabled = true;
+        if (btn) btn.disabled = true;
+        msg.textContent = "";
+        gpsTick();
+        pollTimer = setInterval(gpsTick, 4000);
+      } else {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = null; cache.clear(); lastFetch = null; curPos = null;
+        if (input) input.disabled = false;
+        if (btn) btn.disabled = false;
+        gpsLabel.textContent = "GPS: no device";
+      }
     });
   }
   initFlock();
