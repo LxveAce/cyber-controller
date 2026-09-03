@@ -5,6 +5,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [2.0.0] — 2026-09-02
+
+The 2.0 line graduates from beta. This is the first stable cut of the reformed single-window GUI, and the
+first release the in-app updater offers to everyone on 1.8.0. See `[2.0.0-beta]` below for the reform's full
+scope; the items here are what landed on top of it.
+
 ### Added
 - **Antenna length calculator** — `--antenna <freq>` (e.g. `433`, `433MHz`, `2.4GHz`) prints the free-space
   wavelength and the full / 5-8 / half / quarter / eighth element lengths in cm, in, mm, and m, with a
