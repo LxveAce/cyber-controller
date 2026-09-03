@@ -441,9 +441,9 @@
     var wr = document.getElementById("hunt-wifi-rows");
     if (wr) wr.innerHTML = wifi.length ? wifi.map(function (t) {
       return "<tr><td>" + esc(t.ssid || "(hidden)") + '</td><td class="mono dim">' + esc(t.mac || "—") +
-        '</td><td class="r">' + (t.channel != null ? esc(t.channel) : "—") + '</td><td class="r">' +
+        '</td><td class="dim">' + esc(t.vendor || "—") + '</td><td class="r">' + (t.channel != null ? esc(t.channel) : "—") + '</td><td class="r">' +
         (t.rssi != null ? esc(t.rssi) : "—") + "</td><td>" + esc(t.encryption || "—") + "</td></tr>";
-    }).join("") : '<tr><td class="off" colspan="5">no Wi-Fi targets yet — scan from a connected device</td></tr>';
+    }).join("") : '<tr><td class="off" colspan="6">no Wi-Fi targets yet — scan from a connected device</td></tr>';
 
     var strongest = ble.reduce(function (m, t) { return (t.rssi != null && t.rssi > m) ? t.rssi : m; }, -999);
     var named = ble.filter(function (t) { return t.ssid; });
@@ -471,9 +471,9 @@
     var tr = document.getElementById("hunt-targets-rows");
     if (tr) tr.innerHTML = ts.length ? ts.map(function (t) {
       return "<tr><td>" + esc(TL[t.target_type] || t.target_type || "—") + "</td><td>" + esc(t.ssid || "—") +
-        '</td><td class="mono dim">' + esc(t.mac || "—") + '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") +
+        '</td><td class="mono dim">' + esc(t.mac || "—") + '</td><td class="dim">' + esc(t.vendor || "—") + '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") +
         '</td><td class="r">' + (t.channel != null ? esc(t.channel) : "—") + "</td><td class=\"mono\">" + esc(t.device_source || "—") + "</td></tr>";
-    }).join("") : '<tr><td class="off" colspan="6">pool empty</td></tr>';
+    }).join("") : '<tr><td class="off" colspan="7">pool empty</td></tr>';
   }
 
   // ── live serial (Socket.IO), shared by every terminal sink ─────────

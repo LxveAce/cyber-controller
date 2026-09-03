@@ -281,8 +281,8 @@
     <div class="sub" data-sub="wifi">
       <div class="card"><h3><span class="t">Wi-Fi Analyzer</span><span class="r">from the shared target pool &#183; awareness</span></h3>
         <div class="tiles" id="hunt-wifi-tiles" style="margin-bottom:12px"></div>
-        <table><thead><tr><th>SSID</th><th>MAC</th><th class="r">Ch</th><th class="r">RSSI</th><th>Enc</th></tr></thead>
-          <tbody id="hunt-wifi-rows"><tr><td class="off" colspan="5">no Wi-Fi targets yet &#8212; scan from OPERATE or a connected device</td></tr></tbody></table>
+        <table><thead><tr><th>SSID</th><th>MAC</th><th>Vendor</th><th class="r">Ch</th><th class="r">RSSI</th><th>Enc</th></tr></thead>
+          <tbody id="hunt-wifi-rows"><tr><td class="off" colspan="6">no Wi-Fi targets yet &#8212; scan from OPERATE or a connected device</td></tr></tbody></table>
       </div>
     </div>
     <div class="sub on" data-sub="ble">
@@ -294,8 +294,8 @@
       </div>
     </div>
     <div class="sub" data-sub="targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span><span class="r"><span id="hunt-tgt-count">0</span> targets &#183; <a href="/api/targets/export" download="cc-targets.csv" style="color:var(--acc)">Export CSV</a></span></h3>
-      <table><thead><tr><th>Type</th><th>SSID / Name</th><th>MAC</th><th class="r">RSSI</th><th class="r">Ch</th><th>Source</th></tr></thead>
-        <tbody id="hunt-targets-rows"><tr><td class="off" colspan="6">pool empty</td></tr></tbody></table></div></div>
+      <table><thead><tr><th>Type</th><th>SSID / Name</th><th>MAC</th><th>Vendor</th><th class="r">RSSI</th><th class="r">Ch</th><th>Source</th></tr></thead>
+        <tbody id="hunt-targets-rows"><tr><td class="off" colspan="7">pool empty</td></tr></tbody></table></div></div>
     <div class="sub" data-sub="tail"><div class="card"><h3><span class="t">Follower / Tail Detection</span><span class="r">counter-surveillance</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Flags a device that keeps reappearing near you across time. Awareness-first &#8212; it never confirms a follower and never acts. Method: ArgeliusLabs/Chasing-Your-Tail-NG (MIT).</div>
       <div class="between" style="margin-bottom:8px"><span>Min persistence <b class="mono">0.50</b></span><span id="tail-summary" class="dim">&#8212;</span></div>

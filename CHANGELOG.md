@@ -5,6 +5,12 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Added
+- **OUI vendor shown in the Wi-Fi and all-targets tables** (HUNT). Every discovered AP/client/BLE target is
+  already enriched with its OUI→vendor on ingest; now the Wi-Fi and Targets tables surface that vendor column
+  (the BLE table already did), so you can read "Espressif / Apple / …" next to a BSSID without a lookup. Uses the
+  bundled OUI table; unknown/randomized MACs show "—" (never a fabricated vendor).
+
 ## [2.0.0] — 2026-09-02
 
 The 2.0 line graduates from beta. This is the first stable cut of the reformed single-window GUI, and the
