@@ -925,8 +925,16 @@ class Esp32DivProfile(FirmwareProfile):
         return cands[0] if cands else None
 
     def support_files(self, chip: str, cache: str, on_line: Line) -> Optional[Dict[str, str]]:
-        boot = _fetch_div_file(_DIV_BOOTLOADER, os.path.join(cache, f"div_{chip}_bootloader.bin"), on_line)
-        part = _fetch_div_file(_DIV_PARTITIONS, os.path.join(cache, f"div_{chip}_partitions.bin"), on_line)
+        # DIV ships only classic-esp32 (cyd/v1) and esp32s3 (v2) boot chains upstream (tools/esp32 +
+        # tools/esp32s3). Other chips have no support dir → no full-flash (matches the JSON profile's
+        # support_dir_by_chip; the old fixed tools/esp32s3 path mis-served classic boards).
+        support_dir = {"esp32": "tools/esp32", "esp32s3": "tools/esp32s3"}.get(chip)
+        if support_dir is None:
+            raise RuntimeError(f"No auto support-file mapping for {chip}; use local files for a full flash.")
+        boot = _fetch_div_file(f"{support_dir}/ESP32-DIV.ino.bootloader.bin",
+                               os.path.join(cache, f"div_{chip}_bootloader.bin"), on_line)
+        part = _fetch_div_file(f"{support_dir}/ESP32-DIV.ino.partitions.bin",
+                               os.path.join(cache, f"div_{chip}_partitions.bin"), on_line)
         bapp = _fetch_div_file(_DIV_BOOT_APP0, os.path.join(cache, "div_boot_app0.bin"), on_line)
         bl_off = _bootloader_offset(chip)
         return {bl_off: boot, "0x8000": part, "0xe000": bapp}
@@ -1548,8 +1556,8 @@ _MESHTASTIC_BOARDS: Dict[str, List[str]] = {
     # tbeam0_7 / heltec-v1 / heltec-v2_0 / heltec-v2_1 pruned 2026-07-10: verified ABSENT from the
     # 2.7.26 manifest, so they were advertised-but-unflashable (download_and_extract "no member").
     "esp32": [
-        "tbeam", "tlora-v2-1-1_6", "tlora-v2-1-1_8", "rak11200", "station-g1", "nano-g1",
-        "m5stack-coreink", "t-lora-v1",
+        "tbeam", "tlora-v2-1-1_6", "rak11200", "station-g1", "nano-g1",
+        "m5stack-coreink",
     ],
     # esp32-c3-devkitm-1 / heltec-ht-ct62 were stale; the 2.7.26 manifest ships these two.
     "esp32c3": ["heltec-hru-3601", "heltec-ht62-esp32c3-sx1262"],
@@ -1870,7 +1878,11 @@ class MomentumProfile(FirmwareProfile):
         assets = []
         for a in raw:
             name = a.get("name", "")
-            if not (name.endswith(".tgz") or name.endswith(".tar.gz") or name.endswith(".zip")):
+            # Only the qFlipper web-update package (.tgz). Drop the SDK .zip and the .zip update mirror,
+            # and any scripts archive — flashing the SDK/scripts package is the "Flipper won't flash" bug.
+            if not (name.endswith(".tgz") or name.endswith(".tar.gz")):
+                continue
+            if "scripts" in name or "sdk" in name:
                 continue
             assets.append({
                 "name": name,
@@ -1941,7 +1953,11 @@ class UnleashedProfile(FirmwareProfile):
         assets = []
         for a in raw:
             name = a.get("name", "")
-            if not (name.endswith(".tgz") or name.endswith(".tar.gz") or name.endswith(".zip")):
+            # qFlipper web-update package (.tgz) only — drop the SDK/.zip and the scripts archive so the
+            # default (and every listed variant) is a real firmware update, not the SDK/scripts package.
+            if not (name.endswith(".tgz") or name.endswith(".tar.gz")):
+                continue
+            if "scripts" in name or "sdk" in name:
                 continue
             assets.append({
                 "name": name,

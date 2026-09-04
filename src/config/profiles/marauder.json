@@ -184,7 +184,7 @@
         ["esp32c5devkitc1", "esp32c5"],
         ["pancake", "esp32c5"],
         ["t_dongle_c5", "esp32c5"],
-        ["_v8", "esp32c5"],
+        ["_v8.", "esp32c5"],
         ["m5nanoc6", "esp32c6"]
       ]
     },
