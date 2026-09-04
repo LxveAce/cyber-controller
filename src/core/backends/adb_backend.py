@@ -110,11 +110,21 @@ def _safe_filename(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 def find_adb() -> Optional[str]:
+    # Explicit override first, then PATH, then CC's own tools dir (where a provisioned/hand-dropped
+    # platform-tools lives — same convention as the crack tools + qFlipper), then the OS SDK locations.
+    override = os.environ.get("CC_ADB")
+    if override and os.path.isfile(override):
+        return override
     path = shutil.which("adb")
     if path:
         return path
-    # common install locations
-    candidates: List[str] = []
+    exe = "adb.exe" if sys.platform == "win32" else "adb"
+    tools_dir = os.environ.get("CC_TOOLS_DIR") or os.path.join(
+        os.path.expanduser("~"), ".cyber-controller", "tools")
+    candidates: List[str] = [
+        os.path.join(tools_dir, "platform-tools", exe),
+        os.path.join(tools_dir, exe),
+    ]
     if sys.platform == "win32":
         for env_key in ("LOCALAPPDATA", "USERPROFILE"):
             base = os.environ.get(env_key, "")

@@ -786,15 +786,19 @@ class FlashEngine:
     def _flash_qflipper(
         self, port: str, profile: FirmwareProfile, progress: ProgressCallback | None
     ) -> bool:
-        """Flipper Zero (Momentum/Unleashed) update via qFlipper.
+        """Flipper Zero (Momentum/Unleashed/RogueMaster) firmware install via qFlipper.
 
         Flipper firmware ships as web-update ``.tgz`` packages, not esptool images. We resolve +
-        download the real release package, then delegate to the proven flash_core Momentum/Unleashed
-        ``flash_assets`` which shells ``qFlipper --install <package>`` through ``_run_stream`` (stdin
-        + kill/reap handling for free). We NEVER launch a bare qFlipper with no package and report
-        success — the previous version did exactly that (``local_path`` is empty for the shipped
-        download profiles), so closing an idle qFlipper returned rc 0 and the UI logged a flash that
-        never actually happened, with nothing downloaded or installed.
+        download the real release package, then hand it to :func:`qflipper_tool.flash_bundle`, which
+        drives the headless ``qFlipper-cli`` (the GUI ``qFlipper.exe`` has no ``--install`` flag — the
+        old code shelled ``qFlipper --install <pkg>``, an unknown option that just opened the GUI and
+        flashed nothing). ``flash_bundle`` extracts the bundle's ``firmware.dfu`` and runs
+        ``qFlipper-cli firmware`` through our own ``_run_stream`` (stdin + kill/reap handling). We NEVER
+        report success on a no-op — a missing CLI or a bundle with no firmware returns failure.
+
+        qFlipper is provisioned into ``~/.cyber-controller/tools/qflipper`` (Flipper tab → Get qFlipper)
+        rather than bundled into the installer; set ``CC_QFLIPPER_AUTOFETCH=1`` to let a flash fetch it
+        on demand instead of erroring with the "install it first" hint.
         """
         on_line = _percent_adapter(progress)
         if profile.local_path:
@@ -825,10 +829,10 @@ class FlashEngine:
             except Exception as exc:
                 on_line(f"[error] download/verify failed: {exc}")
                 return False
-        core = flash_core.get_profile(
-            profile.core_id if profile.core_id in flash_core.PROFILES else "momentum")
-        rc = core.flash_assets(port, "flipper", app_path, on_line,
-                               mode=profile.flash_mode, baud=profile.baud)
+        from . import qflipper_tool
+        allow = os.environ.get("CC_QFLIPPER_AUTOFETCH", "").lower() in ("1", "true", "yes")
+        rc = qflipper_tool.flash_bundle(
+            app_path, on_line, allow_provision=allow, runner=flash_core._run_stream)
         if progress:
             progress(100 if rc == 0 else 0, "Flash complete" if rc == 0 else "Flash failed")
         return rc == 0

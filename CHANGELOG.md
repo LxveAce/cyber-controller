@@ -5,6 +5,32 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+### Added
+- **Flipper Zero: qFlipper is now provisioned and driven by CC.** The Device dashboard has a Flipper card
+  that installs the official qFlipper on demand (downloaded + SHA-256 verified into CC's tools folder — not
+  bundled into the installer) and runs its headless `qFlipper-cli` for firmware and device management
+  (update / backup / restore / erase / wipe). Live serial control (SubGHz / NFC / RFID / IR / GPIO) already
+  works under Operate & Terminal.
+- **Antenna length calculator has a UI.** Operate ▸ Antenna turns a frequency into the wavelength and cut
+  lengths (full / 5⁄8 / half / quarter / eighth), metric and imperial, with a velocity-factor field for real
+  wire or coax. The math backend and `/api/antenna` already existed; this surfaces them.
+- **Set the web password from the app.** Settings ▸ Remote Access has a password field — pick your own, it's
+  hashed (scrypt) and saved owner-only, and it's used every time. No more `CC_WEB_PASS` environment variable.
+  A saved password wins over the env var and the one-time password; Reset forgets it and reverts.
+
+### Fixed
+- **Flipper flashing was broken.** The old path shelled `qFlipper --install <package>`, but the qFlipper GUI
+  has no `--install` flag — it opened the window and flashed nothing. CC now uses `qFlipper-cli` on the
+  extracted firmware, and says plainly when a custom-firmware install is core-only (SD resources need the app
+  or the on-device updater).
+- **adb is found in CC's own tools folder** (and via `CC_ADB`), so a provisioned/hand-dropped platform-tools
+  is picked up the same way the crack tools and qFlipper are — not only the Android SDK path.
+
+### Verified
+- **Marauder covers every board.** Cross-checked all 26 release builds against Marauder's own authoritative
+  installer manifest: every variant (including all four CYD panels — 2.8", 2.8" 2-USB, 2.4" Guition, 3.5") is
+  offered, labeled, and mapped to the correct chip.
+
 ## [2.0.0] — 2026-09-02
 
 The 2.0 line graduates from beta. This is the first stable cut of the reformed single-window GUI, and the

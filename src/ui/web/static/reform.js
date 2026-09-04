@@ -999,20 +999,59 @@
     // can open the UI from a phone / another PC. Only a generated one-time password comes back; a user-set
     // CC_WEB_PASS is never echoed (the server returns password:null, generated:false).
     var remote = document.getElementById("set-remote");
-    if (remote) {
+    function loadRemote() {
+      if (!remote) return;
       getJSON("/api/remote-access").then(function (r) {
         var url = (r.lan_ip && r.port) ? ("http://" + r.lan_ip + ":" + r.port + "/reform")
                                        : "http://<this-PC's-LAN-IP>:<port>/reform";
         var pw;
-        if (!r.generated) pw = "(you set it via CC_WEB_PASS)";
+        if (r.source === "saved") pw = "(the password you set below)";
+        else if (r.source === "env") pw = "(set via the CC_WEB_PASS environment variable)";
         else if (r.revealed) pw = r.password;
-        else pw = "(shown only on the local machine — open this on the host PC to read it)";
+        else pw = "(one-time — shown only on the host PC's console; set your own below)";
         remote.innerHTML =
           "URL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>" + esc(url) + "</b><br>" +
           "user&nbsp;&nbsp;&nbsp;&nbsp;" + esc(r.username || "admin") + "<br>" +
           "password&nbsp;" + esc(pw);
+        var chip = document.getElementById("pw-source-chip");
+        if (chip) {
+          var label = { saved: "saved on this PC", env: "from CC_WEB_PASS", generated: "one-time" }[r.source] || r.source;
+          chip.textContent = label;
+          chip.className = "chip" + (r.source === "saved" ? " on" : "");
+        }
+        var uf = document.getElementById("pw-user");
+        if (uf && !uf.value) uf.value = r.username || "admin";
       }).catch(function () { remote.textContent = "remote-access info unavailable"; });
     }
+    loadRemote();
+    (function wirePassword() {
+      var saveBtn = document.getElementById("pw-save");
+      var resetBtn = document.getElementById("pw-reset");
+      var status = document.getElementById("pw-status");
+      function say(msg, isErr) { if (status) { status.textContent = msg; status.style.color = isErr ? "var(--red)" : "var(--dim)"; } }
+      if (saveBtn) saveBtn.addEventListener("click", function () {
+        var np = (document.getElementById("pw-new").value || "");
+        var un = (document.getElementById("pw-user").value || "").trim();
+        if (np.length < 8) { say("Password must be at least 8 characters.", true); return; }
+        saveBtn.disabled = true;
+        postJSON("/api/web-password", { new_password: np, username: un }).then(function (d) {
+          document.getElementById("pw-new").value = "";
+          say("Password saved. Use it next time you log in (this session stays open).");
+          loadRemote();
+        }).catch(function (err) {
+          say("Could not save: " + (typeof err === "string" ? err : "error"), true);
+        }).then(function () { saveBtn.disabled = false; });
+      });
+      if (resetBtn) resetBtn.addEventListener("click", function () {
+        if (!window.confirm("Forget the saved password? CC will fall back to CC_WEB_PASS or a one-time password on the next start.")) return;
+        postJSON("/api/web-password", { reset: true }).then(function (d) {
+          say(d.note || "Saved password cleared.");
+          loadRemote();
+        }).catch(function (err) {
+          say("Could not reset: " + (typeof err === "string" ? err : "error"), true);
+        });
+      });
+    })();
 
     // Every chip is a keyboard-operable switch (WCAG 2.1.1/4.1.2); click OR Enter/Space toggles it,
     // and Save reads its state.
@@ -1584,6 +1623,126 @@
     });
     if (reBtn) reBtn.addEventListener("click", function () { initCrack(); });
     initCrack();
+  })();
+
+  // ── DEVICE ▸ Flipper Zero: qFlipper provisioning + device-management ops ──
+  function flipperLog(text, isErr) {
+    var pre = document.getElementById("flipper-log");
+    if (!pre) return;
+    pre.style.display = "block";
+    pre.textContent = text || "";
+    pre.style.color = isErr ? "var(--red)" : "";
+  }
+  function renderFlipper(d) {
+    var body = document.getElementById("flipper-body");
+    var status = document.getElementById("flipper-status");
+    if (!body) return;
+    if (status) status.textContent = d.present ? ("qFlipper " + (d.source || "ready")) : "qFlipper not installed";
+    var html = "";
+    if (!d.present) {
+      html += '<div class="card2">CC drives the headless qFlipper to flash Flipper firmware and manage the device. It is not bundled into the installer — install it once and CC keeps it in its tools folder.</div>';
+      if (d.can_provision) {
+        html += '<button class="btn acc" data-flip="install" style="margin-top:8px">Get qFlipper</button>';
+      } else {
+        html += '<div class="card2" style="margin-top:8px">On this OS, install qFlipper from flipperzero.one/update — CC will then find it on PATH.</div>';
+      }
+    } else {
+      html += '<div class="kv mono muted">cli: ' + esc(d.cli || "") + "</div>";
+      html += '<div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap">';
+      (d.control_ops || []).forEach(function (op) {
+        var cls = op.destructive ? "btn danger" : "btn";
+        html += '<button class="' + cls + '" data-flip="op" data-op="' + esc(op.op) +
+          '" data-destructive="' + (op.destructive ? 1 : 0) + '" title="' + esc(op.help) + '">' + esc(op.label) + "</button>";
+      });
+      html += "</div>";
+      html += '<div class="card2" style="margin-top:6px">qFlipper-cli finds the Flipper over USB — no COM port needed. Live serial control (SubGHz / NFC / RFID / IR / GPIO) is under Operate &amp; Terminal.</div>';
+    }
+    body.innerHTML = html;
+  }
+  function initFlipper() {
+    if (!document.getElementById("flipper-body")) return;
+    getJSON("/api/qflipper").then(renderFlipper).catch(function () {
+      var b = document.getElementById("flipper-body");
+      if (b) b.textContent = "qFlipper status unavailable";
+    });
+  }
+  (function wireFlipper() {
+    var card = document.getElementById("flipper-card");
+    if (!card) return;
+    card.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-flip]");
+      if (!btn) return;
+      var kind = btn.getAttribute("data-flip");
+      if (kind === "install") {
+        e.preventDefault();
+        btn.disabled = true;
+        btn.textContent = "Downloading qFlipper…";
+        flipperLog("Downloading + verifying qFlipper (~65 MB)… this runs once.");
+        postJSON("/api/qflipper/install", {}).then(function (d) {
+          flipperLog((d.log || []).join("\n") + "\nqFlipper ready.");
+          initFlipper();
+        }).catch(function (err) {
+          flipperLog("Install failed: " + (typeof err === "string" ? err : JSON.stringify(err)), true);
+          btn.disabled = false;
+          btn.textContent = "Get qFlipper";
+        });
+      } else if (kind === "op") {
+        e.preventDefault();
+        var op = btn.getAttribute("data-op");
+        var destructive = btn.getAttribute("data-destructive") === "1";
+        var reqBody = { op: op };
+        if (op === "backup" || op === "restore") {
+          var p = window.prompt(op === "backup" ? "Backup the Flipper's internal storage to which folder on this PC?" : "Restore from which folder on this PC?", "");
+          if (!p) return;
+          reqBody.path = p;
+        }
+        if (destructive || op === "update") {
+          var warn = btn.getAttribute("title") || "This affects the Flipper.";
+          if (!window.confirm(warn + "\n\nProceed?")) return;
+          reqBody.confirm = true;
+        }
+        flipperLog("Running " + op + " … (watch the Flipper screen for prompts)");
+        postJSON("/api/qflipper/control", reqBody).then(function (d) {
+          flipperLog((d.log || []).join("\n") + "\n" + (d.ok ? (op + " complete.") : (op + " failed (rc " + d.rc + ").")), !d.ok);
+        }).catch(function (err) {
+          flipperLog(op + " failed: " + (typeof err === "string" ? err : JSON.stringify(err)), true);
+        });
+      }
+    });
+    initFlipper();
+  })();
+
+  // ── OPERATE ▸ Antenna: wavelength + element lengths from a frequency (pure math) ──
+  (function wireAntenna() {
+    var btn = document.getElementById("ant-calc");
+    if (!btn) return;
+    var out = document.getElementById("ant-result");
+    function calc() {
+      var freq = (document.getElementById("ant-freq").value || "").trim();
+      var unit = document.getElementById("ant-unit").value;
+      var vf = (document.getElementById("ant-vf").value || "1.0").trim();
+      if (!freq) { out.innerHTML = '<div class="card2">Enter a frequency first.</div>'; return; }
+      var q = "/api/antenna?freq=" + encodeURIComponent(freq) + "&unit=" + encodeURIComponent(unit) + "&vf=" + encodeURIComponent(vf);
+      out.innerHTML = '<div class="card2">calculating…</div>';
+      getJSON(q).then(function (d) {
+        var band = d.band ? " · " + esc(d.band) : "";
+        var wl = d.wavelength;
+        var rows = Object.keys(d.elements).map(function (k) {
+          var e = d.elements[k];
+          return "<tr><td>" + esc(e.label) + '</td><td class="mono r">' + e.cm + ' cm</td><td class="mono r">' + e.in + ' in</td><td class="mono r">' + e.mm + " mm</td></tr>";
+        }).join("");
+        var notes = (d.notes || []).map(function (n) { return "<li>" + esc(n) + "</li>"; }).join("");
+        out.innerHTML =
+          '<div class="kv mono" style="margin-bottom:6px">' + esc(d.freq_label) + band + " · λ = " + wl.cm + " cm / " + wl.in + " in" + (d.velocity_factor !== 1 ? (" · VF " + d.velocity_factor) : "") + "</div>" +
+          '<table><thead><tr><th>Element</th><th class="r">metric</th><th class="r">inch</th><th class="r">mm</th></tr></thead><tbody>' + rows + "</tbody></table>" +
+          (notes ? ('<ul class="footnote" style="margin-top:8px;padding-left:16px">' + notes + "</ul>") : "");
+      }).catch(function (err) {
+        out.innerHTML = '<div class="card2" style="color:var(--red)">' + esc(typeof err === "string" ? err : "calculation failed") + "</div>";
+      });
+    }
+    btn.addEventListener("click", calc);
+    var f = document.getElementById("ant-freq");
+    if (f) f.addEventListener("keydown", function (e) { if (e.key === "Enter") calc(); });
   })();
 
   // ── CRACK ▸ Wordlists: bundled + installed picker, on-demand catalog download, bring-your-own ─

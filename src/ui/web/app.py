@@ -729,6 +729,81 @@ def create_app(
             return jsonify({"ok": False, "tool": tool, "error": str(exc), "log": log_lines}), 502
         return jsonify({"ok": True, "tool": tool, "path": exe, "log": log_lines})
 
+    @app.route("/api/qflipper")
+    @requires_auth
+    def api_qflipper():
+        """qFlipper availability for the Flipper card: is the headless CLI present (and where from),
+        is a GUI installed, and the control ops CC can drive. CC provisions qFlipper on demand rather
+        than bundling the 65 MB Qt app into the installer."""
+        from src.core import qflipper_tool
+        tools = qflipper_tool.find_qflipper()
+        return jsonify({
+            "present": tools.present,
+            "cli": tools.cli,
+            "gui": tools.gui,
+            "source": tools.source,
+            "can_provision": os.name == "nt",
+            "tools_dir": qflipper_tool.default_qflipper_dir(),
+            "control_ops": [
+                {"op": op, **meta} for op, meta in qflipper_tool.CONTROL_OPS.items()
+            ],
+        })
+
+    @app.route("/api/qflipper/install", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_qflipper_install():
+        """Provision qFlipper (download the official portable build, verify SHA-256, extract) into CC's
+        tools dir. Windows-only auto-provision; elsewhere it returns the honest install guidance. This
+        is the user's explicit consent to the ~65 MB download — nothing is fetched without this click."""
+        from src.core import qflipper_tool
+        _audit("qflipper_install", user=session.get("user"))
+        log_lines: list[str] = []
+        try:
+            cli = qflipper_tool.provision_qflipper(on_line=lambda line: log_lines.append(str(line)))
+        except Exception as exc:  # noqa: BLE001 — surface the honest failure, install nothing
+            return jsonify({"ok": False, "error": str(exc), "log": log_lines}), 502
+        return jsonify({"ok": True, "cli": cli, "log": log_lines})
+
+    @app.route("/api/qflipper/control", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_qflipper_control():
+        """Run one qFlipper-cli device-management op on a connected Flipper: update (official firmware),
+        backup / restore (internal storage), erase, wipe. Destructive ops (erase/wipe, and update which
+        overwrites custom firmware) require ``confirm: true``. qFlipper-cli finds the Flipper over USB
+        itself, so no COM port is passed. Never reports success on a no-op."""
+        from src.core import flash_core, qflipper_tool
+        data = _json_body()
+        op = str(data.get("op", "")).strip()
+        meta = qflipper_tool.CONTROL_OPS.get(op)
+        if meta is None:
+            return jsonify({"error": f"unknown qFlipper op: {op or '(none)'}"}), 400
+        tools = qflipper_tool.find_qflipper()
+        if not tools.cli:
+            return jsonify({"error": "qFlipper-cli not installed — use Get qFlipper first"}), 409
+        needs_confirm = meta["destructive"] or op == "update"
+        if needs_confirm and not bool(data.get("confirm")):
+            return jsonify({"error": "confirm required", "needs_confirm": True,
+                            "warning": meta["help"]}), 428
+        cli = tools.cli
+        if op == "update":
+            argv = qflipper_tool.build_official_update_argv(cli, str(data.get("channel") or "release"))
+        elif op in ("backup", "restore"):
+            path = str(data.get("path") or "").strip()
+            if not path:
+                return jsonify({"error": f"{op} needs a folder path"}), 400
+            argv = (qflipper_tool.build_backup_argv(cli, path) if op == "backup"
+                    else qflipper_tool.build_restore_argv(cli, path))
+        elif op == "erase":
+            argv = qflipper_tool.build_erase_argv(cli)
+        else:  # wipe
+            argv = qflipper_tool.build_wipe_argv(cli)
+        _audit("qflipper_control", user=session.get("user"), op=op)
+        log_lines: list[str] = []
+        rc = flash_core._run_stream(argv, lambda line: log_lines.append(str(line)))
+        return jsonify({"ok": rc == 0, "op": op, "rc": rc, "log": log_lines})
+
     @app.route("/api/crack/enable-bundled", methods=["POST"])
     @requires_auth
     @requires_csrf
@@ -1606,9 +1681,36 @@ def create_app(
             "password": (creds.generated_password if reveal else None),
             "generated": creds.generated_password is not None,
             "revealed": reveal and creds.generated_password is not None,
+            "source": getattr(creds, "source", "env"),
             "lan_ip": lan_ip,
             "port": port,
         })
+
+    @app.route("/api/web-password", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_web_password():
+        """Set/change the web login password from the UI (no env vars). The caller is already
+        authenticated, which authorizes the change; the new password is hashed (scrypt) and saved
+        owner-only, and takes effect immediately + on every future start. Optionally also renames the
+        login user. Sending ``{"reset": true}`` deletes the saved password so CC reverts to CC_WEB_PASS
+        or a one-time password on next start."""
+        from src.security import web_auth
+        data = _json_body()
+        if bool(data.get("reset")):
+            removed = web_auth.clear_stored_password()
+            _audit("web_password_reset", user=session.get("user"))
+            return jsonify({"ok": True, "reset": True, "removed": removed,
+                            "note": "Saved password cleared. On the next start CC uses CC_WEB_PASS or "
+                                    "a one-time password. The current session stays valid until restart."})
+        new_pw = str(data.get("new_password", ""))
+        username = str(data.get("username", "") or creds.username).strip() or creds.username
+        if len(new_pw) < web_auth.MIN_PASSWORD_LEN:
+            return jsonify({"error": f"password must be at least {web_auth.MIN_PASSWORD_LEN} characters"}), 400
+        creds.set_password(new_pw, username)          # update the live server immediately
+        web_auth.save_web_password(username, new_pw)   # and persist it (owner-only) for next start
+        _audit("web_password_set", user=session.get("user"), new_user=username)
+        return jsonify({"ok": True, "username": username, "source": "saved"})
 
     @app.route("/api/disconnect", methods=["POST"])
     @requires_auth

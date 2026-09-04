@@ -130,6 +130,12 @@
             <h3><span class="t">Relay Link</span><span class="r">LxveNode</span></h3>
             <div class="card2" style="padding:18px">No relay link. Attach an LxveNode gateway under Devices to arm Wi-Fi &#8594; LoRa failover.</div>
           </div>
+
+          <details class="card collapsible" id="flipper-card">
+            <summary><h3 style="display:inline"><span class="t">Flipper Zero</span><span class="r" id="flipper-status">qFlipper &#8230;</span></h3></summary>
+            <div id="flipper-body"><div class="card2">checking qFlipper&#8230;</div></div>
+            <pre class="mono" id="flipper-log" style="display:none;max-height:180px;overflow:auto;margin-top:8px"></pre>
+          </details>
         </div>
 
         <!-- right: cross-comm + terminal -->
@@ -345,6 +351,7 @@
       <button class="on" data-sub="console">Console</button>
       <button data-sub="macros">Macros</button>
       <button data-sub="broadcast" class="pro-tab">Broadcast</button>
+      <button data-sub="antenna">Antenna</button>
     </div>
     <div class="sub on" data-sub="console">
       <div class="card" style="margin-bottom:12px">
@@ -389,6 +396,19 @@
       <label class="chip warn" id="bc-consent-wrap" style="border-color:#8a6100;color:var(--amber)"><input type="checkbox" id="bc-consent" aria-label="Authorized use consent" style="vertical-align:-1px"> authorized use (arms transmitting commands)</label>
       <div class="footnote" id="bc-status" style="min-height:14px;margin-top:8px"></div>
       <table style="margin-top:4px"><thead><tr><th>Device</th><th>Result</th></tr></thead><tbody id="bc-results"></tbody></table>
+    </div></div>
+    <div class="sub" data-sub="antenna"><div class="card"><h3><span class="t">Antenna Length Calculator</span><span class="r">wavelength &#8594; element lengths</span></h3>
+      <div class="footnote" style="margin:-2px 0 10px">Pure math, no radio &#8212; enter a frequency to get the wavelength and cut lengths (full / 5&#8260;8 / half / quarter / eighth) in metric and imperial. Set a velocity factor for real wire (~0.95) or coax (RG-58 ~0.66).</div>
+      <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        <input class="field mono" id="ant-freq" aria-label="Frequency" placeholder="e.g. 433 or 2.4GHz" style="width:150px">
+        <select class="field" id="ant-unit" aria-label="Frequency unit" style="width:auto">
+          <option value="mhz" selected>MHz</option><option value="ghz">GHz</option><option value="khz">kHz</option><option value="hz">Hz</option>
+        </select>
+        <span class="muted">VF</span>
+        <input class="field mono" id="ant-vf" aria-label="Velocity factor" value="1.0" style="width:70px" title="Velocity factor 0-1 (1.0 free-space, ~0.95 bare wire, 0.66 RG-58)">
+        <button class="btn acc" id="ant-calc">Calculate</button>
+      </div>
+      <div id="ant-result"><div class="card2">Enter a frequency and press Calculate.</div></div>
     </div></div>
   </section>
 
@@ -546,7 +566,17 @@
         <button class="btn sm acc" id="set-gate-setup" style="margin-top:7px">Set up access gate&#8230;</button></div>
       <div class="card pro"><h3><span class="t">Remote Access</span><span class="r">open from your phone / another PC</span></h3>
         <div class="kv mono" id="set-remote" style="line-height:1.7">reading&#8230;</div>
-        <div class="footnote" style="margin:6px 0 0">Use these on another device on the same network. The password is the one-time password this server generated; set <span class="mono">CC_WEB_PASS</span> to pick your own.</div></div>
+        <div class="footnote" id="set-remote-source" style="margin:6px 0 0">Use these on another device on the same network.</div>
+        <div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:10px">
+          <div class="between" style="margin-bottom:6px"><span class="muted">Login password</span><span class="chip" id="pw-source-chip">&#8212;</span></div>
+          <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
+            <input class="field mono" id="pw-user" aria-label="Login username" placeholder="username" style="width:130px">
+            <input class="field mono" id="pw-new" type="password" aria-label="New password" placeholder="new password (min 8)" style="width:180px">
+            <button class="btn acc" id="pw-save">Set password</button>
+            <button class="btn sm" id="pw-reset" title="Forget the saved password; revert to the one-time / env password on next start">Reset</button>
+          </div>
+          <div class="footnote" id="pw-status" style="margin-top:6px;min-height:14px">Pick your own password here &#8212; it&#8217;s saved on this machine and used every time. No environment variables needed.</div>
+        </div></div>
       <div class="card pro"><h3><span class="t">Secure Container</span></h3><label class="chip" id="set-secure-container" data-key="secure_container">&#9744;&#xFE0E; Encrypt saves at rest</label></div>
       <div class="card pro"><h3><span class="t">Firmware Vault</span></h3><input class="field mono" id="set-vault-dir" aria-label="Firmware vault path" value="~/.cyber-controller/firmware_vault"></div>
     </div>

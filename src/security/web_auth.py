@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import logging
 import os
 import secrets
@@ -25,6 +26,14 @@ from src.security.win_acl import restrict_to_current_user, secure_dir
 
 _CONFIG_DIR = Path.home() / ".cyber-controller"
 _SECRET_KEY_FILE = _CONFIG_DIR / "web_secret.key"
+#: Persisted web password the user set from the UI: username + a salted scrypt hash (NEVER plaintext),
+#: owner-only (0600). Its presence means "the user picked a password here" and it wins over the env var
+#: and the one-time generated password so the in-app change actually takes effect.
+_WEB_AUTH_FILE = _CONFIG_DIR / "web_auth.json"
+
+#: Minimum length for a user-chosen web password. Short enough not to nag, long enough to matter on a
+#: LAN-exposed remote. The generated one-time password is far longer.
+MIN_PASSWORD_LEN = 8
 
 # scrypt work factors for hashing the (already high-entropy) web password in memory.
 _SCRYPT_N = 2 ** 14
@@ -64,15 +73,24 @@ class WebCredentials:
     """Holds a username and a salted scrypt hash of the password; verifies in
     constant time so neither field leaks via timing."""
 
-    def __init__(self, username: str, password: str) -> None:
+    def __init__(self, username: str, password: str | None = None, *,
+                 salt: bytes | None = None, hashed: bytes | None = None) -> None:
         self._username = username
-        self._salt = os.urandom(16)
-        self._hash = self._derive(password)
+        if salt is not None and hashed is not None:
+            # Reconstruct from a persisted (salt, hash) — no plaintext needed or kept.
+            self._salt = salt
+            self._hash = hashed
+        else:
+            self._salt = os.urandom(16)
+            self._hash = self._derive(password or "")
         # The plaintext of a GENERATED one-time password, kept in RAM only so an already-authenticated
         # operator can read it back in the UI to reach the server from a phone / another PC (a windowed
-        # build swallows the stderr print). None for a user-set CC_WEB_PASS — the owner already knows that
+        # build swallows the stderr print). None for a user-set password — the owner already knows that
         # one, and we never store or reveal a secret the user chose. Never written to disk or logs.
         self.generated_password: str | None = None
+        # How the ACTIVE password was set, so the UI can explain it plainly instead of pointing at an
+        # env var: "generated" (one-time), "env" (CC_WEB_PASS), or "saved" (set in the app).
+        self.source: str = "env"
 
     @property
     def username(self) -> str:
@@ -89,6 +107,17 @@ class WebCredentials:
             maxmem=64 * 1024 * 1024,
         )
 
+    def set_password(self, new_password: str, username: str | None = None) -> None:
+        """Replace the in-memory password (fresh salt + hash) and optionally the username. Clears any
+        one-time generated password — after the user picks their own, there is no one-time to reveal.
+        Persisting it to disk is :func:`save_web_password`'s job, kept separate so the class stays pure."""
+        if username:
+            self._username = username
+        self._salt = os.urandom(16)
+        self._hash = self._derive(new_password)
+        self.generated_password = None
+        self.source = "saved"
+
     def verify(self, username: str | None, password: str | None) -> bool:
         if username is None or password is None:
             return False
@@ -100,35 +129,98 @@ class WebCredentials:
         return u_ok and p_ok
 
 
-def resolve_web_credentials(log: logging.Logger) -> tuple[WebCredentials, bool]:
-    """Resolve web credentials from the environment, generating a strong one-time
-    password when CC_WEB_PASS is unset. Returns (credentials, was_generated).
+def load_stored_credentials() -> tuple[str, bytes, bytes] | None:
+    """Load a UI-set password from ``web_auth.json`` as ``(username, salt, hash)``, or None if there is
+    no saved password (or the file is unreadable/corrupt — we never fail open on a bad file, we just
+    fall through to the env/one-time path)."""
+    try:
+        data = json.loads(_WEB_AUTH_FILE.read_text("utf-8"))
+        return (str(data["username"]), bytes.fromhex(data["salt"]), bytes.fromhex(data["hash"]))
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
 
-    There is intentionally NO usable default password (the old admin/cyber pair made
-    every default deployment trivially accessible).
+
+def save_web_password(username: str, password: str) -> None:
+    """Persist a user-chosen web password (username + fresh salt + scrypt hash, NEVER plaintext) to
+    ``web_auth.json``, owner-only (0600). This is what makes an in-app password change stick across
+    restarts and take priority over the env var / one-time password."""
+    secure_dir(_CONFIG_DIR)
+    salt = os.urandom(16)
+    hashed = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R,
+                            p=_SCRYPT_P, dklen=32, maxmem=64 * 1024 * 1024)
+    payload = json.dumps({
+        "username": username, "salt": salt.hex(), "hash": hashed.hex(),
+        "n": _SCRYPT_N, "r": _SCRYPT_R, "p": _SCRYPT_P,
+    })
+    fd = os.open(str(_WEB_AUTH_FILE), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+    finally:
+        try:
+            os.chmod(_WEB_AUTH_FILE, 0o600)
+        except OSError:
+            pass
+    restrict_to_current_user(_WEB_AUTH_FILE)  # owner-only NTFS ACL on Windows
+
+
+def clear_stored_password() -> bool:
+    """Delete the saved password so CC reverts to CC_WEB_PASS / a one-time password on next start.
+    Returns True if a file was removed."""
+    try:
+        _WEB_AUTH_FILE.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def has_stored_password() -> bool:
+    return _WEB_AUTH_FILE.exists()
+
+
+def resolve_web_credentials(log: logging.Logger) -> tuple[WebCredentials, bool]:
+    """Resolve web credentials. Priority: a password the user SAVED in the app > the ``CC_WEB_PASS``
+    env var > a strong one-time password generated on the spot. Returns (credentials, was_generated).
+
+    There is intentionally NO usable default password (the old admin/cyber pair made every default
+    deployment trivially accessible). The saved-in-app password wins so that changing it from the UI
+    actually takes effect without touching environment variables — the thing users found confusing.
     """
+    stored = load_stored_credentials()
+    if stored is not None:
+        username, salt, hashed = stored
+        result = WebCredentials(username, salt=salt, hashed=hashed)
+        result.source = "saved"
+        log.info("Web remote using the password set in the app (Settings -> Remote Access).")
+        return result, False
+
     user = os.environ.get("CC_WEB_USER", "admin")
     pw = os.environ.get("CC_WEB_PASS")
-    generated = False
-    if not pw:
-        pw = secrets.token_urlsafe(18)
-        generated = True
-        # Show the one-time credential on the interactive console (stderr) ONLY — never through the
-        # logging framework. A file/syslog/aggregator handler would persist a live web-remote password
-        # to disk, readable by anyone with log or backup access, defeating the "shown once" intent and
-        # outliving the session. The log keeps only a non-secret notice.
-        bar = "=" * 64
-        print(bar, file=sys.stderr)
-        print("CC_WEB_PASS not set — generated a ONE-TIME web remote password:", file=sys.stderr)
-        print(f"      username: {user}", file=sys.stderr)
-        print(f"      password: {pw}", file=sys.stderr)
-        print("Set CC_WEB_USER / CC_WEB_PASS in the environment to pick your own.", file=sys.stderr)
-        print(bar, file=sys.stderr)
-        log.warning("CC_WEB_PASS not set — generated a one-time web remote password (shown on the console).")
+    if pw:
+        result = WebCredentials(user, pw)
+        result.source = "env"
+        return result, False
+
+    # Nothing saved, no env var: mint a one-time password so the remote is never open, and tell the
+    # user (console + the in-app Remote Access card) how to set their own.
+    pw = secrets.token_urlsafe(18)
+    # Show the one-time credential on the interactive console (stderr) ONLY — never through the logging
+    # framework. A file/syslog/aggregator handler would persist a live web-remote password to disk,
+    # readable by anyone with log or backup access, defeating the "shown once" intent. The log keeps
+    # only a non-secret notice.
+    bar = "=" * 64
+    print(bar, file=sys.stderr)
+    print("No web password set yet — generated a ONE-TIME web remote password:", file=sys.stderr)
+    print(f"      username: {user}", file=sys.stderr)
+    print(f"      password: {pw}", file=sys.stderr)
+    print("Log in with it, then set your own in Settings -> Remote Access (no env vars needed).",
+          file=sys.stderr)
+    print(bar, file=sys.stderr)
+    log.warning("No web password set — generated a one-time web remote password (shown on the console).")
     result = WebCredentials(user, pw)
-    if generated:
-        result.generated_password = pw  # RAM-only, for the authenticated Remote-Access reveal in the UI
-    return result, generated
+    result.source = "generated"
+    result.generated_password = pw  # RAM-only, for the authenticated Remote-Access reveal in the UI
+    return result, True
 
 
 class RateLimiter:

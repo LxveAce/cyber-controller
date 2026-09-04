@@ -1860,10 +1860,20 @@ class CytNgProfile(FirmwareProfile):
 # --------------------------------------------------------------------------- #
 #
 # Flipper Zero firmware is flashed via qFlipper or USB DFU. The release assets are
-# .tgz bundles. This profile handles download and delegates to qFlipper for actual
+# .tgz bundles. This profile handles download and delegates to qFlipper-cli for actual
 # flashing. flash_method is 'qflipper' (external tool invocation).
 
 _MOMENTUM_API = "https://api.github.com/repos/Next-Flip/Momentum-Firmware/releases/latest"
+
+
+def _qflipper_install(app_path: str, on_line: Line) -> int:
+    """Flash a downloaded Flipper package (a ``.tgz`` web-update bundle or a ``.dfu``) via the headless
+    qFlipper-cli, provisioning qFlipper on demand when ``CC_QFLIPPER_AUTOFETCH`` is set. Shared by the
+    Momentum/Unleashed/Generic profiles so there is one honest Flipper flash path. The GUI ``qFlipper``
+    has no ``--install`` flag — that older invocation opened the GUI and flashed nothing."""
+    from . import qflipper_tool
+    allow = os.environ.get("CC_QFLIPPER_AUTOFETCH", "").lower() in ("1", "true", "yes")
+    return qflipper_tool.flash_bundle(app_path, on_line, allow_provision=allow, runner=_run_stream)
 
 
 class MomentumProfile(FirmwareProfile):
@@ -1910,28 +1920,8 @@ class MomentumProfile(FirmwareProfile):
                      app_offset: Optional[str] = None,
                      flash_freq: Optional[str] = None,
                      extra_args: Optional[List[str]] = None) -> int:
-        # extra_args are esptool-only; qFlipper installs the whole package and ignores them.
-        on_line("[info] Flipper Zero firmware requires qFlipper for flashing.")
-        on_line("[info] Attempting to launch qFlipper with the downloaded firmware package...")
-        qflipper = shutil.which("qFlipper") or shutil.which("qflipper")
-        if not qflipper:
-            for candidate in (
-                r"C:\Program Files\qFlipper\qFlipper.exe",
-                r"C:\Program Files (x86)\qFlipper\qFlipper.exe",
-                "/usr/bin/qFlipper",
-                "/usr/local/bin/qFlipper",
-                "/Applications/qFlipper.app/Contents/MacOS/qFlipper",
-            ):
-                if os.path.isfile(candidate):
-                    qflipper = candidate
-                    break
-        if not qflipper:
-            on_line("[error] qFlipper not found. Install from https://flipperzero.one/update")
-            on_line(f"[info] Firmware downloaded to: {app_path}")
-            on_line("[info] Open qFlipper manually and install from file.")
-            return 1
-        on_line(f"[info] Found qFlipper at: {qflipper}")
-        return _run_stream([qflipper, "--install", app_path], on_line)
+        # extra_args are esptool-only; the qFlipper CLI installs the DFU and ignores them.
+        return _qflipper_install(app_path, on_line)
 
 
 # --------------------------------------------------------------------------- #
@@ -2473,29 +2463,8 @@ class GenericProfile(FirmwareProfile):
                                     extra_args=extra_args)
 
     def _flash_qflipper(self, app_path: str, on_line: Line) -> int:
-        """Hand the downloaded Flipper package to a locally installed qFlipper (mirrors
-        MomentumProfile/UnleashedProfile exactly)."""
-        on_line("[info] Flipper Zero firmware requires qFlipper for flashing.")
-        on_line("[info] Attempting to launch qFlipper with the downloaded firmware package...")
-        qflipper = shutil.which("qFlipper") or shutil.which("qflipper")
-        if not qflipper:
-            for candidate in (
-                r"C:\Program Files\qFlipper\qFlipper.exe",
-                r"C:\Program Files (x86)\qFlipper\qFlipper.exe",
-                "/usr/bin/qFlipper",
-                "/usr/local/bin/qFlipper",
-                "/Applications/qFlipper.app/Contents/MacOS/qFlipper",
-            ):
-                if os.path.isfile(candidate):
-                    qflipper = candidate
-                    break
-        if not qflipper:
-            on_line("[error] qFlipper not found. Install from https://flipperzero.one/update")
-            on_line(f"[info] Firmware downloaded to: {app_path}")
-            on_line("[info] Open qFlipper manually and install from file.")
-            return 1
-        on_line(f"[info] Found qFlipper at: {qflipper}")
-        return _run_stream([qflipper, "--install", app_path], on_line)
+        """Hand the downloaded Flipper package to qFlipper-cli (mirrors Momentum/Unleashed)."""
+        return _qflipper_install(app_path, on_line)
 
     def flash_local(self, *args, **kwargs):
         """Local-file flash for the 'custom' profile — delegates to CustomLocalProfile."""
