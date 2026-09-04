@@ -307,6 +307,51 @@ def _macro_run_client(tmp_path):
     return c
 
 
+class _ProbeConn:
+    """A fake connection whose reply to `help` carries Marauder's distinctive command tokens, so the
+    connect-time handshake probe can identify it — the way a real Marauder-flashed board answers."""
+    is_connected = True
+
+    def __init__(self, reply_lines):
+        self._reply = list(reply_lines)
+        self._cbs = []
+        self.writes = []
+
+    def on_line(self, cb):
+        self._cbs.append(cb)
+
+    def remove_line_callback(self, cb):
+        if cb in self._cbs:
+            self._cbs.remove(cb)
+
+    def write(self, s):
+        self.writes.append(s)
+        if str(s).strip() == "help":  # the board dumps its command list in reply to `help`
+            for ln in self._reply:
+                for cb in list(self._cbs):
+                    cb(ln)
+
+
+def test_web_connect_detects_firmware(monkeypatch):
+    # THE CYD-detection fix: /api/connect must run the handshake probe so a board already flashed with
+    # (e.g.) Marauder is actually DETECTED on the web path — not left showing "no firmware" because the
+    # web connect only opened the port. Regression guard for "a CYD flashed with marauder isn't picked up".
+    dm = DeviceManager()
+    dm.add_device(Device(port="COM9", name="ESP32", connected=False))  # unknown firmware to start
+    conn = _ProbeConn(["ESP32 Marauder v1.12.3", "scanall", "sniffpmkid", "evilportal"])
+    dm._connections["COM9"] = conn
+    monkeypatch.setattr(dm, "open_connection", lambda port, owner=None: conn)
+    app, _sio = create_app(dm, FlashEngine(), EventBus(), TargetPool())
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["csrf"] = "tok"
+    r = c.post("/api/connect", json={"port": "COM9"}, headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 200
+    assert r.get_json()["firmware"] == "marauder"
+    assert dm.get_device("COM9").firmware == "marauder"  # detection persisted on the device
+
+
 def test_macro_run_offensive_refused_without_consent(tmp_path):
     # THE safety gate: a transmitting/offensive macro is refused (403) unless authorized-use is
     # confirmed; the engine ALSO hard-refuses (armed=False) — defense in depth.

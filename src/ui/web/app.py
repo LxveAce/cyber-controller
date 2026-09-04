@@ -1550,8 +1550,18 @@ def create_app(
         if conn is not None and hasattr(conn, "on_line"):
             conn.remove_line_callback(_gps_line_cb)  # idempotent; avoids a duplicate on reconnect
             conn.on_line(_gps_line_cb)
+        # Run the connect-time handshake probe so the firmware is actually DETECTED on the web path (the Qt
+        # device tab does this; without it a board flashed with, say, Marauder shows "no firmware" in the web
+        # UI because dev.firmware was never populated). Best-effort: a probe write can fail on a quiet board.
+        firmware = ""
+        try:
+            device_manager.probe(port)
+            dev = device_manager.get_device(port)
+            firmware = getattr(dev, "firmware", "") if dev else ""
+        except Exception:  # noqa: BLE001 — detection is best-effort; a connect must still succeed without it
+            log.debug("web connect probe failed on %s", port, exc_info=True)
         _audit("device_connect", user=session.get("user"), port=port)
-        return jsonify({"status": "connected", "port": port})
+        return jsonify({"status": "connected", "port": port, "firmware": firmware})
 
     @app.route("/api/disconnect", methods=["POST"])
     @requires_auth

@@ -311,7 +311,11 @@
     if (!selectedPort) { setDevMsg("click a device row first", true); return; }
     setDevMsg("connecting " + selectedPort + "…");
     postJSON("/api/connect", { port: selectedPort })
-      .then(function () { setDevMsg("connected " + selectedPort); refreshDevices(); })
+      .then(function (r) {
+        var fw = r && r.firmware;
+        setDevMsg("connected " + selectedPort + (fw ? " — detected " + fw : " — no firmware detected"));
+        refreshDevices();
+      })
       .catch(function (err) { setDevMsg("connect failed: " + err, true); });
   });
   wireBtn("dash-disconnect", function () {
