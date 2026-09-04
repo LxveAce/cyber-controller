@@ -43,7 +43,6 @@
     <div class="grow"></div>
     <div class="navitem" data-view="terminal"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l5 5-5 5M12 17h7"/></svg></span><span class="lbl">TERMINAL</span><span class="sub">{{ device_count }}</span></div>
     <div class="navitem" data-view="settings"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><span class="lbl">SETTINGS</span></div>
-    <div class="hint">live: Device &#183; Operate &#183; Firmware &#183; Terminal &#183; Hunt &#183; Crack &#183; Map &#183; Mesh &#183; Settings<br>needs hardware/owner: Wardrive &#183; Meshtastic &#183; Software-OS</div>
   </nav>
 
   <main class="main" id="main">
@@ -191,6 +190,7 @@
     <!-- Firmware — board/port-first flashing (LIVE, wired to /api/flash) -->
     <div class="sub" data-sub="fw">
       <div class="notebar warnbar">Flashing writes to the device and cannot be undone mid-write. Pick the target port + a firmware, then Flash. The port must be free (disconnect any serial monitor first).</div>
+      <div class="notebar" style="margin:8px 0 0">&#128161; <b>Download mode:</b> many boards (the CYD, and anything with a CP210x/CH340 USB chip) don&#8217;t auto-enter the bootloader. If Flash can&#8217;t connect, <b>hold BOOT</b> (a.k.a. IO0/FLASH), tap EN/RST once, and keep holding BOOT until it connects &#8212; then release. Use a data USB cable, not charge-only.</div>
       <div class="split side">
         <div class="card">
           <h3><span class="t">Target Port</span><span class="r">Scan</span></h3>
