@@ -5,17 +5,35 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
-### Added
-- **OUI vendor shown in the Wi-Fi and all-targets tables** (HUNT). Every discovered AP/client/BLE target is
-  already enriched with its OUI→vendor on ingest; now the Wi-Fi and Targets tables surface that vendor column
-  (the BLE table already did), so you can read "Espressif / Apple / …" next to a BSSID without a lookup. Uses the
-  bundled OUI table; unknown/randomized MACs show "—" (never a fabricated vendor).
-
 ## [2.0.0] — 2026-09-02
 
 The 2.0 line graduates from beta. This is the first stable cut of the reformed single-window GUI, and the
 first release the in-app updater offers to everyone on 1.8.0. See `[2.0.0-beta]` below for the reform's full
 scope; the items here are what landed on top of it.
+
+### Fixed — 2026-09-03 re-cut (binaries rebuilt)
+A live-hardware session plus two deep red-team passes (whole-project, then firmware-by-firmware and
+feature-by-feature) turned up and fixed a batch of real issues; the 2.0.0 binaries were rebuilt to include them.
+- **A board already flashed with firmware now shows it on connect.** The web/Normal GUI opened the serial port
+  but never ran the detection probe, so a CYD running Marauder read as "no firmware." It now probes on connect.
+- **The web password is discoverable.** Settings ▸ Remote Access shows the username, LAN URL, and the generated
+  one-time password (only on a local/loopback session — never over the network), for opening the UI from a phone.
+- **Flash feedback is real now.** The socket connection was dropping right after it opened (a WebSocket-upgrade
+  issue in threading mode), so flash progress, the result line, and live serial silently never arrived — a flash
+  looked like "nothing happened." Pinned to long-polling. The Firmware tab also gained a phase status line, a
+  live percent, an explicit ✔/✖ result, a prominent hold-BOOT callout when a board won't connect, and a watchdog.
+- **The safety consent gate no longer has a hole.** The web broadcast / macro / auto-rule gates classified the
+  command string only, so ~65 offensive verbs whose danger is metadata-only (a couple of them illegal-tx) could
+  fan out or auto-fire without the authorized-use confirm. All three gates are now firmware-aware.
+- **Firmware profiles — wrong-chip and wrong-asset fixes** (each grounded against live upstream):
+  ESP32-DIV was flashing its classic-ESP32 cyd/v1 boards as ESP32-S3 (a brick path) — now chip-correct;
+  three Marauder C5 boards (t_dongle_c5 / pancake / v8) were mis-mapped to classic ESP32; Flipper (Momentum /
+  Unleashed / RogueMaster) was installing the SDK/scripts package instead of the firmware; Meshtastic dropped
+  four phantom boards that failed on select; MeshCore + CatSniffer version bumps.
+- **Hunt** — the Wi-Fi Encryption column (and the "Open" count) are live again, and web tail/follower detection
+  now actually observes devices across time windows.
+- **UI polish** — the firmware picker is grouped into collapsible categories with search, and the Dashboard's
+  serial terminal is collapsible so it stops forcing constant scrolling.
 
 ### Fixed
 - **"Installs but won't launch" on machines without the WebView2 runtime.** The Normal GUI opens a native
@@ -26,6 +44,10 @@ scope; the items here are what landed on top of it.
   https://developer.microsoft.com/microsoft-edge/webview2/
 
 ### Added
+- **OUI vendor shown in the Wi-Fi and all-targets tables** (HUNT). Every discovered AP/client/BLE target is
+  already enriched with its OUI→vendor on ingest; now the Wi-Fi and Targets tables surface that vendor column
+  (the BLE table already did), so you can read "Espressif / Apple / …" next to a BSSID without a lookup. Uses the
+  bundled OUI table; unknown/randomized MACs show "—" (never a fabricated vendor).
 - **Antenna length calculator** — `--antenna <freq>` (e.g. `433`, `433MHz`, `2.4GHz`) prints the free-space
   wavelength and the full / 5-8 / half / quarter / eighth element lengths in cm, in, mm, and m, with a
   best-effort band label and an optional `--antenna-vf` velocity factor (1.0 free-space, ~0.95 real wire,
