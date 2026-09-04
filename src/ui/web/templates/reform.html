@@ -177,12 +177,12 @@
             <div class="sub pro" data-sub="stream"><div class="term" id="xc-stream" style="height:120px"><div class="p">Bus events appear here in real time&#8230;</div></div></div>
           </div>
 
-          <div class="card">
-            <h3><span class="t">Serial Terminal</span><span class="r" id="term-title">{% if selected %}{{ selected.port }} &#8212; {{ selected.firmware }}{% else %}no device{% endif %}</span></h3>
-            <div class="term" id="dash-term">
-              {% if selected %}<div class="p">[Connected to {{ selected.port }}]</div><div class="p">Live serial output streams here&#8230;</div>{% else %}<div class="p">Connect a device to stream its serial output.</div>{% endif %}
+          <details class="card collapsible" id="dash-term-card">
+            <summary><span class="t">Serial Terminal</span><span class="r" id="term-title">{% if selected %}{{ selected.port }} &#8212; {{ selected.firmware }}{% else %}no device{% endif %}</span></summary>
+            <div class="term" id="dash-term" style="margin-top:9px">
+              {% if selected %}<div class="p">[Connected to {{ selected.port }}]</div><div class="p">Live serial output streams here&#8230;</div>{% else %}<div class="p">Connect a device to stream its serial output. Full per-port terminals live under TERMINAL.</div>{% endif %}
             </div>
-          </div>
+          </details>
         </div>
       </div>
     </div>
@@ -199,27 +199,32 @@
         </div>
         <div class="card">
           <h3><span class="t">Firmware</span><span class="r">esptool bundled</span></h3>
-          <div class="fw-controls" style="display:flex;gap:8px;margin-bottom:8px">
+          <div class="fw-controls" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
             <input class="field" id="fw-search" type="search" placeholder="Search firmware&#8230;" aria-label="Search firmware" style="flex:1 1 auto;width:auto;min-width:0">
-            <select class="field" id="fw-cat" aria-label="Filter firmware by category" style="flex:0 0 auto;width:auto;min-width:190px">
+            <select class="field" id="fw-cat" aria-label="Filter firmware by category" style="flex:0 0 auto;width:auto;min-width:180px">
               <option value="">All categories</option>
               {% for c in flash_cats %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
             </select>
+            <button class="btn sm" id="fw-collapse-all" type="button" title="Collapse or expand all groups">Collapse all</button>
           </div>
-          <table>
-            <thead><tr><th>Firmware</th><th>Board / variant</th><th></th></tr></thead>
-            <tbody id="fw-profiles">
-              {% for row in flash_rows %}
-              <tr data-name="{{ row.name|lower }}" data-cat="{{ row.cat }}">
-                <td>{{ row.name }}</td>
-                <td><select class="field fw-variant" data-profile="{{ row.name }}" aria-label="Variant for {{ row.name }}" style="min-width:150px"><option value="">Default (auto)</option></select></td>
-                <td class="r"><button class="btn sm green fw-flash" data-profile="{{ row.name }}">Flash</button></td>
-              </tr>
-              {% else %}
-              <tr><td class="off" colspan="3">no firmware profiles found</td></tr>
-              {% endfor %}
-            </tbody>
-          </table>
+          <div id="fw-profiles">
+            {% for c in flash_cats %}
+            <details class="fwgroup" open data-cat="{{ c }}">
+              <summary><span class="fwg-name">{{ c }}</span><span class="fwg-count">{{ flash_rows | selectattr('cat','equalto',c) | list | length }}</span></summary>
+              <div class="fwrows">
+                {% for row in flash_rows if row.cat == c %}
+                <div class="fwrow" data-name="{{ row.name|lower }}" data-cat="{{ row.cat }}">
+                  <span class="fwrow-name">{{ row.name }}</span>
+                  <select class="field fw-variant" data-profile="{{ row.name }}" aria-label="Variant for {{ row.name }}"><option value="">Default (auto)</option></select>
+                  <button class="btn sm green fw-flash" data-profile="{{ row.name }}">Flash</button>
+                </div>
+                {% endfor %}
+              </div>
+            </details>
+            {% else %}
+            <div class="off" style="padding:8px">no firmware profiles found</div>
+            {% endfor %}
+          </div>
           <div class="footnote off" id="fw-nomatch" style="display:none">No firmware matches your search.</div>
           <div class="footnote">Variants load from each firmware&#8217;s own release. Leave on &#8220;Default&#8221; unless a board with a shared chip ID flashes a blank screen.</div>
           <div class="row" style="margin-top:10px;align-items:center;gap:8px;justify-content:space-between"><span class="mono" id="fw-status" style="font-size:12px">idle</span><span class="mono muted" id="fw-pct" style="font-size:12px"></span></div>

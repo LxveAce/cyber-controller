@@ -636,26 +636,43 @@
     if (!portsBody) return;
     var fwPort = null;
 
-    // Firmware search + category filter (presentation only — never changes what flashes).
+    // Firmware search + category filter over the collapsible groups (presentation only — never changes
+    // what flashes). Filters rows, hides empty groups, and auto-opens groups with matches while searching.
     (function () {
       var search = document.getElementById("fw-search");
       var catSel = document.getElementById("fw-cat");
       var noMatch = document.getElementById("fw-nomatch");
-      var rows = Array.prototype.slice.call(document.querySelectorAll("#fw-profiles tr[data-name]"));
+      var collapseBtn = document.getElementById("fw-collapse-all");
+      var rows = Array.prototype.slice.call(document.querySelectorAll(".fwrow[data-name]"));
+      var groups = Array.prototype.slice.call(document.querySelectorAll(".fwgroup"));
       if (!rows.length) return;
       function apply() {
         var q = ((search && search.value) || "").trim().toLowerCase();
         var cat = (catSel && catSel.value) || "";
+        var filtering = !!(q || cat);
         var shown = 0;
         rows.forEach(function (r) {
           var ok = (!q || r.dataset.name.indexOf(q) !== -1) && (!cat || r.dataset.cat === cat);
           r.style.display = ok ? "" : "none";
           if (ok) shown++;
         });
+        // Hide groups with no visible rows; while filtering, force-open the ones that still have matches.
+        groups.forEach(function (g) {
+          var any = Array.prototype.some.call(g.querySelectorAll(".fwrow"), function (r) {
+            return r.style.display !== "none";
+          });
+          g.style.display = any ? "" : "none";
+          if (filtering && any) g.open = true;
+        });
         if (noMatch) noMatch.style.display = shown ? "none" : "";
       }
       if (search) search.addEventListener("input", apply);
       if (catSel) catSel.addEventListener("change", apply);
+      if (collapseBtn) collapseBtn.addEventListener("click", function () {
+        var anyOpen = groups.some(function (g) { return g.open && g.style.display !== "none"; });
+        groups.forEach(function (g) { g.open = !anyOpen; });
+        collapseBtn.textContent = anyOpen ? "Expand all" : "Collapse all";
+      });
     })();
 
     window.__fwSyncPorts = function (devs) {
@@ -777,6 +794,23 @@
     });
   }
   initFirmware();
+
+  // Remember each collapsible card's open/closed state per viewer (localStorage), so a terminal the user
+  // expanded stays expanded across reloads and one they collapsed stays out of the way. Best-effort — a
+  // private window / blocked storage just falls back to the template default (collapsed).
+  (function persistCollapsibles() {
+    document.querySelectorAll("details.collapsible[id]").forEach(function (d) {
+      var key = "cc.collapse." + d.id;
+      try {
+        var saved = localStorage.getItem(key);
+        if (saved === "1") d.open = true;
+        else if (saved === "0") d.open = false;
+      } catch (e) { /* storage unavailable */ }
+      d.addEventListener("toggle", function () {
+        try { localStorage.setItem(key, d.open ? "1" : "0"); } catch (e) { /* ignore */ }
+      });
+    });
+  })();
 
   // ── TERMINAL view: one live terminal per connected port ────────────
   function initTerminal() {
