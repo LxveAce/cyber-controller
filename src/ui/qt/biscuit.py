@@ -1,7 +1,6 @@
-"""Biscuit-style operation widgets — the reusable card→detail pattern (A2).
+"""Biscuit-style operation widgets — the reusable card→detail pattern.
 
-Distilled from the Biscuit Manager teardown (`command-center/projects/cc-app/BISCUIT-UX-TEARDOWN-
-2026-07-21.md`): every operation is one CARD (icon + title + one-line description + chevron)
+Every operation is one CARD (icon + title + one-line description + chevron)
 DETAIL view with a big Start/Stop, an optional Mode segment, a live stat grid, and a Help sheet
 opening a DETAIL view (What-it-does / Modes / Statistics / Tips). Honest, discoverable control.
 

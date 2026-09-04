@@ -3,7 +3,7 @@
 The app shell carries a Recon/Defense <-> Offense posture toggle. This module is the process-global
 state behind it, mirrored from the shell so any surface can read the current posture for display.
 
-**It does NOT gate command usage** (owner decision, 2026-07-29): CC is universally usable out of the
+**It does NOT gate command usage** (owner decision): CC is universally usable out of the
 box — offensive verbs are reachable by default. The safety model is (1) a one-time first-run
 authorized-use consent and (2) the per-command pre-execution confirm (``safety.should_confirm``),
 plus the arm gate where a firmware implements it (``safety.tx_hard_block``). safety.py stays the

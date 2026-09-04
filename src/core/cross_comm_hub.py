@@ -76,7 +76,7 @@ class CrossCommHub:
         # It also feeds captured handshakes/PMKIDs into the shared capture log.
         self.ingestor = TargetIngestor(self.pool, captures=self.captures, devices=self.dm)
 
-        # WS1 Wi-Fi CSI sensing rollup: a connected sensing node's `sensing_verdict` events (parsed
+        # Wi-Fi CSI sensing rollup: a connected sensing node's `sensing_verdict` events (parsed
         # by csi_sensor) fold into per-node room state here — RX-only awareness, NEVER a Target row.
         # The observer taps the full parsed-event stream (the seam BLE Analyzer uses) + a monotonic
         # clock; a "Sense" view reads this model. No effect for any non-sensing firmware.

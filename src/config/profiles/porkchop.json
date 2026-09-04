@@ -19,7 +19,7 @@
     "repo": "https://github.com/0ct0sec/M5PORKCHOP",
     "latest": "https://github.com/0ct0sec/M5PORKCHOP/releases/latest"
   },
-  "note": "Assets verified live against 0ct0sec/M5PORKCHOP v0.1.8b-PSTH (2026-07-03): releases ship a plain app image plus a *_m5burner.bin MERGED image — this profile matches the m5burner merged bin (bootloader+partitions+app), flashed at 0x0 for a single-file esptool write. Board = M5Cardputer / ESP32-S3FN8 (8MB). Upstream is a PRE-RELEASE beta; pinned to releases/latest. Note: M5Burner flashing nukes NVS (game XP/progress); M5 Launcher preserves it. Real-hardware flash offset pending the Stage-5 hardware gate.",
+  "note": "Assets verified live against 0ct0sec/M5PORKCHOP v0.1.8b-PSTH: releases ship a plain app image plus a *_m5burner.bin MERGED image — this profile matches the m5burner merged bin (bootloader+partitions+app), flashed at 0x0 for a single-file esptool write. Board = M5Cardputer / ESP32-S3FN8 (8MB). Upstream is a PRE-RELEASE beta; pinned to releases/latest. Note: M5Burner flashing nukes NVS (game XP/progress); M5 Launcher preserves it. Real-hardware flash offset pending real-hardware validation.",
   "core_id": "porkchop",
   "label": "M5PORKCHOP (0ct0sec)",
   "repo": "0ct0sec/M5PORKCHOP",

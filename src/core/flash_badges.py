@@ -18,10 +18,9 @@ The badge is a property of the (board, firmware) **pair**, not the firmware: one
 one board over esptool and another over uf2 (CatSniffer, WHAD ButteRFly), so :func:`badge_for`
 resolves the board's effective backend before badging.
 
-Honesty is the whole point. The full derivation + the source for every exception is documented in
-``command-center/projects/cc-app/REFORM-FLASH-BOARD-FIRST-2026-08-05.md``. This is a static UI hint;
-the flash engine remains the authoritative gate (it resolves releases at flash time and hard-aborts
-a staged/source-only profile regardless of what badge the UI showed).
+Honesty is the whole point. This is a static UI hint; the flash engine remains the authoritative gate
+(it resolves releases at flash time and hard-aborts a staged/source-only profile regardless of what
+badge the UI showed).
 """
 from __future__ import annotations
 
@@ -57,7 +56,7 @@ BADGE_EMOJI: dict[Badge, str] = {
 HIL_PROVEN: frozenset[tuple[str, str]] = frozenset()
 
 #: on_error=source_only_empty profiles whose NOTES confirm real shipped release binaries (assets
-#: verified live 2026-07-03) — the exception that keeps them ⚠️ instead of ⛔.
+#: verified live) — the exception that keeps them ⚠️ instead of ⛔.
 CONFIRMED_BINARY_FALLBACK: frozenset[str] = frozenset({"m5gotchi", "porkchop"})
 
 #: Unpublished / placeholder-pinned profiles the flash core hard-aborts as STAGED (an unresolved

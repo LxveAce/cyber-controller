@@ -5,8 +5,7 @@ Stock cifertech/ESP32-DIV is touch/button-only and speaks nothing over serial, s
 serial fork** — a fork that KEEPS the ESP32-DIV name (original firmware by cifertech; the serial CLI is the
 only addition, authored by LxveAce, with cifertech's credits and MIT license carried forward). The fork adds
 a line-based serial CLI: it answers with an ``ESP32-DIV serial/1`` identity banner and emits structured
-``TAG key=val`` result lines. Wire contract:
-``command-center/projects/cc-app/ESP32-DIV-SERIAL-PROTOCOL-2026-07-21.md``.
+``TAG key=val`` result lines.
 
 The parser is pure and unit-tested against canned lines (no hardware). Data keys match the stock DIV parser
 (``ap_found``/``client_found``/``ble_found`` etc.) so the target pool / analyzers populate identically; the

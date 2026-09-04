@@ -24,7 +24,7 @@ from src.models.target import TargetType
 from src.protocols.base import BaseProtocol, CommandInfo, ParsedEvent
 
 # --- Regex patterns for Flipper CLI output (ported verbatim) ---
-# GROUNDING CAVEAT (2026-07-30, test-all-firmware): these pipe-tag formats were ported from
+# GROUNDING CAVEAT: these pipe-tag formats were ported from
 # universal-flasher-ui, NOT grounded in the real Flipper Zero firmware. A source-check vs
 # flipperdevices/flipperzero-firmware found the exact tags (e.g. `| ATQA:`) appear NOWHERE in the
 # current firmware — so these likely do NOT match real Flipper CLI output (which is app-specific,
@@ -283,7 +283,7 @@ class FlipperProtocol(BaseProtocol):
         Care: OTHER firmware (LxveOS, GhostESP, Marauder) ships a Flipper *detector* feature that prints
         "Flipper Zero detector" / a "flipper" command — a Flipper HUNTER is not a Flipper. Matching a bare
         "Flipper" substring misidentified an LxveOS device (whose "Passive Flipper Zero detector" help line
-        contains the name) as a Flipper (HW-confirmed on a real LxveOS board, 2026-07-23). So identify only on
+        contains the name) as a Flipper (HW-confirmed on a real LxveOS board). So identify only on
         Flipper's OWN CLI markers, and accept the device name only outside a detector/scanner context.
         """
         strong = ("SubGhz:", "NFC:", "RFID:", ">: ", "Power: Battery:")

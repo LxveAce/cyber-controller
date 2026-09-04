@@ -1,4 +1,4 @@
-"""Operate-Home Zone B: QuickActionsStrip (WS3) - hero one-tap actions for the connected firmware.
+"""Operate-Home Zone B: QuickActionsStrip - hero one-tap actions for the connected firmware.
 
 A row of curated action tiles (from ``operate_featured.featured_actions``) plus an always-present
 two-mode STOP. Every tap reuses CC's guarded send verbatim (the ``run_fn`` / ``send`` / ``ready_fn``

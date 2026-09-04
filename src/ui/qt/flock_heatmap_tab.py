@@ -147,7 +147,7 @@ _OSM_MAX_SPAN_DEG = 2.0
 
 def world_px(lat: float, lon: float, world: float = _WORLD_PX) -> Tuple[float, float]:
     """Project (lat, lon) into the shared global-mercator pixel plane [0, world]. Pure + Qt-free — the
-    single projection both the camera layer and (Phase B) the world basemap are placed through."""
+    single projection both the camera layer and the world basemap are placed through."""
     x, y = web_mercator(lat, lon)
     return x * world, y * world
 
@@ -698,7 +698,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                 "color:#d29922;background:#1c1908;border:1px solid #493c0e;"
                 "border-radius:4px;padding:5px 8px;font-weight:600;")
             root.addWidget(self._wip_banner)
-            self._last_flock_size: "Optional[str]" = None   # Wave-3: size class (debounce)
+            self._last_flock_size: "Optional[str]" = None   # size class (debounce)
             from src.ui.qt import primer
             primer.apply_primer(self)   # mockup formula: control-row .field/.btn (map canvas untouched)
             _note = QLabel(
@@ -711,7 +711,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             _note.setStyleSheet("color:#8b949e;padding:4px 2px;")
             root.addWidget(_note)
             file_row = QHBoxLayout()
-            self._file_row = file_row   # Wave-3: control rows stack on a compact canvas
+            self._file_row = file_row   # control rows stack on a compact canvas
             self._btn_load = QPushButton("Load cameras.geojson…")
             self._btn_load.setToolTip("Open a saved Flock scan (the cameras.geojson a FlockSession writes).")
             self._btn_load.clicked.connect(self._on_load)
@@ -816,7 +816,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
                                         "tiles for the area you're viewing and cache them for offline use later. "
                                         "Only the current view is fetched — never a bulk download. Off = fully "
                                         "offline (cached tiles only, no network).")
-            self._chk_online.setChecked(False)     # airgapped-by-default (owner 2026-07-21): no network unless asked
+            self._chk_online.setChecked(False)     # airgapped-by-default (owner): no network unless asked
             self._chk_online.stateChanged.connect(lambda _s: self._schedule_tiles())
             self._provider_combo = QComboBox()
             self._provider_combo.setToolTip("Basemap style. CARTO's muted maps read cleanest; "
@@ -856,7 +856,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             map_row.addStretch(1)
             root.addLayout(map_row)
 
-            # Street basemap (WS-4): real XYZ map tiles under the cameras, in the SAME world_px plane, so a scan
+            # Street basemap: real XYZ map tiles under the cameras, in the SAME world_px plane, so a scan
             # sits on actual roads. Offline-first — a disk cache serves tiles with no network; "Online tiles"
             # opts into fetching the current view's missing tiles and caching them. The loader is viewport-driven
             # and debounced so panning/zooming coalesces into one refresh; fetches run on _TileFetchWorker. Built
@@ -926,7 +926,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self.set_geojson({"type": "FeatureCollection", "features": []})
             self._relayout_flock(force=True)   # seed the control-row orientation
 
-        # ── responsive layout (Wave-3) ──
+        # ── responsive layout ──
         def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
             super().resizeEvent(event)
             self._relayout_flock()
@@ -1101,7 +1101,7 @@ try:  # allow importing the pure core (web_mercator/MercatorFit/heat_color) even
             self._scene.addItem(group)
             self._basemap_group = group
 
-        # ── street basemap tiles (WS-4) ──────────────────────────────
+        # ── street basemap tiles ──────────────────────────────
         def _schedule_tiles(self, *_a) -> None:
             """Debounced request to refresh the street tiles for the current view — pan/zoom bursts coalesce
             into one refresh. Fires only when the tab is up; showEvent re-schedules on return. Takes ``*_a`` so

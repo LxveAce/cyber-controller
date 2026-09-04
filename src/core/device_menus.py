@@ -4,7 +4,7 @@ The ESP32 firmwares render their TFT menu locally and only expose a serial CLI, 
 *reconstructs* each firmware's on-board menu as a tree of :class:`MenuNode` and binds every leaf to the
 firmware's real serial command. The web Device View (`src/ui/web`) and the tk Device View
 (`src/ui/tk/device_view.py`) both render from this ONE model, so every front-end shows the SAME
-reconstruction — an honest skin, not a pixel mirror. (The Qt pop-out skins were removed in the WS5
+reconstruction — an honest skin, not a pixel mirror. (The Qt pop-out skins were removed in the
 debloat; their operator capability now lives in the Operate console + the Devices terminal.)
 
 `menu_tree(firmware)` serializes a skin to a JSON-able tree with a per-leaf `danger` label (via the shared

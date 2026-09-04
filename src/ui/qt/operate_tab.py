@@ -1,4 +1,4 @@
-"""Operate console (B16) — a focused operator surface for a single connected device.
+"""Operate console — a focused operator surface for a single connected device.
 
 This is the button-driven counterpart to the Devices tab's free-text terminal: a status-poll
 header, a prominent SAFE/ARMED lamp, the LxveOS two-factor arm-token toggle, and a catalog-driven
@@ -80,7 +80,7 @@ class OperateTab(QWidget):
         self._last_arm_state: Optional[str] = None
         self._last_link_view = None    # last Link-strip render, to repaint only on change
         self._fw_syncing = False       # guard: syncing the firmware combo must not re-fire its slot
-        self._grid_cols: int = 3       # Wave-3 Batch C: command-grid columns (was hard-coded 3)
+        self._grid_cols: int = 3       # command-grid columns (was hard-coded 3)
         self._hit_edge_pt: int = 0     # touch-target min-height for grid/arm buttons (0 = none yet)
         self._last_operate_size: "Optional[str]" = None   # last size class (relayout debounce)
         self._op_panel = None          # D6b: selected command's OperationDetail atom (on _send)
@@ -120,7 +120,7 @@ class OperateTab(QWidget):
 
         # Header: device picker + force-firmware combo + telemetry line
         head = QHBoxLayout()
-        self._head_row = head   # Wave-3 Batch C: flips to a vertical stack on a compact canvas
+        self._head_row = head   # flips to a vertical stack on a compact canvas
         head.addWidget(QLabel("Device:"))
         self._device_combo = QComboBox()
         self._device_combo.setMinimumWidth(260)
@@ -211,7 +211,7 @@ class OperateTab(QWidget):
         root.addStretch(1)
         self._relayout_operate(force=True)   # seed grid cols / hit target / header pre-build
 
-    # ── responsive layout (Wave-3 Batch C) ─────────────────────────────────
+    # ── responsive layout ─────────────────────────────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_operate()
@@ -356,7 +356,7 @@ class OperateTab(QWidget):
             if w is not None:
                 w.deleteLater()
         # No connected device yet — explain how to get here instead of a firmware-less "no catalog" message
-        # (which reads as an error) (A5 #11/#17).
+        # (which reads as an error).
         dev = self._active_device()
         if dev is None or not getattr(dev, "connected", False):
             hint = QLabel("No device connected — connect one on the Devices tab, then pick it above to "
@@ -384,7 +384,7 @@ class OperateTab(QWidget):
         groups: "dict[str, list]" = {}
         for ci in commands:
             groups.setdefault(getattr(ci, "category", "") or "Other", []).append(ci)
-        cols = max(1, self._grid_cols)   # Wave-3 Batch C: size-driven columns (was hard-coded 3)
+        cols = max(1, self._grid_cols)   # size-driven columns (was hard-coded 3)
         from src.core import op_spec
         for category, cmds in groups.items():
             box = QGroupBox(category)
@@ -462,7 +462,7 @@ class OperateTab(QWidget):
             return (True, "")
         return ready
 
-    # Operate-Home delegation (WS3): thin wrappers so Home never re-implements the guarded core
+    # Operate-Home delegation: thin wrappers so Home never re-implements the guarded core
     def run_curated(self, ci: Any, arg: str = "") -> None:
         """Fire a curated Operate-Home tile's command through the EXISTING guarded send. Same as an
         OpPanel Start: op_command builds the string, then ``_send`` (classify -> tx_hard_block ->
@@ -514,7 +514,7 @@ class OperateTab(QWidget):
         # is REFUSED unless the device is explicitly armed at send time — not just because a button was left
         # enabled during the <=2s between an armed -> safe change and the next poll repaint. On firmware with
         # NO arm concept (Marauder/DIV/GhostESP/Bruce), there is nothing to arm, so it is confirm-gated below
-        # instead of dead-ended — every button is usable for authorized lab work (owner directive 2026-07-21).
+        # instead of dead-ended — every button is usable for authorized lab work (owner directive).
         if danger and safety.tx_hard_block(
             danger, self._active_supports_arm(), getattr(self._active_device(), "arm_state", "")
         ):
@@ -627,10 +627,10 @@ class OperateTab(QWidget):
         # TX-button enable. On arming firmware: offensive-TX enables only when ARMED (arm_state directly,
         # not the tx=-derived display `state`, so a merely TX-capable SAFE board can't enable one). On
         # firmware with no arm concept: enabled whenever connected, and each send is confirm-gated in
-        # _send (owner directive 2026-07-21: authorized lab use, total functionality). _send re-checks both.
+        # _send (owner directive: authorized lab use, total functionality). _send re-checks both.
         tx_armed = connected and getattr(dev, "arm_state", "") == "armed"
         tx_enabled = tx_armed if arm_fw else connected
-        # A5 #13: when an offensive-TX button is greyed out because the arming firmware is still SAFE, its
+        # When an offensive-TX button is greyed out because the arming firmware is still SAFE, its
         # tooltip should say WHY (and how to enable it) rather than looking inexplicably dead.
         arm_hint = "\nDisabled until ARMED — use the arm gate above (Arm… → Confirm token)."
         for b in self._tx_buttons:

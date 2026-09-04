@@ -51,7 +51,7 @@ def config_dir() -> Path:
 def captures_dir() -> Path:
     """The one canonical folder for Wi-Fi captures: ``$CC_CAPTURES_DIR`` or ``~/.cyber-controller/captures``.
 
-    WS-7 unifies the capture->crack workflow around a single place: a raw ``.pcap``/``.pcapng`` retrieved
+    This unifies the capture->crack workflow around a single place: a raw ``.pcap``/``.pcapng`` retrieved
     from a device, the ``.hc22000`` an auto-EAPOL convert writes, and Crack Lab's Browse default all point
     here — so a just-captured file is one click from cracking (and one click from a WiGLE/WGD upload later).
     Created on first use; falls back to the path even if the mkdir fails (a picker just opens elsewhere)."""

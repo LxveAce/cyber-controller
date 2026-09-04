@@ -1,9 +1,9 @@
-"""Per-firmware curated one-tap actions for Operate Home (WS3) — pure, no Qt, unit-testable.
+"""Per-firmware curated one-tap actions for Operate Home — pure, no Qt, unit-testable.
 
 The home surface's QuickActionsStrip shows a small curated set of the connected firmware's most
 relevant verbs. The catalog has no `featured`/`rank` field, so the set is derived by scoring each
 `cached_commands()` verb on operator INTENT (status / scan / capture / attack / control). Dangerous
-verbs ARE included (owner call, 2026-08-01) - curation only picks WHICH verbs show; every tap still
+verbs ARE included (owner call) - curation only picks WHICH verbs show; every tap still
 rides the same guarded `_send` (classify → tx_hard_block → confirm → write) and is danger-labeled +
 readiness-gated in the strip. STOP / safe-state is handled by the strip, not here. Honest-empty: a
 no-CLI / stock-DIV / no-catalog firmware yields `[]` (the strip shows the honest hint), not invented

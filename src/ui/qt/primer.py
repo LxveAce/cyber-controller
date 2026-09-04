@@ -1,6 +1,6 @@
 """Primer formula — the reusable visual language from the approved reform mockup.
 
-The owner's directive (2026-08-06): "take the HTML example's formula and apply it throughout the actual
+The owner's directive: "take the HTML example's formula and apply it throughout the actual
 app." This module is that formula as reusable PyQt: the card grid, chips, flash badges, note bars, tiles,
 buttons and fields the mockup uses, so every reformed tab reads the same way instead of each inventing its
 own look. The card factory itself lives in flash_tab._make_card (shared by 8 tabs); this adds the smaller

@@ -1,8 +1,7 @@
 """Meshtastic reference enums — HardwareModel + PortNum + LoRa RegionCode/ModemPreset names.
 
 Snapshotted verbatim from the upstream protobuf definitions (meshtastic/protobufs mesh.proto HardwareModel,
-portnums.proto PortNum, config.proto LoRaConfig.RegionCode + ModemPreset), HardwareModel/PortNum retrieved
-2026-07-23 and RegionCode/ModemPreset retrieved 2026-07-24. Field/enum values are fixed by contract, so a
+portnums.proto PortNum, config.proto LoRaConfig.RegionCode + ModemPreset). Field/enum values are fixed by contract, so a
 static snapshot is safe; refresh by re-running the enum extractor against the current .proto.
 
 This replaces a small hand-typed hardware-model map that had SIX wrong values (e.g. 71 was labelled RAK4631

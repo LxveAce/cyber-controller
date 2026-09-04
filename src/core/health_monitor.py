@@ -15,7 +15,7 @@ HealthCallback = Callable[[dict[str, Any]], None]
 
 _DEFAULT_INTERVAL = 5.0
 
-# P0-7: non-blocking CPU sampling. ``psutil.cpu_percent(interval=None)`` reports utilisation since the
+# Non-blocking CPU sampling. ``psutil.cpu_percent(interval=None)`` reports utilisation since the
 # previous call — free, with no 100ms busy-wait in the poll/request path. The only catch is the FIRST
 # call has no prior reference (returns 0.0), so warm it once with a single brief sample; every read
 # after that is non-blocking. Module-level so the warm state is shared across the static reader.

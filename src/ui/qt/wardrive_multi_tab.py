@@ -61,14 +61,14 @@ class WardriveMultiTab(QWidget):
         self._timer = QTimer(self)
         self._timer.setInterval(1000)
         self._timer.timeout.connect(self._tick)
-        self._last_wm_size: "str | None" = None   # Wave-3 Batch C: last size class (debounce)
+        self._last_wm_size: "str | None" = None   # last size class (debounce)
         self._build_ui()
         self._refresh_boards()
         self._refresh_ports()
         from src.ui.qt import primer
         primer.apply_primer(self)   # mockup formula: tight tables / .field inputs / .btn buttons
 
-    # ── Adaptive layout (Wave-3 Batch C) ──────────
+    # ── Adaptive layout ──────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_for_size()
@@ -194,7 +194,7 @@ class WardriveMultiTab(QWidget):
         boards = self._connected_boards()
         self._board_list.clear()
         if not boards:
-            # A5 #2: an empty list looked broken — say why + how to fill it, and make it
+            # An empty list looked broken — say why + how to fill it, and make it
             # un-checkable so the placeholder is never mistaken for a real board to tick.
             hint = QListWidgetItem("No boards connected — open one on the Devices tab to add it.")
             hint.setFlags(Qt.NoItemFlags)

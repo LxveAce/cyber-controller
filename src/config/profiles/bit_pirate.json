@@ -32,5 +32,5 @@
     {"name": "M5 Stamp S3", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m"}
   ],
   "firmware_urls": {"repo": "https://github.com/geo-tp/ESP32-Bit-Pirate", "latest": "https://github.com/geo-tp/ESP32-Bit-Pirate/releases/latest"},
-  "note": "One merged .bin per board (bit_pirate_16_<board>.bin) flashed at 0x0 (web-flasher class). All targets esp32s3. Pick the board via the variant; offset pending hardware verification (Stage-5 gate)."
+  "note": "One merged .bin per board (bit_pirate_16_<board>.bin) flashed at 0x0 (web-flasher class). All targets esp32s3. Pick the board via the variant; offset pending hardware verification."
 }

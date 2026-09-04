@@ -422,7 +422,7 @@ class CrackLabTab(QWidget):
         super().__init__()
         self._worker: _CrackWorker | None = None
         self._backends_cache: list[str] = []   # detected crack backends; refreshed by _refresh_tools()
-        self._last_crack_size: "str | None" = None   # Wave-3 Batch C: size class (debounce)
+        self._last_crack_size: "str | None" = None   # size class (debounce)
 
         # Shared capture log (auto-populates the Captures table). None when the hub is unavailable.
         self._captures = getattr(hub, "captures", None) if hub is not None else None
@@ -599,7 +599,7 @@ class CrackLabTab(QWidget):
 
         self._relayout_crack(force=True)   # seed the split orientation before first show
 
-    # ── responsive layout (Wave-3 Batch C) ───────────────────────────
+    # ── responsive layout ───────────────────────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_crack()

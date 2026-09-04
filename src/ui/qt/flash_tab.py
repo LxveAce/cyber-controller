@@ -313,7 +313,7 @@ class FlashTab(QWidget):
         self._batch_idx = 0
         self._batch_ok = 0
         self._pending_variant: str | None = None  # variant to select once the async list lands
-        self._pending_flash_hint: str | None = None  # post-flash "screen blank? re-pick" hint (B2)
+        self._pending_flash_hint: str | None = None  # post-flash "screen blank? re-pick" hint
         # last-fetched variant dicts ({name,label,chip,url}) for the current profile — kept so
         # _on_flash can recover a picked variant's chip (needed to route a mixed-backend profile's
         # UF2 board to the uf2 backend; see _uf2_chip_for_variant).
@@ -331,7 +331,7 @@ class FlashTab(QWidget):
         # Re-hint firmware compatibility whenever the selected port changes.
         self._port_combo.currentIndexChanged.connect(self._recolor_profiles)
 
-    # ── Adaptive layout (Wave-3) ─────────────────────────────────────
+    # ── Adaptive layout ─────────────────────────────────────
     # Reflow the top row to match the window: a horizontal port·profile·actions row on a roomy
     # canvas, stacked vertically when it's cramped. The DECISION lives in the pure `flash_layout`
     # resolver (unit-tested without Qt); here we only translate it to a QBoxLayout direction. This
@@ -469,7 +469,7 @@ class FlashTab(QWidget):
         for _b in (self._btn_flash, self._btn_backup, self._btn_erase):
             _b.setMinimumWidth(120)
         top.addLayout(btn_col)
-        # Wave-3 adaptive layout: keep a handle on the top row so resizeEvent can reflow it
+        # Adaptive layout: keep a handle on the top row so resizeEvent can reflow it
         # (horizontal row on a roomy canvas → stacked on a compact one) via QBoxLayout.setDirection.
         self._top_row = top
         root.addLayout(top)
@@ -696,7 +696,7 @@ class FlashTab(QWidget):
             return
         # (The "Auto" item keeps its honest "default for chip" label; the combo's tooltip already warns it
         # can be wrong for display boards. The blank-CYD risk is surfaced at flash time by the chip-aware
-        # B2 gate in _on_flash — see _auto_risks_generic_ili9341 — not by a per-chip guess in the label.)
+        # gate in _on_flash — see _auto_risks_generic_ili9341 — not by a per-chip guess in the label.)
         self._variant_combo.addItem("Loading variants…", "")
         self._variant_combo.model().item(1).setEnabled(False)
         self._variant_loader = _VariantLoader(self._fe, profile)
@@ -1109,7 +1109,7 @@ class FlashTab(QWidget):
         uf2_chip = _uf2_chip_for_variant(profile, variant, self._loaded_variants)
         if uf2_chip:
             profile.chip = uf2_chip
-        # B2 — flash-default honesty. Marauder's Auto default is per-chip; on the classic-esp32 bucket
+        # flash-default honesty. Marauder's Auto default is per-chip; on the classic-esp32 bucket
         # (every CYD, which we can't positively ID over a shared UART bridge) it's the generic ILI9341
         # build, the wrong display driver for most such panels — their screen stays blank after a flash
         # that reports success. Warn ONLY on that ambiguous case (a known S3/S2/C3 flashes its correct
@@ -1158,7 +1158,7 @@ class FlashTab(QWidget):
         # clicking it started a concurrent batch mid-flash. Re-enabled in _on_flash_done.
         self._btn_flash.setEnabled(False)
         self._btn_flash_queue.setEnabled(False)
-        # A5 #6: also lock the other serial-op buttons (Backup / Erase / Detect / Detect chip) so
+        # Also lock the other serial-op buttons (Backup / Erase / Detect / Detect chip) so
         # can start a competing serial op on the same port mid-flash. Re-enabled in _on_flash_done.
         self._set_detect_busy(True)
         self._progress.setValue(0)
@@ -1259,7 +1259,7 @@ class FlashTab(QWidget):
         if not jobs:
             self._log("Batch queue is empty — add port + profile combos first.")
             return
-        # B2 — same honest gate as a single flash, but ONCE up front (a modal mid-batch would stall the
+        # Same honest gate as a single flash, but ONCE up front (a modal mid-batch would stall the
         # run). If any queued job is a Marauder Auto flash on a board we can't positively identify, confirm
         # before starting the whole batch instead of silently flashing generic-ILI9341 to a CYD.
         at_risk = sum(1 for (p, name, v) in jobs
@@ -1323,7 +1323,7 @@ class FlashTab(QWidget):
 
     def _on_batch_item_done(self, success: bool) -> None:
         self._log(f"Batch [{self._batch_idx + 1}]: {'succeeded' if success else 'FAILED'}.")
-        # B2 — if this job took Marauder's generic-ILI9341 Auto default (a display board we couldn't ID),
+        # If this job took Marauder's generic-ILI9341 Auto default (a display board we couldn't ID),
         # restate the guess so a blank CYD reads as "wrong build, re-pick" instead of a green success.
         if success and self._batch_idx < len(self._batch_jobs):
             p, name, v = self._batch_jobs[self._batch_idx]
@@ -1347,11 +1347,11 @@ class FlashTab(QWidget):
     def _on_flash_done(self, success: bool) -> None:
         self._btn_flash.setEnabled(True)
         self._btn_flash_queue.setEnabled(True)
-        self._set_detect_busy(False)   # A5 #6: re-enable Backup/Erase/Detect after the flash
+        self._set_detect_busy(False)   # re-enable Backup/Erase/Detect after the flash
         if success:
             self._progress.setValue(100)
             self._log("Flash completed successfully.")
-            # B2 — after a generic-default Marauder flash, restate that the display build was a guess so a
+            # After a generic-default Marauder flash, restate that the display build was a guess so a
             # blank screen reads as "wrong build, re-pick" instead of a clean success with a dead screen.
             if self._pending_flash_hint:
                 self._log(self._pending_flash_hint)

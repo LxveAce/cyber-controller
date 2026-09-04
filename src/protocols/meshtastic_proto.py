@@ -1,21 +1,21 @@
-"""Dependency-free minimal protobuf codec for the Meshtastic StreamAPI (comms rework, Wave 8).
+"""Dependency-free minimal protobuf codec for the Meshtastic StreamAPI.
 
 Meshtastic's serial link carries length-delimited **protobuf** ToRadio/FromRadio messages (framed by
 :class:`~src.protocols.stream_framer.StreamFramer`). To read node/channel/text state and send a text message,
 CC has to decode/encode those protobufs.
 
 **Why hand-rolled, not the `protobuf` runtime + vendored `*_pb2.py`.** The vendored-pb2 path adds the
-`protobuf` dependency (plus its `upb` C extension) and is, per the Wave-8 research, the *main* PyInstaller
+`protobuf` dependency (plus its `upb` C extension) and is the *main* PyInstaller
 frozen-build pitfall — the global descriptor pool throws "duplicate file name" when a `*_pb2` module is
 importable under two paths, and the upb backend is stricter still. CC's transport layer is already
-hand-rolled + fully tested (``StreamFramer``); this is its natural companion. Wave 8 needs only ~6 message
+hand-rolled + fully tested (``StreamFramer``); this is its natural companion. CC needs only ~6 message
 types decoded (FromRadio, MeshPacket, Data, NodeInfo, User, Channel, MyNodeInfo) and 2 encoded (ToRadio
 variants). Protobuf's wire format is small and stable, and **field numbers are fixed by contract** (renumbering
 would break every existing Meshtastic client), so a minimal codec is safe, dependency-free, and — validated
 here against a real Heltec node's captured stream — honest. Every unrecognised field is skipped generically.
 
 Field numbers pinned from upstream ``meshtastic/protobufs`` (mesh.proto, portnums.proto, channel.proto).
-Re-verified 2026-07-30 vs canonical mesh.proto — FromRadio/NodeInfo/User/Position all still match
+Re-verified vs canonical mesh.proto — FromRadio/NodeInfo/User/Position all still match
 (newer optional NodeInfo fields e.g. via_mqtt=8 / hops_away=9 are skipped generically).
 This module is PURE: no serial, no Qt, no I/O — trivially testable and validated against golden real-radio bytes.
 """
@@ -352,7 +352,7 @@ def _decode_config(data) -> MeshConfig | None:
     """Decode FromRadio.config (Config). Only the LoRaConfig variant (Config.lora = field 6) is surfaced —
     region (LoRaConfig field 7) + modem_preset (field 2) + use_preset (field 1). Other Config variants
     (device/position/power/…) return None so the frame falls through to 'other'. Field numbers are from
-    config.proto (retrieved 2026-07-24), not memory — this is the read-path label, never a write."""
+    config.proto, not memory — this is the read-path label, never a write."""
     if not isinstance(data, bytes):
         return None
     lora = _first(parse(data), 6)  # Config.lora (LoRaConfig)

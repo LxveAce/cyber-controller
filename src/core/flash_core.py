@@ -141,7 +141,7 @@ _BOOTLOADER_0 = {"esp32s3", "esp32c2", "esp32c3", "esp32c6", "esp32c61", "esp32h
 # Flashing one of these at 0x0 produces a board that never boots. `_bootloader_offset` consults
 # this map first, then falls back to the _BOOTLOADER_0 (0x0 vs 0x1000) rule, so the fix lives in
 # exactly one place and every profile's support_files() routes through it. (C5/P4/H4 offsets +
-# the golden test are ported from universal-flasher's verified table — sweep #13, 2026-07-24.)
+# the golden test are ported from universal-flasher's verified table.)
 _BOOTLOADER_OFFSET = {"esp32c5": "0x2000", "esp32p4": "0x2000", "esp32h4": "0x2000"}
 
 
@@ -1291,7 +1291,7 @@ _RTL8720_BUNDLE_FILES = (
     "imgtool_flashloader_amebad.bin",
 )
 
-#: SHA-256 of the EXACT bundle validated end-to-end on real BW16 hardware (2026-06). The firmware
+#: SHA-256 of the EXACT bundle validated end-to-end on real BW16 hardware. The firmware
 #: comes from a third-party repo (vampel/vampel.github.io@main) with no upstream signature, and the
 #: AmebaD ImageTool would happily checksum-verify + flash whatever bytes it is given — so we pin the
 #: hashes here and reject (before flashing) any bundle that differs (repo compromise / MITM / an
@@ -1374,7 +1374,7 @@ _BJ_ESP_APP = "BlueJammer-V2.ino.bin"
 _BJ_ESP_BOOTLOADER = "BlueJammer-V2.ino.bootloader.bin"
 _BJ_ESP_PARTITIONS = "BlueJammer-V2.ino.partitions.bin"
 
-#: SHA-256 of the v0.2 release bins (downloaded + recorded 2026-06). Closed-source firmware has no
+#: SHA-256 of the v0.2 release bins. Closed-source firmware has no
 #: upstream signature, so pinning is the only integrity guard — reject any byte that differs
 #: (repo compromise / MITM / an upstream change we have not re-validated). NOTE: km0_boot_all /
 #: km4_boot_all are byte-identical to the rtl8720 (Vampire) bundle's — standard AmebaD boot images;
@@ -1553,7 +1553,7 @@ _MESHTASTIC_BOARDS: Dict[str, List[str]] = {
         "seeed-xiao-s3", "station-g2", "station-g3", "tlora-t3s3-v1", "tlora-pager",
         "m5stack-cores3", "picomputer-s3", "unphone",
     ],
-    # tbeam0_7 / heltec-v1 / heltec-v2_0 / heltec-v2_1 pruned 2026-07-10: verified ABSENT from the
+    # tbeam0_7 / heltec-v1 / heltec-v2_0 / heltec-v2_1 pruned: verified ABSENT from the
     # 2.7.26 manifest, so they were advertised-but-unflashable (download_and_extract "no member").
     "esp32": [
         "tbeam", "tlora-v2-1-1_6", "rak11200", "station-g1", "nano-g1",
@@ -2545,44 +2545,44 @@ _PROFILE_FILES = (
     # nRF BlueNullifier 2 (wirebits, GPL-3.0) — 2.4 GHz nRF24L01 jammer, LAB-ONLY/illegal to operate,
     # flash-and-study only (no serial control surface). Prebuilt bins are committed in the repo tree
     # (no Release), so fetched pinned to commit 1dfc4d3 via raw.githubusercontent.com + SHA-256-verified
-    # (bl 18992 / part 3072 / app 1127184 B). Real-hardware flash pending the Stage-5 gate.
+    # (bl 18992 / part 3072 / app 1127184 B). Real-hardware flash pending the hardware-validation gate.
     "nrf_bluenullifier2.json",
     "flock_you.json", "oui_spy.json", "sky_spy.json", "airtag_scanner.json", "cyt_ng.json",
     "minigotchi.json", "flipper_momentum.json", "flipper_unleashed.json", "custom.json",
     # RogueMaster — third Flipper CFW; identical qFlipper path to Momentum/Unleashed. Release assets
-    # (.tgz/.zip) verified live against RogueMaster/flipperzero-firmware-wPlugins (2026-06-30, v0.420.0).
+    # (.tgz/.zip) verified live against RogueMaster/flipperzero-firmware-wPlugins (v0.420.0).
     "flipper_roguemaster.json",
     # m5stick-nemo — M5Stack multi-tool (esptool merged-single-bin @0x0). Assets verified live against
     # n0xa/m5stick-nemo v3.2.1 (README documents `write_flash -z 0x0`); mixed chips (StickCPlus2=esp32,
     # Cardputer/StickS3=esp32s3) mapped by the fragments chip_map.
     "m5stick_nemo.json",
-    # New (2026-06-29 discovery): added via the hybrid model — drop-a-JSON, no code. Lawful, verified
-    # releases; merged single-bin @ 0x0 web-flasher class; flash offset pending the Stage-5 hardware gate.
+    # New: added via the hybrid model — drop-a-JSON, no code. Lawful, verified
+    # releases; merged single-bin @ 0x0 web-flasher class; flash offset pending the hardware-validation gate.
     "trex.json", "mclite.json", "bit_pirate.json",
     # MeshCore MAINLINE (meshcore-dev/MeshCore, MIT) — distinct from mclite (the laserir/MCLite fork CC
     # previously labeled "MeshCore"). esptool merged-single-bin @0x0, github_release pinned to the
     # companion role tag (companion-v1.16.0); multi-role/ble-usb selection is a deferred resolver
-    # enhancement. Lawful LoRa mesh (danger ""). Offset 0x0 verify: until the Phase-F hardware gate.
+    # enhancement. Lawful LoRa mesh (danger ""). Offset 0x0 verify: until the hardware gate.
     "meshcore.json",
     # WiFi Drone Remote-ID Detector (colonelpanichacks/drone-mesh-mapper, README-MIT) — passive ASTM-F3411
     # Remote-ID receiver, RX-only/danger "" (blue-team counter-surveillance). Prebuilt bins are IN-TREE
     # (firmware/, 0 releases) so pinned_release at commit efe96b6 via raw.githubusercontent.com. Ships the 4
     # pure-RX detector images (Xiao C3/S3, base + Meshtastic node-relay); DELIBERATELY EXCLUDES the repo's
     # esp32s3-dual-rid-apple-maps.bin (Apple-Find-My variant) pending an RX-only confirmation. Only merged app
-    # bins exist (no separate bootloader/partitions) -> 0x0/merged; SHA verify: until the Phase-F hardware gate.
+    # bins exist (no separate bootloader/partitions) -> 0x0/merged; SHA verify: until the hardware gate.
     "drone_mesh_mapper.json",
     # Nautilus (n0xa/Nautilus-Firmware, GPL-3.0) — sub-GHz CC1101 (300-928 MHz RX/TX) firmware for the LilyGo
     # T-Embed CC1101 (ESP32-S3). General-purpose dual-use RF tool, danger "" (same posture as same-author
     # m5stick_nemo and Bruce on this board — no jammer/deauth; operate-time risk is per-command, protocol:null
     # means no CC operate surface). github_release tracks latest; merged single-bin @0x0 (include_regex picks
-    # nautilus.bin, not the 3-part set). v1.0.0 asset verified live. Offset 0x0 verify: until the Phase-F HW gate.
+    # nautilus.bin, not the 3-part set). v1.0.0 asset verified live. Offset 0x0 verify: until the hardware gate.
     "nautilus.json",
     # RNode (markqvist/RNode_Firmware, GPL-3.0) — Reticulum LoRa radio interface. Introduces the NEW
     # per_board_zip resolver mode: each board ships ONE .zip whose members flash to DISTINCT offsets
     # (bootloader chip-dependent / partitions 0x8000 / boot_app0 0xe000 / app 0x10000 / console_image
     # SPIFFS 0x210000 optional). The boot chain rides in the variant's support_members and is extracted
     # from the same cached zip by flash_engine (no support_files ABC change). Members verified live @ 1.86;
-    # nRF boards excluded. danger "" (legit LoRa transport). Offsets verify: until the Phase-F HW gate.
+    # nRF boards excluded. danger "" (legit LoRa transport). Offsets verify: until the hardware gate.
     "rnode.json",
     # ESP32 Dual-Band Wardriver (justcallmekoko/ESP32DualBandWardriver, MIT) — passive 2.4+5 GHz WiGLE
     # logger on the ESP32-C5, danger "" (RX-only, no TX/deauth). pinned_release @ v2.3.0, multi-file:
@@ -2599,22 +2599,22 @@ _PROFILE_FILES = (
     "hydra32.json",
     # esp8266_deauther (CC-12) — unlocks the esp8266 board class. 37 board-specific single merged .bin
     # images flashed at 0x0 via esptool --chip esp8266; assets verified live against
-    # SpacehuhnTech/esp8266_deauther v2.6.1 (2026-07-02). Real-hardware flash pending the Stage-5 gate.
+    # SpacehuhnTech/esp8266_deauther v2.6.1. Real-hardware flash pending the hardware-validation gate.
     "esp8266_deauther.json",
     # M5 pwn/pentest firmwares (Discord community asks). Both esptool merged-single-bin @0x0 (ESP32-S3).
-    # Assets verified live 2026-07-03: Devsur11/M5Gotchi v0.7 (cardputer.bin + m5stick.bin, both S3) and
-    # 0ct0sec/M5PORKCHOP v0.1.8b-PSTH (the *_m5burner.bin merged image). Flash offset pending Stage-5 HW gate.
+    # Assets verified live: Devsur11/M5Gotchi v0.7 (cardputer.bin + m5stick.bin, both S3) and
+    # 0ct0sec/M5PORKCHOP v0.1.8b-PSTH (the *_m5burner.bin merged image). Flash offset pending the hardware-validation gate.
     "m5gotchi.json", "porkchop.json",
     # ESP32 WiFi Penetration Tool (risinek) — classic-ESP32 WiFi attack/recon toolkit (deauth, PMKID + WPA
     # handshake capture over a web UI). Multi-file ESP-IDF release; offsets taken from the repo README's own
-    # flash command (2026-07-08, v1.0): bootloader@0x1000, partition-table@0x8000, app@0x10000; SHA-256 pinned
+    # flash command (v1.0): bootloader@0x1000, partition-table@0x8000, app@0x10000; SHA-256 pinned
     # from the downloaded assets (24016/3072/723248 B). Deauth gated/labelled by the safety layer, never operated.
     "esp32_wifi_pentest.json",
     # WiFiDuck (SpacehuhnTech) — Wi-Fi BadUSB / keystroke injection. Flashes the ESP8266 'Wi-Fi backpack' half
     # (web UI + Ducky-Script CLI) as a single merged .bin @0x0 via esptool --chip esp8266, same path as
     # esp8266_deauther. asset_match takes the two esp8266 board bins (dstike / malduino) and excludes the
-    # atsamd21/atmega HID-companion assets; verified live against SpacehuhnTech/WiFiDuck v1.1.0 (2026-07-08).
-    # Keystroke injection labelled/gated by the safety layer, never operated. Real-hw flash pending Stage-5 gate.
+    # atsamd21/atmega HID-companion assets; verified live against SpacehuhnTech/WiFiDuck v1.1.0.
+    # Keystroke injection labelled/gated by the safety layer, never operated. Real-hw flash pending the hardware-validation gate.
     "wifi_duck.json",
     # BlueStress (LxveLabs, in-house) — ESP32 + 1-2x nRF24L01 2.4 GHz/BLE RF-disruption device, LAB-ONLY /
     # illegal to operate on air (FCC 47 U.S.C. 333). Unlike the fire-on-boot upstream jammers it BOOTS IDLE
@@ -2669,7 +2669,7 @@ _PROFILE_FILES = (
     # bridge (protocol=lxveos parser already registered). Per-board <board_id>-merged.bin @0x0
     # from the rolling ci-latest PRERELEASE (github_release -> /releases/tags/ci-latest). esp32 +
     # esp32s3. Private repo => asset download needs an auth token until public. danger "" (arm-gated
-    # offensive ops are per-command lab-only, no emitter). HW flash owner-gated until Stage-5.
+    # offensive ops are per-command lab-only, no emitter). HW flash owner-gated until hardware validation.
     "lxveos.json",
 )
 

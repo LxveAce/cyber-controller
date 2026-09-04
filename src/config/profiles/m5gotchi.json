@@ -26,7 +26,7 @@
     "repo": "https://github.com/Devsur11/M5Gotchi",
     "latest": "https://github.com/Devsur11/M5Gotchi/releases/latest"
   },
-  "note": "Assets verified live against Devsur11/M5Gotchi v0.7 (2026-07-03): releases ship two prebuilt merged images, cardputer.bin + m5stick.bin — both ESP32-S3 (upstream README lists M5Cardputer, M5Stick-S3, M5Cardputer-adv, all S3; the 'm5stick' build is the S3 Stick, NOT the ESP32 StickC Plus2). Merged single-bin flashed at 0x0 (M5 web-flasher class). A microSD card is required for the firmware to run on Cardputer. Real-hardware flash offset pending the Stage-5 hardware gate.",
+  "note": "Assets verified live against Devsur11/M5Gotchi v0.7: releases ship two prebuilt merged images, cardputer.bin + m5stick.bin — both ESP32-S3 (upstream README lists M5Cardputer, M5Stick-S3, M5Cardputer-adv, all S3; the 'm5stick' build is the S3 Stick, NOT the ESP32 StickC Plus2). Merged single-bin flashed at 0x0 (M5 web-flasher class). A microSD card is required for the firmware to run on Cardputer. Real-hardware flash offset pending real-hardware validation.",
   "core_id": "m5gotchi",
   "label": "M5Gotchi (Devsur11)",
   "repo": "Devsur11/M5Gotchi",

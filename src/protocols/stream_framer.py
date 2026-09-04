@@ -1,4 +1,4 @@
-"""Meshtastic Stream-API frame codec (comms rework, S3-b).
+"""Meshtastic Stream-API frame codec.
 
 Meshtastic's device serial link is NOT a text CLI — it's a length-delimited PROTOBUF stream. Each frame is:
 
@@ -6,12 +6,12 @@ Meshtastic's device serial link is NOT a text CLI — it's a length-delimited PR
 
 i.e. a 2-byte magic header (START1=0x94, START2=0xC3), a **big-endian** unsigned 16-bit payload length, then
 that many protobuf bytes (a ToRadio client->device or FromRadio device->client message). The receiver treats a
-declared length > 512 as a corrupted frame. (Verified against the Meshtastic client-API docs, 2026-07-01.)
+declared length > 512 as a corrupted frame. (Verified against the Meshtastic client-API docs.)
 
 This module owns ONLY the transport framing — turning a byte stream into complete payloads and back. It does
 **not** decode the protobuf payload into Node/Position/Message: that needs the `meshtastic` library's generated
 `.proto` types and a real radio to validate against, so it stays out of scope here (honest boundary). What this
-gives S3 is a reliable, hardware-free, test-gated frame boundary layer that `StreamDriver` uses for the raw path
+gives is a reliable, hardware-free, test-gated frame boundary layer that `StreamDriver` uses for the raw path
 and that a future Meshtastic driver will feed into the protobuf decoder.
 """
 

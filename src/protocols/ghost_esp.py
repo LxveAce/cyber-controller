@@ -67,7 +67,7 @@ _RE_CAPTURE = re.compile(
 # `Name: <60k spaces>x` (no RSSI:) drove catastrophic backtracking on the reader thread (ReDoS,
 # twin of _RE_AP). A BLE GAP name is <= 248 bytes, so a 255-char cap bounds the lazy quantifier
 # without dropping a real name; the leading space is .strip()'d at the call site.
-# GROUNDING (2026-07-30, vs GhostESP-Revival — the canonical fork; Spooks4576 archived):
+# GROUNDING (vs GhostESP-Revival — the canonical fork; Spooks4576 archived):
 # the single-line `BLE Device: <mac> Name:<name> RSSI:` appears only in the Revival DOCS,
 # not its current .c source. The live BLE paths (flipper_scan.c / airtag_scan.c /
 # device_detect_scan.c) are all MULTI-LINE (via _RE_FLIPPER/_RE_AIRTAG/_RE_TRK_*). Kept for
@@ -594,7 +594,7 @@ class GhostESPProtocol(BaseProtocol):
             CommandInfo("blescan -r", "BLE", "Raw BLE traffic scan"),
             CommandInfo("trackgatt", "BLE", "Track a BLE (GATT) device by RSSI"),
             # GhostESP DOES do BLE skimmer detection — via `capture -skimmer` (below); only the standalone
-            # `bleskimmer` verb name was phantom (corrected 2026-08-01 vs the real GhostESP-Revival source).
+            # `bleskimmer` verb name was phantom (corrected vs the real GhostESP-Revival source).
             CommandInfo("blewardriving", "BLE", "BLE wardriving (GPS-tagged beacons)"),
             CommandInfo("blewardriving -s", "BLE", "Stop BLE wardriving"),
             # blespam takes a mode (cmd_ble.c L277-311); bare blespam only prints usage.
@@ -792,7 +792,7 @@ BROADCAST_CAPABILITIES = {
     BroadcastVerb.DEAUTH_ALL:         (("select -a all",), "attack -d"),
     BroadcastVerb.BEACON_SPAM:        ((), "beaconspam -r"),
     # NB: BLE_SPAM is deliberately NOT mapped — CC exposes `blespam` via the command palette only, not as
-    # a broadcast/per-target fan-out action (2026-07-15 audit decision, pinned by test_fix_ghostesp).
+    # a broadcast/per-target fan-out action (pinned by test_fix_ghostesp).
     # `stop` is GhostESP's universal kill (stops attacks + scans + background tasks); `stopscan` only
     # halts a scan, so STOP ALL must NOT use it or an in-progress deauth/beacon flood keeps transmitting.
     BroadcastVerb.STOP_ALL:           ((), "stop"),

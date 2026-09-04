@@ -140,7 +140,7 @@ class SoftwareTab(QWidget):
         self._resolver: _ResolveWorker | None = None
         self._worker: _OSFlashWorker | None = None
         self._drive_scan: _DriveScanWorker | None = None
-        self._last_sw_size: "str | None" = None   # Wave-3: last size class (relayout debounce)
+        self._last_sw_size: "str | None" = None   # last size class (relayout debounce)
         self._build_ui()
         self._load_catalog()
         self._refresh_drives()
@@ -162,7 +162,7 @@ class SoftwareTab(QWidget):
             "this is for PC/USB operating systems."))
 
         top = QHBoxLayout()
-        self._top_row = top   # Wave-3: OS / USB / action columns stack on a compact canvas
+        self._top_row = top   # OS / USB / action columns stack on a compact canvas
         top.setSpacing(8)
 
         os_card, os_layout = _make_card("Operating System")
@@ -241,7 +241,7 @@ class SoftwareTab(QWidget):
         primer.apply_primer(self)   # mockup formula: tight tables / .field inputs / .btn buttons
         self._relayout_software(force=True)   # seed the OS/USB/action row orientation
 
-    # ── responsive layout (Wave-3) ───────────────────────────────────
+    # ── responsive layout ───────────────────────────────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_software()

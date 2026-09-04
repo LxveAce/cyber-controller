@@ -5,7 +5,7 @@
  *      from the mockup so the shell feels identical;
  *   2) LIVE hydration of DEVICE ▸ Dashboard from the real Flask/core endpoints (/api/system-health,
  *      /api/devices, /api/targets) + the authenticated Socket.IO serial stream. Everything else is the
- *      static design preview that Phase 2 wires up the same way.
+ *      static design preview that a later phase wires up the same way.
  *
  * Served same-origin ('self') and tagged with the per-request CSP nonce, so the strict CSP needs no
  * relaxation.
@@ -133,7 +133,7 @@
     }
   });
 
-  // B9: topbar gear ⚙ → open SETTINGS (reuse the rail handler by clicking its navitem).
+  // topbar gear ⚙ → open SETTINGS (reuse the rail handler by clicking its navitem).
   var gearBtn = document.querySelector('.topbar .icon-btn[title="Settings"]');
   if (gearBtn) gearBtn.addEventListener("click", function () {
     var s = document.querySelector('.navitem[data-view="settings"]');
@@ -331,7 +331,7 @@
     refreshDevices().then(function () { setDevMsg(""); }).catch(function () { setDevMsg(""); });
   });
 
-  // B13: Cross-Comm pool Refresh + Clear (clears the operator's own scan results; re-scan repopulates).
+  // Cross-Comm pool Refresh + Clear (clears the operator's own scan results; re-scan repopulates).
   wireBtn("pool-refresh", function () { refreshTargets(); });
   wireBtn("pool-clear", function () {
     if (!window.confirm("Clear the shared target pool?\n\nThis removes the current scan results (re-scanning repopulates them).")) return;
@@ -572,7 +572,7 @@
           esc(c.danger || "") + '"' + title + ">" + esc(c.label) + badge +
           '<span class="raw">' + esc(c.command) + "</span></button>";
       }).join("");
-      // g.category is now a canonical bucket (Scanning/Attack/Network/Other) — A16.
+      // g.category is now a canonical bucket (Scanning/Attack/Network/Other).
       var hcls = g.category === "Attack" ? ' class="atk"' : "";
       return '<div class="cat"><h4' + hcls + ">" + esc(g.category) + '</h4><div class="cmdgrid">' + btns + "</div></div>";
     }).join("");
@@ -962,7 +962,7 @@
   }
   initTerminal();
 
-  // ── SETTINGS (B17): live read + owner write-back to the real settings store ─────────
+  // ── SETTINGS: live read + owner write-back to the real settings store ─────────
   // Hydrates every control from /api/settings, then Save posts the whole form back (secret-free:
   // the WiGLE token only leaves the box when the user types a NEW one). Gate status stays read-only.
   function chipOn(el) { return !!(el && el.classList.contains("on")); }
@@ -1131,7 +1131,7 @@
   }
   initSettings();
 
-  // B12: OPERATE Macros card — real saved macros from /api/macros (list only; run is device-gated).
+  // OPERATE Macros card — real saved macros from /api/macros (list only; run is device-gated).
   function initMacros() {
     var body = document.getElementById("macros-body");
     var count = document.getElementById("macros-count");
@@ -1201,7 +1201,7 @@
   }
   initMacros();
 
-  // OPERATE ▸ Broadcast — one command → many checked devices (A16 Broadcast half). Offensive
+  // OPERATE ▸ Broadcast — one command → many checked devices. Offensive
   // commands are gated by the "authorized use" chip + a server-side re-check; recon fans out freely.
   function initBroadcast() {
     var list = document.getElementById("bc-devices");
@@ -1273,7 +1273,7 @@
   }
   initBroadcast();
 
-  // B14 (stream half): Cross-Comm live event stream — read-only fan-out of the bus events the app
+  // Cross-Comm live event stream (stream half) — read-only fan-out of the bus events the app
   // already emits (target_discovered / device connect+disconnect). The auto-routing RULES half stays
   // deferred (a rule can auto-fire an offensive command — that needs its own consent/gating pass).
   function initCrossCommStream() {
@@ -1296,7 +1296,7 @@
   }
   initCrossCommStream();
 
-  // B14 (rules half): Cross-Comm auto-routing rules — offensive rules are consent-gated on add AND
+  // Cross-Comm auto-routing rules (rules half) — offensive rules are consent-gated on add AND
   // land disabled; arming (enabling) an offensive rule is a second consent-gated act. Mirrors the
   // server gates so the UI can't imply an offensive rule is live without the operator arming it.
   function initRules() {
@@ -1438,7 +1438,7 @@
   }
   initSoftwareOS();
 
-  // B11: HUNT Tail Detect — live follower/persistence table from /api/tails (fed by the pool's BLE +
+  // HUNT Tail Detect — live follower/persistence table from /api/tails (fed by the pool's BLE +
   // client discoveries). Awareness-only; empty until a device reappears across windows.
   function refreshTails() {
     var body = document.getElementById("tail-rows");
@@ -2052,7 +2052,7 @@
 
   // MAP Wardrive: honest gating (no dead buttons). A survey needs a connected GPS-equipped device
   // running wardrive firmware; there's no web wardrive backend yet, so the buttons say so plainly
-  // rather than doing nothing. (Honest-functionality audit, 2026-08-07.)
+  // rather than doing nothing.
   function initWardrive() {
     var msg = document.getElementById("wd-msg");
     var multiMsg = document.getElementById("wd-multi-msg");
@@ -2137,7 +2137,7 @@
   }
   initSense();
 
-  // Surface-gated, visibility-aware live cadence (P0-6): one tick that refreshes ONLY the visible
+  // Surface-gated, visibility-aware live cadence: one tick that refreshes ONLY the visible
   // surface's data, and stops entirely while the window is hidden/minimized — so an idle or
   // backgrounded app costs nothing on hardware. (The mockup's "live 5s", only where it's on screen.)
   refreshHealth(); refreshDevices(); refreshTargets();   // initial hydrate (once, seeds every surface)

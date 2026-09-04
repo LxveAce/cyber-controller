@@ -46,7 +46,7 @@ class NodesTab(QWidget):
         if controller is None:
             controller = NodesController(device_manager)
         self._ctrl = controller
-        self._last_nodes_size: "Optional[str]" = None   # Wave-3 Batch C: last size class (debounce)
+        self._last_nodes_size: "Optional[str]" = None   # last size class (debounce)
         self._build_ui()
         from src.ui.qt import primer
         primer.apply_primer(self)   # mockup formula: tight node table / .field inputs / .btn buttons
@@ -97,7 +97,7 @@ class NodesTab(QWidget):
         self._locked_label.setStyleSheet("color:#8b949e;padding:24px;")
         cl.addWidget(self._locked_label)
 
-        # A5 #7: shown when unlocked but no nodes exist yet, so the blank table isn't mistaken for an error.
+        # Shown when unlocked but no nodes exist yet, so the blank table isn't mistaken for an error.
         self._empty_hint = QLabel("No nodes provisioned yet — click “Provision…” to add one.")
         self._empty_hint.setAlignment(Qt.AlignCenter)
         self._empty_hint.setStyleSheet("color:#8b949e;padding:24px;")
@@ -112,7 +112,7 @@ class NodesTab(QWidget):
         self._table.setEditTriggers(QTableWidget.NoEditTriggers)
         cl.addWidget(self._table, 1)
 
-        # Wave-3 Batch C: the six-button action row is DENSITY-driven (see _apply_nodes_layout /
+        # The six-button action row is DENSITY-driven (see _apply_nodes_layout /
         # nodes_layout) — a grid that reflows 6-wide when roomy, else 2 (pointer) or 1 (touch) when
         # compact. Buttons are placed by the resolver rather than added directly.
         self._btn_grid = QGridLayout()
@@ -133,7 +133,7 @@ class NodesTab(QWidget):
         cl.addLayout(self._btn_grid)   # buttons live inside the Provisioned Nodes card (bottom)
         self._relayout_nodes(force=True)   # seed the button placement into the grid
 
-    # ── responsive layout (Wave-3 Batch C) ───────────────────────────
+    # ── responsive layout ───────────────────────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_nodes()
@@ -179,7 +179,7 @@ class NodesTab(QWidget):
             log.debug("nodes refresh failed; falling back to the locked state", exc_info=True)
             unlocked, rows = False, []
         self._locked_label.setVisible(not unlocked)
-        self._empty_hint.setVisible(unlocked and not rows)   # A5 #7: guide the empty unlocked table
+        self._empty_hint.setVisible(unlocked and not rows)   # guide the empty unlocked table
         self._table.setVisible(unlocked and bool(rows))
         for b in self._buttons:
             b.setEnabled(unlocked)

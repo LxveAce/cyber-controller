@@ -32,7 +32,7 @@
     "repo": "https://github.com/cifertech/ESP32-DIV",
     "latest": "https://github.com/cifertech/ESP32-DIV/releases/latest"
   },
-  "note": "cifertech/ESP32-DIV (matches flash_core _DIV_API). Ships 3 app .bin per release (cyd/v1/v2, flashed at 0x10000); boot chain pulled from the repo tree per chip. FIXED 2026-09-03: chip_map was 'fixed esp32s3' which force-flashed the classic-ESP32 cyd + v1 boards as S3 (brick on full-flash / chip-mismatch on app-flash) — per upstream flash_div.py, cyd + v1 are classic ESP32 (bootloader@0x1000) and only v2 is S3 (@0x0). Now a fragments chip_map (cyd/-v1-→esp32, -v2-→esp32s3), boards added so chip auto-detects, and support_dir_by_chip templates tools/esp32 vs tools/esp32s3 boot chains (both exist upstream). HW-validation pending.",
+  "note": "cifertech/ESP32-DIV (matches flash_core _DIV_API). Ships 3 app .bin per release (cyd/v1/v2, flashed at 0x10000); boot chain pulled from the repo tree per chip. Per upstream flash_div.py, cyd + v1 are classic ESP32 (bootloader@0x1000) and only v2 is S3 (@0x0); the fragments chip_map (cyd/-v1-→esp32, -v2-→esp32s3) resolves each accordingly, boards are declared so chip auto-detects, and support_dir_by_chip templates tools/esp32 vs tools/esp32s3 boot chains (both exist upstream). HW-validation pending.",
   "repo": "cifertech/ESP32-DIV",
   "core_id": "esp32-div",
   "supports_suicide": true,

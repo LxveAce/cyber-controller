@@ -1,4 +1,4 @@
-"""PageScreen — the shared master/detail/actions scaffold every WS4 screen mounts into (F1).
+"""PageScreen — the shared master/detail/actions scaffold every screen mounts into.
 
 The DESIGN-BRIEFS three-panel spine (Meshtastic Messages layout): a LEFT master (domain/scope), a
 CENTER detail (the live content — table, detail view), and a RIGHT actions region (contextual

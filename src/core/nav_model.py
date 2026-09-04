@@ -9,7 +9,7 @@ the SAME tree. It mirrors :mod:`src.ui.qt.layout_profile`: a small pure descript
 Two properties the design leans on:
 
 * **Verb surfaces, hard-capped at 5 + a pinned Settings.** ``RIG · HUNT · OPERATE · CRACK · MAP``
-  read left-to-right as the mission arc. (The verb labels vs the older WS-6 nouns are an owner call;
+  read left-to-right as the mission arc. (The verb labels vs the older nouns are an owner call;
   the ``key``s are stable, so a label flip never churns wiring.)
 * **Honest-functionality is structural.** A node may carry a ``capability_key``; :func:`visible_nav`
   drops any node whose capability has no registered provider, so a surface with no real backing is
@@ -63,7 +63,7 @@ def _n(key: str, label: str, icon: str = "", children: tuple = (), **kw) -> NavN
 
 
 # The canonical Spade surface set (Axis 1). Verb labels are the default (owner may flip to the
-# WS-6 nouns Flash/Connect/Operate/Survey/Analyze — keys stay). Children are the sub-views that
+# nouns Flash/Connect/Operate/Survey/Analyze — keys stay). Children are the sub-views that
 # re-parent into each surface (per CC-SPADE-DESIGN §2). nrf/NFC browse tiles are absent
 # (honest-functionality: no real screen). Sense is capability-gated until node firmware.
 _SURFACES: tuple[NavNode, ...] = (
@@ -81,7 +81,7 @@ _SURFACES: tuple[NavNode, ...] = (
     )),
     _n("operate", "OPERATE", "console", primary_action="operate", children=(
         _n("home", "Home", "operate"),        # the dual-axis launcher (leads the surface)
-        _n("control", "Control", "console"),  # QA-1 (owner #9): fan-out Broadcast + single-device Console, merged
+        _n("control", "Control", "console"),  # fan-out Broadcast + single-device Console, merged
         _n("macros", "Macros", "macro"),
     )),
     _n("crack", "CRACK", "key", primary_action="crack", children=(

@@ -57,7 +57,7 @@ _EXPECTED_CHIP = {
     "rev_feather": "esp32s2",
     "v6": "esp32",
     "v6_1": "esp32",
-    "v8": "esp32",
+    "v8": "esp32c5",  # MARAUDER_V8 is an ESP32-C5 board (upstream installer/targets.json)
 }
 
 

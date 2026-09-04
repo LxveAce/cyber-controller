@@ -164,7 +164,7 @@ class CyberControllerWindow(QMainWindow):
         macro_recorder: MacroRecorder | None = None,
     ) -> None:
         super().__init__()
-        # Wave-3 Batch A: last size-class the shell laid out for (debounce, mirrors flash_tab).
+        # Last size-class the shell laid out for (debounce, mirrors flash_tab).
         self._last_nav_key: "str | None" = None   # last applied nav-chrome mode (debounce key)
         self._dm = device_manager
         self._fe = flash_engine
@@ -401,7 +401,7 @@ class CyberControllerWindow(QMainWindow):
         self._scan_btn.clicked.connect(self._on_sidebar_scan)
         sidebar_layout.addWidget(self._scan_btn)
 
-        # Wave-10 Phase C slice B: the device-sidebar folds into the ONE app-shell sidebar (below
+        # The device-sidebar folds into the ONE app-shell sidebar (below
         # the nav destinations, below), so the top area has a single sidebar, not two.
         self._device_sidebar = sidebar
 
@@ -410,7 +410,7 @@ class CyberControllerWindow(QMainWindow):
         self._tabs = DetachableTabWidget()
         top_layout.addWidget(self._tabs)
 
-        # Wave-10 Phase C slice A: the app-shell frame wraps the whole top area (sidebar + tabs)
+        # The app-shell frame wraps the whole top area (sidebar + tabs)
         # so the global chrome (status bar / posture toggle / omnibar) and the top-level nav sidebar
         # frame the app. Additive: top_widget + _tabs are untouched inside; the tab-bar stays
         # this slice (dual nav); the sidebar nav + binder are wired after the surfaces are built.
@@ -448,7 +448,7 @@ class CyberControllerWindow(QMainWindow):
             self._show_subtab(self._operate_surface, self._operate_action)
         self._refresh_sidebar_devices()
         self._build_command_palette()
-        # Wave-10 Phase C (Phase D polish): fuse the app-shell omnibar with the command palette —
+        # Fuse the app-shell omnibar with the command palette —
         # the brief's "command input + fuzzy search". Submitting the omnibar opens the palette
         # pre-filtered to the typed text (top match selected); the operator confirms with Enter, so
         # nothing runs straight off a keystroke (some commands are consequential).
@@ -490,7 +490,7 @@ class CyberControllerWindow(QMainWindow):
         # 5 verb surfaces (RIG · HUNT · OPERATE · CRACK · MAP) built at the end of this method + mounted
         # FROM src/core/nav_model.visible_nav() — the "missing consumer" the design's #1 move needed. So
         # every self._<tab> reference + the palette + tests keep working; only which verb QTabWidget each
-        # leaf sits in changed from the old WS-6 noun grouping. safety.py is untouched by any of this.
+        # leaf sits in changed from the old noun grouping. safety.py is untouched by any of this.
 
         # RIG leaves — Firmware (the FlashTab: ESP32/Flipper/RTL firmware + vault) + Software OS (bootable
         # PC/USB images: Kali/Tails/Arch).
@@ -527,7 +527,7 @@ class CyberControllerWindow(QMainWindow):
         self._wardrive_tab = WardriveTab(device_manager=self._dm)  # GPS-tagged Wi-Fi capture -> WiGLE CSV (lawful, owner-authorized); routes through the DM so it can't double-open a board
         from src.ui.qt.broadcast_tab import BroadcastBar
         self._broadcast_bar = BroadcastBar(self._broadcast, self._dm, self._bus)
-        # ── WS-6 Proposal A (owner-approved 2026-07-21): the old 8-tab Operate is regrouped by workflow.
+        # ── Owner-approved: the old 8-tab Operate is regrouped by workflow.
         # Operate = the live action loop only (Targets · Broadcast · Console · Macros). The GPS-tagged
         # survey/map trio moves to a new Survey surface, and Crack Lab + BLE Analyzer to Analyze (the renamed
         # Network surface). Every widget is created ONCE and re-parented, so every self._<tab> reference +
@@ -541,7 +541,7 @@ class CyberControllerWindow(QMainWindow):
         # its Captures table auto-populates from the shared capture log.
         from src.ui.qt.crack_lab_tab import CrackLabTab
         self._crack_lab_tab = CrackLabTab(self._hub)
-        # Operate console (B16): a button-driven single-device console — status-poll header, SAFE/ARMED lamp,
+        # Operate console: a button-driven single-device console — status-poll header, SAFE/ARMED lamp,
         # two-factor arm toggle, per-firmware TX-gated command grid. Shares the Devices tab's ingestor + its
         # _dms_seen set (so a Dead-Man's-Switch port is never auto-polled here either).
         from src.ui.qt.operate_tab import OperateTab
@@ -552,7 +552,7 @@ class CyberControllerWindow(QMainWindow):
         # table, fed by ble_found events from EVERY BLE firmware via the ingestor tap (see _wire_ble_analyzer).
         # An awareness/analysis view (it transmits nothing), so it lives in Analyze.
         from src.ui.qt.ble_analyzer_tab import BleAnalyzerTab, BleScanController
-        # A3: the analyzer's Start/Stop drives a BLE scan on every connected device via the SAME
+        # The analyzer's Start/Stop drives a BLE scan on every connected device via the SAME
         # shared broadcast engine the Console/All-Devices tabs use (each runs its own scan verb),
         # and the sends surface in the shared terminal — so scanning cross-talks across surfaces.
         _ble_scan = BleScanController(self._broadcast) if BleAnalyzerTab is not None else None
@@ -569,7 +569,7 @@ class CyberControllerWindow(QMainWindow):
             # P3 flow B: HUNT Wi-Fi analyzer hands a captured handshake to Crack Lab.
             self._wifi_analyzer.crack_capture_requested.connect(self._on_crack_capture_requested)
 
-        # QA-1 (decision #9, reverses the 07-21 Option-B split): merge Broadcast (fan-out) + Console
+        # Merge Broadcast (fan-out) + Console
         # (single-device) into ONE Operate screen — a vertical splitter with the fan-out verb bar on
         # top and the single-device console below, instead of two separate "All Devices"/"Control"
         # sub-tabs. Both are the SAME re-parented instances, so every self._broadcast_bar /
@@ -581,8 +581,8 @@ class CyberControllerWindow(QMainWindow):
         self._operate_action.setStretchFactor(0, 0)
         self._operate_action.setStretchFactor(1, 1)
 
-        # The OPERATE verb surface is assembled at the end of this method: Home launcher + the QA-1 merged
-        # Control (preserved verbatim — re-splitting it would reverse owner decision #9) + Macros. Targets
+        # The OPERATE verb surface is assembled at the end of this method: Home launcher + the merged
+        # Control (preserved verbatim — re-splitting it would reverse an owner decision) + Macros. Targets
         # re-homes to HUNT (nav_model), so it is no longer an OPERATE sub-view.
 
         # OPERATE HOME (dual-axis launcher). Spade v2 P2c: Wi-Fi/BLE/Tools/Settings are external — a tap
@@ -617,7 +617,7 @@ class CyberControllerWindow(QMainWindow):
         self._settings_tab.check_updates_requested.connect(lambda: self.check_for_updates(force=True))
 
         # ── Spade v2 verb surfaces (Axis 1). Each is ONE inner QTabWidget grouping the leaves nav_model
-        # assigns to that verb; the WS-6 noun surfaces (Flash/Connect/Survey/Analyze) are dissolved into
+        # assigns to that verb; the noun surfaces (Flash/Connect/Survey/Analyze) are dissolved into
         # these. An optional analyzer that is None is skipped (never an empty tab). Icons via label_icon.
         def _verb_surface(*panes) -> QTabWidget:
             w = QTabWidget()
@@ -651,8 +651,8 @@ class CyberControllerWindow(QMainWindow):
             ("Node Graph", self._network_tab),
         )
         # OPERATE — the ONE action surface (kills the double-Operate): Home launcher · merged Control · Macros.
-        # Control is the QA-1 splitter (fan-out Broadcast + single-device Console), preserved verbatim.
-        # Reform (P2): OPERATE opens on the single dense Console (OperateTab), matching the mockup —
+        # Control is the splitter (fan-out Broadcast + single-device Console), preserved verbatim.
+        # Reform: OPERATE opens on the single dense Console (OperateTab), matching the mockup —
         # the old tile Operate-Home is retired from the surface (sub-tabs: Console | Macros). Home stays
         # constructed + hidden below so its summary/action refreshes — which PRIME the console's active
         # device (_rebuild_home_actions -> console.select_device) — keep working harmlessly.
@@ -713,7 +713,7 @@ class CyberControllerWindow(QMainWindow):
         # How-To lives under the Help menu (see _on_howto), not the tab strip — keeps the top level at the
         # 5 verb surfaces (RIG / HUNT / OPERATE / CRACK / MAP) + the pinned Settings + Help.
 
-        # Wave-10 Phase C slice A: wire the app-shell sidebar as top-level nav now that the surfaces
+        # Wire the app-shell sidebar as top-level nav now that the surfaces
         # exist. Each destination selects its surface in _tabs (dual with the tab-bar this slice).
         from src.ui.qt.page_layout_binder import PageLayoutBinder
         self._shell_surfaces: dict[str, object] = {}
@@ -737,7 +737,7 @@ class CyberControllerWindow(QMainWindow):
             if isinstance(_surface, QTabWidget):
                 _surface.currentChanged.connect(self._sync_shell_crumb_leaf)
         self._sync_shell_nav()
-        # Wave-10 Phase C (slice C): the app-shell sidebar is now the SOLE nav, so hide the flat tab
+        # The app-shell sidebar is now the SOLE nav, so hide the flat tab
         # strip — the veneer's last piece. The tabs still exist (setCurrentWidget drives them
         # from the sidebar + palette); detach stays reachable via Ctrl+Shift+D + the "Detach Current
         # Tab" palette command (the bar's double-click/context-menu paths go with the bar). Qt keeps
@@ -821,8 +821,8 @@ class CyberControllerWindow(QMainWindow):
         """Keep Home's Zone B strip live on the same cadence as the summary. Refresh tile readiness
         every call (cheap, no teardown); REBUILD the strip only when the primary operate
         (port, firmware) changes — connect / disconnect / firmware-change — so a steady-state poll
-        never tears down an open OpPanel (WS3 finding 2). The rebuild also primes the active
-        device (finding 1). The key is stored BEFORE the rebuild, so priming is re-entrant-safe."""
+        never tears down an open OpPanel. The rebuild also primes the active
+        device. The key is stored BEFORE the rebuild, so priming is re-entrant-safe."""
         home = getattr(self, "_operate_home", None)
         console = getattr(self, "_operate_console", None)
         if home is None or console is None or not hasattr(home, "set_actions"):
@@ -847,7 +847,7 @@ class CyberControllerWindow(QMainWindow):
         if not port or not fw:
             home.set_actions([], *wiring, supports_arm=False, stop_ci=None)
             return
-        console.select_device(port)   # prime _active_port (finding 1); nav-only, never sends
+        console.select_device(port)   # prime _active_port; nav-only, never sends
         from src.protocols import get_protocol
         from src.ui.qt.operate_featured import featured_actions
         proto = get_protocol(fw)
@@ -1246,8 +1246,8 @@ class CyberControllerWindow(QMainWindow):
         input_row.addWidget(prompt_label)
 
         # Send-target selector: choose WHERE a typed line goes — auto-route, the connected device(s),
-        # or the local tool shell — instead of inferring it silently from the first word (owner
-        # 2026-07-21: "you should be able to choose what youre sending to"). The device checklist on
+        # or the local tool shell — instead of inferring it silently from the first word (owner:
+        # "you should be able to choose what youre sending to"). The device checklist on
         # the left still picks WHICH serial devices; this picks the channel.
         self._pterm_target = QComboBox()
         self._pterm_target.addItem("Auto", "auto")
@@ -2046,7 +2046,7 @@ class CyberControllerWindow(QMainWindow):
         self._palette.add_command("Connect to Device", lambda: self._show_subtab(self._rig_surface, self._device_dashboard))
         self._palette.add_command("View Health", lambda: self._show_subtab(self._rig_surface, self._device_dashboard))
         self._palette.add_command("Record Macro", self._on_quick_start_macro)
-        # OPERATE sub-views: Control (the QA-1 merged Broadcast + Console screen) + Macros. Both the
+        # OPERATE sub-views: Control (the merged Broadcast + Console screen) + Macros. Both the
         # single-device and fan-out palette entries land on the one merged Control (self._operate_action).
         self._palette.add_command("Control Device", lambda: self._show_subtab(self._operate_surface, self._operate_action))
         self._palette.add_command("Broadcast Actions", lambda: self._show_subtab(self._operate_surface, self._operate_action))

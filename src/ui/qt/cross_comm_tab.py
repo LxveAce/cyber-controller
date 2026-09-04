@@ -171,7 +171,7 @@ class CrossCommTab(QWidget):
         self._pool = target_pool
         self._router = auto_router
         self._dm = device_manager
-        self._last_cc_size: "str | None" = None   # Wave-3: last size class (relayout debounce)
+        self._last_cc_size: "str | None" = None   # last size class (relayout debounce)
 
         # Bridge bus callbacks (worker threads) onto the GUI thread.
         self._bridge = _BusBridge()
@@ -349,7 +349,7 @@ class CrossCommTab(QWidget):
         outer.addWidget(scroll)
         self._relayout_cross_comm(force=True)   # seed the stream/rules row orientation
 
-    # ── responsive layout (Wave-3) ───────────────────────────────────
+    # ── responsive layout ───────────────────────────────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_cross_comm()

@@ -1,4 +1,4 @@
-"""Shared PageLayout frame — the one shell every screen inherits (GUI rebuild, Wave-10 Phase B1).
+"""Shared PageLayout frame — the one shell every screen inherits.
 
 The design brief's single biggest anti-template move: every view is structurally identical, only the
 content differs. This frame provides that structure = a LEFT nav rail (verb destinations at top,
@@ -6,7 +6,7 @@ Settings pinned bottom, each carrying a live count-badge slot) + a persistent TO
 breadcrumb · live device-truth · a prominent SAFE/ARMED lamp · a Simple/Pro depth segment · pop-out
 and settings icons) + a central content area.
 
-Reform pass (2026-08-06): the rendering now matches the owner-approved reform mockup — brand mark +
+Reform pass: the rendering now matches the owner-approved reform mockup — brand mark +
 title, a self-updating breadcrumb, the ``● SAFE`` state lamp, the Pro/Simple segmented control, and
 ``⤢``/``⚙`` icon buttons — while EVERY public method and signal the app (main_window) and the
 PageLayoutBinder call is preserved unchanged, so the shell wiring keeps working. Signals let a host

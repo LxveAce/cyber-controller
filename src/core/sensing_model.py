@@ -1,4 +1,4 @@
-"""Sensing model — a bounded, TTL-aware rollup of Wi-Fi CSI presence/motion verdicts (WS1).
+"""Sensing model — a bounded, TTL-aware rollup of Wi-Fi CSI presence/motion verdicts.
 
 Folds ``sensing_verdict`` events (from :class:`~src.protocols.csi_sensor.CsiSensorProtocol`, which
 parses a sensing node's ``csi presence=… motion=… conf=…`` lines via :mod:`src.core.sensing`) into
@@ -7,7 +7,7 @@ one current-state row per node. A direct structural mirror of
 pure (no Qt, no I/O), bounded (the stalest node is evicted at the cap), TTL-aware (a node's reading
 fades as it ages), and clock-injected (``now`` is passed in) so it is deterministic under test.
 
-This is the data layer a "Sense" view renders later (WS1 P2); it never authors RF and never routes a
+This is the data layer a "Sense" view renders later; it never authors RF and never routes a
 person into the Target pool. Only the PROVEN tier (presence + motion) is real on commodity 2.4 GHz
 Wi-Fi CSI — the honesty tiers live in :data:`src.core.sensing.SENSING_TIERS`.
 """

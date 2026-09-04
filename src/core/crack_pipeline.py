@@ -545,7 +545,7 @@ def convert_capture(capture: str, out_hc22000: str, on_line: Line,
     # as the honest negative "nothing to crack" (as the size==0 branch below does) would launder a
     # real failure into a clean result (verify-never-fake) and bury the cause — its stderr was
     # being dropped too. Surface it with the tool's own stderr, exactly as run_hashcat/run_aircrack
-    # now do for their rc != 0 (beat 242).
+    # now do for their rc != 0.
     if rc != 0:
         for ln in (err or "").splitlines():
             if ln.strip():

@@ -31,7 +31,7 @@ Crypto wiring (important):
   * Inbound frames that fail authentication OR replay are **dropped silently — never surfaced** as a
     line, so a forged/replayed frame can't inject fake scan results or poison the target pool.
 
-Keys are provided by the caller (host-side provisioning, next beat); NodeLink generates/stores no
+Keys are provided by the caller (host-side provisioning); NodeLink generates/stores no
 secret. Live RF is bench-gated — this module is pure host-side plumbing, tested over a mock gateway.
 """
 from __future__ import annotations

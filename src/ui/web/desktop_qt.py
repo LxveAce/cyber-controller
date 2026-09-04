@@ -1,4 +1,4 @@
-"""PyQt + QtWebEngine desktop shell for the web UI (owner's choice, 2026-08-07).
+"""PyQt + QtWebEngine desktop shell for the web UI (owner's choice).
 
 This is "the PyQt app, skinned as the HTML": a native PyQt ``QMainWindow`` whose entire body is a
 ``QWebEngineView`` rendering the reform mockup's own HTML/CSS/JS. It reuses the whole web stack
@@ -62,7 +62,7 @@ def launch_desktop_qt(
     audit: Any = None,
 ) -> int:
     """Run the web UI inside a native PyQt/QtWebEngine window. Returns a process exit code."""
-    # Leanness (P1-10): trim Chromium before QtWebEngine loads. setdefault so an operator override wins.
+    # Leanness: trim Chromium before QtWebEngine loads. setdefault so an operator override wins.
     os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", _LEAN_CHROMIUM_FLAGS)
     try:
         from PyQt5.QtCore import QFile, QIODevice, QObject, QSettings, Qt, QUrl, pyqtSlot
@@ -124,7 +124,7 @@ def launch_desktop_qt(
     # URL). No credentials ever ride in the address, so fetch()/WebSocket work in the window.
     url = f"http://127.0.0.1:{port}/desktop-auth?token={quote(token, safe='')}"
 
-    # External-link + new-window interception (P0-3): keep the app itself always on the loopback origin;
+    # External-link + new-window interception: keep the app itself always on the loopback origin;
     # any off-box link (GitHub, Sponsors, docs) opens in the system browser instead of navigating — or
     # white-screening — the app. `createWindow` (target=_blank) routes out the same way.
     class _ShellPage(QWebEnginePage):
@@ -147,11 +147,11 @@ def launch_desktop_qt(
     from src.ui.qt.screen import enable_high_dpi
     enable_high_dpi()
     app = QApplication.instance() or QApplication([])
-    # Window identity (P0-4) — org/app name (also the base any future QSettings key hangs off) + CC icon.
+    # Window identity — org/app name (also the base any future QSettings key hangs off) + CC icon.
     app.setOrganizationName("LxveAce")
     app.setApplicationName("CyberController")
 
-    # Window geometry persistence (P1-13): remember size + position across launches via QSettings
+    # Window geometry persistence: remember size + position across launches via QSettings
     # (keyed off the org/app name set above). Saved on close, restored on next open.
     _qsettings = QSettings()
 
@@ -257,7 +257,7 @@ def launch_desktop_qt(
     else:
         log.warning("qwebchannel.js resource missing — native file bridge off (web fallback used)")
 
-    # Downloads (P0-3): route any download the page triggers to a native Save dialog.
+    # Downloads: route any download the page triggers to a native Save dialog.
     def _on_download(item) -> None:
         suggested = item.path() or getattr(item, "downloadFileName", lambda: "")() or ""
         path, _ = QFileDialog.getSaveFileName(window, "Save file", suggested)
@@ -287,7 +287,7 @@ def launch_desktop_qt(
     view.load(QUrl(url))
     window.setCentralWidget(view)
 
-    # Adaptive sizing (P0-5): clamp the minimum + launch size to the real screen so a small cyberdeck
+    # Adaptive sizing: clamp the minimum + launch size to the real screen so a small cyberdeck
     # panel is usable (the old hardcoded 900-wide minimum made an 800x480 / 1024x600 deck unusable).
     from src.ui.qt.screen import adaptive_launch_size, adaptive_minimum_size
     _geo = app.primaryScreen().availableGeometry()
@@ -298,7 +298,7 @@ def launch_desktop_qt(
     if _saved_geo is None or not window.restoreGeometry(_saved_geo):
         window.resize(_lw, _lh)   # first run, or a stale/invalid saved geometry -> adaptive default
 
-    # Native keyboard shortcuts (P1-11) — app-level QActions, NO visible menu bar (keep the exact
+    # Native keyboard shortcuts — app-level QActions, NO visible menu bar (keep the exact
     # chromeless HTML look). Zoom / reload / fullscreen / quit: the desktop reflexes the mockup lacks.
     def _shortcut(seq, fn):
         act = QAction(window)

@@ -8,7 +8,7 @@ are tagged ``detection_method="osm-overpass"`` so DB-imported cameras never pose
 Flock-You detection, this is awareness-only — it maps where cameras are, never an attack path.
 OSM data is ODbL-licensed: attribution is required wherever it is shown or exported.
 
-Grounded on a real Overpass response (verified 2026-07-26): the top-level object carries an
+Grounded on a real Overpass response: the top-level object carries an
 ``elements`` array of ``{"type": "node", "id": int, "lat": float, "lon": float, "tags": {...}}``; a
 DeFlock ALPR node carries ``man_made=surveillance`` + ``surveillance:type=ALPR`` + ``manufacturer``
 (e.g. "Flock Safety") and/or ``operator``, often ``direction``. All tag values are strings.
@@ -88,7 +88,7 @@ def build_overpass_query(bbox: "tuple[float, float, float, float]", *,
 
     ``bbox`` = (south, west, north, east) decimal degrees (OverpassQL bbox order). Returns an
     ``[out:json]`` node query for ``man_made=surveillance`` + ``surveillance:type=ALPR``, capped at
-    ``limit`` results. Grounded on the query verified working against overpass-api.de (2026-07-26).
+    ``limit`` results. Grounded on the query verified working against overpass-api.de.
     """
     s, w, n, e = (float(x) for x in bbox)
     if not (-90.0 <= s <= n <= 90.0 and -180.0 <= w <= e <= 180.0):

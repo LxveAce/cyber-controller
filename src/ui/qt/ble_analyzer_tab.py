@@ -122,7 +122,7 @@ def _rssi_color(rssi: "Optional[float]") -> str:
     return "#f85149"
 
 
-# Per-operation Help sheet (Biscuit pattern, A2) — honest "what it does" for the analyzer.
+# Per-operation Help sheet (Biscuit pattern) — honest "what it does" for the analyzer.
 _BLE_HELP = {
     "title": "BLE Analyzer",
     "summary": "A firmware-agnostic view of the Bluetooth Low Energy advertisements a connected "
@@ -255,7 +255,7 @@ try:
             self._sort = "rssi"
             self._paused = False
             self._last_event_ts: "Optional[float]" = None   # when we last folded in a ble_found event
-            self._last_ble_size: "Optional[str]" = None      # Wave-3: size class (debounce)
+            self._last_ble_size: "Optional[str]" = None      # size class (debounce)
             self._scan = scan_controller     # None -> Start disabled (no engine wired; a bare tab)
             self._scanning = False           # whether WE started a scan here (drives the pill)
 
@@ -271,11 +271,11 @@ try:
             self._header.setWordWrap(True)
             root.addWidget(self._header)
 
-            # Live stat grid (Biscuit statistics pattern, A2) — mirrors the header summary as tiles.
+            # Live stat grid (Biscuit statistics pattern) — mirrors the header summary as tiles.
             self._stats = StatGrid(["Present", "Seen", "Trackers", "Named", "Strongest"], columns=5)
             root.addWidget(self._stats)
 
-            # Start/Stop (A3): the primary pill runs the CONNECTED firmware's own BLE-scan verb on
+            # Start/Stop: the primary pill runs the CONNECTED firmware's own BLE-scan verb on
             # every BLE-capable device via the shared broadcast engine (CC transmits nothing).
             self._scan_btn = StartStopButton()
             self._scan_btn.setToolTip("Start a BLE scan on every connected BLE-capable device.")
@@ -339,7 +339,7 @@ try:
             super().hideEvent(ev)
             self._timer.stop()
 
-        # ── responsive layout (Wave-3) ──
+        # ── responsive layout ──
         def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
             super().resizeEvent(event)
             self._relayout_ble()
@@ -391,7 +391,7 @@ try:
             self._model.clear()
             self._refresh()
 
-        # ── scan control (A3) ──
+        # ── scan control ──
         def _on_start_scan(self) -> None:
             """Start a BLE scan on every connected BLE-capable device (guarded broadcast path)."""
             if self._scan is None:
@@ -424,7 +424,7 @@ try:
             targets = self._scan.target_count() if self._scan is not None else None
             if s["total"] == 0 and not receiving:
                 # Nothing seen and no scan feeding us — say so plainly, and name the missing prerequisite so
-                # a disabled Start pill explains itself instead of just sitting greyed out (A5 #1).
+                # a disabled Start pill explains itself instead of just sitting greyed out.
                 if targets == 0:
                     self._header.setText(
                         "No BLE-capable device connected — connect one on the Devices tab, then press Start.")

@@ -27,5 +27,5 @@
     {"name": "DSTIKE Deauther boards (ESP8266)", "chip": "esp8266", "flash_size": "4MB", "flash_mode": "dio", "flash_freq": "40m"}
   ],
   "firmware_urls": {"repo": "https://github.com/SpacehuhnTech/esp8266_deauther", "latest": "https://github.com/SpacehuhnTech/esp8266_deauther/releases/latest"},
-  "note": "37 board-specific single merged .bin images flashed at 0x0 via esptool --chip esp8266 (assets verified live against v2.6.1 on 2026-07-02). The board bins are user-selectable variants (default: Wemos D1 mini, else NodeMCU). Flash uses --flash_size detect so a board's exact size need not be pre-known. esp8266 flash offset/params standard; real-hardware flash pending real-hardware verification per the Stage-5 gate."
+  "note": "37 board-specific single merged .bin images flashed at 0x0 via esptool --chip esp8266 (assets verified live against v2.6.1). The board bins are user-selectable variants (default: Wemos D1 mini, else NodeMCU). Flash uses --flash_size detect so a board's exact size need not be pre-known. esp8266 flash offset/params standard; real-hardware flash pending real-hardware verification."
 }

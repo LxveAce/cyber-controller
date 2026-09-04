@@ -88,8 +88,7 @@ class BruceProtocol(BaseProtocol):
         """Bruce serial-CLI command set (source-verified).
 
         Every entry is a real verb registered in the firmware's
-        src/core/serial_commands/*.cpp (cross-checked against the 2026-07-15
-        command-surface audit + a 2026-07-30 re-verify vs pr3y/Bruce). The former
+        src/core/serial_commands/*.cpp (cross-checked against pr3y/Bruce). The former
         WiFi/BLE SCAN/attack entries were fabricated — that scanning is menu-driven
         or scripted via the `js` interpreter, not a named serial command — so they
         stay removed. RFID/NFC TAG ops, by contrast, ARE real serial commands
@@ -120,7 +119,7 @@ class BruceProtocol(BaseProtocol):
             CommandInfo("settings <key> <value>", "Config", "Read or change a setting", "key,value"),
             # ---- WiFi (real serial CLI — wifi_commands.cpp; the docstring's "WiFi is menu-only"
             # note is only true of the deauth/beacon ATTACK verbs, not these connect/recon ones).
-            # RE-CONFIRMED 2026-08-01: wifi_commands.cpp + rfid_commands.cpp DO exist in the real
+            # wifi_commands.cpp + rfid_commands.cpp DO exist in the real
             # BruceDevices/firmware serial_commands/ tree — a docs/wiki grounding pass missed them (the
             # wiki Serial page under-documents the registered serial commands), so these are real, not
             # speculative. Do not remove on a wiki-only "not documented" claim. ----
@@ -174,7 +173,7 @@ class BruceProtocol(BaseProtocol):
             # ---- RFID / NFC (rfid_commands.cpp: addCompositeCmd("rfid,nfc") — a "rfid" OR "nfc"
             # prefix both work). read/info/save/loadfile/reset/autotest are passive/file-mgmt;
             # write/clone/emulate/erase/ndef MODIFY or impersonate a tag (unauthorized-access
-            # territory) -> lab-only. Source-verified 2026-07-30 vs pr3y/Bruce (HW-unverified). ----
+            # territory) -> lab-only. Source-verified vs pr3y/Bruce (HW-unverified). ----
             CommandInfo("rfid read [timeout]", "RFID", "Read an RFID / NFC tag", "timeout"),
             CommandInfo("rfid info", "RFID", "Show info about the read tag"),
             CommandInfo("rfid save [filename] [format]", "RFID", "Save the read tag to a file",
@@ -182,7 +181,7 @@ class BruceProtocol(BaseProtocol):
             CommandInfo("rfid loadfile [filepath]", "RFID", "Load a saved tag dump", "filepath"),
             CommandInfo("rfid reset", "RFID", "Reset the RFID / NFC reader"),
             # autotest's default mode WRITES a tag (rfid_commands.cpp:306-367), so label it lab-only
-            # for honesty even though the write path is also reachable via `rfid write` (Atlas audit).
+            # for honesty even though the write path is also reachable via `rfid write`.
             CommandInfo("rfid autotest [mode] [timeout]", "Offensive", "Run the reader autotest (default mode writes a tag)",
                         "mode timeout", danger="lab-only"),
             CommandInfo("rfid write [timeout]", "Offensive", "Write data to an RFID / NFC tag",

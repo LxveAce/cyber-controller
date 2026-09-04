@@ -161,7 +161,7 @@ class DetachableTabWidget(QTabWidget):
         # visibility set — silently vanishing a tab the user just chose to re-dock would be the more surprising
         # behaviour. If the active loadout hides this surface, it is removed again on the loadout's next apply
         # (MainWindow.apply_loadout), so the two systems reconcile without data loss. Whether the loadout should
-        # instead win over an explicit re-dock is a UX call parked for the owner (audit finding [14]).
+        # instead win over an explicit re-dock is a UX call parked for the owner.
         win = self._popouts.pop(page, None)
         if win is None:
             return

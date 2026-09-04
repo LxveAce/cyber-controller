@@ -121,7 +121,7 @@ PROTOCOL_DISPLAY_NAMES: dict[str, str] = {
     # NOTE: "esp32-div-serial" (the LxveLabs serial fork) is registered in PROTOCOLS above and works via
     # identify()/get_protocol, but is intentionally NOT given a public display name yet — its firmware fork
     # doesn't exist, so it must not inflate the advertised parser count. Add the display name (and the
-    # "ESP32-DIV (stock)" rename) when the fork firmware ships. See ESP32-DIV-SERIAL-FORK-2026-07-21.md.
+    # "ESP32-DIV (stock)" rename) when the fork firmware ships.
     "bw16": "BW16 (RTL8720DN)",
     "bluejammer": "BlueJammer-V2 (lab-only)",
     "nrf-bluenullifier2": "nRF BlueNullifier 2 (lab-only)",
@@ -231,7 +231,7 @@ def capabilities_for(name: str) -> "frozenset[str]":
 # channel — driven over BLE / their own app. Declared here so driver_type_for() returns the honest no-CLI
 # type instead of the "text-cli" default. Kept in sync with core.device_detect.NON_SERIAL_CLI_FIRMWARE.
 _DETECTED_NO_CLI_DRIVER_TYPE = {
-    "biscuit": "controlmap",   # Biscuit Pro/Ultra: BLE-app-driven, no USB serial CLI (HIL-verified 2026-07-23)
+    "biscuit": "controlmap",   # Biscuit Pro/Ultra: BLE-app-driven, no USB serial CLI
 }
 
 

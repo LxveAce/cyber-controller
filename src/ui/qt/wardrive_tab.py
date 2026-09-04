@@ -286,7 +286,7 @@ class _WardriveCapture(QObject):
 
 
 class _UploadWorker(QThread):
-    """Upload a wardrive CSV to a wardriving service off the GUI thread (WS-8). Emits ``done(ok, message)`` —
+    """Upload a wardrive CSV to a wardriving service off the GUI thread. Emits ``done(ok, message)`` —
     a large CSV or a slow link must not freeze the UI. The upload is fully guarded in wardrive_upload.py."""
     done = pyqtSignal(bool, str)
 
@@ -321,7 +321,7 @@ class WardriveTab(QWidget):
         super().__init__()
         self._dm = device_manager                       # when present, capture routes through it (no COM clash)
         self._worker = None
-        self._last_wd_size: "str | None" = None          # Wave-3: size class (debounce)
+        self._last_wd_size: "str | None" = None          # size class (debounce)
         self._last_csv_path = ""                          # finished drive's CSV, for "View on map"
         self._build_ui()
         self._refresh_ports()
@@ -344,7 +344,7 @@ class WardriveTab(QWidget):
         banner.setStyleSheet("color:#f0883e;")
         root.addWidget(banner)
 
-        # Wave-3: the Serial-ports + Output cards sit 2-up on a roomy window and stack on a compact
+        # The Serial-ports + Output cards sit 2-up on a roomy window and stack on a compact
         # deck (see _apply_wardrive_layout). The log/controls below stay full-width.
         self._cards_row = QHBoxLayout()
         root.addLayout(self._cards_row)
@@ -429,7 +429,7 @@ class WardriveTab(QWidget):
         primer.apply_primer(self)   # mockup formula: tight tables / .field inputs / .btn buttons
         self._relayout_wardrive(force=True)   # seed the cards-row orientation
 
-    # ── responsive layout (Wave-3) ───────────────────────────────────
+    # ── responsive layout ───────────────────────────────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_wardrive()
@@ -479,7 +479,7 @@ class WardriveTab(QWidget):
         if path:
             self._out_edit.setText(path)
 
-    # ── wardrive upload (WS-8: WiGLE / WDG Wars) ─────────────────────
+    # ── wardrive upload (WiGLE / WDG Wars) ─────────────────────
     def _on_upload(self) -> None:
         """Upload the current WigleWifi CSV to the selected service using its token from Settings. Off-thread
         + guarded; the file is never touched, only sent, so a failure just reports and the CSV stays on disk."""

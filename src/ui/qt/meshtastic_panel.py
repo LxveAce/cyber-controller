@@ -1,4 +1,4 @@
-"""Meshtastic control panel — the live UI over a MeshtasticBackend (comms rework, Wave 8).
+"""Meshtastic control panel — the live UI over a MeshtasticBackend.
 
 A stream device (Meshtastic protobuf StreamAPI) has no text command channel, so instead of the terminal's
 command grid it gets this panel: a live node table, a channel selector, a received-message log, and a send-text

@@ -6,7 +6,7 @@ cameras by their WiFi OUI plus a probe-request IE fingerprint. It transmits noth
 turns its detections into ALPR targets so they surface in the Targets pool and the network graph
 for lawful counter-surveillance awareness — you are not attacking anything, you are noticing it.
 
-Serial output (read from upstream ``main.cpp`` on the ``promiscious-dev`` branch, 2026-07-03):
+Serial output (read from upstream ``main.cpp`` on the ``promiscious-dev`` branch):
 
   * a machine JSON line per detection::
 
@@ -26,7 +26,7 @@ host-side by the Flask API — it is NOT present on the wire). So this parser is
 TOLERANT: it prefers the JSON line, falls back to the human line, never raises on a malformed or
 partial line, and emits ``alpr_found`` from whatever identifier fields it can recover.
 ``verify:`` field-exactness against ONE real device capture before relying on it in the field
-(Stage-5 hardware gate).
+(hardware gate).
 """
 from __future__ import annotations
 

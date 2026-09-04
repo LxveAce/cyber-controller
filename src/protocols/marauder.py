@@ -338,7 +338,7 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("list -a", "Scanning", "List discovered APs"),
             CommandInfo("list -s", "Scanning", "List discovered stations"),
             CommandInfo("list -c", "Scanning", "List discovered clients"),
-            # v1.14.0 added `list -b` (Bluetooth). Source-verified 2026-07-30.
+            # v1.14.0 added `list -b` (Bluetooth). Source-verified.
             CommandInfo("list -b", "Scanning", "List discovered Bluetooth devices"),
             CommandInfo("clearlist -a", "Scanning", "Clear AP list"),
             CommandInfo("clearlist -s", "Scanning", "Clear station list"),
@@ -448,7 +448,7 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("sniffbt -t meta", "BLE", "Sniff for Meta / Ray-Ban BLE"),
             CommandInfo("sniffskim", "BLE", "BLE skimmer detection"),
             # Explicit danger= (defense-in-depth): the "spam" keyword gates these today, but the
-            # flag keeps them gated if that keyword changes or the verb is renamed (Atlas audit).
+            # flag keeps them gated if that keyword changes or the verb is renamed.
             CommandInfo("blespam -t sourapple", "Offensive", "BLE spam (Apple / SourApple)",
                         danger="lab-only"),
             CommandInfo("blespam -t applejuice", "Offensive", "BLE spam (Apple Juice)",
@@ -488,7 +488,7 @@ class MarauderProtocol(BaseProtocol):
             # The signal-strength fox-hunt verb is version-split: `sigmon` on <=v1.13.x, RENAMED to
             # `foxhunt` (-b BLE / -w Wi-Fi) in v1.14.0 (SIGSTREN_CMD). BOTH offered so either
             # firmware works (the wrong one just errors; older-fw keeps sigmon). Source-verified
-            # 2026-07-30 vs justcallmekoko/ESP32Marauder (HW-unverified).
+            # vs justcallmekoko/ESP32Marauder (HW-unverified).
             CommandInfo("sigmon", "Signal", "Signal-strength fox-hunt (Marauder <=v1.13.x)"),
             CommandInfo("foxhunt -b", "Signal", "Fox-hunt a BLE device by RSSI (v1.14.0+)"),
             CommandInfo("foxhunt -w", "Signal", "Fox-hunt a Wi-Fi target by RSSI (v1.14.0+)"),
@@ -499,7 +499,7 @@ class MarauderProtocol(BaseProtocol):
             CommandInfo("save", "System", "Save settings to flash"),
             CommandInfo("load", "System", "Load settings from flash"),
             # v1.15.x machine-protocol + SPIFFS backup verbs (CommandLine.cpp:516-575 @ v1.15.1,
-            # source-verified 2026-09-01, HW-unverified). All SAFE: device-local filesystem + info,
+            # source-verified, HW-unverified). All SAFE: device-local filesystem + info,
             # no RF. restorespiffs overwrites the device's SPIFFS from the SD backup and reboots on
             # success (the firmware calls ESP.restart()), so it's labeled but not danger-gated.
             CommandInfo("protocolinfo", "System", "Query firmware machine-protocol + backup capabilities"),

@@ -1,4 +1,4 @@
-"""Shared touch-mode resolution for the responsive layout deciders (GUI rebuild Wave-3).
+"""Shared touch-mode resolution for the responsive layout deciders.
 
 Every tab's ``_relayout_*`` needs to know whether to build touch-sized chrome — bigger hit targets,
 the Nodes action row's 1-wide stack, the Crack panels' stacking — via ``layout_profile(touch=?)``.

@@ -72,8 +72,8 @@ def is_offensive_macro(macro: Macro) -> bool:
     from src.core import safety
     # Resolve the macro's protocol so each step can be classified WITH its CommandInfo — a verb whose
     # danger lives only in metadata (bluestress START, ghost_esp dhcpstarve, …) has no danger keyword in
-    # the bare step string, so classify(cmd) alone misses it and the macro would play unarmed (red-team,
-    # 2026-09-03). Info-aware via the macro's own device_protocol; falls back cleanly when it's unset.
+    # the bare step string, so classify(cmd) alone misses it and the macro would play unarmed.
+    # Info-aware via the macro's own device_protocol; falls back cleanly when it's unset.
     info_for = None
     if macro.device_protocol:
         try:

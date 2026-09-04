@@ -1,4 +1,4 @@
-"""Direct upload of a wardrive CSV to a wardriving service — the WS-8 "upload when connected to wifi" path.
+"""Direct upload of a wardrive CSV to a wardriving service — the "upload when connected to wifi" path.
 
 The Wardrive tab writes a WigleWifi-1.6 CSV; this module hands it straight to a wardriving upload service so
 the operator never has to open a browser. It's opt-in and credential-gated: nothing is sent until a per-service

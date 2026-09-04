@@ -36,5 +36,5 @@
     {"name": "M5Stick S3", "chip": "esp32s3", "flash_size": "8MB", "flash_mode": "qio", "flash_freq": "80m", "has_display": true}
   ],
   "firmware_urls": {"repo": "https://github.com/n0xa/m5stick-nemo", "latest": "https://github.com/n0xa/m5stick-nemo/releases/latest"},
-  "note": "n0xa/m5stick-nemo. One merged .bin per board flashed at 0x0 (documented: esptool write_flash -z 0x0 M5Nemo-<board>.bin; the merged image embeds bootloader/partitions/app internally). Release v3.2.1 assets: M5Cardputer / M5StickCPlus2 / M5StickS3 (+ .pt-br locale builds). Cardputer & StickS3 = esp32s3, StickCPlus2 = esp32. Flash write is owner-gated until Stage-5 hardware validation."
+  "note": "n0xa/m5stick-nemo. One merged .bin per board flashed at 0x0 (documented: esptool write_flash -z 0x0 M5Nemo-<board>.bin; the merged image embeds bootloader/partitions/app internally). Release v3.2.1 assets: M5Cardputer / M5StickCPlus2 / M5StickS3 (+ .pt-br locale builds). Cardputer & StickS3 = esp32s3, StickCPlus2 = esp32. Flash write is owner-gated until hardware validation."
 }

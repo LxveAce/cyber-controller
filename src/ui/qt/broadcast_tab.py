@@ -4,7 +4,7 @@ One big button per intent fires on EVERY connected device at once, each translat
 firmware's native command. The button live-enables to how many devices can do it, dangerous
 actions confirm via the shared safety gate, and STOP ALL is always available. Single-device deep
 control (force a firmware, run its own commands, arm gate) lives on the Control tab — this surface
-is ONLY the fan-out, so All Devices and Control each have one clear job (QA-1 Option B).
+is ONLY the fan-out, so All Devices and Control each have one clear job.
 """
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ class BroadcastBar(QWidget):
         self._load_settings = settings_loader
         self._buttons: dict[BroadcastVerb, QPushButton] = {}
         self._advanced_buttons: list[QPushButton] = []
-        self._last_broadcast_size: "str | None" = None   # Wave-3: last size class (debounce)
+        self._last_broadcast_size: "str | None" = None   # last size class (debounce)
         self._bridge = _Bridge()
         self._bridge.done.connect(self._set_status)
         self._bridge.rebuild.connect(self._refresh_enabled)
@@ -100,7 +100,7 @@ class BroadcastBar(QWidget):
         col = QVBoxLayout(inner)
 
         col.addWidget(self._section_label("Universal — fan out to all connected devices"))
-        # Wave-3: the button grid is responsive — column count + button heights come from the layout
+        # The button grid is responsive — column count + button heights come from the layout
         # profile (see _apply_broadcast_layout), replacing the magic 4 columns + fixed heights.
         self._verb_grid = QGridLayout()
         for verb, action in BROADCAST_ACTIONS.items():
@@ -131,7 +131,7 @@ class BroadcastBar(QWidget):
         root.addWidget(self._status)
         self._relayout_broadcast(force=True)   # seed the grid columns + button heights
 
-    # ── responsive layout (Wave-3) ───────────────────────────────────
+    # ── responsive layout ───────────────────────────────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_broadcast()
@@ -195,7 +195,7 @@ class BroadcastBar(QWidget):
             self._stop_btn.setEnabled(avail.get(BroadcastVerb.STOP_ALL, 0) > 0)
         except Exception:  # noqa: BLE001
             pass
-        # A5 #14: with nothing connected every button is greyed out — say why in the status line instead of
+        # With nothing connected every button is greyed out — say why in the status line instead of
         # a wall of dead buttons; clear the hint once a device appears.
         if not any(avail.values()):
             self._set_status("No devices connected — connect one on the Devices tab to broadcast.")

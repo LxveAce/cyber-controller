@@ -6,7 +6,7 @@ honest "get the tool" experience — auto-fetch where an official prebuilt binar
 install guidance where it doesn't — and a tools directory that :func:`crack_pipeline.detect_tools`
 falls back to (so a tool installed here, hand-dropped here, or on PATH is all found the same way).
 
-Reality (verified 2026-07-11; see command-center research):
+Reality (verified; see command-center research):
 
 * **aircrack-ng** — Windows: an official ``.zip`` with a vendor-published SHA1. It is a COMPLETE crack
   backend on its own (reads the ``.pcap`` directly — no converter needed), so this one auto-fetch gives

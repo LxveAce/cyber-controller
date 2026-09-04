@@ -55,7 +55,7 @@ FIRMWARE_SIGNATURES: Dict[str, str] = {
     "halehound":  r"HaleHound.*?[Vv]?([\d.]+)",
     # Meshtastic's serial banner is protobuf, not a "Meshtastic vX.Y" line — the reliable text tells are the
     # boot line `S:B:<hw>,<ver>,<board>,meshtastic/firmware` and any `meshtastic/firmware` mention (verified
-    # against a real Heltec V3, 2026-07-23). The definitive detector is the StreamAPI probe in handshake.py
+    # against a real Heltec V3). The definitive detector is the StreamAPI probe in handshake.py
     # (a running node has no text marker at all); this regex covers the boot-banner / debug-log fallback.
     "meshtastic": r"Meshtastic\s+[Vv]?([\d.]+)|meshtastic/firmware",
     "esp32-div":  r"ESP32.?DIV\s+[Vv]?([\d.]+)",
@@ -63,10 +63,10 @@ FIRMWARE_SIGNATURES: Dict[str, str] = {
     "evil-portal": r"Evil.?Portal\s+[Vv]?([\d.]+)",
     # Vampire Deauther — the AmebaD / BW16 (RTL8720DN) deauth firmware CC flashes via the rtl8720
     # backend's "Vampire Deauther AmebaD bundle". HIL-grounded on its runtime banner
-    # `[Vampire Deauther Ready]` (machine `extra`, COM38, 2026-07-28). Checked BEFORE the generic
+    # `[Vampire Deauther Ready]` (machine `extra`, COM38). Checked BEFORE the generic
     # "bw16" Realtek-SDK boot banner so a running board is named by its firmware, not the bare chip
     # family (it shares the BW16's CH340 VID/PID, so the app banner is the only reliable tell).
-    # Closes CC-DEAUTHER-UNDETECTED-0724 — the board was unidentified: no signature matched it.
+    # The board was unidentified: no signature matched it.
     "vampire-deauther": r"Vampire\s+Deauther(?:\s+v?([\d.]+))?",
     # BW16 / RTL8720DN (AmebaD): the Realtek SDK boot banner is the reliable tell — a
     # CH340 VID/PID alone can't distinguish a BW16 from a classic ESP32 (they share it),
@@ -79,7 +79,7 @@ FIRMWARE_SIGNATURES: Dict[str, str] = {
     # Biscuit family (Pro + Ultra) — a closed dual-ESP appliance (WROOM BLE-gateway + ESP32-C5 scanner,
     # "native 5GHz + WiFi 6, app-controlled"; the Ultra adds SD/battery/range) running its OWN custom
     # firmware, NOT Marauder, driven ONLY over BLE-GATT — NEITHER USB port exposes a serial command CLI.
-    # The Pro is HIL-verified (2026-07-23, command-center hil/biscuit-pro-serial-transcript-2026-07-23.txt);
+    # The Pro is HIL-verified from its serial transcript;
     # the Ultra shares the architecture and is matched by name until its own HIL confirms. Detect it so CC
     # names it correctly AND knows never to send it serial verbs (see NON_SERIAL_CLI_FIRMWARE / has_serial_cli).
     "biscuit":    r"\bBiscuit\s+(?:Pro|Ultra)\b|BISCUIT\s+V\d|Ready for commands from WROOM",
@@ -91,7 +91,7 @@ _SIG_COMPILED: Dict[str, re.Pattern] = {
 }
 
 # Command-set fingerprints — the fallback when a firmware's version banner is NOT in the captured
-# read window. Real-HW finding (HIL capture 2026-07-24, machine `extra`): three Marauder boards on
+# read window. Real-HW finding (HIL capture, machine `extra`): three Marauder boards on
 # COM34/35/36 emitted the identical Marauder command list, yet only the one that happened to reprint
 # its "Marauder vX.Y" banner in the window matched above; the other two came back unidentified. A
 # firmware's command SET is a far more stable tell than a one-shot version banner, so fall back to
@@ -100,8 +100,8 @@ _COMMAND_FINGERPRINTS: Dict[str, Tuple[str, ...]] = {
     # Marauder's serial command set — these tokens co-occur in no other supported firmware's help,
     # so requiring several together makes a false positive effectively impossible.
     "marauder": ("sniffbeacon", "sniffdeauth", "evilportal", "wardrive"),
-    # GhostESP: the version regex (`GhostESP v…`) MISSES the real firmware. HIL capture (2026-08-08,
-    # COM35, freshly flashed GhostESP): its `help` prints "Ghost ESP Command Categories:" (a SPACE,
+    # GhostESP: the version regex (`GhostESP v…`) MISSES the real firmware. HIL capture (COM35,
+    # freshly flashed GhostESP): its `help` prints "Ghost ESP Command Categories:" (a SPACE,
     # no version) with a `ghost>` prompt, so nothing matched → unidentified. These help tokens co-occur
     # only in GhostESP (its YouTube-`cast` + Evil-`portal` categories under that header).
     "ghostesp": ("ghost esp command categories", "help cast", "help portal"),

@@ -50,7 +50,7 @@ class HealthTab(QWidget):
     def __init__(self, health_monitor: HealthMonitor) -> None:
         super().__init__()
         self._monitor = health_monitor
-        self._last_health_size: "str | None" = None   # Wave-3: last size class (relayout debounce)
+        self._last_health_size: "str | None" = None   # last size class (relayout debounce)
         self._build_ui()
 
         # Refresh timer (5 seconds)
@@ -185,7 +185,7 @@ class HealthTab(QWidget):
         outer.addWidget(scroll)
         self._relayout_health(force=True)   # seed the gauge/detail row orientation
 
-    # ── responsive layout (Wave-3) ───────────────────────────────────
+    # ── responsive layout ───────────────────────────────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_health()

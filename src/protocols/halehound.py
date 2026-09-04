@@ -9,7 +9,7 @@ adapted to cyber-controller's BaseProtocol contract: it returns ParsedEvent
 objects (event_type, data, raw) in the same style as ghost_esp.py instead of
 Target objects.
 
-Reconstructed event-line formats — SPECULATIVE / UNVERIFIED (2026-08-01, source-grounded vs
+Reconstructed event-line formats — SPECULATIVE / UNVERIFIED (source-grounded vs
 Wontfallo/CYD-ESP32, the readable mirror of the binary-only JesseCHale/HaleHound-CYD): HaleHound is
 touchscreen-only and does NOT emit these bracketed lines over USB serial (its serial port is
 debug-output + a target-UART passthrough, not a recon stream). These formats are ported from the
@@ -114,7 +114,7 @@ class HaleHoundProtocol(BaseProtocol):
     # "send" buttons that the device silently ignores. Control lives on the device itself; CC's
     # honest role here is flash + serial-monitor (read/parse the lines it prints). driver_type
     # "controlmap" tells the UI there is no text command channel (no fake "sent"). SOURCE-CONFIRMED
-    # 2026-08-01 vs Wontfallo/CYD-ESP32 (the readable mirror of binary-only JesseCHale/HaleHound-CYD):
+    # vs Wontfallo/CYD-ESP32 (the readable mirror of binary-only JesseCHale/HaleHound-CYD):
     # the main loop is `handleButtons(); delay(20)` — zero serial dispatcher, no verb parser anywhere;
     # USB serial is debug-out + a target-UART passthrough only. Recon is written to SD as WiGLE-1.6 CSV
     # (read by our importer), never streamed over serial. See also cc-control-coverage-PLAN.md.

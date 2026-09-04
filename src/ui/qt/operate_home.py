@@ -1,4 +1,4 @@
-"""OPERATE HOME screen — a one-tap EXECUTION surface, not a browser (WS3).
+"""OPERATE HOME screen — a one-tap EXECUTION surface, not a browser.
 
 Three zones (top to bottom): Zone A ``_HomeSummary`` — a read-only status header with a
 connection/health pill; Zone B ``QuickActionsStrip`` — the hero row of curated one-tap actions for
@@ -38,7 +38,7 @@ class _HomeSummary(QWidget):
 
     def __init__(self, parent: "Optional[QWidget]" = None) -> None:
         super().__init__(parent)
-        # Connection/health pill (WS3 Zone A): green connected / amber arming / grey disconnected.
+        # Connection/health pill (Zone A): green connected / amber arming / grey disconnected.
         # The loudest, first thing on the line (WiGLE's rule) and the chip that never collapses.
         self._pill = QLabel("")
         self._pill.setObjectName("home_conn_pill")

@@ -600,7 +600,7 @@ class TargetsTab(QWidget):
                 log.exception("ActionResolver.resolve() failed")
 
         if not actions_added:
-            # A5 #12: "connect a device first" is only right when nothing is connected; if a device IS
+            # "connect a device first" is only right when nothing is connected; if a device IS
             # connected, its firmware just has no action for this target type — say that instead.
             try:
                 any_connected = bool(self._dm.list_connected())

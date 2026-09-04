@@ -66,7 +66,7 @@ _NO_COMMAND_NOTES = {
 # Per-device quick-menu: a short command list stays a single flat menu (nothing to gain from nesting
 # a handful of items); a long one (ghost_esp ~135 no-arg commands, marauder ~65) is grouped into
 # per-category submenus so EVERY command stays reachable. The old flat `cmds[:40]` cap silently hid
-# most of a large firmware's commands, defeating the Wave-2 completeness work.
+# most of a large firmware's commands, defeating the completeness work.
 _FLAT_MENU_MAX = 24
 
 
@@ -76,7 +76,7 @@ class _Node(QGraphicsRectItem):
     def __init__(self, label: str, sub: str, kind: str,
                  actions: "list[_MenuEntry]", node_w: float = _NODE_W, node_h: float = _NODE_H,
                  title_chars: int = 22, sub_chars: int = 26) -> None:
-        # Wave-3 Batch C: node box + text truncation are size-driven (network_layout geometry); the
+        # Node box + text truncation are size-driven (network_layout geometry); the
         # defaults match the old hard-coded "regular" tier so a bare construction is unchanged.
         super().__init__(0, 0, node_w, node_h)
         self.kind = kind
@@ -267,7 +267,7 @@ class NetworkTab(QWidget):
         self._bus = event_bus
         self._nodes: "dict[str, _Node]" = {}
         self._device_fp: tuple = ()   # last-seen device fingerprint; drives the device-change poll
-        self._net_geom = None   # Wave-3 Batch C: current NetworkLayout geometry (None = defaults)
+        self._net_geom = None   # current NetworkLayout geometry (None = defaults)
         self._last_network_size: "Optional[str]" = None   # last size class (relayout debounce)
 
         root = QVBoxLayout(self)
@@ -287,7 +287,7 @@ class NetworkTab(QWidget):
         hint = QLabel("Drag nodes to orient the web · drag empty space to pan · double-click a node for "
                       "its commands · scroll to zoom")
         hint.setStyleSheet("color:#8b949e;")
-        self._hint_label = hint   # Wave-3 Batch C: demoted on dense chrome (compact)
+        self._hint_label = hint   # demoted on dense chrome (compact)
         bar.addWidget(hint)
         # Reform: wrap the toolbar + canvas in the mockup's "Node Graph" card (canvas itself untouched).
         from src.ui.qt.flash_tab import _make_card
@@ -468,7 +468,7 @@ class NetworkTab(QWidget):
         # (a target.* rebuild also refreshes it — no redundant device-poll rebuild right after).
         self._device_fp = self._device_fingerprint()
 
-    # ── responsive layout (Wave-3 Batch C) ───────────────────────────
+    # ── responsive layout ───────────────────────────
     def _new_node(self, label: str, sub: str, kind: str, actions: "list[_MenuEntry]") -> "_Node":
         """Build a node at the current size-driven geometry (falls back to _Node's regular defaults
         before the first layout pass)."""

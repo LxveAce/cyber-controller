@@ -2,7 +2,7 @@
 the window size (1 compact / 2 regular / 3 expanded), from the pure ``layout_profile().columns``
 resolver.
 
-Part of the Wave-3 adaptive GUI rebuild: the column DECISION is the Qt-free resolver (unit-tested
+Part of the adaptive GUI rebuild: the column DECISION is the Qt-free resolver (unit-tested
 headless in ``test_layout_profile``); this widget only maps a column count to grid positions and
 reflows on resize. It debounces on the column count, so it re-lays only when the count actually
 changes. One shared engine delivers the real 2-col/3-up cases for the OPERATE HOME domain grid and

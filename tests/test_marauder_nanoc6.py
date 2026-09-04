@@ -23,7 +23,7 @@ _EXPECTED_CHIP = {
     "kit": "esp32", "m5cardputer": "esp32s3", "m5cardputer_adv": "esp32s3", "m5nanoc6": "esp32c6",
     "m5stickc_plus": "esp32", "m5stickc_plus2": "esp32", "marauder_dev_board_pro": "esp32",
     "marauder_v7": "esp32", "mini": "esp32", "mini_v3": "esp32c5", "multiboardS3": "esp32s3",
-    "old_hardware": "esp32", "rev_feather": "esp32s2", "v6": "esp32", "v6_1": "esp32", "v8": "esp32",
+    "old_hardware": "esp32", "rev_feather": "esp32s2", "v6": "esp32", "v6_1": "esp32", "v8": "esp32c5",
 }
 
 

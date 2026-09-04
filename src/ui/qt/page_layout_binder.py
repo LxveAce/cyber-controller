@@ -1,4 +1,4 @@
-"""Bind a PageLayout frame's live slots to the CrossCommHub (GUI rebuild, Wave-10 Phase B2/B3).
+"""Bind a PageLayout frame's live slots to the CrossCommHub.
 
 Additive adapter: reads the hub's existing surface (pool / captures / dm / bus) and pushes it into
 the frame's badge + status slots, and mirrors the shell's display posture into src.core.posture.

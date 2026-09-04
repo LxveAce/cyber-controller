@@ -168,8 +168,8 @@ def create_app(
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
 
-    ``capture_store`` (optional): the shared CaptureStore from the cross-comm spine (P0-1). Threaded so
-    the CRACK captures surface can read it once wired (P1-5); ``None`` keeps every existing caller (and
+    ``capture_store`` (optional): the shared CaptureStore from the cross-comm spine. Threaded so
+    the CRACK captures surface can read it once wired; ``None`` keeps every existing caller (and
     the tests) unchanged.
 
     ``desktop_token`` (loopback desktop shell only): a one-time bootstrap secret. When set, the
@@ -232,7 +232,7 @@ def create_app(
 
         macro_recorder = MacroRecorder()
 
-    # Tail/follower detection (B11): a persistence scorer fed from the shared pool's BLE + client
+    # Tail/follower detection: a persistence scorer fed from the shared pool's BLE + client
     # discoveries (APs excluded — a stationary AP isn't a tail). Injectable for tests. Read via
     # /api/tails; it stays empty until a personal device reappears across time windows (awareness-
     # only, never acts). Wall-clock-free — the caller passes time.time().
@@ -256,7 +256,7 @@ def create_app(
     # remote_addr is used verbatim — the SAME behavior as before. Blindly trusting XFF would be a
     # regression: any client could send X-Forwarded-For: <anything> to get a fresh rate-limit bucket
     # (defeating the login/cmd limiter) and forge its audit identity. Only when the DIRECT peer is a
-    # configured trusted proxy do we consult XFF (SEC-W2). Sourced from CC_WEB_TRUSTED_PROXIES.
+    # configured trusted proxy do we consult XFF. Sourced from CC_WEB_TRUSTED_PROXIES.
     trusted_proxy_ips = frozenset(p.strip() for p in (trusted_proxies or ()) if p.strip())
 
     def _client_ip() -> str:
@@ -300,7 +300,7 @@ def create_app(
             if not login_limiter.allow(ip):
                 _audit("web_auth_ratelimited")
                 return Response("Too many attempts. Try again later.\n", 429)
-            # SEC-A1: the per-IP RateLimiter above is in-memory and resets on restart, so on its own
+            # The per-IP RateLimiter above is in-memory and resets on restart, so on its own
             # it lets a "relaunch and keep guessing" brute force through. Honor the SAME persistent,
             # restart-surviving lockout the console/Qt gate uses (physical_key), so all three UIs
             # share one failure counter + cooldown (and the owner's opt-in duress wipe).
@@ -438,7 +438,7 @@ def create_app(
     def _on_target_updated(_topic: str, payload: dict) -> None:
         # A RE-SIGHTING (target.updated) is exactly what tail detection needs — a device seen across time
         # windows. Observing only target.added gave at most one sighting per device, so the tracker (which
-        # needs a device across >=2 of the last 4 windows) could never flag a follower. (Red-team 2026-09-03.)
+        # needs a device across >=2 of the last 4 windows) could never flag a follower.
         _observe_tail(payload)
 
     def _on_device_connected(device) -> None:
@@ -1090,7 +1090,7 @@ def create_app(
             return jsonify({"configured": False, "policy": "either", "has_password": False,
                             "has_key": False, "locked": False, "remaining_secs": 0})
 
-    # ── SETTINGS (B17): live read + owner write-back to the real settings store ──
+    # ── SETTINGS: live read + owner write-back to the real settings store ──
     # The reform SETTINGS surface reads and writes ~/.cyber-controller/settings.json via the same
     # src.config.settings store the desktop app uses (deep-merge + atomic 0600 write). Secrets never
     # cross the wire in the clear: the WiGLE token is exposed ONLY as a "set" boolean, and a write
@@ -1131,7 +1131,7 @@ def create_app(
     @requires_auth
     @requires_csrf
     def api_settings_post():
-        """Owner write-back for the reform SETTINGS surface (B17). Whitelists + validates each
+        """Owner write-back for the reform SETTINGS surface. Whitelists + validates each
         field, merges onto the current settings, then persists atomically. ``{"reset": true}``
         restores defaults. Out-of-range values 400 (nothing saved); unknown keys are not applied.
         These are the owner's own preferences — the safety toggles set confirm-friction, they do NOT
@@ -1258,7 +1258,7 @@ def create_app(
     @app.route("/api/sensing")
     @requires_auth
     def api_sensing():
-        """WS1 Wi-Fi CSI sensing rollup for a future Sense view: per-node presence/motion/confidence
+        """Wi-Fi CSI sensing rollup for a future Sense view: per-node presence/motion/confidence
         + a room-occupied summary, from the shared SensingModel (fed by a connected sensing node).
         Read-only, passive — CC authors no RF and a sensed person is NEVER a scan target. Reports
         only the PROVEN tier (presence + motion) on commodity 2.4 GHz Wi-Fi CSI."""
@@ -1293,7 +1293,7 @@ def create_app(
     @requires_auth
     def api_quick_commands():
         """The connected device's one-tap command set for the reform OPERATE console, folded into the
-        canonical Scanning/Attack/Network/Other buckets (A16). Commands come from the firmware's own
+        canonical Scanning/Attack/Network/Other buckets. Commands come from the firmware's own
         protocol registry (no phantom verbs); each keeps its native category as a sub-label. Danger
         labels drive the client-side confirm (label-never-block). GET only, mutates nothing."""
         from src.core.quick_commands import canonical_grouped_quick_commands
@@ -1491,7 +1491,7 @@ def create_app(
         """List the selectable firmware variants for a profile so the flash page can offer a board
         picker. GET /api/variants?profile=<name> -> {"variants": [{"name","label","chip"}]}.
 
-        A read-only companion to the beat-171 /api/flash `variant` field: the picker's chosen name is
+        A read-only companion to the /api/flash `variant` field: the picker's chosen name is
         POSTed straight back as that field. Never 500s — list_variants() swallows an offline/API-error
         release fetch and returns [], so the picker just shows "Default (auto-detect)" and the flash
         falls to the per-chip default (unchanged behavior). GET, so no CSRF (it mutates nothing)."""
@@ -1599,7 +1599,7 @@ def create_app(
         # which is exactly the use case: the operator on THIS machine reads it here to type on their phone.
         # If the server is LAN-exposed, never echo it: over the network it's a reusable credential handed to
         # anyone who got one session, and without TLS it's cleartext on the wire. host_shell_loopback carries
-        # the bind's loopback-ness (set by the launcher). (Red-team LOW-1/LOW-2, 2026-09-03.)
+        # the bind's loopback-ness (set by the launcher).
         reveal = bool(host_shell_loopback)
         return jsonify({
             "username": creds.username,
@@ -1629,13 +1629,13 @@ def create_app(
         Broadcast fan-out. classify() catches most offensive verbs, but some transmitting verbs
         (evilportal/startportal/subghz tx/rfid|nfc emulate/…) carry their danger in CommandInfo
         metadata and classify() returns '' for the bare string — so union with the _ATTACK_PREFIXES
-        floor. ONE definition so the two gates can't drift apart (red-team finding, 2026-08-07).
+        floor. ONE definition so the two gates can't drift apart.
 
         *firmwares* (a firmware name or an iterable of them) makes the gate INFO-AWARE: when a target's
         firmware is known, the command is resolved to its ``CommandInfo`` and classified WITH it, so a
         verb whose danger lives ONLY in metadata (e.g. bluestress ``START``/``CHAR``, ghost_esp
         ``dhcpstarve start``) still gates. Without this, a string-only classify() let ~65 such verbs fan
-        out / auto-fire with no consent (red-team finding, 2026-09-03). Info-aware per firmware rather
+        out / auto-fire with no consent. Info-aware per firmware rather
         than a global name floor because bare names like ``START`` are dangerous ONLY under the firmware
         that declares them illegal-tx — a global floor would over-flag every benign ``start …``."""
         from src.core import safety
@@ -1706,7 +1706,7 @@ def create_app(
     @requires_auth
     @requires_csrf
     def api_broadcast():
-        """OPERATE Broadcast fan-out (A16 Broadcast half): send ONE command to MANY connected ports
+        """OPERATE Broadcast fan-out: send ONE command to MANY connected ports
         at once. Because fan-out AMPLIFIES an offensive verb across every selected device, an
         offensive command is refused unless the body carries consent:true (server-side re-check,
         same floor as the auto-router rules + macros). Recon/benign commands fan out freely, like
@@ -1731,7 +1731,7 @@ def create_app(
 
         # Info-aware: offensive if the command is dangerous for ANY selected port's firmware (or by the
         # firmware-agnostic floor). A string-only check here let metadata-danger verbs (bluestress START,
-        # ghost_esp dhcpstarve, …) fan out to every device with no consent (red-team, 2026-09-03).
+        # ghost_esp dhcpstarve, …) fan out to every device with no consent.
         offensive = _command_is_offensive(command, [_firmware_of(p) for p in ports])
         if offensive and not consent:
             return jsonify({
@@ -2017,16 +2017,16 @@ def create_app(
         macro_recorder.stop_playback()
         return jsonify({"status": "stopping"})
 
-    # ── Cross-Comm auto-routing rules (B14) — offensive-automation, doubly gated ──
+    # ── Cross-Comm auto-routing rules — offensive-automation, doubly gated ──
     # A rule auto-fires its command on a matching target with NO human in the loop per shot. So an
     # offensive rule (safety.classify hits its command) is (1) refused unless the add carries
     # consent:true AND (2) forced to land DISABLED — never auto-fires on add. Enabling one later is
     # itself a consent-gated act (the arm). Recon rules add + enable freely. safety.py is untouched.
     def _rule_is_offensive(command: str, port: str = "") -> bool:
         # Delegates to the shared _command_is_offensive floor (defined near /api/command) so the rules
-        # gate, the Broadcast fan-out, and the macro floor can't drift apart. (Red-team finding,
-        # 2026-08-07: classify() alone misses metadata-danger transmitting verbs.) Pass the rule's target
-        # port so the gate is info-aware about that device's firmware (red-team, 2026-09-03).
+        # gate, the Broadcast fan-out, and the macro floor can't drift apart (classify() alone misses
+        # metadata-danger transmitting verbs). Pass the rule's target
+        # port so the gate is info-aware about that device's firmware.
         return _command_is_offensive(command, _firmware_of(port))
 
     def _rule_to_dict(r: Any) -> dict:
@@ -2122,7 +2122,7 @@ def create_app(
     @app.route("/api/tails")
     @requires_auth
     def api_tails():
-        """Follower/tail detection (B11): personal devices (BLE/clients) that keep reappearing across
+        """Follower/tail detection: personal devices (BLE/clients) that keep reappearing across
         recent time windows, strongest-first. Awareness-only — it flags, never acts. Empty until a
         device actually reappears; wall-clock-free scorer (we pass time.time())."""
         try:
@@ -2458,14 +2458,14 @@ def launch_web(
         return 2
 
     origins = _compute_allowed_origins(host, port)
-    # SEC-W2: behind a reverse proxy, remote_addr is the proxy — collapsing every client to one
+    # Behind a reverse proxy, remote_addr is the proxy — collapsing every client to one
     # rate-limit bucket + one audit identity. Let the operator name the trusted proxy IPs (comma-
     # separated) so the real client is recovered from X-Forwarded-For; empty/unset = trust nothing
     # (remote_addr verbatim). Never trusted implicitly — a spoofable header must be opted into.
     trusted_proxies = [
         p for p in os.environ.get("CC_WEB_TRUSTED_PROXIES", "").split(",") if p.strip()
     ]
-    # Composition-root unlock (P0-1): build the cross-comm spine so the shared TargetPool + CaptureStore
+    # Composition-root unlock: build the cross-comm spine so the shared TargetPool + CaptureStore
     # actually populate under the web/desktop UIs. CrossCommHub auto-attaches a TargetIngestor to every
     # opened connection (a scan on any device -> target.added -> the shared pool), builds the CaptureStore,
     # and owns the AutoRouter / Broadcast / Meshtastic backends — the same spine the Qt window assembles.
@@ -2482,8 +2482,8 @@ def launch_web(
         desktop_token=desktop_token, capture_store=hub.captures,
         # Only a loopback bind is even a candidate for the host shell; the env opt-ins are checked inside.
         host_shell_loopback=is_local,
-        auto_router=hub.router,  # Cross-Comm rules surface (B14) — offensive rules are consent+arm gated
-        sensing_model=hub.sensing,  # WS1: CSI sensing-node rollup, read by /api/sensing
+        auto_router=hub.router,  # Cross-Comm rules surface — offensive rules are consent+arm gated
+        sensing_model=hub.sensing,  # CSI sensing-node rollup, read by /api/sensing
     )
     app.config["cc_hub"] = hub
 
@@ -2498,7 +2498,7 @@ def launch_web(
         log.warning("Binding to %s WITHOUT TLS — credentials/serial output are in cleartext.", host)
 
     scheme = "https" if ssl_args else "http"
-    # H-2: this app runs SocketIO in threading mode (async_mode="threading" at construction) for
+    # This app runs SocketIO in threading mode (async_mode="threading" at construction) for
     # stability with the serial/threading-heavy core — so it serves on the Werkzeug DEV server,
     # which needs allow_unsafe_werkzeug and is explicitly not hardened for hostile exposure
     # (single-process, weak request parsing). We must never *silently* serve LAN traffic on it:

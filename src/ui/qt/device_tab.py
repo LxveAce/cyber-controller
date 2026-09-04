@@ -214,7 +214,7 @@ class DeviceTab(QWidget):
         # The 3s device-list poll runs only while the tab is visible (showEvent starts it — fires at
         # launch for the default tab too — and hideEvent stops it). Serial I/O is independent of this.
 
-    # ── Adaptive layout (Wave-3) ─────────────────────────────────────
+    # ── Adaptive layout ─────────────────────────────────────
     # Reflow the device list / detail split to match the window: side-by-side on a roomy canvas,
     # stacked (list above detail) when it's cramped. The DECISION lives in the pure `device_layout`
     # resolver (unit-tested without Qt); here we only translate it to the splitter orientation. This
@@ -249,7 +249,7 @@ class DeviceTab(QWidget):
         root = QHBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
         splitter = QSplitter(Qt.Horizontal)
-        self._splitter = splitter  # kept for the Wave-3 adaptive relayout (orientation flip)
+        self._splitter = splitter  # kept for the adaptive relayout (orientation flip)
 
         # ── Left: device list (in scroll area) ──────────────────────
         left_scroll = QScrollArea()
@@ -641,7 +641,7 @@ class DeviceTab(QWidget):
         # Only claim a detection when the banner names this firmware — not just because a banner
         # exists. fw_banner falls back to the first reply line even when nothing identified, and
         # the connect-time default guess, so a bare "banner present" check would falsely assert
-        # "detected: <default>". Require match_firmware(banner) to resolve to fw (A5 #21).
+        # "detected: <default>". Require match_firmware(banner) to resolve to fw.
         disp = ""
         if fw and banner.strip():
             from src.core.device_detect import match_firmware

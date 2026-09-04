@@ -1,11 +1,11 @@
-"""Wi-Fi CSI sensing — the pure, Qt-free core (WS1 / P0 feasibility spike).
+"""Wi-Fi CSI sensing — the pure, Qt-free core (feasibility spike).
 
 This is occupancy/motion SENSING, not a camera: no pixels, no image, no faces — only inference from
 how a moving body perturbs Wi-Fi multipath. :data:`SENSING_TIERS` below is the honesty spine of the
 whole feature: it fixes, up front, what commodity sub-7 GHz Wi-Fi CSI can (PROVEN), might in-domain
 (EXPERIMENTAL), and physically cannot (NOT_SUPPORTED) do — so every front-end labels each capability
-truthfully and HARD-REFUSES the impossible ones (imaging / pose / through-wall). Physics + refs:
-`command-center/projects/cc-app/WIFI-CAMERA-DESIGN-BRIEF-2026-07-29.md` §A.
+truthfully and HARD-REFUSES the impossible ones (imaging / pose / through-wall). Physics + refs are
+grounded in the CSI camera design brief.
 
 A node emits only a compact ~35 B verdict line (never raw CSI — it can't ride the 219 B sealed
 NodeLink frame, ``node_crypto.py``); this module parses + validates that verdict. numpy-optional:

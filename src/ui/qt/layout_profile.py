@@ -1,4 +1,4 @@
-"""Pure, Qt-free layout resolver for the adaptive GUI rebuild (Wave 3).
+"""Pure, Qt-free layout resolver for the adaptive GUI.
 
 ``layout_profile(width, height, touch, dpi)`` maps a window/screen geometry plus the input
 modality to a :class:`LayoutProfile` — a small breakpoint descriptor the widgets consult when
@@ -141,7 +141,7 @@ def min_target_qss(min_target_pt: int) -> str:
 
 
 # ── Per-screen layout decisions (pure; the widgets apply them) ──────────────────────────────────
-# Wave-3 rebuild: keep each screen's "how do I arrange for this profile" decision here as pure data,
+# Keep each screen's "how do I arrange for this profile" decision here as pure data,
 # so it's unit-testable without a live Qt widget. The widget only maps the decision to Qt calls.
 @dataclass(frozen=True)
 class FlashLayout:
@@ -174,8 +174,8 @@ def device_layout(profile: LayoutProfile) -> DeviceLayout:
     return DeviceLayout(stack_panels=profile.is_compact, collapse_chrome=profile.dense_chrome)
 
 
-# ── Batch C deciders — the 7 operator/config screens ──────
-# Per CC-GUI-DECIDER-CONTRACT-2026-07-28: per-screen frozen dataclasses (NOT one god-type), fields
+# ── Deciders — the 7 operator/config screens ──────
+# Per-screen frozen dataclasses (NOT one god-type), fields
 # drawn from ONE vocabulary — `columns` (primary-grid columns), `stack` (flip the primary axis to
 # vertical on a cramped canvas), `collapse_chrome` (dense chrome, == profile.dense_chrome), and
 # `hit_edge_pt` (min hit-target, == profile.min_target_pt, surfaced only where a screen uses it).
@@ -203,7 +203,7 @@ def operate_layout(profile: LayoutProfile) -> OperateLayout:
 
 @dataclass(frozen=True)
 class OperateHomeLayout:
-    """Operate Home (WS3): how the 3-zone execution surface sheds chrome on a cramped canvas."""
+    """Operate Home: how the 3-zone execution surface sheds chrome on a cramped canvas."""
 
     stack: bool               # compact -> single-column zones (the tile grids self-reflow too)
     collapse_chrome: bool     # dense chrome
@@ -229,7 +229,7 @@ def operate_home_layout(profile: LayoutProfile) -> OperateHomeLayout:
 
 @dataclass(frozen=True)
 class PageScreenLayout:
-    """The shared master/detail/actions scaffold every WS4 screen mounts into (F1)."""
+    """The shared master/detail/actions scaffold every screen mounts into."""
 
     stack: bool           # compact -> stack master/detail/actions vertically (else side-by-side)
     show_actions: bool    # the actions region shows inline; folded on the 'regular' mid width

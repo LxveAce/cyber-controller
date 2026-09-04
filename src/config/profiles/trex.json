@@ -26,5 +26,5 @@
     {"name": "LilyGo T-Deck Plus", "chip": "esp32s3", "flash_size": "16MB", "flash_mode": "qio", "flash_freq": "80m", "has_keyboard": true, "has_display": true}
   ],
   "firmware_urls": {"repo": "https://github.com/abdallahnatsheh/T-REX-FIRMWARE", "latest": "https://github.com/abdallahnatsheh/T-REX-FIRMWARE/releases/latest"},
-  "note": "Single merged .bin per board flashed at 0x0 (web-flasher class). esp32s3 (T-Deck/T-Deck Plus). Flash offset pending real-hardware verification per the Stage-5 gate."
+  "note": "Single merged .bin per board flashed at 0x0 (web-flasher class). esp32s3 (T-Deck/T-Deck Plus). Flash offset pending real-hardware verification."
 }

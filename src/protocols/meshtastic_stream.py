@@ -1,4 +1,4 @@
-"""Meshtastic StreamAPI backend — the live protobuf integration (comms rework, Wave 8).
+"""Meshtastic StreamAPI backend — the live protobuf integration.
 
 Ties the three hardware-free pieces together into a real Meshtastic integration:
 
@@ -27,7 +27,7 @@ from src.protocols.stream_framer import StreamFramer
 log = logging.getLogger(__name__)
 
 # Default want_config id. Any uint32 works — the node echoes it back as config_complete_id — but this exact
-# value was accepted + answered by a real Heltec V3 during the Wave-8 HIL capture. Not NODELESS_WANT_CONFIG_ID
+# value was accepted + answered by a real Heltec V3. Not NODELESS_WANT_CONFIG_ID
 # (69420), so the node includes every neighbour's NodeInfo in the config dump.
 _DEFAULT_CONFIG_ID = 0x12345678
 

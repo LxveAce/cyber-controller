@@ -69,14 +69,14 @@ class MacroTab(QWidget):
         self._playback_signal = _PlaybackSignal()
         self._playback_signal.progress.connect(self._on_playback_progress)
         self._playback_signal.complete.connect(self._on_playback_complete)
-        self._last_macro_size: "str | None" = None   # Wave-3 Batch C: last size class (debounce)
+        self._last_macro_size: "str | None" = None   # last size class (debounce)
 
         self._build_ui()
         self._refresh_macro_list()
         from src.ui.qt import primer
         primer.apply_primer(self)   # mockup formula: tight macro table / .field inputs / .btn buttons
 
-    # ── Adaptive layout (Wave-3 Batch C) ──────────
+    # ── Adaptive layout ──────────
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
         self._relayout_for_size()

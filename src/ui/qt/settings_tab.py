@@ -76,7 +76,7 @@ class SettingsTab(QWidget):
 
     def __init__(self) -> None:
         super().__init__()
-        self._last_settings_size: "str | None" = None   # Wave-3 Batch C: last size class (debounce)
+        self._last_settings_size: "str | None" = None   # last size class (debounce)
         self._settings = load_settings()
         self._dirty = False    # True once the user edits a field; blocks showEvent's disk-reload from
         self._loading = False  # clobbering it. _loading guards programmatic _load_into_ui from self-marking.
@@ -98,7 +98,7 @@ class SettingsTab(QWidget):
         container = QWidget()
         root = QVBoxLayout(container)
 
-        # Wave-3 Batch C: cards flow into a 1/2/3-column grid (see _apply_settings_layout).
+        # Cards flow into a 1/2/3-column grid (see _apply_settings_layout).
         # Each goes into self._cards and is placed by the resolver rather than stacked directly.
         self._cards: list[QFrame] = []
         self._settings_muted_labels: list[QLabel] = []
@@ -195,7 +195,7 @@ class SettingsTab(QWidget):
         updates_outer.addLayout(updates_btn_row)
         self._cards.append(updates_card)
 
-        # ── Wardrive uploads (WiGLE) — WS-8 ──────────────────────────
+        # ── Wardrive uploads (WiGLE) ──────────────────────────
         self._uploads_card, uploads_outer = _make_card("Wardrive uploads (WiGLE)")
         uploads_card = self._uploads_card
         uploads_desc = QLabel(
@@ -318,7 +318,7 @@ class SettingsTab(QWidget):
         primer.apply_primer(self)   # mockup formula: tight fields / .btn buttons across every settings card
         self._relayout_settings(force=True)   # initial placement of the cards into the grid
 
-    # ── Responsive layout (Wave-3 Batch C) ───────────────────────────
+    # ── Responsive layout ───────────────────────────
 
     def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
         super().resizeEvent(event)
@@ -516,7 +516,7 @@ class SettingsTab(QWidget):
                 **disk.get("updates", {}),
                 "enabled": self._updates_enabled_check.isChecked(),
             },
-            # WS-8: the WiGLE token is the only widget-backed key in "uploads"; overlay it on the on-disk
+            # The WiGLE token is the only widget-backed key in "uploads"; overlay it on the on-disk
             # block so any future upload bookkeeping isn't wiped by a plain Save (same carry-forward as updates).
             "uploads": {
                 **disk.get("uploads", {}),

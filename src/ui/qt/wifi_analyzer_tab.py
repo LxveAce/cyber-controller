@@ -216,7 +216,7 @@ try:
             self._row_aps: list = []   # APs in table-row order (for the right-click context menu)
             self._paused = False
             self._last_event_ts: "Optional[float]" = None  # when we last folded in a Wi-Fi event
-            self._last_wifi_size: "Optional[str]" = None    # Wave-3: size class (debounce)
+            self._last_wifi_size: "Optional[str]" = None    # size class (debounce)
 
             # Reform: the mockup HUNT Wi-Fi is ONE "Wi-Fi Analyzer" card (title + tiles + graph + table).
             _root = QVBoxLayout(self)
@@ -293,7 +293,7 @@ try:
             super().hideEvent(ev)
             self._timer.stop()
 
-        # ── responsive layout (Wave-3) ──
+        # ── responsive layout ──
         def resizeEvent(self, event) -> None:  # noqa: N802 (Qt override)
             super().resizeEvent(event)
             self._relayout_wifi()
