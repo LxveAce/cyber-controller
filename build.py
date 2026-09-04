@@ -255,6 +255,11 @@ def _build() -> int:
     try:
         __import__("webview")
         cmd.extend(["--collect-all", "webview"])
+        # pywebview's WINDOWS WebView2 backend is .NET via pythonnet (clr). PyInstaller auto-follows the
+        # `import clr` from webview.platforms.edgechromium and bundles it — BUT only if pythonnet is
+        # actually installed. The [desktop] extra pulls `pythonnet` on win32 so the CI build gets a real
+        # native window instead of dropping to the browser fallback. (Verified: with pythonnet present,
+        # the frozen build opens the native window; without it, ~16 MB smaller and browser-only.)
     except ImportError:
         print("note: pywebview not installed — the Normal GUI (system webview) will NOT be bundled; "
               "the packaged app would fall back to the browser UI. Install .[desktop] before building.")

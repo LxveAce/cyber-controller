@@ -62,9 +62,9 @@ dependencies = [
 tk = []
 tui = ["textual>=0.50"]
 web = ["flask>=3.0", "flask-socketio>=5.3"]
-desktop = ["flask>=3.0", "flask-socketio>=5.3", "pywebview>=5.0"]
+desktop = ["flask>=3.0", "flask-socketio>=5.3", "pywebview>=5.0", "pythonnet>=3.0; sys_platform=='win32'"]
 qtweb = ["flask>=3.0", "flask-socketio>=5.3", "PyQtWebEngine>=5.15"]
-full = ["textual>=0.50", "flask>=3.0", "flask-socketio>=5.3", "pywebview>=5.0", "PyQtWebEngine>=5.15"]
+full = ["textual>=0.50", "flask>=3.0", "flask-socketio>=5.3", "pywebview>=5.0", "PyQtWebEngine>=5.15", "pythonnet>=3.0; sys_platform=='win32'"]
 dev = ["pytest>=8.0", "ruff>=0.4"]
 
 [project.scripts]
