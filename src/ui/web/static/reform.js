@@ -687,6 +687,36 @@
       });
     });
 
+    var statusEl = document.getElementById("fw-status");
+    var pctEl = document.getElementById("fw-pct");
+    var bootCallout = document.getElementById("fw-bootcallout");
+    var flashWatchdog = null;   // fires if the progress stream stays silent after a flash starts
+    var sawProgress = false;
+
+    // esptool markers that mean "the board never entered the ROM bootloader" — the hold-BOOT case.
+    var DL_MARKERS = ["failed to connect", "wrong boot mode", "no serial data received",
+                      "invalid head of packet", "a fatal error occurred", "could not open"];
+    function isDownloadModeFail(msg) {
+      var m = (msg || "").toLowerCase();
+      return DL_MARKERS.some(function (k) { return m.indexOf(k) !== -1; });
+    }
+    // Turn a raw esptool line into a short phase label so the status reads like an SOP, not a log tail.
+    function phaseOf(msg) {
+      var m = (msg || "").toLowerCase();
+      if (m.indexOf("connecting") !== -1) return "Connecting to the board…";
+      if (m.indexOf("chip is") !== -1 || m.indexOf("detecting chip") !== -1) return "Board detected — preparing…";
+      if (m.indexOf("erasing") !== -1 || m.indexOf("erase") !== -1) return "Erasing flash…";
+      if (m.indexOf("writing") !== -1 || m.indexOf("wrote ") !== -1) return "Writing firmware…";
+      if (m.indexOf("hash of data verified") !== -1 || m.indexOf("verify") !== -1) return "Verifying…";
+      if (m.indexOf("hard resetting") !== -1 || m.indexOf("leaving") !== -1) return "Finishing up…";
+      return null;   // keep the current phase for uninteresting lines
+    }
+    function setStatusLine(text, cls) {
+      if (!statusEl) return;
+      statusEl.textContent = text;
+      statusEl.style.color = cls === "ok" ? "var(--green)" : cls === "er" ? "var(--red)" : "var(--tx)";
+    }
+
     document.querySelectorAll(".fw-flash").forEach(function (btn) {
       btn.addEventListener("click", function () {
         if (!fwPort) { if (portMsg) { portMsg.textContent = "click a target port first"; portMsg.style.color = "var(--red)"; } return; }
@@ -695,11 +725,27 @@
         var variant = vsel ? vsel.value : "";
         if (!window.confirm("Flash " + profile + " to " + fwPort + "?\n\nThis overwrites the device firmware and cannot be undone mid-write.")) return;
         if (bar) bar.style.width = "0";
+        if (pctEl) pctEl.textContent = "";
+        if (bootCallout) bootCallout.style.display = "none";
         if (logEl) { logEl.innerHTML = ""; appendLine(logEl, "p", "[Flashing " + profile + " → " + fwPort + "]"); }
+        setStatusLine("Starting…", "");
+        sawProgress = false;
         ensureSocket();
         postJSON("/api/flash", { port: fwPort, profile_id: profile, variant: variant })
-          .then(function () { appendLine(logEl, "tx", "flash started…"); })
-          .catch(function (err) { appendLine(logEl, "er", "error: " + err); });
+          .then(function () {
+            appendLine(logEl, "tx", "flash started…");
+            // Watchdog: if the live progress stream says nothing for a while, the socket may be down —
+            // tell the user instead of leaving them at a silent bar (Ace's "held BOOT, nothing popped up").
+            if (flashWatchdog) clearTimeout(flashWatchdog);
+            flashWatchdog = setTimeout(function () {
+              if (!sawProgress) {
+                setStatusLine("No response yet — the board may not be in download mode.", "er");
+                if (bootCallout) bootCallout.style.display = "";
+                appendLine(logEl, "er", "no progress from the flasher yet — hold BOOT and try again, or reconnect the cable.");
+              }
+            }, 12000);
+          })
+          .catch(function (err) { setStatusLine("Couldn't start the flash", "er"); appendLine(logEl, "er", "error: " + err); });
       });
     });
 
@@ -707,10 +753,22 @@
     ensureSocket();
     if (socket) socket.on("flash_progress", function (d) {
       if (!d || (fwPort && d.port && d.port !== fwPort)) return;
+      sawProgress = true;
+      if (flashWatchdog) { clearTimeout(flashWatchdog); flashWatchdog = null; }
       if (bar && typeof d.percent === "number") bar.style.width = d.percent + "%";
-      if (d.message) appendLine(logEl, d.done ? (d.success ? "ok" : "er") : "rx", d.message);
-      if (d.done) notifyDesktop(d.success ? "Flash complete" : "Flash failed",
-        (d.port || "device") + (d.message ? " — " + d.message : ""));
+      if (pctEl && typeof d.percent === "number" && !d.done) pctEl.textContent = d.percent + "%";
+      if (d.message) {
+        appendLine(logEl, d.done ? (d.success ? "ok" : "er") : "rx", d.message);
+        if (!d.done) { var ph = phaseOf(d.message); if (ph) setStatusLine(ph, ""); }
+        if (!d.done && isDownloadModeFail(d.message) && bootCallout) bootCallout.style.display = "";
+      }
+      if (d.done) {
+        if (pctEl) pctEl.textContent = d.success ? "100%" : "";
+        setStatusLine(d.success ? "✔ Flashed + verified" : "✖ Flash failed", d.success ? "ok" : "er");
+        if (!d.success && bootCallout && isDownloadModeFail(d.message)) bootCallout.style.display = "";
+        notifyDesktop(d.success ? "Flash complete" : "Flash failed",
+          (d.port || "device") + (d.message ? " — " + d.message : ""));
+      }
     });
   }
   initFirmware();

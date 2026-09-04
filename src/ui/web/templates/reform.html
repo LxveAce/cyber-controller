@@ -222,7 +222,9 @@
           </table>
           <div class="footnote off" id="fw-nomatch" style="display:none">No firmware matches your search.</div>
           <div class="footnote">Variants load from each firmware&#8217;s own release. Leave on &#8220;Default&#8221; unless a board with a shared chip ID flashes a blank screen.</div>
-          <div style="margin-top:10px"><div class="progress" style="height:6px;background:#0d1117;border:1px solid var(--bd);border-radius:4px;overflow:hidden"><div id="fw-bar" style="height:100%;width:0;background:var(--acc);transition:width .2s"></div></div></div>
+          <div class="row" style="margin-top:10px;align-items:center;gap:8px;justify-content:space-between"><span class="mono" id="fw-status" style="font-size:12px">idle</span><span class="mono muted" id="fw-pct" style="font-size:12px"></span></div>
+          <div style="margin-top:6px"><div class="progress" style="height:6px;background:#0d1117;border:1px solid var(--bd);border-radius:4px;overflow:hidden"><div id="fw-bar" style="height:100%;width:0;background:var(--acc);transition:width .2s"></div></div></div>
+          <div class="notebar warnbar" id="fw-bootcallout" style="display:none;margin:8px 0 0">&#9888;&#xFE0E; <b>Can&#8217;t connect to the board.</b> It isn&#8217;t in download mode. <b>Hold BOOT</b> (IO0/FLASH), tap EN/RST once, keep holding BOOT until it connects &#8212; then release &amp; Flash again. Use a data USB cable, not charge-only.</div>
           <div class="term" id="fw-log" style="height:130px;margin-top:8px"><div class="p">Pick a port + firmware, then Flash.</div></div>
         </div>
       </div>
