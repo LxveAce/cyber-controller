@@ -1585,10 +1585,17 @@ def create_app(
                 s.close()
         except OSError:
             lan_ip = ""
+        # Only reveal the generated password when the server is bound to LOOPBACK (the desktop deployment) —
+        # which is exactly the use case: the operator on THIS machine reads it here to type on their phone.
+        # If the server is LAN-exposed, never echo it: over the network it's a reusable credential handed to
+        # anyone who got one session, and without TLS it's cleartext on the wire. host_shell_loopback carries
+        # the bind's loopback-ness (set by the launcher). (Red-team LOW-1/LOW-2, 2026-09-03.)
+        reveal = bool(host_shell_loopback)
         return jsonify({
             "username": creds.username,
-            "password": creds.generated_password,   # None when the user set CC_WEB_PASS
+            "password": (creds.generated_password if reveal else None),
             "generated": creds.generated_password is not None,
+            "revealed": reveal and creds.generated_password is not None,
             "lan_ip": lan_ip,
             "port": port,
         })
@@ -1607,18 +1614,44 @@ def create_app(
         _audit("device_disconnect", user=session.get("user"), port=port)
         return jsonify({"status": "disconnected", "port": port})
 
-    def _command_is_offensive(command: str) -> bool:
+    def _command_is_offensive(command: str, firmwares: Any = ()) -> bool:
         """The single offensive-verb floor shared by the auto-router rules gate AND the OPERATE
         Broadcast fan-out. classify() catches most offensive verbs, but some transmitting verbs
         (evilportal/startportal/subghz tx/rfid|nfc emulate/…) carry their danger in CommandInfo
         metadata and classify() returns '' for the bare string — so union with the _ATTACK_PREFIXES
-        floor. ONE definition so the two gates can't drift apart (red-team finding, 2026-08-07)."""
+        floor. ONE definition so the two gates can't drift apart (red-team finding, 2026-08-07).
+
+        *firmwares* (a firmware name or an iterable of them) makes the gate INFO-AWARE: when a target's
+        firmware is known, the command is resolved to its ``CommandInfo`` and classified WITH it, so a
+        verb whose danger lives ONLY in metadata (e.g. bluestress ``START``/``CHAR``, ghost_esp
+        ``dhcpstarve start``) still gates. Without this, a string-only classify() let ~65 such verbs fan
+        out / auto-fire with no consent (red-team finding, 2026-09-03). Info-aware per firmware rather
+        than a global name floor because bare names like ``START`` are dangerous ONLY under the firmware
+        that declares them illegal-tx — a global floor would over-flag every benign ``start …``."""
         from src.core import safety
         from src.core.macro_recorder import _ATTACK_PREFIXES
 
         c = (command or "").strip().lower()
-        return bool(safety.classify(command or "")) or \
-            any(c.startswith(p) for p in _ATTACK_PREFIXES)
+        if bool(safety.classify(command or "")) or any(c.startswith(p) for p in _ATTACK_PREFIXES):
+            return True
+        if isinstance(firmwares, str):
+            firmwares = (firmwares,)
+        for fw in firmwares:
+            if not fw:
+                continue
+            try:
+                from src.core.broadcast import command_info_for
+                info = command_info_for(fw, command or "")
+            except Exception:  # noqa: BLE001 — the floor already ran; info-aware is an additive catch
+                info = None
+            if info is not None and bool(safety.classify(command or "", info)):
+                return True
+        return False
+
+    def _firmware_of(port: str) -> str:
+        """The detected firmware for *port* (or "") — used to make the consent gates info-aware."""
+        dev = device_manager.get_device(port) if port else None
+        return getattr(dev, "firmware", "") if dev is not None else ""
 
     @app.route("/api/command", methods=["POST"])
     @requires_auth
@@ -1686,7 +1719,10 @@ def create_app(
         if len(ports) > 64:
             return jsonify({"error": "too many ports"}), 400
 
-        offensive = _command_is_offensive(command)
+        # Info-aware: offensive if the command is dangerous for ANY selected port's firmware (or by the
+        # firmware-agnostic floor). A string-only check here let metadata-danger verbs (bluestress START,
+        # ghost_esp dhcpstarve, …) fan out to every device with no consent (red-team, 2026-09-03).
+        offensive = _command_is_offensive(command, [_firmware_of(p) for p in ports])
         if offensive and not consent:
             return jsonify({
                 "error": "This command transmits — confirm authorized use to broadcast it.",
@@ -1976,11 +2012,12 @@ def create_app(
     # offensive rule (safety.classify hits its command) is (1) refused unless the add carries
     # consent:true AND (2) forced to land DISABLED — never auto-fires on add. Enabling one later is
     # itself a consent-gated act (the arm). Recon rules add + enable freely. safety.py is untouched.
-    def _rule_is_offensive(command: str) -> bool:
+    def _rule_is_offensive(command: str, port: str = "") -> bool:
         # Delegates to the shared _command_is_offensive floor (defined near /api/command) so the rules
         # gate, the Broadcast fan-out, and the macro floor can't drift apart. (Red-team finding,
-        # 2026-08-07: classify() alone misses metadata-danger transmitting verbs.)
-        return _command_is_offensive(command)
+        # 2026-08-07: classify() alone misses metadata-danger transmitting verbs.) Pass the rule's target
+        # port so the gate is info-aware about that device's firmware (red-team, 2026-09-03).
+        return _command_is_offensive(command, _firmware_of(port))
 
     def _rule_to_dict(r: Any) -> dict:
         tt = r.target_type.value if getattr(r, "target_type", None) is not None else ""
@@ -1988,7 +2025,7 @@ def create_app(
             "name": r.name, "target_type": tt, "ssid_pattern": r.ssid_pattern,
             "min_rssi": r.min_rssi, "device_port": r.device_port,
             "command_template": r.command_template, "enabled": r.enabled,
-            "offensive": _rule_is_offensive(r.command_template),
+            "offensive": _rule_is_offensive(r.command_template, r.device_port),
         }
 
     @app.route("/api/rules")
@@ -2013,7 +2050,7 @@ def create_app(
         port = str(data.get("device_port", "")).strip()
         if not name or not command or not port:
             return jsonify({"error": "name, command_template and device_port are required"}), 400
-        offensive = _rule_is_offensive(command)
+        offensive = _rule_is_offensive(command, port)
         if offensive and data.get("consent") is not True:
             return jsonify({"error": "This rule auto-fires an offensive command — confirm "
                                      "authorized use to add it (it lands disabled until you arm it)."}), 403
@@ -2063,7 +2100,7 @@ def create_app(
         if rule is None:
             return jsonify({"error": f"Unknown rule: {name}"}), 404
         # Arming (enabling) an offensive rule is the consent-gated act — when it can auto-fire.
-        arming_offensive = enabled and _rule_is_offensive(rule.command_template)
+        arming_offensive = enabled and _rule_is_offensive(rule.command_template, rule.device_port)
         if arming_offensive and data.get("consent") is not True:
             return jsonify({"error": "Arming an offensive rule needs authorized-use consent."}), 403
         auto_router.remove_rule(name)

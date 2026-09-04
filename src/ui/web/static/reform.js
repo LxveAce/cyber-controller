@@ -964,8 +964,10 @@
       getJSON("/api/remote-access").then(function (r) {
         var url = (r.lan_ip && r.port) ? ("http://" + r.lan_ip + ":" + r.port + "/reform")
                                        : "http://<this-PC's-LAN-IP>:<port>/reform";
-        var pw = r.generated ? r.password
-                             : "(you set it via CC_WEB_PASS)";
+        var pw;
+        if (!r.generated) pw = "(you set it via CC_WEB_PASS)";
+        else if (r.revealed) pw = r.password;
+        else pw = "(shown only on the local machine — open this on the host PC to read it)";
         remote.innerHTML =
           "URL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>" + esc(url) + "</b><br>" +
           "user&nbsp;&nbsp;&nbsp;&nbsp;" + esc(r.username || "admin") + "<br>" +

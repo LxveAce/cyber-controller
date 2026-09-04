@@ -354,21 +354,46 @@ def test_web_connect_detects_firmware(monkeypatch):
 
 def test_remote_access_reveals_generated_password(monkeypatch):
     # "what's the password?" — a windowed build swallows the one-time stderr print, so an authenticated
-    # operator must be able to read the generated credential in the UI to reach the server from a phone.
+    # operator on the LOCAL machine must be able to read the generated credential in the UI to reach the
+    # server from a phone. Reveal only on a loopback bind (the desktop deployment).
     monkeypatch.delenv("CC_WEB_PASS", raising=False)  # force the generated-password path
-    c = _client(DeviceManager())
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
+                           host_shell_loopback=True)  # loopback bind → reveal allowed
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
     r = c.get("/api/remote-access")
     assert r.status_code == 200
     body = r.get_json()
     assert body["generated"] is True
+    assert body["revealed"] is True
     assert isinstance(body["password"], str) and len(body["password"]) >= 12
     assert body["username"] == "admin"
+
+
+def test_remote_access_withholds_password_over_lan(monkeypatch):
+    # Red-team LOW-1/LOW-2: on a LAN-exposed (non-loopback) bind the generated password must NOT be echoed —
+    # over the network it's a reusable credential and (without TLS) cleartext. Still report it EXISTS.
+    monkeypatch.delenv("CC_WEB_PASS", raising=False)
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
+                           host_shell_loopback=False)  # LAN bind → withhold
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
+    body = c.get("/api/remote-access").get_json()
+    assert body["generated"] is True
+    assert body["revealed"] is False
+    assert body["password"] is None
 
 
 def test_remote_access_never_echoes_user_set_password(monkeypatch):
     # A password the OWNER chose (CC_WEB_PASS) is never returned — they already know it and we don't store it.
     monkeypatch.setenv("CC_WEB_PASS", "owner-chosen-secret")
-    c = _client(DeviceManager())
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
+                           host_shell_loopback=True)  # even on loopback, a user-set password is never echoed
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
     body = c.get("/api/remote-access").get_json()
     assert body["generated"] is False
     assert body["password"] is None
@@ -377,6 +402,29 @@ def test_remote_access_never_echoes_user_set_password(monkeypatch):
 def test_remote_access_requires_auth():
     c = _client(DeviceManager(), authed=False)
     assert c.get("/api/remote-access").status_code == 401
+
+
+def test_broadcast_metadata_danger_verb_gated_by_firmware():
+    # Red-team 2026-09-03: /api/broadcast must be INFO-AWARE. A verb whose danger lives only in its
+    # CommandInfo (bluestress START = illegal-tx) has no danger keyword in the bare string, so the old
+    # string-only gate fanned it out to every device with no consent. It must now 403 without consent
+    # when a target port runs the firmware that makes it dangerous.
+    dm = DeviceManager()
+    dm.add_device(Device(port="COM9", name="BlueStress", firmware="bluestress", connected=True))
+    dm._connections["COM9"] = _ProbeConn([])
+    app, _sio = create_app(dm, FlashEngine(), EventBus(), TargetPool())
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["csrf"] = "tok"
+    # No consent → refused because COM9 runs bluestress (START is illegal-tx there).
+    r = c.post("/api/broadcast", json={"command": "START", "ports": ["COM9"]},
+               headers={"X-CSRF-Token": "tok"})
+    assert r.status_code == 403
+    # With consent it is allowed through the gate (per-port send result, not a 403).
+    r2 = c.post("/api/broadcast", json={"command": "START", "ports": ["COM9"], "consent": True},
+                headers={"X-CSRF-Token": "tok"})
+    assert r2.status_code == 200
 
 
 def test_macro_run_offensive_refused_without_consent(tmp_path):

@@ -70,6 +70,17 @@ def is_offensive_macro(macro: Macro) -> bool:
     if macro.name.startswith("[TEMPLATE"):
         return True
     from src.core import safety
+    # Resolve the macro's protocol so each step can be classified WITH its CommandInfo — a verb whose
+    # danger lives only in metadata (bluestress START, ghost_esp dhcpstarve, …) has no danger keyword in
+    # the bare step string, so classify(cmd) alone misses it and the macro would play unarmed (red-team,
+    # 2026-09-03). Info-aware via the macro's own device_protocol; falls back cleanly when it's unset.
+    info_for = None
+    if macro.device_protocol:
+        try:
+            from src.core.broadcast import command_info_for
+            info_for = lambda c: command_info_for(macro.device_protocol, c)  # noqa: E731
+        except Exception:  # noqa: BLE001 — the floor below still gates
+            info_for = None
     for step in macro.steps:
         cmd = step.command.strip()
         # safety.classify() (a substring scan) is the authoritative danger classifier, so it catches
@@ -80,6 +91,10 @@ def is_offensive_macro(macro: Macro) -> bool:
         # that metadata. Union => never miss (safety) and never regress the curated prefix list.
         if safety.classify(cmd) or any(cmd.lower().startswith(p) for p in _ATTACK_PREFIXES):
             return True
+        if info_for is not None:
+            info = info_for(cmd)
+            if info is not None and safety.classify(cmd, info):
+                return True
     return False
 
 

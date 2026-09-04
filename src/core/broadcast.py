@@ -320,3 +320,19 @@ class BroadcastEngine:
                 pub(topic, payload)
             except Exception:
                 log.debug("broadcast bus publish failed", exc_info=True)
+
+
+def command_info_for(firmware: str, cmd: str):
+    """Resolve the authoritative ``CommandInfo`` for *cmd* under *firmware*'s protocol, or ``None``.
+
+    Module-level so the web consent gates (broadcast / rules / macros) can classify a command with the
+    SAME ``CommandInfo.danger`` metadata the fan-out uses — closing the gap where a string-only
+    ``safety.classify(cmd)`` missed verbs whose danger lives only in metadata (e.g. bluestress ``START``,
+    ghost_esp ``dhcpstarve start``). ``get_protocol`` falls back to Generic (empty commands → ``None``)
+    for an unknown/blank firmware, so the caller's firmware-agnostic floor still applies."""
+    from src.protocols import get_protocol
+    try:
+        proto = get_protocol(firmware or "")
+    except Exception:  # noqa: BLE001 — resolution is best-effort; the string floor still gates
+        return None
+    return BroadcastEngine._command_info_for(proto, cmd)
