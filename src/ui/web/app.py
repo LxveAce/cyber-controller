@@ -418,8 +418,7 @@ def create_app(
 
     # ── Event bus wiring ────────────────────────────────────────────
 
-    def _on_target_added(_topic: str, payload: dict) -> None:
-        socketio.emit("target_discovered", payload)
+    def _observe_tail(payload: dict) -> None:
         # Feed tail/follower detection from personal/mobile discoveries only (BLE + client stations);
         # a stationary AP is never a tail. Awareness-only — observe() just records a sighting.
         try:
@@ -432,6 +431,16 @@ def create_app(
         except Exception:
             log.debug("tail observe skipped", exc_info=True)
 
+    def _on_target_added(_topic: str, payload: dict) -> None:
+        socketio.emit("target_discovered", payload)
+        _observe_tail(payload)
+
+    def _on_target_updated(_topic: str, payload: dict) -> None:
+        # A RE-SIGHTING (target.updated) is exactly what tail detection needs — a device seen across time
+        # windows. Observing only target.added gave at most one sighting per device, so the tracker (which
+        # needs a device across >=2 of the last 4 windows) could never flag a follower. (Red-team 2026-09-03.)
+        _observe_tail(payload)
+
     def _on_device_connected(device) -> None:
         socketio.emit("device_connected", device.to_dict())
 
@@ -439,6 +448,7 @@ def create_app(
         socketio.emit("device_disconnected", device.to_dict())
 
     event_bus.subscribe("target.added", _on_target_added)
+    event_bus.subscribe("target.updated", _on_target_updated)
     device_manager.on_device_connected(_on_device_connected)
     device_manager.on_device_disconnected(_on_device_disconnected)
 

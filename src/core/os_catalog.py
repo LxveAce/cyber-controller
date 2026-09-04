@@ -575,7 +575,7 @@ def list_catalog_cli() -> int:
         print(f"  {i.id:<8} {i.name:<22} [{i.category}] ({i.image_type})")
         print(f"           {i.description}")
     print("\nFlash with:  cyber-controller --flash-os <id> [--os-image <local.iso/.img>] "
-          "[--os-target <device>] [--offline] [--yes]")
+          "[--target <device>] [--offline] [--yes]")
     return 0
 
 

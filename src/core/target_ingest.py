@@ -325,6 +325,9 @@ class TargetIngestor:
             t = Target(
                 mac=mac, target_type=TargetType.AP, ssid=str(d.get("ssid", "")),
                 rssi=int(d.get("rssi", 0) or 0), channel=int(d.get("channel", 0) or 0),
+                # Firmwares spell it differently (encryption / enc / auth); a missing value stays "" (honest,
+                # never invented) — without this the Hunt Enc column and the "Open" security tile were dead.
+                encryption=str(d.get("encryption") or d.get("enc") or d.get("auth") or ""),
                 device_source=port,
             )
             if idx is not None:

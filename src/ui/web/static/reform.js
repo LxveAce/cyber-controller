@@ -327,8 +327,8 @@
   });
   wireBtn("dash-scan", function () {
     setDevMsg("scanning ports…");
-    refreshDevices();
-    setTimeout(function () { setDevMsg(""); }, 1200);
+    // Clear when the scan actually returns, not on a fixed timer that can blank a slow scan's result.
+    refreshDevices().then(function () { setDevMsg(""); }).catch(function () { setDevMsg(""); });
   });
 
   // B13: Cross-Comm pool Refresh + Clear (clears the operator's own scan results; re-scan repopulates).
@@ -376,7 +376,7 @@
   }
 
   function refreshDevices() {
-    getJSON("/api/devices").then(function (devs) {
+    return getJSON("/api/devices").then(function (devs) {
       var dot = function (c) { return c ? "●" : "○"; };
       var listHtml = devs.length ? devs.map(function (d) {
         var sel = d.port === selectedPort ? " sel" : "";
@@ -1406,7 +1406,7 @@
 
     function updateDesc() {
       var img = images.filter(function (i) { return i.id === osSel.value; })[0];
-      if (desc && img) desc.textContent = (img.description || "") + " — verified (SHA-256 + OpenPGP) before writing.";
+      if (desc && img) desc.textContent = (img.description || "") + " — SHA-256 verified (plus OpenPGP when the signing key is available) before writing.";
     }
     osSel.addEventListener("change", updateDesc);
 
