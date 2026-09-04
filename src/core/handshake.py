@@ -222,12 +222,22 @@ def probe_device(conn, device, *, timeout: float = 0.8, settle: float = 0.15) ->
         return HandshakeResult(health=getattr(device, "health", "unknown"))
 
     try:
-        for cmd in probe_commands_for(device):
-            try:
-                conn.write(cmd)
-            except Exception:  # noqa: BLE001
-                log.debug("probe write %r failed", cmd, exc_info=True)
-        _wait_for_reply(lines, timeout=timeout, settle=settle)
+        # Send the probe command(s), then wait for a reply. A slow-booting firmware — Marauder on a CYD does
+        # its display + touch init before the serial CLI answers — can miss a single probe, so re-send a
+        # couple more times while nothing has come back yet. A board that already replied (or a gate that
+        # printed a prompt) has non-empty lines and breaks out immediately, so a fast board pays no extra time
+        # and a DMS gate isn't hit with repeated writes.
+        cmds = probe_commands_for(device)
+        for _attempt in range(3):
+            for cmd in cmds:
+                try:
+                    conn.write(cmd)
+                except Exception:  # noqa: BLE001
+                    log.debug("probe write %r failed", cmd, exc_info=True)
+            _wait_for_reply(lines, timeout=timeout, settle=settle)
+            if lines:
+                break
+            time.sleep(0.5)  # give a still-booting board a moment, then re-probe
     finally:
         try:
             conn.remove_line_callback(cb)
