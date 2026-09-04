@@ -17,8 +17,8 @@ a secure context — see §4 — so do TLS before you try to "add to home screen
 
 | env var                  | purpose                                                                 |
 | ------------------------ | ----------------------------------------------------------------------- |
-| `CC_WEB_USER`            | admin username (required for a real deployment)                         |
-| `CC_WEB_PASS`            | admin password. **If unset, a random one is printed at startup** — set it. |
+| `CC_WEB_USER`            | admin username (optional — you can set the username in the UI instead)  |
+| `CC_WEB_PASS`            | admin password. Optional now — the easiest way is **Settings ▸ Remote Access** in the app (saved + used every time). If nothing is set, a random one-time password is printed at startup. |
 | `CC_WEB_ALLOW_LAN=1`     | explicit opt-in to bind off-localhost. Without it a non-local bind is refused. |
 | `CC_WEB_CERT` / `CC_WEB_KEY` | paths to a TLS cert + key. Strongly recommended; **required** for the PWA. |
 | `CC_WEB_ORIGINS`         | optional extra CORS origins (comma-separated). The allowlist is never `*`. |

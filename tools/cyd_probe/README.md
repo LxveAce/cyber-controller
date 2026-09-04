@@ -1,12 +1,21 @@
 # CYD detection probe
 
-A tiny ESP32 firmware that identifies which **CYD** (Cheap Yellow Display) board is connected, by
-reading the display controller over SPI and the touch bus over I2C. The Flash tab's **Detect board**
-button flashes this, reads its serial report, and auto-selects the matching Marauder variant — so the
+A tiny ESP32 firmware that *tries* to identify which **CYD** (Cheap Yellow Display) board is connected,
+by reading the display controller over SPI and the touch bus over I2C. The Flash tab's **Detect board**
+button flashes this, reads its serial report, and pre-selects the matching Marauder variant — so the
 screen isn't left blank (wrong build) or mirrored/"oriented weird" (ILI9341 build on an ST7789 panel).
 
 CYD boards share the plain-ESP32 chip, so esptool/the bootloader can't tell them apart. Only code
 running on the board and reading the panel can.
+
+> **Hardware limitation — this can't work on every board.** Reading the panel back over SPI needs the
+> display's MISO line wired, and on the CYD that's **GPIO12 — an ESP32 boot-strapping pin (flash
+> voltage) that many of these cheap clones leave disconnected.** On those boards the ID registers
+> (`0xD3`/`0x04`), and sometimes even the `0x09` liveness read, come back all-zero no matter how good
+> the timing — so the probe can't identify the panel, and can't always tell a real CYD from a bare
+> ESP32. This isn't a fixable firmware bug; it's the board's wiring. When the read-back isn't there,
+> panel identity has to come from **you picking the variant**, not from an SPI probe. (Confirmed on a
+> real 2.8" USB-C CYD whose panel wouldn't drive at all — the ESP32 ran fine, the screen stayed dark.)
 
 ## What it reports
 

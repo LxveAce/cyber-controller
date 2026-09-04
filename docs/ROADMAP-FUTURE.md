@@ -1,6 +1,6 @@
 # Cyber Controller — Future Roadmap
 
-Where the flagship goes next. Grounded in the current shipped reality (v1.8.0 stable / v2.0.0-beta: the
+Where the flagship goes next. Grounded in the current shipped reality (v2.0.0 stable: the
 reform web-SPA GUI plus Qt/Tk/TUI/Web front-ends, 5 flash backends, 14 protocol parsers, 51 profile JSONs,
 cross-comm AutoRouter, dead-man-switch submodule)
 and the planned support advertised on cybercontroller.org. **Principle that governs every line below:
@@ -25,7 +25,7 @@ Status legend: ✅ shipped · 🚧 in progress · 📋 planned · 🔬 needs har
 ## Mid term — *more support* (the CC-website roadmap)
 
 ### Flash backends & target hardware
-Today: esptool · qFlipper · ADB · SD-image · AmebaD(rtl8720). Planned, each **🔬 needs the physical
+Today: esptool · qFlipper · rayhunter (network install, Orbic) · SD-image · AmebaD(rtl8720). Planned, each **🔬 needs the physical
 device to validate** before it's marketed:
 - 📋 **`dfu-util` backend** → Pi Pico / RP2040 (UF2 bootloader also), and DFU-class targets.
 - 📋 **`UF2` (mass-storage) backend** → RP2040-family and UF2 bootloaders (drag-drop `.uf2`).

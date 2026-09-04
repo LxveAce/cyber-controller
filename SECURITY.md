@@ -18,8 +18,10 @@ is appreciated.
   re-checks the session and validates the target port against the device registry.
 - **Local by default**: binds `127.0.0.1`; LAN exposure requires the explicit `CC_WEB_ALLOW_LAN=1`
   opt-in, and TLS via `CC_WEB_CERT` / `CC_WEB_KEY` is encouraged.
-- **No default credentials**: a strong one-time password is generated and printed if `CC_WEB_PASS`
-  is unset. Credentials are verified in **constant time** against a salted scrypt hash.
+- **No default credentials**: set your own password in **Settings ▸ Remote Access** (saved
+  owner-only, scrypt-hashed) — it takes precedence and needs no environment variable. If none is set
+  and `CC_WEB_PASS` is unset, a strong one-time password is generated and printed at startup.
+  Credentials are verified in **constant time** against a salted scrypt hash.
 - **CSRF** tokens on state-changing POSTs and the socket handshake; **per-IP rate limiting** on auth
   and command/flash actions; **CORS allowlist** (never `*`); `SameSite=Strict` + `HttpOnly` cookies;
   stable file-persisted (`0600`) secret key; strict `Content-Security-Policy` and security headers;

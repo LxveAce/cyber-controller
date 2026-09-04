@@ -35,8 +35,6 @@ Built to run a multi-device cyberdeck on a 7″ touchscreen, headless over SSH, 
 
 **[v2.0.0](https://github.com/LxveAce/cyber-controller/releases/latest)** is the first stable cut of the reformed single-window GUI — the 2.0 line graduating from beta, and the release the in-app updater offers everyone on 1.8.0. On top of the reform: the **Ace Purple** palette, a **searchable, category-grouped firmware flasher**, **BFFB** (Flipper expansion) as a one-pick ESP32-C5 board, **Marauder support current to v1.15.1**, and a **Flock map that follows your live GPS** (loads a small window around you, frees areas as you move). The reform itself brought the everything-echoing terminal, a real OpenStreetMap Flock map, wardrive upload, the regrouped Operate surface, and much fuller honest per-firmware control. Backend/serial control only: CC issues firmware CLI commands and never authors radio frames.
 
-> ⚠️ **Running v1.8.0 on Windows?** The **installer (`setup`) exe is broken** — it won't launch the app. Use the **prepackaged portable `.exe`** from the release assets instead. (Fixed going into 2.0.)
-
 The full version-by-version history, down to every fix, hardening pass, and added firmware, is in the **[Changelog](CHANGELOG.md)** and the **[Releases](https://github.com/LxveAce/cyber-controller/releases)**. Where it's headed next is on the **[roadmap at cybercontroller.org](https://cybercontroller.org/#firmware)**.
 <!-- STATUS-ROADMAP:END -->
 
@@ -96,7 +94,7 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 | **PortaPack Mayhem** ⚠ *illegal-tx* | HackRF+PortaPack SDR firmware — RX recon (ADS-B, POCSAG/ACARS, TPMS, spectrum) + on-device TX apps on protected bands (authorized lab only; CC flashes firmware, authors no TX) | HackRF One / Pro / PortaRF (LPC43xx) | hackrf_spiflash |
 | **Flock-You** | Passive ALPR / Flock camera detector | ESP32-S3 | esptool |
 | **LxveOS** | Security-panel OS — passive Wi-Fi/BLE recon + defensive detectors, capture, arm-gated ops, LXVEOS/1 serial control bridge | ESP32 / S3 | esptool |
-| **RayHunter** | IMSI-catcher / cell-site detector | Orbic RC400L (LTE hotspot) | ADB |
+| **RayHunter** | IMSI-catcher / cell-site detector | Orbic RC400L (LTE hotspot) | network |
 | **Flipper Zero — Momentum** | Feature-rich Flipper custom firmware | STM32WB55 | qFlipper |
 | **Flipper Zero — Unleashed** | Unlocked Flipper custom firmware | STM32WB55 | qFlipper |
 | **Flipper Zero — RogueMaster** | Bleeding-edge Flipper custom firmware | STM32WB55 | qFlipper |
@@ -129,7 +127,7 @@ Cyber Controller drives whatever these firmwares run on. Coverage by class:
 - **Realtek RTL8720DN / BW16:** dual-band 2.4/5 GHz Wi-Fi + BLE, via the AmebaD ImageTool (`rtl8720` backend).
 - **Flipper Zero:** STM32WB55, via `qFlipper` (Momentum / Unleashed / RogueMaster).
 - **Raspberry Pi:** Pi 5, Pi Zero 2 W and friends, via verified SD-image writing (Pwnagotchi / RaspyJack / Kali).
-- **Qualcomm LTE:** Orbic RC400L hotspot for RayHunter IMSI-catcher detection (`ADB` backend).
+- **Qualcomm LTE:** Orbic RC400L hotspot for RayHunter IMSI-catcher detection (installs over the network via the official rayhunter installer; needs a deactivated SIM to capture).
 
 **Popular boards, confirmed:** Lonely Binary ESP32 Gold · Cheap Yellow Display (2.4″/2.8″/3.2″/3.5″; use the resistive `2432S028R`) · M5Stack Cardputer / Cardputer ADV / StickC Plus2 / Stick-S3 · LilyGo T-Deck / T-Deck Plus / T-Embed CC1101 / T-Dongle-S3 · Seeed XIAO ESP32-S3 · Heltec LoRa V3 (915 MHz US) · Waveshare ESP32-C5 · Marauder Mini / Mini v3 · Flipper Zero Wi-Fi Dev Board (ESP32-S2) · Ai-Thinker BW16.
 
