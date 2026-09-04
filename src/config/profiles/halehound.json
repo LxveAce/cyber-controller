@@ -1,7 +1,7 @@
 {
   "name": "HaleHound",
   "id": "halehound",
-  "description": "Multi-protocol IoT attack firmware for CYD touchscreen boards — WiFi, BLE, SubGHz (CC1101), 2.4GHz (NRF24), NFC (PN532). v3.5.5.",
+  "description": "Multi-protocol IoT firmware for CYD touchscreen boards — WiFi, BLE, SubGHz (CC1101), 2.4GHz (NRF24), NFC (PN532). Source-only: upstream ships no prebuilt .bin (build from source / the maintainer's web flasher); this profile can't cold-flash it yet.",
   "backend": "esptool",
   "protocol": "halehound",
   "boards": [

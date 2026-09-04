@@ -18,7 +18,7 @@
   "bsl_trigger": "catnip_rp2040_bridge",
   "boards": [
     {"name": "CatSniffer V3 (CC1352P7 radio)", "chip": "cc1352p7", "backend": "cc2538_bsl", "bsl_trigger": "catnip_rp2040_bridge"},
-    {"name": "CatSniffer V3 (RP2040 USB bridge)", "chip": "rp2040", "backend": "uf2", "uf2_asset": "catsniffer-v3.1.0.0.uf2"}
+    {"name": "CatSniffer V3 (RP2040 USB bridge)", "chip": "rp2040", "backend": "uf2", "uf2_asset": "catsniffer-v3.1.0.1.uf2"}
   ],
   "firmware_urls": {
     "repo": "https://github.com/ElectronicCats/CatSniffer-Firmware",
@@ -28,7 +28,7 @@
     "api_url": "https://api.github.com/repos/ElectronicCats/CatSniffer-Firmware/releases/latest",
     "asset_match": {"include_regex": "^sniffer_fw_Catsniffer_v3\\.x\\.hex$"},
     "exclude_regex": "airtag_spoofer|airtag_scanner|justworks",
-    "rp2040_bridge_asset": "catsniffer-v3.1.0.0.uf2",
+    "rp2040_bridge_asset": "catsniffer-v3.1.0.1.uf2",
     "chip_map": {"strategy": "fixed", "chip": "cc1352p7"},
     "sha256": "verify:"
   },

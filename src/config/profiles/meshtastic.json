@@ -50,8 +50,8 @@
           "m5stack-cores3", "picomputer-s3", "unphone"
         ],
         "esp32": [
-          "tbeam", "tlora-v2-1-1_6", "tlora-v2-1-1_8", "rak11200", "station-g1", "nano-g1",
-          "m5stack-coreink", "t-lora-v1"
+          "tbeam", "tlora-v2-1-1_6", "rak11200", "station-g1", "nano-g1",
+          "m5stack-coreink"
         ],
         "esp32c3": ["heltec-hru-3601", "heltec-ht62-esp32c3-sx1262"],
         "esp32c6": ["m5stack-unitc6l", "tlora-c6"],
@@ -73,8 +73,8 @@
           "seeed_xiao_nrf52840_kit", "heltec-mesh-node-t114", "wio-tracker-wm1110",
           "rak2560", "canaryone"
         ],
-        "rp2040": ["pico", "picow", "rak11310", "senselora_rp2040"],
-        "rp2350": ["pico2", "pico2w", "rp2350-lora"]
+        "rp2040": ["pico", "picow", "rak11310"],
+        "rp2350": ["pico2", "pico2w"]
       },
       "member_template": "firmware-{board}-{version}.uf2",
       "zip_name_template": "firmware-{chip}-{version}.zip",

@@ -182,6 +182,9 @@
         ["mini_v3", "esp32c5"],
         ["dual_mini_c5", "esp32c5"],
         ["esp32c5devkitc1", "esp32c5"],
+        ["pancake", "esp32c5"],
+        ["t_dongle_c5", "esp32c5"],
+        ["_v8", "esp32c5"],
         ["m5nanoc6", "esp32c6"]
       ]
     },
@@ -193,7 +196,7 @@
         "v6": "Official Marauder v6",
         "v6_1": "Official Marauder v6.1",
         "v7": "Official Marauder v7",
-        "v8": "Official Marauder v8",
+        "v8": "Official Marauder v8 (ESP32-C5)",
         "kit": "Marauder Kit (Huzzah32)",
         "mini": "Marauder Mini",
         "mini_v3": "Marauder Mini v3 (ESP32-C5)",
@@ -211,6 +214,8 @@
         "cyd_2432S024_guition": "CYD 2.4\" Guition",
         "cyd_3_5_inch": "CYD 3.5\"",
         "esp32c5devkitc1": "ESP32-C5 DevKitC-1",
+        "pancake": "Marauder Pancake (ESP32-C5)",
+        "t_dongle_c5": "LilyGo T-Dongle C5 (ESP32-C5)",
         "m5nanoc6": "M5NanoC6 (ESP32-C6)"
       }
     }

@@ -2390,39 +2390,8 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "argv": [
-            "<py>",
-            "-m",
-            "esptool",
-            "--chip",
-            "esp32c3",
-            "--port",
-            "PORTX",
-            "--baud",
-            "921600",
-            "--before",
-            "default_reset",
-            "--after",
-            "hard_reset",
-            "write_flash",
-            "-z",
-            "--flash_size",
-            "detect",
-            "0x0",
-            "<file>",
-            "0x8000",
-            "<file>",
-            "0xe000",
-            "<file>",
-            "0x10000",
-            "APP.bin"
-          ]
-        },
-        "support_offsets": [
-          "0x0",
-          "0x8000",
-          "0xe000"
-        ]
+          "support_error": "RuntimeError: No auto support-file mapping for esp32c3; use local files for a full flash."
+        }
       },
       "esp32c5": {
         "app": {
@@ -2450,39 +2419,8 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "argv": [
-            "<py>",
-            "-m",
-            "esptool",
-            "--chip",
-            "esp32c5",
-            "--port",
-            "PORTX",
-            "--baud",
-            "921600",
-            "--before",
-            "default_reset",
-            "--after",
-            "hard_reset",
-            "write_flash",
-            "-z",
-            "--flash_size",
-            "detect",
-            "0x2000",
-            "<file>",
-            "0x8000",
-            "<file>",
-            "0xe000",
-            "<file>",
-            "0x10000",
-            "APP.bin"
-          ]
-        },
-        "support_offsets": [
-          "0x2000",
-          "0x8000",
-          "0xe000"
-        ]
+          "support_error": "RuntimeError: No auto support-file mapping for esp32c5; use local files for a full flash."
+        }
       },
       "esp32c6": {
         "app": {
@@ -2510,39 +2448,8 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "argv": [
-            "<py>",
-            "-m",
-            "esptool",
-            "--chip",
-            "esp32c6",
-            "--port",
-            "PORTX",
-            "--baud",
-            "921600",
-            "--before",
-            "default_reset",
-            "--after",
-            "hard_reset",
-            "write_flash",
-            "-z",
-            "--flash_size",
-            "detect",
-            "0x0",
-            "<file>",
-            "0x8000",
-            "<file>",
-            "0xe000",
-            "<file>",
-            "0x10000",
-            "APP.bin"
-          ]
-        },
-        "support_offsets": [
-          "0x0",
-          "0x8000",
-          "0xe000"
-        ]
+          "support_error": "RuntimeError: No auto support-file mapping for esp32c6; use local files for a full flash."
+        }
       },
       "esp32s2": {
         "app": {
@@ -2570,39 +2477,8 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "argv": [
-            "<py>",
-            "-m",
-            "esptool",
-            "--chip",
-            "esp32s2",
-            "--port",
-            "PORTX",
-            "--baud",
-            "921600",
-            "--before",
-            "default_reset",
-            "--after",
-            "hard_reset",
-            "write_flash",
-            "-z",
-            "--flash_size",
-            "detect",
-            "0x1000",
-            "<file>",
-            "0x8000",
-            "<file>",
-            "0xe000",
-            "<file>",
-            "0x10000",
-            "APP.bin"
-          ]
-        },
-        "support_offsets": [
-          "0x1000",
-          "0x8000",
-          "0xe000"
-        ]
+          "support_error": "RuntimeError: No auto support-file mapping for esp32s2; use local files for a full flash."
+        }
       },
       "esp32s3": {
         "app": {
@@ -2694,39 +2570,8 @@
         },
         "app_offset": "0x10000",
         "full": {
-          "argv": [
-            "<py>",
-            "-m",
-            "esptool",
-            "--chip",
-            "esp8266",
-            "--port",
-            "PORTX",
-            "--baud",
-            "921600",
-            "--before",
-            "default_reset",
-            "--after",
-            "hard_reset",
-            "write_flash",
-            "-z",
-            "--flash_size",
-            "detect",
-            "0x1000",
-            "<file>",
-            "0x8000",
-            "<file>",
-            "0xe000",
-            "<file>",
-            "0x10000",
-            "APP.bin"
-          ]
-        },
-        "support_offsets": [
-          "0x1000",
-          "0x8000",
-          "0xe000"
-        ]
+          "support_error": "RuntimeError: No auto support-file mapping for esp8266; use local files for a full flash."
+        }
       }
     },
     "image_model": "multi-file-offsets",

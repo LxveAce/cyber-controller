@@ -1,7 +1,7 @@
 {
   "name": "ESP32-DIV",
   "id": "esp32_div",
-  "description": "WiFi/BLE/2.4GHz pen-test multi-tool (scan, sniff, analyze). Current v2 hardware is ESP32-S3. v1.7.0.",
+  "description": "WiFi/BLE/2.4GHz pen-test multi-tool (scan, sniff, analyze). Three board images: cyd + v1 are classic ESP32, v2 is ESP32-S3. v1.7.2.",
   "backend": "esptool",
   "protocol": "esp32-div",
   "boards": [
@@ -11,6 +11,20 @@
       "flash_size": "8MB",
       "flash_mode": "dio",
       "flash_freq": "80m"
+    },
+    {
+      "name": "ESP32 CYD (DIV, classic)",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "40m"
+    },
+    {
+      "name": "ESP32 (DIV v1, classic)",
+      "chip": "esp32",
+      "flash_size": "4MB",
+      "flash_mode": "dio",
+      "flash_freq": "40m"
     }
   ],
   "default_baud": 115200,
@@ -18,7 +32,7 @@
     "repo": "https://github.com/cifertech/ESP32-DIV",
     "latest": "https://github.com/cifertech/ESP32-DIV/releases/latest"
   },
-  "note": "cifertech/ESP32-DIV (matches flash_core _DIV_API). Release ships the app image only (flashed at 0x10000); boot chain pulled from the repo tree.",
+  "note": "cifertech/ESP32-DIV (matches flash_core _DIV_API). Ships 3 app .bin per release (cyd/v1/v2, flashed at 0x10000); boot chain pulled from the repo tree per chip. FIXED 2026-09-03: chip_map was 'fixed esp32s3' which force-flashed the classic-ESP32 cyd + v1 boards as S3 (brick on full-flash / chip-mismatch on app-flash) — per upstream flash_div.py, cyd + v1 are classic ESP32 (bootloader@0x1000) and only v2 is S3 (@0x0). Now a fragments chip_map (cyd/-v1-→esp32, -v2-→esp32s3), boards added so chip auto-detects, and support_dir_by_chip templates tools/esp32 vs tools/esp32s3 boot chains (both exist upstream). HW-validation pending.",
   "repo": "cifertech/ESP32-DIV",
   "core_id": "esp32-div",
   "supports_suicide": true,
@@ -27,14 +41,14 @@
   "app_offset": "0x10000",
   "flash_freq_by_chip": {"esp32": "40m", "esp32s3": "80m"},
   "variants_for_chip": "by_chip_else_all",
-  "default_variant": {"strategy": "first"},
+  "default_variant": {"strategy": "prefer_fragment", "prefer": ["-v2-"]},
   "support_files": {
     "source": "repo_tree",
     "raw_base": "https://raw.githubusercontent.com/cifertech/ESP32-DIV/{branch}",
     "branches": ["main", "master"],
-    "support_dir_by_chip": null,
-    "bootloader_path": "tools/esp32s3/ESP32-DIV.ino.bootloader.bin",
-    "partitions_path": "tools/esp32s3/ESP32-DIV.ino.partitions.bin",
+    "support_dir_by_chip": {"esp32": "tools/esp32", "esp32s3": "tools/esp32s3"},
+    "bootloader_path": "{dir}/ESP32-DIV.ino.bootloader.bin",
+    "partitions_path": "{dir}/ESP32-DIV.ino.partitions.bin",
     "boot_app0_path": "tools/esp32-div-flasher/bundled/boot_app0.bin",
     "include_boot_app0": true,
     "bootloader_offset_rule": "standard",
@@ -44,7 +58,7 @@
   "resolver_params": {
     "api_url": "https://api.github.com/repos/cifertech/ESP32-DIV/releases/latest",
     "asset_match": {"include_suffixes": [".bin"]},
-    "chip_map": {"strategy": "fixed", "chip": "esp32s3"},
+    "chip_map": {"strategy": "fragments", "source": "name", "default": "esp32s3", "rules": [["cyd", "esp32"], ["-v1-", "esp32"], ["-v2-", "esp32s3"]]},
     "emit": {
       "offset": "0x10000",
       "merged": false,
