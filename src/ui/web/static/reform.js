@@ -498,7 +498,12 @@
   }
   function ensureSocket() {
     if (socket || !window.io) return socket;
-    socket = window.io({ auth: { csrf: window.CSRF_TOKEN || "" } });
+    // Pin to long-polling. The server runs Flask-SocketIO in async_mode="threading" (Werkzeug), which does
+    // NOT reliably serve the WebSocket transport (and simple-websocket isn't bundled in the frozen build).
+    // Left on the default, the client upgrades polling -> websocket, the upgrade fails to hold, and the
+    // connection goes dead right after the handshake — so flash_progress / crack_log / serial_output events
+    // silently never arrive (a flash showed "nothing"). Polling is plenty for this event volume.
+    socket = window.io({ auth: { csrf: window.CSRF_TOKEN || "" }, transports: ["polling"], upgrade: false });
     socket.on("serial_output", function (msg) {
       if (!msg || !msg.port) return;
       (serialSinks[msg.port] || []).forEach(function (el) { appendLine(el, "rx", msg.line); });
