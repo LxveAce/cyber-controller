@@ -352,6 +352,33 @@ def test_web_connect_detects_firmware(monkeypatch):
     assert dm.get_device("COM9").firmware == "marauder"  # detection persisted on the device
 
 
+def test_remote_access_reveals_generated_password(monkeypatch):
+    # "what's the password?" — a windowed build swallows the one-time stderr print, so an authenticated
+    # operator must be able to read the generated credential in the UI to reach the server from a phone.
+    monkeypatch.delenv("CC_WEB_PASS", raising=False)  # force the generated-password path
+    c = _client(DeviceManager())
+    r = c.get("/api/remote-access")
+    assert r.status_code == 200
+    body = r.get_json()
+    assert body["generated"] is True
+    assert isinstance(body["password"], str) and len(body["password"]) >= 12
+    assert body["username"] == "admin"
+
+
+def test_remote_access_never_echoes_user_set_password(monkeypatch):
+    # A password the OWNER chose (CC_WEB_PASS) is never returned — they already know it and we don't store it.
+    monkeypatch.setenv("CC_WEB_PASS", "owner-chosen-secret")
+    c = _client(DeviceManager())
+    body = c.get("/api/remote-access").get_json()
+    assert body["generated"] is False
+    assert body["password"] is None
+
+
+def test_remote_access_requires_auth():
+    c = _client(DeviceManager(), authed=False)
+    assert c.get("/api/remote-access").status_code == 401
+
+
 def test_macro_run_offensive_refused_without_consent(tmp_path):
     # THE safety gate: a transmitting/offensive macro is refused (403) unless authorized-use is
     # confirmed; the engine ALSO hard-refuses (armed=False) — defense in depth.

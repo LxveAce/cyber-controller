@@ -68,6 +68,15 @@ class WebCredentials:
         self._username = username
         self._salt = os.urandom(16)
         self._hash = self._derive(password)
+        # The plaintext of a GENERATED one-time password, kept in RAM only so an already-authenticated
+        # operator can read it back in the UI to reach the server from a phone / another PC (a windowed
+        # build swallows the stderr print). None for a user-set CC_WEB_PASS — the owner already knows that
+        # one, and we never store or reveal a secret the user chose. Never written to disk or logs.
+        self.generated_password: str | None = None
+
+    @property
+    def username(self) -> str:
+        return self._username
 
     def _derive(self, password: str) -> bytes:
         return hashlib.scrypt(
@@ -116,7 +125,10 @@ def resolve_web_credentials(log: logging.Logger) -> tuple[WebCredentials, bool]:
         print("Set CC_WEB_USER / CC_WEB_PASS in the environment to pick your own.", file=sys.stderr)
         print(bar, file=sys.stderr)
         log.warning("CC_WEB_PASS not set — generated a one-time web remote password (shown on the console).")
-    return WebCredentials(user, pw), generated
+    result = WebCredentials(user, pw)
+    if generated:
+        result.generated_password = pw  # RAM-only, for the authenticated Remote-Access reveal in the UI
+    return result, generated
 
 
 class RateLimiter:

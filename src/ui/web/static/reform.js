@@ -898,6 +898,23 @@
         (g.locked ? " · LOCKED (" + g.remaining_secs + "s)" : "");
     }).catch(function () { gate.textContent = "gate status unavailable"; });
 
+    // Remote access — reveal the web credentials + LAN URL to this already-authenticated operator so they
+    // can open the UI from a phone / another PC. Only a generated one-time password comes back; a user-set
+    // CC_WEB_PASS is never echoed (the server returns password:null, generated:false).
+    var remote = document.getElementById("set-remote");
+    if (remote) {
+      getJSON("/api/remote-access").then(function (r) {
+        var url = (r.lan_ip && r.port) ? ("http://" + r.lan_ip + ":" + r.port + "/reform")
+                                       : "http://<this-PC's-LAN-IP>:<port>/reform";
+        var pw = r.generated ? r.password
+                             : "(you set it via CC_WEB_PASS)";
+        remote.innerHTML =
+          "URL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>" + esc(url) + "</b><br>" +
+          "user&nbsp;&nbsp;&nbsp;&nbsp;" + esc(r.username || "admin") + "<br>" +
+          "password&nbsp;" + esc(pw);
+      }).catch(function () { remote.textContent = "remote-access info unavailable"; });
+    }
+
     // Every chip is a keyboard-operable switch (WCAG 2.1.1/4.1.2); click OR Enter/Space toggles it,
     // and Save reads its state.
     ["set-updates-enabled", "set-confirm-dangerous",

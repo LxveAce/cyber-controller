@@ -24,6 +24,7 @@ import functools
 import logging
 import os
 import secrets
+import socket
 import tempfile
 import threading
 import time
@@ -1562,6 +1563,35 @@ def create_app(
             log.debug("web connect probe failed on %s", port, exc_info=True)
         _audit("device_connect", user=session.get("user"), port=port)
         return jsonify({"status": "connected", "port": port, "firmware": firmware})
+
+    @app.route("/api/remote-access")
+    @requires_auth
+    def api_remote_access():
+        # Reveal the CURRENT web credentials to an ALREADY-authenticated operator so they can open this UI
+        # from a phone / another PC on the same network. The desktop window auto-auths via a token URL and
+        # never needs this; it's for the "what's the password?" case where a windowed build swallowed the
+        # one-time stderr print. Only a GENERATED password is echoed — a user-set CC_WEB_PASS is never
+        # returned (the owner chose it and we don't store it). Auth-gated: an unauthenticated client learns
+        # nothing. Never written to disk or logs.
+        host = request.host or ""
+        port = host.rsplit(":", 1)[1] if ":" in host else ""
+        lan_ip = ""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(("10.255.255.255", 1))  # no packets sent; just picks the outbound interface
+                lan_ip = s.getsockname()[0]
+            finally:
+                s.close()
+        except OSError:
+            lan_ip = ""
+        return jsonify({
+            "username": creds.username,
+            "password": creds.generated_password,   # None when the user set CC_WEB_PASS
+            "generated": creds.generated_password is not None,
+            "lan_ip": lan_ip,
+            "port": port,
+        })
 
     @app.route("/api/disconnect", methods=["POST"])
     @requires_auth
