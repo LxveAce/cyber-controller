@@ -947,3 +947,190 @@ def full_install(on_line: Line, serial: Optional[str] = None,
             on_line("[rayhunter] install finished but dashboard not yet reachable "
                     "(device may still be rebooting)")
     return 0
+
+
+# ---------------------------------------------------------------------------
+# Network installer — the CURRENT rayhunter method (no ADB)
+# ---------------------------------------------------------------------------
+#
+# rayhunter's supported install path is now a NETWORK one: the official installer logs into the
+# Orbic's admin over its RNDIS/Wi-Fi link, enables telnet, pushes the daemon + config + init scripts,
+# and reboots. There is no ADB and no root shell left behind afterward. CC DRIVES that official
+# installer (provisioned like qFlipper) rather than reimplementing the login/telnet/push handshake, so
+# it tracks upstream and never claims an install the real tool did not perform. The legacy ADB path
+# above (install_rayhunter) is kept for the USB+ADB case but is no longer the default.
+#
+# Note (Orbic reachability): the installer talks to the admin at 192.168.1.1. If the host is also on
+# another 192.168.1.0/24 network, that address is contested and the installer reaches the wrong device
+# (a classic "scheme is not http" failure when the other .1 forces https). orbic_subnet_conflict()
+# surfaces that so the UI can warn instead of failing opaquely. A deactivated SIM must be in the Orbic
+# for the radio stack (and thus real capture) to come up; installation itself does not need one.
+
+
+def installer_tools_dir() -> str:
+    """Where CC keeps the provisioned rayhunter installer (~/.cyber-controller/tools/rayhunter)."""
+    base = os.environ.get("CC_TOOLS_DIR") or os.path.join(
+        os.path.expanduser("~"), ".cyber-controller", "tools")
+    return os.path.join(base, "rayhunter")
+
+
+def _sha256_file(path: str, chunk: int = 1 << 20) -> str:
+    import hashlib
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(chunk), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def _rm(path: str) -> None:
+    try:
+        os.remove(path)
+    except OSError:
+        pass
+
+
+def find_installer(directory: Optional[str] = None) -> Optional[str]:
+    """Locate a provisioned rayhunter installer binary, or None."""
+    directory = directory or installer_tools_dir()
+    if not os.path.isdir(directory):
+        return None
+    return _find_installer_binary(directory)
+
+
+def provision_installer(on_line: Line, directory: Optional[str] = None) -> str:
+    """Download the official rayhunter installer for THIS OS, verify its published SHA-256, extract it
+    into CC's tools dir, and return the installer path. Fail-closed: a hash mismatch or a missing
+    installer raises and installs nothing (mirrors the qFlipper provisioner)."""
+    directory = directory or installer_tools_dir()
+    os.makedirs(directory, exist_ok=True)
+    tag, assets = _github_latest("EFForg/rayhunter")
+    asset = _pick_platform_asset(assets)
+    if not asset:
+        raise RuntimeError("no rayhunter installer for this OS/arch in release " + str(tag))
+    name = asset["name"]
+    on_line("[rayhunter] " + str(tag) + ": " + name)
+    zip_path = _download_to(
+        _require_allowed_url(asset["browser_download_url"]), cache_dir(), name, on_line)
+    sidecar = next((a for a in assets if a.get("name") == name + ".sha256"), None)
+    if sidecar:
+        want = _http_get(
+            _require_allowed_url(sidecar["browser_download_url"])).decode("utf-8").split()[0].lower()
+        got = _sha256_file(zip_path)
+        if got != want:
+            raise RuntimeError("rayhunter SHA-256 mismatch (got " + got[:12] + ", expected " + want[:12] + ")")
+        on_line("[rayhunter] SHA-256 verified")
+    else:
+        on_line("[rayhunter] no .sha256 sidecar in the release - proceeding without a hash pin")
+    for entry in os.listdir(directory):
+        p = os.path.join(directory, entry)
+        if os.path.isdir(p):
+            shutil.rmtree(p, ignore_errors=True)
+        else:
+            _rm(p)
+    _extract_zip(zip_path, directory, on_line)
+    inst = _find_installer_binary(directory)
+    if not inst:
+        raise RuntimeError("installer binary not found after extract (release layout changed?)")
+    if os.name != "nt":
+        try:
+            os.chmod(inst, os.stat(inst).st_mode | 0o755)
+        except OSError:
+            pass
+    on_line("[rayhunter] installer ready: " + inst)
+    return inst
+
+
+def _default_installer_runner(argv: List[str], on_line: Line) -> int:
+    """Stream the installer's output; the argv is logged with the admin password masked."""
+    on_line("$ " + _redacted_cmdline(argv))
+    try:
+        proc = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                 stdin=subprocess.DEVNULL, text=True, bufsize=1)
+    except OSError as exc:
+        on_line("[error] could not launch the rayhunter installer: " + str(exc))
+        return 1
+    assert proc.stdout is not None
+    for line in proc.stdout:
+        on_line(line.rstrip("\r\n"))
+    return proc.wait()
+
+
+def install_orbic_network(admin_password: str, on_line: Line, *, admin_ip: str = "192.168.1.1",
+                          admin_username: str = "admin", reset_config: bool = False,
+                          allow_provision: bool = True,
+                          runner: Optional[Callable[[List[str], Line], int]] = None) -> int:
+    """Install rayhunter on the Orbic RC400L via the official NETWORK installer. Returns 0 on success.
+
+    Provisions the installer first if it is not present (allow_provision). The admin password is passed
+    to the installer but never echoed (the log line masks it). Never reports success on a no-op: a
+    missing installer or a non-zero installer exit returns failure with a clear message."""
+    run = runner or _default_installer_runner
+    inst = find_installer()
+    if not inst and allow_provision:
+        try:
+            inst = provision_installer(on_line)
+        except Exception as exc:  # noqa: BLE001 - surface the honest failure, install nothing
+            on_line("[error] could not get the rayhunter installer: " + str(exc))
+            return 1
+    if not inst:
+        on_line("[error] rayhunter installer not available - enable provisioning or install it manually")
+        return 1
+    argv = [inst, "orbic", "--admin-ip", admin_ip, "--admin-username", admin_username,
+            "--admin-password", admin_password]
+    if reset_config:
+        argv.append("--reset-config")
+    rc = run(argv, on_line)
+    if rc != 0:
+        on_line("[error] rayhunter installer exited " + str(rc) + " - not installed")
+    return rc
+
+
+def orbic_status(admin_ip: str = "192.168.1.1", timeout: float = 6.0) -> Dict:
+    """Query the rayhunter web UI on the Orbic. Returns {reachable, running, version, url, stats};
+    never raises (offline/unreachable -> reachable False). NOTE: on a host that shares the Orbic's
+    192.168.1.0/24 subnet with another network this can hit the wrong device - pair it with
+    orbic_subnet_conflict()."""
+    base = "http://" + admin_ip + ":8080"
+    out: Dict = {"reachable": False, "running": False, "version": None, "url": base, "stats": None}
+    try:
+        r = requests.get(base + "/api/system-stats", timeout=timeout)
+        out["reachable"] = True
+        if r.ok:
+            j = r.json()
+            out["running"] = True
+            out["version"] = (j.get("runtime_metadata") or {}).get("rayhunter_version")
+            out["stats"] = j
+    except Exception:  # noqa: BLE001 - unreachable is a normal state, not an error
+        pass
+    return out
+
+
+def orbic_subnet_conflict(admin_ip: str = "192.168.1.1") -> Dict:
+    """Best-effort (Windows) check for the subnet collision that breaks the network install: more than
+    one active interface on the Orbic's /24. Returns {conflict, orbic_iface, other_ifaces}; on
+    non-Windows or any error it returns conflict=False (unknown) rather than guessing."""
+    out: Dict = {"conflict": False, "orbic_iface": None, "other_ifaces": []}
+    if os.name != "nt":
+        return out
+    try:
+        prefix = ".".join(admin_ip.split(".")[:3]) + "."
+        ps = ("Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like '"
+              + prefix + "*' } | ForEach-Object { $ad = Get-NetAdapter -InterfaceIndex "
+              "$_.InterfaceIndex -ErrorAction SilentlyContinue; "
+              "\"$($_.IPAddress)|$($ad.InterfaceDescription)\" }")
+        res = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                             capture_output=True, text=True, timeout=15)
+        for ln in res.stdout.splitlines():
+            ln = ln.strip()
+            if "|" not in ln:
+                continue
+            _ip, desc = ln.split("|", 1)
+            if "remote ndis" in desc.lower() or "rndis" in desc.lower():
+                out["orbic_iface"] = desc
+            else:
+                out["other_ifaces"].append(desc)
+        out["conflict"] = bool(out["orbic_iface"]) and bool(out["other_ifaces"])
+    except Exception:  # noqa: BLE001
+        pass
+    return out

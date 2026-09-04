@@ -1745,6 +1745,69 @@
     if (f) f.addEventListener("keydown", function (e) { if (e.key === "Enter") calc(); });
   })();
 
+  // ── DEVICE ▸ Orbic / rayhunter (IMSI-catcher / cell-site-simulator detector) ──
+  function orbicLog(text, isErr) {
+    var p = document.getElementById("orbic-log");
+    if (!p) return;
+    p.style.display = "block";
+    p.textContent = text || "";
+    p.style.color = isErr ? "var(--red)" : "";
+  }
+  function renderOrbic(d) {
+    var body = document.getElementById("orbic-body");
+    var status = document.getElementById("orbic-status");
+    if (!body) return;
+    var st = d.status || {}, cf = d.conflict || {};
+    if (status) status.textContent = st.running ? ("running v" + (st.version || "?")) : (st.reachable ? "reachable" : "IMSI-catcher detector");
+    var html = "";
+    if (st.running) {
+      html += '<div class="kv mono" style="color:var(--green)">rayhunter ' + esc(st.version || "") + ' running · <a href="' + esc(st.url) + '" target="_blank" rel="noopener" style="color:var(--acc)">open dashboard</a></div>';
+    } else {
+      html += '<div class="card2">rayhunter is a headless daemon on the Orbic RC400L (detects IMSI catchers / cell-site simulators). It installs over the network and needs a <b>deactivated SIM</b> in the Orbic to actually capture. Nothing shows on the Orbic\'s own screen.</div>';
+    }
+    if (cf.conflict) {
+      html += '<div class="footnote" style="color:var(--amber);margin-top:6px">Heads up: another network (' + esc((cf.other_ifaces || []).join(", ")) + ") shares the Orbic's 192.168.1.x subnet, so this PC can't reliably reach it. Open the dashboard from a phone on the Orbic's WiFi, or disconnect that adapter.</div>";
+    }
+    html += '<div class="row" style="margin-top:8px;gap:6px;flex-wrap:wrap;align-items:center">' +
+      '<input class="field mono" id="orbic-pw" type="password" aria-label="Orbic admin password" placeholder="Orbic admin / WiFi password" style="width:200px">' +
+      '<button class="btn acc" id="orbic-install">Install rayhunter</button></div>' +
+      '<div class="footnote" style="margin-top:4px">Installer: ' + (d.installer_present ? "ready" : "downloads on first use") + ".</div>";
+    body.innerHTML = html;
+  }
+  function initOrbic() {
+    if (!document.getElementById("orbic-body")) return;
+    getJSON("/api/rayhunter").then(renderOrbic).catch(function () {
+      var b = document.getElementById("orbic-body");
+      if (b) b.textContent = "rayhunter status unavailable";
+    });
+  }
+  (function wireOrbic() {
+    var card = document.getElementById("orbic-card");
+    if (!card) return;
+    card.addEventListener("click", function (e) {
+      var btn = e.target.closest("#orbic-install");
+      if (!btn) return;
+      e.preventDefault();
+      var pwEl = document.getElementById("orbic-pw");
+      var pw = pwEl ? pwEl.value : "";
+      if (!pw) { orbicLog("Enter the Orbic's admin / WiFi password first.", true); return; }
+      if (!window.confirm("Install rayhunter on the Orbic? This modifies the hotspot (installs a daemon and reboots it).")) return;
+      btn.disabled = true;
+      btn.textContent = "Installing…";
+      orbicLog("Installing rayhunter over the network… (~1 min, the Orbic reboots at the end)");
+      postJSON("/api/rayhunter/install", { admin_password: pw }).then(function (r) {
+        orbicLog((r.log || []).join("\n") + "\n" + (r.ok ? "Install complete." : "Install failed (rc " + r.rc + ")."), !r.ok);
+        if (pwEl) pwEl.value = "";
+        initOrbic();
+      }).catch(function (err) {
+        orbicLog("Install failed: " + (typeof err === "string" ? err : JSON.stringify(err)), true);
+        btn.disabled = false;
+        btn.textContent = "Install rayhunter";
+      });
+    });
+    initOrbic();
+  })();
+
   // ── CRACK ▸ Wordlists: bundled + installed picker, on-demand catalog download, bring-your-own ─
   function initWordlists() {
     var sel = document.getElementById("wl-select");

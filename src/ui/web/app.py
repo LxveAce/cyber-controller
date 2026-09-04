@@ -804,6 +804,52 @@ def create_app(
         rc = flash_core._run_stream(argv, lambda line: log_lines.append(str(line)))
         return jsonify({"ok": rc == 0, "op": op, "rc": rc, "log": log_lines})
 
+    @app.route("/api/rayhunter")
+    @requires_auth
+    def api_rayhunter():
+        """Orbic RC400L / rayhunter status for the Cellular card: whether CC has the installer, whether
+        the daemon is reachable + running (via its :8080 API), and whether a subnet collision is in the
+        way. rayhunter is a headless daemon — nothing shows on the Orbic's own screen; capture also needs
+        a (deactivated) SIM."""
+        from src.core.backends import adb_backend
+        admin_ip = request.args.get("admin_ip", "192.168.1.1")
+        status = adb_backend.orbic_status(admin_ip)
+        conflict = adb_backend.orbic_subnet_conflict(admin_ip)
+        return jsonify({
+            "installer_present": bool(adb_backend.find_installer()),
+            "can_provision": True,
+            "admin_ip": admin_ip,
+            "status": status,
+            "conflict": conflict,
+        })
+
+    @app.route("/api/rayhunter/install", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_rayhunter_install():
+        """Install rayhunter on the Orbic RC400L via the official network installer (provisioning it
+        first if needed). Auth+CSRF gated; the admin password is used but never logged. This modifies
+        the hotspot (installs a daemon + reboots) — the caller submitting it is the authorization."""
+        from src.core.backends import adb_backend
+        data = _json_body()
+        pw = str(data.get("admin_password", ""))
+        if not pw:
+            return jsonify({"error": "admin_password is required (the Orbic's WiFi/admin password)"}), 400
+        admin_ip = str(data.get("admin_ip") or "192.168.1.1")
+        admin_user = str(data.get("admin_username") or "admin")
+        # Warn (don't block) on the subnet collision that makes the install hit the wrong 192.168.1.1.
+        conflict = adb_backend.orbic_subnet_conflict(admin_ip)
+        _audit("rayhunter_install", user=session.get("user"), admin_ip=admin_ip)  # never the password
+        log_lines: list[str] = []
+        if conflict.get("conflict"):
+            log_lines.append(
+                "[warn] another network shares the Orbic's subnet (" + ", ".join(
+                    conflict.get("other_ifaces") or [])
+                + "); if the install can't log in, disconnect it or run CC as administrator.")
+        rc = adb_backend.install_orbic_network(
+            pw, lambda ln: log_lines.append(str(ln)), admin_ip=admin_ip, admin_username=admin_user)
+        return jsonify({"ok": rc == 0, "rc": rc, "conflict": conflict, "log": log_lines})
+
     @app.route("/api/crack/enable-bundled", methods=["POST"])
     @requires_auth
     @requires_csrf

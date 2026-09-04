@@ -17,6 +17,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 - **Set the web password from the app.** Settings ▸ Remote Access has a password field — pick your own, it's
   hashed (scrypt) and saved owner-only, and it's used every time. No more `CC_WEB_PASS` environment variable.
   A saved password wins over the env var and the one-time password; Reset forgets it and reverts.
+- **Orbic RC400L / rayhunter, the modern way.** CC now installs rayhunter over the network (the official
+  installer, provisioned + SHA-256 verified like qFlipper) instead of the old ADB push, shows whether the
+  daemon is up (via its :8080 API), and warns when another network shares the Orbic's 192.168.1.x subnet and
+  would send the installer to the wrong device. A Device card handles install + status; it's honest that a
+  deactivated SIM is needed for actual capture and that rayhunter runs headless.
 
 ### Fixed
 - **Flipper flashing was broken.** The old path shelled `qFlipper --install <package>`, but the qFlipper GUI
