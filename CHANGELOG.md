@@ -7,8 +7,8 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [2.0.1] — 2026-09-04
 
-A functional-audit and independent-review patch on top of 2.0.0. No public-facing feature removals; the
-default-branch documentation cleanup and README screenshot from 2.0.0 are preserved.
+A patch release on top of 2.0.0: a batch of connection and validation fixes, plus the additions below.
+Nothing was removed.
 
 ### Added
 - **Flipper Zero: qFlipper is now provisioned and driven by CC.** The Device dashboard has a Flipper card
@@ -27,6 +27,8 @@ default-branch documentation cleanup and README screenshot from 2.0.0 are preser
   daemon is up (via its :8080 API), and warns when another network shares the Orbic's 192.168.1.x subnet and
   would send the installer to the wrong device. A Device card handles install + status; it's honest that a
   deactivated SIM is needed for actual capture and that rayhunter runs headless.
+- **README dashboard screenshot.** The README now opens with a screenshot of the app so you can see what
+  you're getting before downloading.
 
 ### Fixed
 - **First device connect no longer loses the selection.** With no devices connected, clicking a board and then

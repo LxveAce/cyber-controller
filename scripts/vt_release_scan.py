@@ -6,7 +6,8 @@ table is written between HTML markers, so re-running replaces it rather than sta
 
 Usage:  VT_API_KEY=... python scripts/vt_release_scan.py <tag> <bindir>
 The key comes from the environment (a GitHub Actions repo secret `VT_API_KEY`) — it is NEVER hard-coded here.
-If VT_API_KEY is unset the script exits 0 (a no-op) so a missing secret never fails a release.
+If VT_API_KEY is unset the script exits nonzero: "no scan ran" must never read as a green release
+validation, so a missing secret fails the run loudly instead of skipping.
 Requires: requests, and the `gh` CLI authenticated (GH_TOKEN on Actions runners).
 """
 from __future__ import annotations
@@ -84,8 +85,9 @@ def stats_for(path: str, key: str):
 def main() -> int:
     key = os.environ.get("VT_API_KEY")
     if not key:
-        print("VT_API_KEY not set — skipping VirusTotal (no-op).", file=sys.stderr)
-        return 0
+        # A missing key means NO scan ran — that must fail the validation, never pass silently.
+        print("VT_API_KEY not set — VirusTotal scan cannot run; failing.", file=sys.stderr)
+        return 1
     if len(sys.argv) != 3:
         print("usage: vt_release_scan.py <tag> <bindir>", file=sys.stderr)
         return 2
