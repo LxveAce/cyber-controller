@@ -31,6 +31,8 @@ hardware freshness are not established by this module.
 
 from __future__ import annotations
 
+import hashlib
+import html
 import json
 from typing import Any, Callable, Dict, List, Optional
 
@@ -272,3 +274,167 @@ def _safe_close(r: Any) -> None:
             r.close()
     except Exception:  # noqa: BLE001
         pass
+
+
+# --------------------------------------------------------------------------- #
+# Phase 2 — fetch + parse ONE analysis report by (validated) name, and build a redacted, escaped,
+# self-contained local export. Still read-only; the report NAME is validated as a single path segment
+# AND checked against the manifest, so no path traversal / arbitrary file reaches the device request.
+# --------------------------------------------------------------------------- #
+
+#: A report name must be a single, safe path segment: alnum / dash / underscore / dot, no ".." run.
+_REPORT_NAME_OK = frozenset("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
+
+#: Events are heuristic observations. This wording is embedded verbatim in every export.
+EXPORT_DISCLAIMER = (
+    "These are heuristic observations from Rayhunter's analyzers. They are NOT proof of an IMSI "
+    "catcher / cell-site simulator, and do NOT identify an operator. False positives are expected. "
+    "A reachable daemon is not proof of useful capture. A live snapshot is not a finalized capture."
+)
+
+
+def _valid_report_name(name: str) -> bool:
+    if not name or len(name) > 128 or ".." in name:
+        return False
+    return all(c in _REPORT_NAME_OK for c in name)
+
+
+def _name_in_manifest(name: str, manifest: Dict[str, Any]) -> bool:
+    """True only if *name* is an actual entry (or the current entry) in the manifest — so a report fetch
+    can never be pointed at an arbitrary name even if it passes the character check."""
+    entries = manifest.get("entries") if isinstance(manifest, dict) else None
+    known = set()
+    if isinstance(entries, list):
+        for e in entries:
+            if isinstance(e, dict) and isinstance(e.get("name"), str):
+                known.add(e["name"])
+    cur = manifest.get("current_entry") if isinstance(manifest, dict) else None
+    if isinstance(cur, dict) and isinstance(cur.get("name"), str):
+        known.add(cur["name"])
+    return name in known
+
+
+def _fetch_bytes(admin_ip: str, path: str, *, timeout: float, max_bytes: int,
+                 getter: Optional[Callable]) -> Optional[bytes]:
+    from src.core.backends import adb_backend
+    if not adb_backend._valid_ipv4(admin_ip) or not adb_backend._is_local_ipv4(admin_ip):
+        return None
+    get = getter or adb_backend.requests.get
+    url = "http://" + admin_ip + ":8080" + path
+    r = None
+    try:
+        r = get(url, timeout=timeout, allow_redirects=False, stream=True)
+        if getattr(r, "status_code", None) != 200:
+            return None
+        body = r.raw.read(max_bytes + 1, decode_content=True)
+        if len(body) > max_bytes:
+            # over budget: keep the bounded prefix; the parser marks coverage incomplete
+            return body[:max_bytes]
+        return body
+    except Exception:  # noqa: BLE001
+        return None
+    finally:
+        _safe_close(r)
+
+
+def fetch_report(admin_ip: str, name: str, *, manifest: Optional[Dict[str, Any]] = None,
+                 timeout: float = 8.0, max_bytes: int = DEFAULT_MAX_REPORT_BYTES,
+                 getter: Optional[Callable] = None) -> Optional[Dict[str, Any]]:
+    """Fetch + parse ONE analysis report by name. The name must be a safe single path segment AND (if a
+    manifest is given) an actual entry in it. Returns the parsed summary, or None. Never raises."""
+    if not _valid_report_name(name):
+        return None
+    if manifest is not None and not _name_in_manifest(name, manifest):
+        return None
+    raw = _fetch_bytes(admin_ip, "/api/analysis-report/" + name,
+                       timeout=timeout, max_bytes=max_bytes, getter=getter)
+    if raw is None:
+        return None
+    return parse_analysis_report(raw, max_bytes=max_bytes)
+
+
+def build_report_export(snapshot: Dict[str, Any], parsed: Dict[str, Any], *, cc_version: str,
+                        exported_at: str, selected_recording: Optional[str] = None,
+                        capture_interval: Optional[str] = None,
+                        include_detailed: bool = False) -> Dict[str, Any]:
+    """Build a self-contained, ESCAPED HTML + machine-readable JSON export from a consistent snapshot.
+
+    Redaction (default): NO precise GPS, NO IP/device identifiers, and NO raw free-text event messages
+    (which may carry identifiers) — only structural fields + summaries. ``include_detailed=True`` includes
+    the raw messages (a local, explicit opt-in). Every event is labeled heuristic (EXPORT_DISCLAIMER), a
+    partial report is never presented as complete, unknown values stay unknown, and a SHA-256 digest of
+    the JSON is included for reproducibility (a digest does not authenticate radio origin). Pure — the
+    caller stamps ``exported_at``/``cc_version`` so this stays deterministic + testable."""
+    counts = parsed.get("counts", {})
+    events_out = []
+    for ev in parsed.get("events", []):
+        row = {
+            "level": ev.get("level"),
+            "timestamp": ev.get("timestamp"),      # unknown stays None, never epoch
+            "analyzer": ev.get("analyzer"),
+        }
+        if include_detailed:
+            row["message"] = ev.get("message")
+        else:
+            row["message_redacted"] = ev.get("message") is not None
+        events_out.append(row)
+
+    meta = parsed.get("metadata") or {}
+    payload = {
+        "kind": "cyber-controller-rayhunter-export",
+        "cc_version": cc_version,
+        "rayhunter_version": snapshot.get("version"),
+        "exported_at": exported_at,
+        "selected_recording": selected_recording,
+        "capture_interval": capture_interval,
+        "transport": snapshot.get("transport"),
+        "recording": snapshot.get("recording"),
+        "report_version": meta.get("report_version") if isinstance(meta, dict) else None,
+        "analyzers": meta.get("analyzers") if isinstance(meta, dict) else None,
+        "counts": counts,
+        "coverage": parsed.get("coverage"),
+        "complete": parsed.get("complete"),
+        "malformed_lines": parsed.get("malformed_lines"),
+        "oversized_lines": parsed.get("oversized_lines"),
+        "detailed_evidence_included": bool(include_detailed),
+        "disclaimer": EXPORT_DISCLAIMER,
+        "events": events_out,
+    }
+    digest = hashlib.sha256(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    payload["digest_sha256"] = digest
+    return {"json": payload, "digest": digest, "html": _render_export_html(payload)}
+
+
+def _render_export_html(p: Dict[str, Any]) -> str:
+    """Render the export payload to a self-contained HTML doc, ESCAPING every dynamic field (device text
+    is untrusted). No external assets, no scripts."""
+    def e(v: Any) -> str:
+        return html.escape("" if v is None else str(v))
+
+    c = p.get("counts", {}) or {}
+    by = c.get("by_level", {}) or {}
+    rows = []
+    for ev in p.get("events", []):
+        msg = ev.get("message") if "message" in ev else ("(redacted)" if ev.get("message_redacted") else "")
+        rows.append(
+            "<tr><td>" + e(ev.get("level")) + "</td><td>" + e(ev.get("timestamp"))
+            + "</td><td>" + e(ev.get("analyzer")) + "</td><td>" + e(msg) + "</td></tr>")
+    complete_note = "" if p.get("complete") else (
+        "<p class='warn'>Incomplete coverage (" + e(p.get("coverage")) + ") — partial totals, not a full report.</p>")
+    return (
+        "<!doctype html><meta charset='utf-8'><title>Rayhunter report — " + e(p.get("exported_at"))
+        + "</title><style>body{font:14px system-ui;margin:2rem;max-width:60rem}"
+        "table{border-collapse:collapse;width:100%}td,th{border:1px solid #ccc;padding:4px 8px;text-align:left}"
+        ".warn{color:#a00}.muted{color:#666}</style>"
+        "<h1>Rayhunter analysis report</h1>"
+        "<p class='muted'>CC " + e(p.get("cc_version")) + " · Rayhunter " + e(p.get("rayhunter_version"))
+        + " · exported " + e(p.get("exported_at")) + " · recording " + e(p.get("selected_recording")) + "</p>"
+        "<p><b>Warnings:</b> " + e(c.get("warnings")) + " (High " + e(by.get("High")) + ", Medium "
+        + e(by.get("Medium")) + ", Low " + e(by.get("Low")) + ") · <b>Informational:</b> "
+        + e(c.get("informational")) + " · <b>Skipped:</b> " + e(c.get("skipped")) + "</p>"
+        + complete_note
+        + "<p class='muted'>" + e(p.get("disclaimer")) + "</p>"
+        + "<table><thead><tr><th>Level</th><th>Time</th><th>Analyzer</th><th>Message</th></tr></thead><tbody>"
+        + "".join(rows) + "</tbody></table>"
+        + "<p class='muted'>digest sha256: " + e(p.get("digest_sha256")) + "</p>")

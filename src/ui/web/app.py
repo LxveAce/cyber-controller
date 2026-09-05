@@ -871,6 +871,57 @@ def create_app(
         analysis = rayhunter_monitor.fetch_json(admin_ip, "/api/analysis")
         return jsonify(rayhunter_monitor.build_snapshot(stats, manifest, analysis))
 
+    def _rayhunter_report(admin_ip, name):
+        """Shared: validate address, fetch the manifest, fetch+parse the named report. Returns
+        (parsed, manifest, error_response_or_None)."""
+        from src.core import rayhunter_monitor
+        from src.core.backends import adb_backend
+        if not adb_backend._valid_ipv4(admin_ip):
+            return None, None, (jsonify({"error": "admin_ip must be an IPv4 address"}), 400)
+        if not name or not rayhunter_monitor._valid_report_name(name):
+            return None, None, (jsonify({"error": "invalid report name"}), 400)
+        manifest = rayhunter_monitor.fetch_json(admin_ip, "/api/qmdl-manifest")
+        parsed = rayhunter_monitor.fetch_report(admin_ip, name, manifest=manifest)
+        if parsed is None:
+            return None, manifest, (jsonify({"error": "report unavailable (unreachable, unknown name, "
+                                             "or over budget)"}), 502)
+        return parsed, manifest, None
+
+    @app.route("/api/rayhunter/report")
+    @requires_auth
+    def api_rayhunter_report():
+        """Read-only: fetch + parse ONE analysis report by name (validated against the manifest). Returns
+        the bounded summary + events; warning counts come from the parsed rows, honestly labeled."""
+        parsed, _manifest, err = _rayhunter_report(
+            request.args.get("admin_ip", "192.168.1.1"), request.args.get("name", ""))
+        if err:
+            return err
+        return jsonify(parsed)
+
+    @app.route("/api/rayhunter/export")
+    @requires_auth
+    def api_rayhunter_export():
+        """Build a redacted, escaped, self-contained local report export (HTML + JSON + digest) from a
+        consistent snapshot. Raw event messages are excluded unless ``detailed=1``."""
+        from datetime import datetime, timezone
+
+        from src.core import rayhunter_monitor
+        from src.version import __version__
+        admin_ip = request.args.get("admin_ip", "192.168.1.1")
+        name = request.args.get("name", "")
+        detailed = request.args.get("detailed", "").lower() in ("1", "true", "yes")
+        parsed, _manifest, err = _rayhunter_report(admin_ip, name)
+        if err:
+            return err
+        stats = rayhunter_monitor.fetch_json(admin_ip, "/api/system-stats")
+        snapshot = rayhunter_monitor.build_snapshot(stats, _manifest, None)
+        exported_at = datetime.now(timezone.utc).isoformat()
+        export = rayhunter_monitor.build_report_export(
+            snapshot, parsed, cc_version=__version__, exported_at=exported_at,
+            selected_recording=name, include_detailed=detailed)
+        _audit("rayhunter_export", user=session.get("user"), detailed=detailed)
+        return jsonify(export)
+
     @app.route("/api/crack/enable-bundled", methods=["POST"])
     @requires_auth
     @requires_csrf

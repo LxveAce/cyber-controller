@@ -214,3 +214,90 @@ def test_snapshot_endpoint(monkeypatch, tmp_path):
     assert r.status_code == 200
     j = r.get_json()
     assert j["transport"] == "ok" and j["version"] == "0.12.0" and j["recording"] == "recording"
+
+
+# -- Phase 2: report name validation, fetch, redacted/escaped export --
+
+def test_valid_report_name():
+    assert rm._valid_report_name("rec-2026_08_03.qmdl")
+    for bad in ("", "..", "a/b", "../secret", "a\x00b", "rec;rm", "x" * 200, "a b"):
+        assert not rm._valid_report_name(bad), bad
+
+
+def test_name_in_manifest():
+    manifest = {"entries": [{"name": "rec-1"}, {"name": "rec-2"}], "current_entry": {"name": "rec-3"}}
+    assert rm._name_in_manifest("rec-1", manifest)
+    assert rm._name_in_manifest("rec-3", manifest)   # current entry counts
+    assert not rm._name_in_manifest("rec-9", manifest)
+
+
+def test_fetch_report_rejects_bad_name_before_request():
+    def getter(*a, **k):
+        raise AssertionError("must not request for an invalid/unknown report name")
+
+    assert rm.fetch_report("192.168.1.1", "../etc/passwd", getter=getter) is None
+    manifest = {"entries": [{"name": "known"}]}
+    assert rm.fetch_report("192.168.1.1", "unknown", manifest=manifest, getter=getter) is None
+
+
+def test_fetch_report_happy_path():
+    ndjson = (json.dumps(META) + "\n" +
+              json.dumps({"events": [{"event_type": "High", "message": "x"}]})).encode("utf-8")
+
+    def getter(url, **kw):
+        assert url.endswith("/api/analysis-report/known")
+        return _Resp(200, ndjson)
+
+    out = rm.fetch_report("192.168.1.1", "known", manifest={"entries": [{"name": "known"}]}, getter=getter)
+    assert out is not None and out["counts"]["warnings"] == 1
+
+
+def _sample_parsed(msg="secret-imsi-12345"):
+    data = _ndjson(META, {"timestamp": 5, "analyzers": ["imsi"],
+                          "events": [{"event_type": "High", "message": msg}]})
+    return rm.parse_analysis_report(data)
+
+
+def test_export_redacts_messages_by_default():
+    parsed = _sample_parsed("secret-imsi-12345")
+    snap = rm.build_snapshot({"runtime_metadata": {"rayhunter_version": "0.12.0"}}, None, None)
+    exp = rm.build_report_export(snap, parsed, cc_version="2.0.0", exported_at="2026-09-04T00:00:00Z")
+    ev = exp["json"]["events"][0]
+    assert "message" not in ev and ev["message_redacted"] is True    # raw message NOT exported
+    assert "secret-imsi-12345" not in exp["json"]["disclaimer"]
+    assert "secret-imsi-12345" not in exp["html"]                    # and not in the HTML
+    assert exp["json"]["detailed_evidence_included"] is False
+
+
+def test_export_detailed_includes_message():
+    parsed = _sample_parsed("evidence-string")
+    snap = rm.build_snapshot({"runtime_metadata": {}}, None, None)
+    exp = rm.build_report_export(snap, parsed, cc_version="2.0.0", exported_at="t", include_detailed=True)
+    assert exp["json"]["events"][0]["message"] == "evidence-string"
+    assert exp["json"]["detailed_evidence_included"] is True
+
+
+def test_export_escapes_hostile_html():
+    parsed = _sample_parsed("<img src=x onerror=alert(1)>")
+    snap = rm.build_snapshot({"runtime_metadata": {}}, None, None)
+    exp = rm.build_report_export(snap, parsed, cc_version="2.0.0", exported_at="t", include_detailed=True)
+    assert "<img src=x" not in exp["html"]           # the raw tag must be escaped
+    assert "&lt;img" in exp["html"]
+
+
+def test_export_digest_reproducible_and_disclaimer_present():
+    parsed = _sample_parsed()
+    snap = rm.build_snapshot({"runtime_metadata": {}}, None, None)
+    a1 = rm.build_report_export(snap, parsed, cc_version="2.0.0", exported_at="fixed")
+    a2 = rm.build_report_export(snap, parsed, cc_version="2.0.0", exported_at="fixed")
+    assert a1["digest"] == a2["digest"] and len(a1["digest"]) == 64
+    assert "NOT proof of an IMSI catcher" in a1["json"]["disclaimer"]
+
+
+def test_export_flags_incomplete_coverage():
+    parsed = rm.parse_analysis_report(
+        _ndjson(META, *[{"events": [{"event_type": "Low"}]} for _ in range(10)]), max_events=3)
+    snap = rm.build_snapshot({"runtime_metadata": {}}, None, None)
+    exp = rm.build_report_export(snap, parsed, cc_version="2.0.0", exported_at="t")
+    assert exp["json"]["complete"] is False
+    assert "Incomplete coverage" in exp["html"]

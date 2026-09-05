@@ -1796,9 +1796,40 @@
           var rec = d.recording === "recording" ? ("recording (" + esc(d.recording_name || "?") + ")")
             : (d.recording === "stopped" ? "not recording" : "recording state unknown");
           var batt = d.battery && d.battery.level != null ? (" · battery " + esc(String(d.battery.level))) : "";
-          out.innerHTML = "transport " + esc(d.transport) + " · " + rec + batt +
-            '<br><span style="color:var(--dim)">Read-only. A reachable daemon isn\'t proof of capture — needs a SIM + live traffic. Warning analysis is coming.</span>';
+          var actions = d.recording_name ?
+            (' · <button class="btn sm" data-orbic="report" data-name="' + esc(d.recording_name) + '">Report</button>' +
+             ' <button class="btn sm" data-orbic="export" data-name="' + esc(d.recording_name) + '">Export HTML</button>') : "";
+          out.innerHTML = "transport " + esc(d.transport) + " · " + rec + batt + actions +
+            '<br><span style="color:var(--dim)">Read-only. A reachable daemon isn\'t proof of capture — needs a SIM + live traffic. Events are heuristic, not proof of an IMSI catcher.</span>' +
+            '<div id="orbic-report"></div>';
         }).catch(function () { if (out) out.textContent = "live status unavailable"; });
+        return;
+      }
+      var rep = e.target.closest('[data-orbic="report"]');
+      if (rep) {
+        e.preventDefault();
+        var rout = document.getElementById("orbic-report");
+        if (rout) rout.textContent = "loading report…";
+        getJSON("/api/rayhunter/report?name=" + encodeURIComponent(rep.getAttribute("data-name"))).then(function (r) {
+          if (!rout) return;
+          var c = r.counts || {}, by = c.by_level || {};
+          var cov = r.complete ? "" : (' · <span style="color:var(--amber)">incomplete (' + esc(r.coverage) + ')</span>');
+          rout.innerHTML = 'warnings ' + esc(String(c.warnings)) + ' (H ' + esc(String(by.High)) + '/M ' +
+            esc(String(by.Medium)) + '/L ' + esc(String(by.Low)) + ') · info ' + esc(String(c.informational)) +
+            ' · skipped ' + esc(String(c.skipped)) + cov;
+        }).catch(function () { if (rout) rout.textContent = "report unavailable"; });
+        return;
+      }
+      var exp = e.target.closest('[data-orbic="export"]');
+      if (exp) {
+        e.preventDefault();
+        getJSON("/api/rayhunter/export?name=" + encodeURIComponent(exp.getAttribute("data-name"))).then(function (x) {
+          if (!x.html) return;
+          // The export HTML is fully escaped server-side; render it via a Blob URL (no document.write).
+          var url = URL.createObjectURL(new Blob([x.html], { type: "text/html" }));
+          window.open(url, "_blank");
+          setTimeout(function () { URL.revokeObjectURL(url); }, 30000);
+        }).catch(function () { });
         return;
       }
       var btn = e.target.closest("#orbic-install");
