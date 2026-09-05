@@ -96,7 +96,7 @@
     "zstack_coordinator"
   ],
   "backend_count": 5,
-  "interface_count": 4,
+  "interface_count": 2,
   "tagline": "Flash. Control. Coordinate.",
   "products": {
     "universal_flasher": "1.4.0",
