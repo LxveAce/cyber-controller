@@ -1,0 +1,216 @@
+"""Rayhunter monitor Phase 1 — bounded NDJSON analysis-report parser + read-only snapshot.
+
+Covers the plan's acceptance cases with deterministic fixtures (no hardware): counts by level, malformed
+/ oversized / split lines, byte + event budgets, unknown severity, missing timestamp, and the address /
+path / redirect / size guards on the fetcher."""
+
+from __future__ import annotations
+
+import json
+
+from src.core import rayhunter_monitor as rm
+
+
+def _ndjson(*objs) -> bytes:
+    return ("\n".join(json.dumps(o) for o in objs)).encode("utf-8")
+
+
+META = {"report_version": 2, "analyzers": [{"name": "imsi", "version": "1"}],
+        "rayhunter": {"version": "0.12.0"}}
+
+
+def test_counts_by_level_and_warnings():
+    data = _ndjson(
+        META,
+        {"timestamp": 1, "analyzers": ["imsi"], "events": [{"event_type": "High", "message": "x"}]},
+        {"timestamp": 2, "analyzers": ["imsi"], "events": [{"event_type": "Low", "message": "y"}]},
+        {"timestamp": 3, "analyzers": ["imsi"], "events": [{"event_type": "Informational", "message": "i"}]},
+        {"skipped_message_reasons": ["unsupported"]},
+    )
+    out = rm.parse_analysis_report(data)
+    assert out["metadata"]["report_version"] == 2
+    c = out["counts"]
+    assert c["by_level"]["High"] == 1 and c["by_level"]["Low"] == 1
+    assert c["warnings"] == 2                    # Low + Medium + High
+    assert c["informational"] == 1              # NOT counted as a warning
+    assert c["skipped"] == 1
+    assert out["complete"] is True and out["coverage"] == rm.ReportCoverage.COMPLETE
+
+
+def test_malformed_and_split_lines_do_not_crash():
+    data = b"not json at all\n" + json.dumps(META).encode() + b"\n" + b'{"broken": \n' + \
+        json.dumps({"events": [{"event_type": "Medium"}]}).encode() + b"\n\n"
+    out = rm.parse_analysis_report(data)
+    assert out["malformed_lines"] >= 2          # the junk line + the broken-json line
+    assert out["counts"]["by_level"]["Medium"] == 1
+    assert out["complete"] is True              # malformed != incomplete coverage
+
+
+def test_invalid_utf8_line_is_flagged_not_raised():
+    data = json.dumps(META).encode() + b"\n\xff\xfe\x00\n"
+    out = rm.parse_analysis_report(data)
+    assert out["malformed_lines"] == 1
+
+
+def test_oversized_line_is_skipped():
+    big = {"events": [{"event_type": "High", "message": "z" * 5000}]}
+    data = _ndjson(META, big)
+    out = rm.parse_analysis_report(data, max_line_bytes=1000)  # META fits, the 5 KB row doesn't
+    assert out["oversized_lines"] == 1
+    assert out["metadata"] is not None          # metadata still parsed
+    assert out["counts"]["warnings"] == 0       # the oversized row contributed nothing
+
+
+def test_byte_budget_marks_incomplete():
+    rows = [{"timestamp": i, "events": [{"event_type": "Low"}]} for i in range(50)]
+    data = _ndjson(META, *rows)
+    out = rm.parse_analysis_report(data, max_bytes=120)
+    assert out["complete"] is False
+    assert out["coverage"] == rm.ReportCoverage.TRUNCATED_BYTES
+
+
+def test_event_budget_marks_incomplete():
+    rows = [{"timestamp": i, "events": [{"event_type": "Low"}]} for i in range(20)]
+    data = _ndjson(META, *rows)
+    out = rm.parse_analysis_report(data, max_events=5)
+    assert out["complete"] is False
+    assert out["coverage"] == rm.ReportCoverage.TRUNCATED_EVENTS
+    assert out["counts"]["events"] == 5
+
+
+def test_unknown_severity_preserved_not_miscounted():
+    data = _ndjson(META, {"events": [{"event_type": "Critical", "message": "?"}]})
+    out = rm.parse_analysis_report(data)
+    # An unknown level is not folded into a known bucket; it stays as an event for a compatibility notice.
+    assert all(v == 0 for v in out["counts"]["by_level"].values())
+    assert out["counts"]["events"] == 1
+    assert out["events"][0]["level"] == "Critical"
+
+
+def test_missing_timestamp_stays_unknown():
+    data = _ndjson(META, {"events": [{"event_type": "Low"}]})  # no timestamp
+    out = rm.parse_analysis_report(data)
+    assert out["events"][0]["timestamp"] is None   # never coerced to the Unix epoch
+
+
+# -- snapshot ---------------------------------------------------------
+
+def test_build_snapshot_none_inputs_are_unknown_not_healthy():
+    snap = rm.build_snapshot(None, None, None)
+    assert snap["transport"] == "unreachable"
+    assert snap["recording"] == "unknown"
+    assert snap["version"] is None
+    assert "does not prove useful capture" in snap["note"]
+
+
+def test_build_snapshot_recording_and_reanalysis():
+    stats = {"runtime_metadata": {"rayhunter_version": "0.12.0"}, "battery_status": {"level": 100}}
+    manifest = {"current_entry": {"name": "rec-1"}, "entries": []}
+    analysis = {"running": "rec-1", "queued": [], "finished": []}
+    snap = rm.build_snapshot(stats, manifest, analysis)
+    assert snap["transport"] == "ok" and snap["version"] == "0.12.0"
+    assert snap["recording"] == "recording" and snap["recording_name"] == "rec-1"
+    assert snap["reanalysis_running"] == "rec-1"
+
+
+def test_build_snapshot_stopped_recording():
+    snap = rm.build_snapshot({"runtime_metadata": {}}, {"current_entry": None, "entries": []}, {"running": None})
+    assert snap["recording"] == "stopped"
+
+
+# -- fetch_json guards ------------------------------------------------
+
+class _Raw:
+    def __init__(self, data):
+        self._data = data
+
+    def read(self, n, decode_content=True):
+        return self._data[:n]
+
+
+class _Resp:
+    def __init__(self, status_code, body=b"{}"):
+        self.status_code = status_code
+        self.raw = _Raw(body)
+
+    def close(self):
+        pass
+
+
+def test_fetch_json_rejects_non_local_or_malformed_ip():
+    called = {"n": 0}
+
+    def getter(*a, **k):
+        called["n"] += 1
+        return _Resp(200)
+
+    for bad in ("8.8.8.8", "evil.example.com", "010.0.0.1", "192.168.1.1'"):
+        assert rm.fetch_json(bad, "/api/system-stats", getter=getter) is None
+    assert called["n"] == 0   # never even issued a request for a bad address
+
+
+def test_fetch_json_rejects_unknown_path():
+    def getter(*a, **k):
+        raise AssertionError("must not request a non-allowlisted path")
+
+    assert rm.fetch_json("192.168.1.1", "/api/../secret", getter=getter) is None
+    assert rm.fetch_json("192.168.1.1", "/api/system-stats/../analysis", getter=getter) is None
+
+
+def test_fetch_json_no_redirect_and_200_only():
+    seen = {}
+
+    def getter(url, **kw):
+        seen["allow_redirects"] = kw.get("allow_redirects")
+        return _Resp(302)
+
+    assert rm.fetch_json("192.168.1.1", "/api/system-stats", getter=getter) is None
+    assert seen["allow_redirects"] is False
+
+
+def test_fetch_json_happy_path():
+    payload = {"runtime_metadata": {"rayhunter_version": "0.12.0"}}
+
+    def getter(url, **kw):
+        return _Resp(200, json.dumps(payload).encode("utf-8"))
+
+    got = rm.fetch_json("192.168.1.1", "/api/system-stats", getter=getter)
+    assert got == payload
+
+
+def test_fetch_json_size_bounded():
+    def getter(url, **kw):
+        return _Resp(200, b"x" * 5000)
+
+    assert rm.fetch_json("192.168.1.1", "/api/system-stats", getter=getter, max_bytes=100) is None
+
+
+def test_snapshot_endpoint(monkeypatch, tmp_path):
+    monkeypatch.setenv("CC_GATE_CONFIG", str(tmp_path / "gate.json"))
+    monkeypatch.setenv("CC_WEB_USER", "admin")
+    monkeypatch.setenv("CC_WEB_PASS", "test-pass-123")
+    from src.ui.web.app import create_app
+    from src.core.cross_comm import EventBus, TargetPool
+    from src.core.device_manager import DeviceManager
+    from src.core.flash_engine import FlashEngine
+    from src.security.web_auth import new_csrf_token
+
+    # stub the device reads so no real network is touched
+    def fake_fetch(admin_ip, path, **kw):
+        return {"runtime_metadata": {"rayhunter_version": "0.12.0"}} if path == "/api/system-stats" else \
+               ({"current_entry": {"name": "rec-1"}} if path == "/api/qmdl-manifest" else {"running": None})
+    monkeypatch.setattr(rm, "fetch_json", fake_fetch)
+
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool())
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["csrf"] = new_csrf_token()
+        csrf = sess["csrf"]
+    # malformed IP rejected at the boundary
+    assert client.get("/api/rayhunter/snapshot?admin_ip=010.0.0.1",
+                      headers={"X-CSRF-Token": csrf}).status_code == 400
+    r = client.get("/api/rayhunter/snapshot?admin_ip=192.168.1.1", headers={"X-CSRF-Token": csrf})
+    assert r.status_code == 200
+    j = r.get_json()
+    assert j["transport"] == "ok" and j["version"] == "0.12.0" and j["recording"] == "recording"

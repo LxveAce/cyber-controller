@@ -1761,7 +1761,8 @@
     if (status) status.textContent = st.running ? ("running v" + (st.version || "?")) : (st.reachable ? "reachable" : "IMSI-catcher detector");
     var html = "";
     if (st.running) {
-      html += '<div class="kv mono" style="color:var(--green)">rayhunter ' + esc(st.version || "") + ' running · <a href="' + esc(st.url) + '" target="_blank" rel="noopener" style="color:var(--acc)">open dashboard</a></div>';
+      html += '<div class="kv mono" style="color:var(--green)">rayhunter ' + esc(st.version || "") + ' running · <a href="' + esc(st.url) + '" target="_blank" rel="noopener" style="color:var(--acc)">open dashboard</a> · <button class="btn sm" data-orbic="snapshot">Live view</button></div>';
+      html += '<div id="orbic-snapshot" class="footnote" style="margin-top:4px"></div>';
     } else {
       html += '<div class="card2">rayhunter is a headless daemon on the Orbic RC400L (detects IMSI catchers / cell-site simulators). It installs over the network and needs a <b>deactivated SIM</b> in the Orbic to actually capture. Nothing shows on the Orbic\'s own screen.</div>';
     }
@@ -1785,6 +1786,21 @@
     var card = document.getElementById("orbic-card");
     if (!card) return;
     card.addEventListener("click", function (e) {
+      var snap = e.target.closest('[data-orbic="snapshot"]');
+      if (snap) {
+        e.preventDefault();
+        var out = document.getElementById("orbic-snapshot");
+        if (out) out.textContent = "reading live status…";
+        getJSON("/api/rayhunter/snapshot").then(function (d) {
+          if (!out) return;
+          var rec = d.recording === "recording" ? ("recording (" + esc(d.recording_name || "?") + ")")
+            : (d.recording === "stopped" ? "not recording" : "recording state unknown");
+          var batt = d.battery && d.battery.level != null ? (" · battery " + esc(String(d.battery.level))) : "";
+          out.innerHTML = "transport " + esc(d.transport) + " · " + rec + batt +
+            '<br><span style="color:var(--dim)">Read-only. A reachable daemon isn\'t proof of capture — needs a SIM + live traffic. Warning analysis is coming.</span>';
+        }).catch(function () { if (out) out.textContent = "live status unavailable"; });
+        return;
+      }
       var btn = e.target.closest("#orbic-install");
       if (!btn) return;
       e.preventDefault();

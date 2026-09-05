@@ -854,6 +854,23 @@ def create_app(
             pw, lambda ln: log_lines.append(str(ln)), admin_ip=admin_ip, admin_username=admin_user)
         return jsonify({"ok": rc == 0, "rc": rc, "conflict": conflict, "log": log_lines})
 
+    @app.route("/api/rayhunter/snapshot")
+    @requires_auth
+    def api_rayhunter_snapshot():
+        """Read-only Rayhunter live snapshot (Phase 1): the three honest indicators — transport, recording
+        state, version/storage/battery — read from a running daemon at a validated local address. Never
+        an arbitrary URL; no redirects; bounded reads. A reachable daemon is NOT a 'safe' verdict, and
+        warning counts (Phase 2) come from a parsed report, not from this."""
+        from src.core import rayhunter_monitor
+        admin_ip = request.args.get("admin_ip", "192.168.1.1")
+        from src.core.backends import adb_backend
+        if not adb_backend._valid_ipv4(admin_ip):
+            return jsonify({"error": "admin_ip must be an IPv4 address"}), 400
+        stats = rayhunter_monitor.fetch_json(admin_ip, "/api/system-stats")
+        manifest = rayhunter_monitor.fetch_json(admin_ip, "/api/qmdl-manifest")
+        analysis = rayhunter_monitor.fetch_json(admin_ip, "/api/analysis")
+        return jsonify(rayhunter_monitor.build_snapshot(stats, manifest, analysis))
+
     @app.route("/api/crack/enable-bundled", methods=["POST"])
     @requires_auth
     @requires_csrf
