@@ -1198,8 +1198,18 @@ class FlashTab(QWidget):
             return
         self._log(f"Backing up flash from {port} to {path}...")
         self._btn_backup.setEnabled(False)
+        # Honor the configured Flash Baud (Settings ▸ Flash ▸ flash.flash_baud) for the backup read too,
+        # instead of a hardcoded 921600 — a user who lowered the baud for a marginal CH340K / long cable
+        # gets a reliable read as well as a reliable write. Unset/unparseable falls back to the default.
+        backup_baud = 921600
+        try:
+            cfg_baud = load_settings().get("flash", {}).get("flash_baud")
+            if cfg_baud:
+                backup_baud = int(cfg_baud)
+        except Exception:  # noqa: BLE001 — a settings read/parse must never block a backup
+            backup_baud = 921600
         self._run_op(
-            lambda cb: self._fe.backup(port, path, progress_callback=cb),
+            lambda cb: self._fe.backup(port, path, progress_callback=cb, baud=backup_baud),
             "Backup complete.", "Backup failed.", (self._btn_backup,),
         )
 

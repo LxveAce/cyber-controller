@@ -88,3 +88,42 @@ def test_flash_applies_saved_flash_baud_to_profile(monkeypatch, tmp_path):
     # the flash runs in a thread; wait briefly for it to record the effective baud
     assert done.wait(3.0), f"flash never ran (status {resp.status_code})"
     assert seen["baud"] == 115200   # the saved flash baud overrode the profile's 921600 default
+
+
+def test_auto_flash_baud_leaves_the_profile_baud_alone(monkeypatch, tmp_path):
+    # F03 precedence: flash_baud None == "Auto" — the firmware profile's own baud must be used, NOT silently
+    # overridden. A profile that pins a lower baud for reliability would break if the global default won.
+    monkeypatch.setattr(app_settings, "load_settings",
+                        lambda: {"serial": {"default_baud": 115200}, "flash": {"flash_baud": None}})
+
+    class _Profile:
+        def __init__(self):
+            self.baud = 460800   # a profile that pins a specific baud
+            self.variant = ""
+
+    prof = _Profile()
+    seen = {}
+    done = threading.Event()
+    engine = FlashEngine()
+    monkeypatch.setattr(engine, "load_profile", lambda path: prof)
+    monkeypatch.setattr(engine, "is_port_busy", lambda port: False)
+
+    def fake_flash(port, profile, progress_callback=None, **kw):
+        seen["baud"] = profile.baud
+        done.set()
+        return True
+
+    monkeypatch.setattr(engine, "flash", fake_flash)
+
+    dm = DeviceManager()
+    monkeypatch.setattr(dm, "get_device", lambda p: Device(port=p, connected=True))
+    monkeypatch.setattr(dm, "scan_ports", lambda: [Device(port="COM9", connected=True)])
+    monkeypatch.setattr(dm, "close_connection", lambda *a, **k: None)
+
+    client = _client(monkeypatch, tmp_path, dm, engine)
+    with client.session_transaction() as s:
+        csrf = s["csrf"]
+    resp = client.post("/api/flash", json={"port": "COM9", "profile_id": "ESP32 Marauder"},
+                       headers={"X-CSRF-Token": csrf})
+    assert done.wait(3.0), f"flash never ran (status {resp.status_code})"
+    assert seen["baud"] == 460800   # Auto (None) left the profile's own baud untouched

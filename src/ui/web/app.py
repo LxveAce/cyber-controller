@@ -1018,6 +1018,32 @@ def create_app(
         _audit("wordlist_byo", user=session.get("user"))
         return jsonify({"ok": True, "path": resolved})
 
+    @app.route("/api/wordlists/byo/validate", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_wordlists_byo_validate():
+        """Re-check that previously-added bring-your-own wordlists still exist and are readable, through the
+        same validation boundary as registration. The client tracks BYO paths in memory, so a file deleted
+        on disk afterwards would otherwise keep showing as selectable — this lets the picker drop the ones
+        that no longer validate and warn instead of silently cracking against a gone file. Read-only:
+        validates paths, echoes back the valid ones, never returns file bytes, and writes no audit entry."""
+        from src.core import wordlist_manager as wl
+        data = _json_body()
+        paths = data.get("paths")
+        if not isinstance(paths, list):
+            return jsonify({"error": "paths must be a list"}), 400
+        valid = []
+        for raw in paths[:64]:   # bound the work; a real BYO set is a handful
+            candidate = str(raw).strip()
+            if not candidate:
+                continue
+            try:
+                resolved = wl.register_byo(candidate)
+            except Exception:  # noqa: BLE001 — an invalid/missing path is simply dropped from the result
+                continue
+            valid.append({"requested": candidate, "path": resolved})
+        return jsonify({"valid": valid})
+
     @app.route("/api/captures")
     @requires_auth
     def api_captures():
@@ -1371,8 +1397,29 @@ def create_app(
             if v is not None:
                 s[section][key] = bool(v)
 
+        def _apply_flash_baud() -> None:
+            # flash_baud is tri-state: absent (leave stored), explicit Auto (null / "auto"  -> None, use
+            # the firmware's own baud), or a concrete allowed baud (an operator override). A bad number
+            # 400s like any other field. This is why it can't use _apply_int, which treats null as absent.
+            flash = _sec("flash")
+            if "flash_baud" not in flash:
+                return
+            v = flash["flash_baud"]
+            if v is None or v == "auto" or v == "":
+                s["flash"]["flash_baud"] = None
+                return
+            try:
+                iv = int(v)
+            except (TypeError, ValueError):
+                errors.append("flash.flash_baud")
+                return
+            if iv not in _SETTINGS_BAUDS:
+                errors.append("flash.flash_baud")
+                return
+            s["flash"]["flash_baud"] = iv
+
         _apply_int("serial", "default_baud", _SETTINGS_BAUDS)
-        _apply_int("flash", "flash_baud", _SETTINGS_BAUDS)
+        _apply_flash_baud()
         _apply_choice("flash", "mode", _FLASH_MODES)
         _apply_bool("flash", "verify")
         _apply_bool("flash", "auto_backup")

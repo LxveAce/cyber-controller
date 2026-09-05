@@ -31,6 +31,9 @@ from src.config.settings import DEFAULTS, load_settings, save_settings
 
 log = logging.getLogger(__name__)
 
+#: Flash-baud combo label for "use the firmware profile's own baud" (persisted as None, not an integer).
+_FLASH_BAUD_AUTO = "Auto (firmware default)"
+
 
 def format_update_status(current: str, updates: dict) -> str:
     """One human line describing the update state — so the operator can SEE the check runs, not just
@@ -129,7 +132,8 @@ class SettingsTab(QWidget):
         self._flash_baud_combo = QComboBox()
         self._flash_baud_combo.setEditable(True)
         self._flash_baud_combo.setMinimumWidth(120)
-        self._flash_baud_combo.addItems(["115200", "230400", "460800", "921600"])
+        # "Auto" (the default) uses each firmware's own baud; a number is an explicit override.
+        self._flash_baud_combo.addItems([_FLASH_BAUD_AUTO, "115200", "230400", "460800", "921600"])
         flash_form.addRow("Flash Baud Rate:", self._flash_baud_combo)
         flash_outer.addLayout(flash_form)
         self._cards.append(flash_card)
@@ -428,7 +432,9 @@ class SettingsTab(QWidget):
         self._set_combo_text(self._baud_combo, str(serial.get("default_baud", 115200)))
 
         flash = settings.get("flash", {})
-        self._set_combo_text(self._flash_baud_combo, str(flash.get("flash_baud", 921600)))
+        fb = flash.get("flash_baud")
+        # None/unset -> "Auto" (firmware profile's own baud); a concrete int -> that explicit override.
+        self._set_combo_text(self._flash_baud_combo, _FLASH_BAUD_AUTO if not fb else str(fb))
 
         interface = settings.get("interface", {})
         tm_idx = self._touch_mode_combo.findData(str(interface.get("touch_mode", "auto")))
@@ -478,7 +484,8 @@ class SettingsTab(QWidget):
                 "default_baud": self._parse_int(self._baud_combo.currentText(), 115200),
             },
             "flash": {
-                "flash_baud": self._parse_int(self._flash_baud_combo.currentText(), 921600),
+                # "Auto" persists as None (use the firmware's baud); any concrete entry is an override.
+                "flash_baud": self._gather_flash_baud(),
             },
             "vault": {
                 "dir": self._vault_dir_edit.text().strip(),
@@ -669,3 +676,14 @@ class SettingsTab(QWidget):
             return int(str(text).strip())
         except (TypeError, ValueError):
             return fallback
+
+    def _gather_flash_baud(self) -> int | None:
+        """"Auto" (or a blank/non-numeric entry) -> None so each firmware's own baud is used; a real
+        number -> that explicit override applied to every flash and backup read."""
+        text = self._flash_baud_combo.currentText().strip()
+        if not text or text == _FLASH_BAUD_AUTO:
+            return None
+        try:
+            return int(text)
+        except (TypeError, ValueError):
+            return None

@@ -101,15 +101,21 @@ def parse_analysis_report(
             malformed += 1
             losses.add("malformed-line")
             continue
-        # First metadata object: analyzers (positional) + report_version. Reject an unsupported version.
+        # First metadata object. Supported metadata (v2) REQUIRES report_version == SUPPORTED and an
+        # analyzers LIST — anything short of that can't back a "complete" verdict (positional event→analyzer
+        # mapping and the version contract both depend on it), so each shortfall is its own loss.
         if metadata is None and _looks_like_metadata(obj):
             metadata = obj
             rv = obj.get("report_version")
-            if rv is not None and rv != SUPPORTED_REPORT_VERSION:
+            if rv is None:
+                losses.add("missing-report-version")
+            elif rv != SUPPORTED_REPORT_VERSION:
                 losses.add("unsupported-report-version")
             an = obj.get("analyzers")
             if isinstance(an, list):
                 analyzer_names = [_analyzer_name(a) for a in an]
+            else:
+                losses.add("malformed-metadata")   # analyzers absent / not a list -> unusable metadata
             continue
         total_rows += 1
         reason = obj.get("skipped_message_reason")
@@ -118,36 +124,41 @@ def parse_analysis_report(
             continue
         ts = obj.get("packet_timestamp")   # optional; a missing timestamp stays None, never epoch
         raw_events = obj.get("events")
-        if isinstance(raw_events, list):
-            truncated = False
-            for i, ev in enumerate(raw_events):
-                if ev is None:
-                    continue  # a LEGITIMATE null positional slot (that analyzer produced no event)
-                if not isinstance(ev, dict):
-                    # a scalar/list where an Event object belongs (e.g. events:[42]) is CORRUPT, not a
-                    # null slot — mark coverage incomplete, never silently drop it.
-                    losses.add("malformed-event")
-                    continue
-                if len(events) >= max_events:
-                    losses.add("truncated-events")
-                    truncated = True
-                    break
-                level = _event_level(ev.get("event_type"))
-                if level in counts_by_level:
-                    counts_by_level[level] += 1
-                else:
-                    # unknown string ("Critical") OR an unparseable event_type ({}/missing) -> the warning
-                    # tally can't be trusted, so coverage is incomplete.
-                    losses.add("unknown-severity")
-                analyzer = analyzer_names[i] if i < len(analyzer_names) else None
-                events.append({
-                    "level": level,
-                    "timestamp": ts,
-                    "analyzer": analyzer,
-                    "message": ev.get("message") if isinstance(ev.get("message"), str) else None,
-                })
-            if truncated:
+        if not isinstance(raw_events, list):
+            # A non-skipped AnalysisRow must carry an events LIST (empty or with null slots is fine). A
+            # missing or non-list `events` (e.g. events:42, or the key absent) is a malformed row whose
+            # warning contribution can't be trusted — never skip it silently as zero warnings.
+            losses.add("malformed-row")
+            continue
+        truncated = False
+        for i, ev in enumerate(raw_events):
+            if ev is None:
+                continue  # a LEGITIMATE null positional slot (that analyzer produced no event)
+            if not isinstance(ev, dict):
+                # a scalar/list where an Event object belongs (e.g. events:[42]) is CORRUPT, not a
+                # null slot — mark coverage incomplete, never silently drop it.
+                losses.add("malformed-event")
+                continue
+            if len(events) >= max_events:
+                losses.add("truncated-events")
+                truncated = True
                 break
+            level = _event_level(ev.get("event_type"))
+            if level in counts_by_level:
+                counts_by_level[level] += 1
+            else:
+                # unknown string ("Critical") OR an unparseable event_type ({}/missing) -> the warning
+                # tally can't be trusted, so coverage is incomplete.
+                losses.add("unknown-severity")
+            analyzer = analyzer_names[i] if i < len(analyzer_names) else None
+            events.append({
+                "level": level,
+                "timestamp": ts,
+                "analyzer": analyzer,
+                "message": ev.get("message") if isinstance(ev.get("message"), str) else None,
+            })
+        if truncated:
+            break
 
     if metadata is None:
         # No ReportMetadata line at all — we can't establish report version / analyzer identity, so the

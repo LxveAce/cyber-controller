@@ -121,6 +121,47 @@ def test_null_positional_slot_is_allowed():
     assert out["events"][0]["analyzer"] == "cell"   # positional: index 1 -> analyzers[1]=cell
 
 
+def test_metadata_without_report_version_is_incomplete():
+    # N03: analyzers present but no report_version — we can't confirm the v2 contract, so NOT complete.
+    meta = {"analyzers": [{"name": "imsi", "version": 1}]}
+    out = rm.parse_analysis_report(_ndjson(meta, {"packet_timestamp": "t", "events": []}))
+    assert out["complete"] is False and "missing-report-version" in out["coverage"]
+
+
+def test_metadata_with_non_list_analyzers_is_incomplete():
+    # N03: analyzers:42 can't back the positional event->analyzer mapping — malformed metadata.
+    meta = {"report_version": 2, "analyzers": 42}
+    out = rm.parse_analysis_report(_ndjson(meta, {"packet_timestamp": "t", "events": [{"event_type": "Low"}]}))
+    assert out["complete"] is False and "malformed-metadata" in out["coverage"]
+
+
+def test_row_missing_events_is_malformed_not_complete():
+    # N03: a non-skipped AnalysisRow with no events list is malformed — not a silent zero-warning row.
+    out = rm.parse_analysis_report(_ndjson(META, {"packet_timestamp": "t"}))
+    assert out["complete"] is False and "malformed-row" in out["coverage"]
+
+
+def test_row_with_scalar_events_is_malformed_not_complete():
+    # N03: events:42 (a scalar where the events LIST belongs) is malformed, never skipped as complete.
+    out = rm.parse_analysis_report(_ndjson(META, {"packet_timestamp": "t", "events": 42}))
+    assert out["complete"] is False and "malformed-row" in out["coverage"]
+
+
+def test_empty_events_list_stays_complete():
+    # A row that genuinely produced no events (events: []) is valid and complete — not a malformed row.
+    out = rm.parse_analysis_report(_ndjson(META, {"packet_timestamp": "t", "events": []}))
+    assert out["complete"] is True and out["coverage"] == "complete"
+
+
+def test_n03_export_propagates_incompleteness():
+    # The incompleteness must reach the export payload, not just the parser dict.
+    parsed = rm.parse_analysis_report(_ndjson({"analyzers": []}, {"packet_timestamp": "t", "events": 42}))
+    snap = rm.build_snapshot({"runtime_metadata": {"rayhunter_version": "0.12.0"}}, {}, {})
+    export = rm.build_report_export(snap, parsed, cc_version="test", exported_at="2026-09-04T00:00:00Z")
+    assert export["json"]["complete"] is False
+    assert "Incomplete coverage" in export["html"]
+
+
 def test_missing_timestamp_stays_unknown():
     out = rm.parse_analysis_report(_ndjson(META, {"events": [{"event_type": "Low"}]}))
     assert out["events"][0]["timestamp"] is None   # never coerced to epoch

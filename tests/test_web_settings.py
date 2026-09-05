@@ -79,6 +79,26 @@ def test_settings_get_is_secret_free_and_shaped():
 
 # ── write-back round-trip ────────────────────────────────────────────
 
+def test_flash_baud_auto_persists_as_none(_isolate):
+    # F03 precedence: the "Auto" choice (client sends null or "auto") persists as None so the firmware's
+    # own baud is used — it does NOT silently round-trip to the 921600 default.
+    c = _client()
+    assert c.post("/api/settings", json={"flash": {"flash_baud": None}},
+                  headers={"X-CSRF-Token": "tok"}).status_code == 200
+    assert c.get("/api/settings").get_json()["settings"]["flash"]["flash_baud"] is None
+    on_disk = json.loads(_isolate.read_text(encoding="utf-8"))
+    assert on_disk["flash"]["flash_baud"] is None
+    # the "auto" string form is accepted the same way
+    assert c.post("/api/settings", json={"flash": {"flash_baud": "auto"}},
+                  headers={"X-CSRF-Token": "tok"}).status_code == 200
+    assert c.get("/api/settings").get_json()["settings"]["flash"]["flash_baud"] is None
+
+
+def test_flash_baud_default_is_auto_none(_isolate):
+    # A fresh install defaults to Auto (None), not a hardcoded 921600 that would override every profile.
+    assert _client().get("/api/settings").get_json()["settings"]["flash"]["flash_baud"] is None
+
+
 def test_settings_post_persists(_isolate):
     c = _client()
     r = c.post("/api/settings", json={

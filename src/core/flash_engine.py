@@ -1327,6 +1327,7 @@ class FlashEngine:
         *,
         chip: str = "auto",
         size: str = "detect",
+        baud: int = 921600,
     ) -> bool:
         """Read the entire flash to *output_path* (exact file) via the proven esptool
         plumbing, auto-detecting the chip when ``chip='auto'`` and the real flash SIZE when
@@ -1352,7 +1353,7 @@ class FlashEngine:
                 if not size or size in ("detect", "auto"):
                     size, size_detected = self._detect_flash_size(port, chip, on_line)
                 argv = flash_core.esptool_argv(
-                    "--chip", chip, "--port", port, "--baud", "921600",
+                    "--chip", chip, "--port", port, "--baud", str(baud),
                     "read_flash", "0x0", size, str(output_path),
                 )
                 rc = flash_core._run_stream(argv, on_line)

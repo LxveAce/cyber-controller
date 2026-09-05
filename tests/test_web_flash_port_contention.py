@@ -12,6 +12,8 @@ Three confirmed defects on the Flask web surface:
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 
 pytest.importorskip("flask")
@@ -76,7 +78,9 @@ def test_flash_releases_managed_connection_before_esptool(monkeypatch):
     monkeypatch.setattr(dm, "close_connection", lambda port, owner=None: closed.append(port))
 
     fe = FlashEngine()
-    monkeypatch.setattr(fe, "load_profile", lambda path: object())
+    # A real profile always exposes .baud/.variant; the flash route may set the saved baud on it (F03), so
+    # the stand-in must carry those attributes (a bare object() can't hold them).
+    monkeypatch.setattr(fe, "load_profile", lambda path: SimpleNamespace(baud=921600, variant=""))
     monkeypatch.setattr(fe, "flash", lambda *a, **k: True)  # no real esptool
     monkeypatch.setattr(webapp, "_load_profiles", lambda: {"test-fw": webapp.Path("x.json")})
 

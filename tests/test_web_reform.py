@@ -340,7 +340,8 @@ def test_web_connect_detects_firmware(monkeypatch):
     dm.add_device(Device(port="COM9", name="ESP32", connected=False))  # unknown firmware to start
     conn = _ProbeConn(["ESP32 Marauder v1.12.3", "scanall", "sniffpmkid", "evilportal"])
     dm._connections["COM9"] = conn
-    monkeypatch.setattr(dm, "open_connection", lambda port, owner=None: conn)
+    # open_connection now takes the saved serial baud (F03); the mock must accept that kwarg.
+    monkeypatch.setattr(dm, "open_connection", lambda port, baud=None, owner=None: conn)
     app, _sio = create_app(dm, FlashEngine(), EventBus(), TargetPool())
     c = app.test_client()
     with c.session_transaction() as sess:

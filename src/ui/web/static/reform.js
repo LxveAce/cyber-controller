@@ -292,17 +292,35 @@
     devMsg.textContent = text || "";
     devMsg.style.color = isErr ? "var(--red)" : "var(--dim)";
   }
-  // The SELECTED (else first) connected device drives the Selected Device panel + dashboard terminal.
-  // When the selection disconnects/disappears, drop it so the labels + terminal don't keep pointing at a
-  // gone device (F01/F04).
+  // selectedPort is the ACTION target (Connect/Disconnect). It's whatever row the user last clicked and
+  // PERSISTS even while that device is disconnected — only a port that has left the inventory entirely is
+  // dropped. The serial terminal can only stream from a CONNECTED device, so the stream device is chosen
+  // separately (the selection if it's connected, else the first connected device) WITHOUT moving the
+  // action target — otherwise a disconnected selection got silently overwritten and Connect targeted the
+  // wrong port / refused with "click a device row first" (N01/F01/F04).
   function applySelectedDevice() {
-    var connected = lastDevices.filter(function (d) { return d.connected; });
-    var sel = connected.filter(function (d) { return d.port === selectedPort; })[0] || connected[0] || null;
-    selectedPort = sel ? sel.port : null;
+    if (selectedPort && !lastDevices.some(function (d) { return d.port === selectedPort; })) {
+      selectedPort = null;   // the selected port is gone from the inventory — only then drop it
+    }
     document.querySelectorAll("#dash-devices .dev-row").forEach(function (r) {
       r.classList.toggle("sel", r.dataset.port === selectedPort);
     });
-    subscribeSerial(sel ? sel.port : null, sel ? sel.firmware : null);
+    var selDev = lastDevices.filter(function (d) { return d.port === selectedPort; })[0] || null;
+    var streamDev = (selDev && selDev.connected)
+      ? selDev
+      : lastDevices.filter(function (d) { return d.connected; })[0] || null;
+    updateSelectedPanel(selDev);
+    subscribeSerial(streamDev ? streamDev.port : null, streamDev ? streamDev.firmware : null);
+  }
+  // The "Selected Device" panel reflects the ACTION target (what's highlighted + what Connect will use),
+  // including when it's disconnected — so panel, highlighted row and status message all agree (N01).
+  function updateSelectedPanel(selDev) {
+    var selTitle = document.getElementById("sel-title");
+    if (!selTitle) return;
+    if (!selectedPort) { selTitle.textContent = "none selected"; return; }
+    var fw = selDev && (selDev.firmware || selDev.name);
+    selTitle.textContent = selectedPort + " · " +
+      (selDev && selDev.connected ? (fw || "device") : "disconnected");
   }
   var devTable = document.getElementById("dash-devices");
   if (devTable) {
@@ -393,6 +411,18 @@
 
   function refreshDevices() {
     return getJSON("/api/devices").then(function (devs) {
+      // Detect connect-state transitions vs the previous inventory so serial subscriptions survive a
+      // same-port reconnect (N02): a port that just dropped forgets its stale subscription; a port that
+      // just came back (or a still-connected port that vanished then returned) re-subscribes its sinks.
+      var wasConnected = {};
+      lastDevices.forEach(function (d) { wasConnected[d.port] = d.connected; });
+      devs.forEach(function (d) {
+        if (wasConnected[d.port] === true && !d.connected) invalidateSubscription(d.port);
+        if (wasConnected[d.port] === false && d.connected) resubscribeSubscription(d.port);
+      });
+      Object.keys(wasConnected).forEach(function (p) {
+        if (wasConnected[p] && !devs.some(function (d) { return d.port === p; })) invalidateSubscription(p);
+      });
       var dot = function (c) { return c ? "●" : "○"; };
       var listHtml = devs.length ? devs.map(function (d) {
         var sel = d.port === selectedPort ? " sel" : "";
@@ -524,6 +554,15 @@
       if (!msg || !msg.port) return;
       (serialSinks[msg.port] || []).forEach(function (el) { appendLine(el, "rx", msg.line); });
     });
+    socket.on("connect", function () {
+      // A (re)connected socket session has NO server-side serial subscriptions — the server only attaches
+      // its emit callback when subscribe_serial arrives. After a dropped polling session, re-subscribe
+      // every port we're still sinking so output resumes instead of going silently dead (N02).
+      subscribedPorts = {};
+      Object.keys(serialSinks).forEach(function (p) {
+        if (serialSinks[p] && serialSinks[p].length) subscribePort(p);
+      });
+    });
     return socket;
   }
   function subscribePort(port) {
@@ -553,22 +592,34 @@
       if (i !== -1) serialSinks[p].splice(i, 1);
     });
   }
+  // The client-side subscribe cache assumes a port stays subscribed for the socket's life. It doesn't:
+  // when a device drops and reconnects on the SAME port, the server has a brand-new connection with no
+  // callback, so the stale "already subscribed" flag left serial output dead. On a drop, forget the flag
+  // (and free the dashboard bind so a same-port reconnect re-binds); on a reconnect, re-subscribe every
+  // sink still attached to that port so it lands on the fresh connection (N02).
+  function invalidateSubscription(port) {
+    delete subscribedPorts[port];
+    if (dashBoundPort === port) dashBoundPort = null;
+  }
+  function resubscribeSubscription(port) {
+    delete subscribedPorts[port];
+    if (serialSinks[port] && serialSinks[port].length) subscribePort(port);
+  }
 
   // Dashboard terminal: bind to the SELECTED (else first connected) device's stream.
   var dashTerm = document.getElementById("dash-term");
   var dashBoundPort = null;
   function subscribeSerial(port, fw) {
+    // Owns the terminal-stream header only; the Selected Device panel is driven by updateSelectedPanel so
+    // the panel can show the (possibly disconnected) action target while the terminal streams elsewhere.
     var title = document.getElementById("term-title");
-    var selTitle = document.getElementById("sel-title");
     if (!port) {
       if (title) title.textContent = "no device";
-      if (selTitle) selTitle.textContent = "none connected";
       unbindTerminalEl(dashTerm);
       dashBoundPort = null;
       return;
     }
     if (title) title.textContent = port + " — " + (fw || "device");
-    if (selTitle) selTitle.textContent = port + " · " + (fw || "device");
     if (dashBoundPort === port) return;
     unbindTerminalEl(dashTerm);   // release the old port before binding the new one
     dashBoundPort = port;
@@ -1110,7 +1161,8 @@
     function hydrate(s) {
       if (!s) return;
       setSelect(document.getElementById("set-serial-baud"), s.serial.default_baud);
-      setSelect(document.getElementById("set-flash-baud"), s.flash.flash_baud);
+      // null/absent flash_baud == "Auto" (use the firmware's own baud); a number is an explicit override.
+      setSelect(document.getElementById("set-flash-baud"), s.flash.flash_baud == null ? "auto" : s.flash.flash_baud);
       setSelect(document.getElementById("set-touch-mode"), s.interface.touch_mode);
       setChip(document.getElementById("set-updates-enabled"), s.updates.enabled);
       setChip(document.getElementById("set-confirm-dangerous"), s.safety.confirm_dangerous);
@@ -1132,7 +1184,8 @@
       var body = {
         serial: { default_baud: parseInt(valOf("set-serial-baud"), 10) },
         flash: {
-          flash_baud: parseInt(valOf("set-flash-baud"), 10),
+          // "auto" -> null (use the firmware's own baud); a number -> explicit override.
+          flash_baud: valOf("set-flash-baud") === "auto" ? null : parseInt(valOf("set-flash-baud"), 10),
         },
         interface: { touch_mode: valOf("set-touch-mode") },
         updates: { enabled: chipOn(document.getElementById("set-updates-enabled")) },
@@ -1898,11 +1951,30 @@
     }
     function load() {
       var prev = sel.value;
-      getJSON("/api/wordlists").then(function (d) {
+      // Revalidate the tracked BYO paths on the server FIRST: a BYO file deleted or made unreadable after
+      // it was added must drop out of the picker (and, if it was selected, surface an unavailable notice)
+      // rather than keep showing as selectable and be cracked against silently (N04). We keep them tracked
+      // in byoEntries but only re-insert the ones that still validate; a network hiccup on the check is
+      // treated as "still there" so a transient blip doesn't wipe the user's lists.
+      var byoCheck = byoEntries.length
+        ? postJSON("/api/wordlists/byo/validate", { paths: byoEntries.map(function (e) { return e.path; }) })
+            .then(function (r) { return (r && r.valid) || null; })
+            .catch(function () { return null; })
+        : Promise.resolve([]);
+      Promise.all([getJSON("/api/wordlists"), byoCheck]).then(function (res) {
+        var d = res[0];
+        var validPaths = res[1];   // array of {path} still valid, or null == check unavailable (keep all)
+        var missingByo = [];
+        if (validPaths) {
+          var ok = {};
+          validPaths.forEach(function (v) { ok[v.path] = true; });
+          byoEntries.forEach(function (e) { if (!ok[e.path]) missingByo.push(e); });
+          byoEntries = byoEntries.filter(function (e) { return ok[e.path]; });
+        }
         var opts = [];
         (d.bundled || []).forEach(function (w) { opts.push(wlOption(w, "bundled")); });
         (d.installed || []).forEach(function (w) { opts.push(wlOption(w, "installed")); });
-        // Keep user-added BYO entries across a refresh — the server reads them in place (not from the
+        // Keep the surviving BYO entries across a refresh — the server reads them in place (not from the
         // wordlist dir), so rebuilding from bundled+installed alone would drop them + jump the selection (F05).
         byoEntries.forEach(function (e) {
           opts.push('<option value="' + esc(e.path) + '">' + esc(e.name) + " · BYO</option>");
@@ -1910,8 +1982,12 @@
         sel.innerHTML = opts.length ? opts.join("") : '<option>no wordlists &#8212; Get more&#8230; or Bring your own&#8230;</option>';
         var stillThere = prev && Array.prototype.some.call(sel.options, function (o) { return o.value === prev; });
         if (stillThere) sel.value = prev;   // preserve the selection instead of silently jumping to the first
+        var prevWasMissingByo = prev && missingByo.some(function (e) { return e.path === prev; });
         if (foot) {
-          if (prev && !stillThere) {
+          if (prevWasMissingByo) {
+            foot.style.color = "var(--amber)";
+            foot.textContent = "the selected wordlist is no longer on disk — pick another (it was removed)";
+          } else if (prev && !stillThere) {
             foot.style.color = "var(--amber)";
             foot.textContent = "the selected wordlist is no longer available — pick another";
           } else if (d.dir) {

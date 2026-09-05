@@ -35,7 +35,10 @@ DEFAULTS: dict[str, Any] = {
         "timeout": 1.0,
     },
     "flash": {
-        "flash_baud": 921600,
+        # None == "Auto": use each firmware profile's own baud (some boards/loaders pin a specific, often
+        # lower, rate for reliability, so a hardcoded global default must NOT silently override them). A
+        # concrete integer here is an explicit operator override applied to every flash/backup read.
+        "flash_baud": None,
         "verify": True,
         "auto_backup": True,
         "mode": "dio",
