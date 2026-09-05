@@ -305,3 +305,117 @@ def test_rayhunter_api_rejects_malformed_admin_ip(monkeypatch, tmp_path):
     assert client.post("/api/rayhunter/install",
                        json={"admin_password": "x", "admin_ip": bad},
                        headers={"X-CSRF-Token": csrf}).status_code == 400
+
+
+# -- Legacy check_status redirect/size hardening (localhost ADB-era helper) -------------------------
+# check_status streams the body with allow_redirects=False and a shared byte cap (_STATUS_MAX_BYTES),
+# reads at most cap+1 bytes, and always closes the response. These are pure mocks — no real device or
+# network. Return-field/callback compatibility (running/status_code/response/error) is preserved.
+
+class _StatusResp:
+    """A streamed requests.Response stand-in for check_status: status_code + headers + raw.read + close.
+
+    Tracks total bytes handed out by raw.read (to prove the body is NOT fully read on overflow) and
+    whether close() ran (to prove the connection is always released)."""
+
+    def __init__(self, status_code, body=b"", headers=None):
+        self.status_code = status_code
+        self._body = body
+        self.headers = headers or {}
+        self.read_total = 0
+        self.closed = False
+        resp = self
+
+        class _Raw:
+            def read(self, n, decode_content=True):
+                chunk = resp._body[:n]
+                resp.read_total += len(chunk)
+                return chunk
+
+        self.raw = _Raw()
+
+    def close(self):
+        self.closed = True
+
+
+def test_check_status_does_not_follow_redirects(monkeypatch):
+    """A 3xx from the (localhost) endpoint must NOT be followed, is not 'running', and is still closed."""
+    seen = {}
+    resp = _StatusResp(302, body=b"redirected")
+
+    def fake_get(url, **kw):
+        seen["allow_redirects"] = kw.get("allow_redirects")
+        seen["stream"] = kw.get("stream")
+        return resp
+
+    monkeypatch.setattr(a.requests, "get", fake_get)
+    out = a.check_status(lambda _l: None)
+    assert seen["allow_redirects"] is False and seen["stream"] is True
+    assert out["running"] is False and out["status_code"] == 302
+    assert resp.closed is True
+
+
+def test_check_status_rejects_oversize_by_content_length_without_reading_body(monkeypatch):
+    """An advertised oversized Content-Length is rejected up front — the body is never streamed in."""
+    huge = a._STATUS_MAX_BYTES + 10_000
+    resp = _StatusResp(200, body=b"x" * huge, headers={"Content-Length": str(huge)})
+    monkeypatch.setattr(a.requests, "get", lambda url, **kw: resp)
+    out = a.check_status(lambda _l: None)
+    assert out["response"] is None and out["error"] == "response too large"
+    assert out["status_code"] == 200            # fields preserved
+    assert resp.read_total == 0                  # body was NOT read
+    assert resp.closed is True
+
+
+def test_check_status_rejects_oversize_stream_bounded_read(monkeypatch):
+    """With a missing/lying Content-Length, the real stream size is still capped: at most cap+1 bytes are
+    read (never the full oversized body) and the body is rejected."""
+    huge = a._STATUS_MAX_BYTES + 50_000
+    resp = _StatusResp(200, body=b"y" * huge)   # no Content-Length header
+    monkeypatch.setattr(a.requests, "get", lambda url, **kw: resp)
+    out = a.check_status(lambda _l: None)
+    assert out["response"] is None and out["error"] == "response too large"
+    assert resp.read_total == a._STATUS_MAX_BYTES + 1   # bounded read, not the whole body
+    assert resp.read_total < huge
+    assert resp.closed is True
+
+
+def test_check_status_closes_response_on_error(monkeypatch):
+    """If reading the stream raises after the response is opened, the connection is still closed."""
+    resp = _StatusResp(200, body=b"{}")
+
+    def boom(n, decode_content=True):
+        raise OSError("stream broke")
+
+    resp.raw.read = boom
+    monkeypatch.setattr(a.requests, "get", lambda url, **kw: resp)
+    out = a.check_status(lambda _l: None)
+    assert out["running"] is False and out["error"] == "stream broke"
+    assert resp.closed is True
+
+
+def test_check_status_parses_valid_json(monkeypatch):
+    payload = {"recording": True, "version": "0.12.0"}
+    resp = _StatusResp(200, body=json.dumps(payload).encode("utf-8"))
+    monkeypatch.setattr(a.requests, "get", lambda url, **kw: resp)
+    out = a.check_status(lambda _l: None)
+    assert out["running"] is True and out["status_code"] == 200
+    assert out["response"] == payload and out["error"] is None
+    assert resp.closed is True
+
+
+def test_check_status_non_json_falls_back_to_capped_text(monkeypatch):
+    resp = _StatusResp(200, body=b"plain not-json body")
+    monkeypatch.setattr(a.requests, "get", lambda url, **kw: resp)
+    out = a.check_status(lambda _l: None)
+    assert out["running"] is True
+    assert out["response"] == "plain not-json body"   # text fallback, matching the [:500] slice policy
+    assert resp.closed is True
+
+
+def test_check_status_connection_error_is_not_running(monkeypatch):
+    def boom(*args, **kw):
+        raise a.requests.ConnectionError("refused")
+    monkeypatch.setattr(a.requests, "get", boom)
+    out = a.check_status(lambda _l: None)
+    assert out["running"] is False and out["error"] == "connection refused"

@@ -827,18 +827,42 @@ def check_status(on_line: Line, profile_id: str = "rayhunter",
     url = f"http://{host}:{port}{endpoint}"
 
     on_line(f"[rayhunter] checking {url}")
+    r = None
     try:
-        r = requests.get(url, timeout=timeout)
+        # Do NOT follow redirects (a local endpoint must not bounce the probe to another host) and
+        # stream the body so an oversized/hostile response can't be read uncapped into memory. Mirrors
+        # the orbic_status / rayhunter_monitor bounded-read policy (shared _STATUS_MAX_BYTES cap).
+        r = requests.get(url, timeout=timeout, allow_redirects=False, stream=True)
         running = r.status_code == 200
         result: Dict = {
             "running": running,
             "status_code": r.status_code,
             "error": None,
         }
+        # Reject early if the server ADVERTISES an oversized body, then enforce the REAL stream size too
+        # (Content-Length may be absent or lie) by reading one byte past the cap to detect overflow.
+        declared = r.headers.get("Content-Length") if getattr(r, "headers", None) else None
+        if declared is not None:
+            try:
+                over_declared = int(declared) > _STATUS_MAX_BYTES
+            except (TypeError, ValueError):
+                over_declared = False
+            if over_declared:
+                on_line(f"[rayhunter] status response too large ({declared} bytes) -- body ignored")
+                result["response"] = None
+                result["error"] = "response too large"
+                return result
+        body = r.raw.read(_STATUS_MAX_BYTES + 1, decode_content=True)
+        if len(body) > _STATUS_MAX_BYTES:
+            on_line("[rayhunter] status response exceeded byte cap -- body ignored")
+            result["response"] = None
+            result["error"] = "response too large"
+            return result
+        text = body.decode("utf-8", "replace") if body else ""
         try:
-            result["response"] = r.json()
-        except Exception:
-            result["response"] = r.text[:500] if r.text else None
+            result["response"] = json.loads(text) if text else None
+        except ValueError:
+            result["response"] = text[:500] if text else None
         on_line(f"[rayhunter] status: {'running' if running else 'not running'} "
                 f"(HTTP {r.status_code})")
         return result
@@ -855,6 +879,13 @@ def check_status(on_line: Line, profile_id: str = "rayhunter",
         on_line(f"[rayhunter] status check failed: {e}")
         return {"running": False, "status_code": None, "response": None,
                 "error": str(e)}
+    finally:
+        # Always release the (streamed) connection, including on the redirect/oversize/error paths.
+        if r is not None:
+            try:
+                r.close()
+            except Exception:  # noqa: BLE001 - close is best-effort
+                pass
 
 
 def is_running(on_line: Line, serial: Optional[str] = None,
