@@ -1,0 +1,70 @@
+# Manual-only desktop-capability preflight for a disposable hosted Windows runner.
+#
+# Purpose: run the HARMLESS desktop-capability preflight + read-only AV summary
+# on a disposable hosted Windows runner, and upload the evidence. It does NOT
+# download or execute any Cyber-Controller release artifact and touches no
+# release, tag, or source branch.
+#
+# Token / permissions honesty (do not overclaim):
+#   * actions/checkout receives a GITHUB_TOKEN by default and uses it for the
+#     initial fetch. `permissions:` below reduces that token's API scopes to the
+#     single scope checkout needs (contents: read); every other scope is `none`.
+#   * `persist-credentials: false` stops checkout from leaving the token in the
+#     local git config after the fetch, so later steps cannot reuse it.
+#   * This does NOT claim "no token is used" — one is, for the fetch. It also does
+#     NOT claim runtime-token / environment / network-egress / log isolation;
+#     `permissions:` bounds only the GITHUB_TOKEN's API scopes.
+#   * For a PUBLIC repo the fetch would also succeed anonymously; contents: read
+#     is the minimal scope that also works if the repo is private.
+
+name: package-preflight
+
+on:
+  workflow_dispatch: {}   # manual only; no push/PR/schedule triggers.
+
+permissions: {}           # deny-all default for the workflow; jobs opt back in minimally.
+
+concurrency:
+  group: package-preflight
+  cancel-in-progress: false
+
+jobs:
+  desktop-capability:
+    runs-on: windows-2022
+    timeout-minutes: 10     # hard ceiling on the whole job.
+    permissions:
+      contents: read        # ONLY scope needed: checkout fetching the repo.
+    defaults:
+      run:
+        shell: powershell   # Windows PowerShell 5.1: STA by default (WinForms child needs STA).
+    steps:
+      - name: Checkout (minimal scope, no credential persistence)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Unit tests (pure logic; no window, no AV read/change)
+        run: |
+          ./.github/preflight/tests/Run-Tests.ps1
+
+      - name: Read-only AV state summary + suitability verdict (no changes)
+        run: |
+          ./.github/preflight/Get-AvStateSummary.ps1 -OutDir preflight-out
+        continue-on-error: true   # AV measurement is a finding, not a gate.
+
+      - name: Synthetic-window desktop-capability probe (owned child, bounded, fail-closed)
+        id: probe
+        run: |
+          ./.github/preflight/Invoke-DesktopCapabilityPreflight.ps1 -OutDir preflight-out
+        # No continue-on-error: a non-visible window / unverified pattern / forced
+        # child kill fails the job. A failed preflight is a valid finding, never a
+        # trigger to weaken AV or desktop protection.
+
+      - name: Upload preflight evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: package-preflight-evidence
+          path: preflight-out/
+          if-no-files-found: warn
+          retention-days: 7
