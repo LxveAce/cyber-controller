@@ -61,12 +61,27 @@ def test_no_bare_always_conditions():
     assert "always()" not in CODE
 
 
-def test_aggregation_jobs_gate_on_preflight_success():
+def test_required_builds_are_not_best_effort():
+    """Every platform binary AND the installer are REQUIRED assets. No job- or step-level
+    continue-on-error, so a build that produces nothing fails the run instead of letting checksums
+    bless a stale asset left on the draft by an earlier run."""
+    for job in BUILD_JOBS:
+        assert JOBS[job].get("continue-on-error") in (None, False), f"{job} is best-effort"
+        for s in _steps(job):
+            assert s.get("continue-on-error") in (None, False), \
+                f"{job} step {s.get('name')!r} is best-effort"
+
+
+def test_aggregation_jobs_require_all_upstream_success():
+    """checksums depends on every build job (default needs-success gating), so a failed build skips
+    it — a partial run can never yield a green checksum/asset-shape validation. virustotal chains
+    through checksums. Neither force-runs on failure via always()/!cancelled()."""
+    assert set(JOBS["checksums"]["needs"]) == {"preflight", *BUILD_JOBS}
+    assert set(JOBS["virustotal"]["needs"]) == {"preflight", "checksums"}
     for job in ("checksums", "virustotal"):
-        cond = JOBS[job]["if"]
-        assert "!cancelled()" in cond, f"{job} may run on cancellation"
-        assert "needs.preflight.result == 'success'" in cond, f"{job} not gated on preflight"
-    assert "needs.checksums.result == 'success'" in JOBS["virustotal"]["if"]
+        cond = JOBS[job].get("if", "") or ""
+        assert "always()" not in cond and "cancelled()" not in cond, \
+            f"{job} force-runs regardless of upstream failure"
 
 
 def test_every_checkout_pins_the_exact_tag():
@@ -78,15 +93,30 @@ def test_every_checkout_pins_the_exact_tag():
             assert s["with"]["ref"] == "${{ inputs.tag }}", f"{job} checkout not pinned to inputs.tag"
 
 
-def test_uploads_use_gh_cli_only_never_release_action():
-    """softprops/action-gh-release PUBLISHES an existing draft unless `draft: true` is repeated on
-    every call (per its docs) — one omission would publish a half-built release. `gh release upload`
-    touches assets only and cannot change draft status."""
+UPLOAD_WRAPPER = "scripts/release_upload.sh"
+
+
+def test_uploads_go_through_draft_guarded_wrapper():
+    """Every asset mutation runs release_upload.sh, which re-verifies exactly-one-draft immediately
+    before uploading — GitHub's single-/failed-job rerun reuses a successful preflight WITHOUT
+    re-running it, so a rerun of just a build job after publish would otherwise clobber public
+    assets. No inline `gh release upload`; softprops/action-gh-release (which publishes a reused
+    draft when `draft: true` is omitted) is absent."""
     assert "softprops/action-gh-release" not in CODE
-    uploads = [r for job in JOBS for r in _run_blocks(job) if "gh release upload" in r]
-    assert len(uploads) >= 6  # 4 platform binaries + installer + SHA256SUMS.txt
-    for r in uploads:
+    wrapper_calls = [r for job in JOBS for r in _run_blocks(job) if UPLOAD_WRAPPER in r]
+    assert len(wrapper_calls) >= 6  # 4 platform binaries + installer + SHA256SUMS.txt
+    for r in wrapper_calls:
         assert '"$TAG"' in r
+    for job in JOBS:  # nothing uploads assets except through the wrapper
+        for r in _run_blocks(job):
+            assert "gh release upload" not in r, f"{job} uploads outside the wrapper"
+
+
+def test_upload_wrapper_rechecks_draft_before_uploading():
+    wrapper = (_ROOT / "scripts" / "release_upload.sh").read_text(encoding="utf-8")
+    assert "release_preflight.py" in wrapper and "gh release upload" in wrapper
+    assert wrapper.index("release_preflight.py") < wrapper.index("gh release upload"), \
+        "wrapper must re-verify draft status BEFORE uploading"
 
 
 def test_no_template_expansion_inside_run_blocks():

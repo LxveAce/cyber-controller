@@ -62,6 +62,19 @@ def test_malformed_tag_is_rejected():
     assert _run([_release(tag="v2.0.1; rm -rf /")], tag="v2.0.1; rm -rf /") == 1
 
 
+def test_trailing_newline_tag_is_rejected():
+    """`$` matches just before a trailing newline; the regex uses \\Z + fullmatch, so 'v2.0.1\\n'
+    (and leading/trailing whitespace) is rejected rather than silently accepted."""
+    assert _run([_release(tag="v2.0.1\n")], tag="v2.0.1\n") == 1
+    assert _run([_release(tag=" v2.0.1")], tag=" v2.0.1") == 1
+    assert PF.main(["--list-expected", "v2.0.1\n"]) == 1
+
+
+def test_valid_tag_shapes_pass():
+    assert PF.main(["--list-expected", "v2.0.1"]) == 0
+    assert PF.main(["--list-expected", "v2.1.0-beta.2"]) == 0
+
+
 def test_bad_json_is_rejected():
     assert PF.main([TAG], stdin_text="not json") == 1
     assert PF.main([TAG], stdin_text='{"tag_name": "v2.0.1"}') == 1  # object, not a list

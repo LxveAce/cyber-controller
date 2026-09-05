@@ -28,9 +28,10 @@ import json
 import re
 import sys
 
-# vX.Y.Z with an optional dot/dash suffix (e.g. v2.0.1, v2.1.0-beta.2). Anchored and
-# character-restricted: the tag is interpolated into asset names and shell env downstream.
-TAG_RE = re.compile(r"^v\d+\.\d+\.\d+([.-][A-Za-z0-9.-]+)?$")
+# vX.Y.Z with an optional dot/dash suffix (e.g. v2.0.1, v2.1.0-beta.2). Ends with \Z (not $, which
+# also matches just before a trailing newline) and is only ever used with fullmatch(), so a value
+# like "v2.0.1\n" is rejected — the tag is interpolated into asset names and shell env downstream.
+TAG_RE = re.compile(r"v\d+\.\d+\.\d+([.-][A-Za-z0-9.-]+)?\Z")
 
 
 def expected_binaries(tag: str) -> list[str]:
@@ -47,7 +48,7 @@ def expected_binaries(tag: str) -> list[str]:
 
 def check(tag: str, releases_json: str, require_assets: bool = False,
           require_checksums: bool = False, out=sys.stderr) -> int:
-    if not TAG_RE.match(tag):
+    if not TAG_RE.fullmatch(tag):
         print(f"PREFLIGHT FAIL: tag {tag!r} is not a vX.Y.Z tag.", file=out)
         return 1
     try:
@@ -109,7 +110,7 @@ def main(argv: list[str] | None = None, stdin_text: str | None = None) -> int:
     a = p.parse_args(argv)
 
     if a.list_expected:
-        if not TAG_RE.match(a.tag):
+        if not TAG_RE.fullmatch(a.tag):
             print(f"PREFLIGHT FAIL: tag {a.tag!r} is not a vX.Y.Z tag.", file=sys.stderr)
             return 1
         print("\n".join(expected_binaries(a.tag)))

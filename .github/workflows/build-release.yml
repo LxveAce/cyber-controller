@@ -1,24 +1,22 @@
 name: Build & Release
 
-# DISPATCH-ONLY, DRAFT-ONLY. This workflow never fires on `release: published` — publishing a draft
-# triggers nothing, so the exact bytes that were built, checksummed, scanned, and launch-verified on
-# the draft are the bytes the public release ships. (The old `release: published` trigger meant
-# publishing REBUILT every asset, silently replacing the verified binaries with fresh, unverified ones.)
+# DISPATCH-ONLY, DRAFT-ONLY. This workflow never fires on `release: published`, so publishing a
+# draft rebuilds nothing — the exact bytes built, checksummed, and scanned on the draft are what
+# ships. (The old `release: published` trigger silently REBUILT every asset on publish, replacing
+# the verified binaries with fresh, unverified ones.)
 #
-# Release procedure: push the annotated tag -> create a DRAFT release for it -> dispatch this workflow
-# with that tag -> verify the draft's assets (SHA256SUMS + VirusTotal + local launch test) -> publish.
+# Procedure: push the annotated tag -> create ONE DRAFT release for it -> dispatch this workflow
+# with that tag -> verify the draft's assets -> confirm no run for the tag is active or queued ->
+# publish.
 #
-# A mandatory `preflight` job verifies the tag exists and that EXACTLY ONE release exists for it and
-# it is still a DRAFT; published targets are rejected, including reruns of an old run after the
-# release went public (every rerun re-executes preflight). Every other job needs preflight, and the
-# aggregation jobs gate on `needs.preflight.result == 'success'` (never bare `always()`), so a failed
-# preflight cannot mutate anything.
-#
-# Asset uploads use `gh release upload` ONLY. It touches assets and nothing else, so it cannot change
-# draft status. softprops/action-gh-release is deliberately NOT used here: per its documentation, when
-# it reuses an existing draft release and `draft: true` is not repeated on that call, it PUBLISHES the
-# draft — one omission mid-build would publish a half-built release. `gh release edit --notes-file`
-# (used by the VT script) PATCHes only the fields passed, so it preserves draft status too.
+# Draft protection is layered, not atomic. `preflight` gates the run on exactly-one-draft. But a
+# GitHub "re-run failed jobs" / "re-run this job" REUSES an already-successful preflight WITHOUT
+# re-running it, so every asset mutation ALSO re-checks draft status right before it acts:
+# scripts/release_upload.sh (all uploads) and vt_release_scan.py (the notes edit, after the scan).
+# These checks are best-effort, not transactional — hence the "no active/queued run" step before a
+# human publishes. Uploads use `gh release upload` only (asset-only, cannot flip draft status);
+# softprops/action-gh-release is avoided because it PUBLISHES a reused draft when `draft: true` is
+# omitted on a call.
 on:
   workflow_dispatch:
     inputs:
@@ -27,10 +25,8 @@ on:
         required: true
         default: "v2.0.1"
 
-# Serialize runs per tag so two builds of the same tag can never interleave their uploads or have one
-# run's checksums cover another run's binaries. `cancel-in-progress: false` lets a running build
-# finish; a newly dispatched same-tag run waits (GitHub keeps at most one pending run per group and
-# visibly cancels a superseded pending run — it is never silently dropped).
+# Serialize runs per tag so two builds of the same tag can never interleave their uploads.
+# `cancel-in-progress: false` lets a running build finish; a newly dispatched same-tag run waits.
 concurrency:
   group: build-release-${{ inputs.tag }}
   cancel-in-progress: false
@@ -38,17 +34,13 @@ concurrency:
 permissions:
   contents: write
 
-# Build via build.py (the single source of truth) on every platform so the release binaries
-# bundle EVERYTHING the app needs at runtime — the QSS theme, assets, all UI submodules, and
-# the firmware profiles. The previous hand-rolled per-job pyinstaller command bundled only
-# src/config/profiles and never the QSS, so the shipped GUI crashed silently at launch
-# (apply_theme() read a stylesheet that was not in the bundle). build.py keeps CI and local
-# builds identical. `submodules: recursive` ensures the deadmans-switch submodule is present.
+# Every platform builds via build.py (the single source of truth) so the release binaries bundle
+# everything the app needs at runtime (QSS theme, assets, UI submodules, firmware profiles) exactly
+# as a local build would. `submodules: recursive` pulls in the deadmans-switch submodule.
 
 jobs:
-  # ── Gate: tag exists, and exactly one release exists for it and it is still a DRAFT. ──
-  # Also validates the tag format (vX.Y.Z[-suffix]) so nothing shell-hostile ever reaches the
-  # build steps. Reruns re-execute this, so a run rerun after publishing fails here.
+  # Gate: the tag exists, and exactly one release carries it and it is still a DRAFT (published
+  # rejected). Also validates the tag format so nothing shell-hostile reaches the build steps.
   preflight:
     runs-on: ubuntu-latest
     env:
@@ -56,16 +48,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - name: Verify the tag exists
-        # Checked via the git-refs API before checkout so a missing tag fails with a clear message
-        # instead of a checkout error.
         run: gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag }}
       - name: Verify an EXISTING DRAFT release (reject published)
-        # GET /releases/tags/{tag} returns only PUBLISHED releases, so the draft must be found by
-        # listing all releases; scripts/release_preflight.py does the strict matching (exactly one
-        # release for the tag, draft == true). --slurp keeps multi-page output one valid JSON doc.
+        # /releases/tags/{tag} returns only PUBLISHED releases, so the draft is found by listing all
+        # releases; the script does the strict matching. --slurp keeps multi-page output valid JSON.
         run: |
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases" \
             | python scripts/release_preflight.py "$TAG"
@@ -79,8 +68,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Build the EXACT tagged source, not the dispatch branch, so the built bytes are the
-          # source the tag (and the asset name) claims.
+          # Build the EXACT tagged source, so the built bytes match what the tag (and asset name) claims.
           ref: ${{ inputs.tag }}
           submodules: recursive
       - uses: actions/setup-python@v5
@@ -97,34 +85,28 @@ jobs:
         shell: cmd
         run: |
           move dist\CyberController.exe dist\cyber-controller-%TAG%-windows-x64.exe
-      - name: Upload release asset (draft-preserving)
+      - name: Upload release asset (draft-guarded)
         shell: bash
-        run: gh release upload "$TAG" "dist/cyber-controller-$TAG-windows-x64.exe" --clobber
-      # ── Installer (registers in Settings > Apps > Installed apps). Best-effort: never block the
-      # ── core binary build on an installer hiccup — the checksums job still FAILS the run if the
-      # ── installer asset ends up missing, so a gap can't slip through as a green validation.
-      # ── NOTE: unsigned — SmartScreen still applies until a code-signing cert is added
-      # ── (see docs/WINDOWS-SECURITY.md).
+        run: bash scripts/release_upload.sh "$TAG" "dist/cyber-controller-$TAG-windows-x64.exe"
+      # Installer (registers in Settings > Apps > Installed apps). REQUIRED asset — no
+      # continue-on-error: if the installer can't build, the release must fail rather than fall back
+      # to a stale installer left on the draft by an earlier run.
+      # NOTE: unsigned — SmartScreen still applies until a code-signing cert is added
+      # (see docs/WINDOWS-SECURITY.md).
       - name: Build folder build (for installer)
-        continue-on-error: true
         run: python build.py --onedir
       - name: Install Inno Setup
-        continue-on-error: true
         run: choco install innosetup --no-progress -y
       - name: Build installer
-        continue-on-error: true
         shell: pwsh
         run: |
           $ver = $Env:TAG.TrimStart('v')
-          # NOTE: ${Env:ProgramFiles(x86)} MUST be brace-wrapped — the '(x86)' in the var name otherwise
-          # parses as a call and yields the space-less 'C:\Program Files(x86)\...' path (which does not
-          # exist), so ISCC was never found and the installer silently never built (continue-on-error
-          # masked it — the installer never shipped in any release before this fix).
+          # ${Env:ProgramFiles(x86)} MUST be brace-wrapped — otherwise the '(x86)' parses as a call
+          # and yields a nonexistent path, so ISCC is never found.
           & "${Env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DMyAppVersion=$ver" "installer\cyber-controller.iss"
-      - name: Upload installer asset (draft-preserving)
-        continue-on-error: true
+      - name: Upload installer asset (draft-guarded)
         shell: bash
-        run: gh release upload "$TAG" installer/Output/*.exe --clobber
+        run: bash scripts/release_upload.sh "$TAG" installer/Output/*.exe
 
   build-linux:
     runs-on: ubuntu-latest
@@ -135,7 +117,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          # Build the EXACT tagged source, not the dispatch branch.
           ref: ${{ inputs.tag }}
           submodules: recursive
       - uses: actions/setup-python@v5
@@ -156,32 +137,29 @@ jobs:
         run: |
           mv dist/CyberController "dist/cyber-controller-$TAG-linux-x64"
           chmod +x "dist/cyber-controller-$TAG-linux-x64"
-      - name: Upload release asset (draft-preserving)
-        run: gh release upload "$TAG" "dist/cyber-controller-$TAG-linux-x64" --clobber
+      - name: Upload release asset (draft-guarded)
+        run: bash scripts/release_upload.sh "$TAG" "dist/cyber-controller-$TAG-linux-x64"
 
   build-linux-arm:
     runs-on: ubuntu-latest
     needs: preflight
-    # ARM/QEMU build is best-effort (slow) — never block the other platforms on it. The checksums
-    # job still fails the run if the ARM asset is missing, so validation stays honest.
-    continue-on-error: true
+    # REQUIRED asset (slow under QEMU, but the release must ship it). No continue-on-error: a failure
+    # here fails the run instead of letting checksums bless a stale arm64 binary from an earlier run.
     env:
       TAG: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # Build the EXACT tagged source, not the dispatch branch.
           ref: ${{ inputs.tag }}
           submodules: recursive
       - uses: docker/setup-qemu-action@v3
         with:
           platforms: arm64
       - name: Build with QEMU
-        # Use Debian trixie (Python 3.13, satisfies requires-python>=3.12) and its PREBUILT arm64
-        # PyQt5 + cryptography from apt — so PyQt5 is never source-built (the old failure: no aarch64
-        # wheel -> sip/qmake build with no qmake). pip only installs pyinstaller + the app itself
-        # (--no-deps), so no heavy native build runs under emulation.
+        # Debian trixie (Python 3.13, satisfies requires-python>=3.12) with its PREBUILT arm64 PyQt5 +
+        # cryptography from apt, so nothing heavy is source-built under emulation (pip only adds
+        # pyinstaller + the app itself via --no-deps).
         run: |
           docker run --rm --platform linux/arm64 \
             -v ${{ github.workspace }}:/workspace \
@@ -201,31 +179,28 @@ jobs:
               mv dist/CyberController dist/cyber-controller-${TAG}-linux-arm64
               chmod +x dist/cyber-controller-${TAG}-linux-arm64
             "
-      - name: Upload release asset (draft-preserving)
-        run: gh release upload "$TAG" "dist/cyber-controller-$TAG-linux-arm64" --clobber
+      - name: Upload release asset (draft-guarded)
+        run: bash scripts/release_upload.sh "$TAG" "dist/cyber-controller-$TAG-linux-arm64"
 
   build-macos:
     runs-on: macos-latest
     needs: preflight
-    # Best-effort (like the ARM job): a macOS-specific build hiccup (e.g. the .ico->.icns icon
-    # conversion) must never block the other platforms. The checksums job still fails the run if
-    # the macOS asset is missing, so validation stays honest.
-    continue-on-error: true
+    # REQUIRED asset. No continue-on-error: a macOS build failure (e.g. the .ico->.icns conversion)
+    # must fail the run, not fall back to a stale macOS binary from an earlier run.
     env:
       TAG: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # Build the EXACT tagged source, not the dispatch branch.
           ref: ${{ inputs.tag }}
           submodules: recursive
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Install dependencies
-        # Pillow is REQUIRED on macOS: PyInstaller converts the app icon.ico -> .icns via Pillow, and
-        # the macos-latest runner image no longer ships it preinstalled (v1.4.0 built when it did).
+        # Pillow is REQUIRED on macOS: PyInstaller converts icon.ico -> .icns via Pillow, and the
+        # macos-latest image no longer ships it preinstalled.
         run: |
           python -m pip install --upgrade pip
           pip install pyinstaller pillow
@@ -236,35 +211,31 @@ jobs:
         run: |
           mv dist/CyberController "dist/cyber-controller-$TAG-macos-arm64"
           chmod +x "dist/cyber-controller-$TAG-macos-arm64"
-      - name: Upload release asset (draft-preserving)
-        run: gh release upload "$TAG" "dist/cyber-controller-$TAG-macos-arm64" --clobber
+      - name: Upload release asset (draft-guarded)
+        run: bash scripts/release_upload.sh "$TAG" "dist/cyber-controller-$TAG-macos-arm64"
 
-  # ── Consolidate the five binaries into ONE SHA256SUMS.txt (de-bulked layout — no per-file *.sha256).
-  # ── This is also the asset-shape gate: it FAILS unless every one of the five expected binaries is
-  # ── attached, so a best-effort platform build that quietly produced nothing cannot yield a green
-  # ── validation with a short release. Runs even if a build job failed (to report the true shape),
-  # ── but never after a failed preflight and never on cancellation — no bare always().
+  # Consolidate the five binaries into ONE SHA256SUMS.txt. Runs only when preflight AND every build
+  # job succeeded (default `needs` gating — no `if`, no always()): a build that produced nothing
+  # skips this job, so a partial run can never yield a green checksum/asset-shape validation.
   checksums:
     runs-on: ubuntu-latest
     needs: [preflight, build-windows, build-linux, build-linux-arm, build-macos]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' }}
     env:
       TAG: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # Exact tag: the preflight script that validates the release must itself come from the tag.
           ref: ${{ inputs.tag }}
-      - name: Re-verify draft status + all five binaries attached
-        # Re-checks draft here (not just in preflight) so a release published mid-run stops the
-        # pipeline instead of being mutated further.
+      - name: Re-verify draft status + all six assets attached
+        # Fresh draft check (a rerun could reach here after publish) plus a name-exact shape check:
+        # all five freshly-built binaries AND the installer must be present on the draft.
         run: |
           gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases" \
             | python scripts/release_preflight.py "$TAG" --require-assets
       - name: Build consolidated SHA256SUMS.txt
-        # Download and hash the five EXACT expected names — no glob — so a stray asset can never
-        # sneak into the checksum file and a missing one fails loudly.
+        # Download and hash the five EXACT expected names — no glob — so a stray asset can't sneak in
+        # and a missing one fails loudly.
         run: |
           mkdir dl && cd dl
           for name in $(python ../scripts/release_preflight.py --list-expected "$TAG"); do
@@ -272,16 +243,15 @@ jobs:
           done
           sha256sum cyber-controller-* | sed 's/ \*/  /' > ../SHA256SUMS.txt
           cat ../SHA256SUMS.txt
-      - name: Upload SHA256SUMS.txt (draft-preserving)
-        run: gh release upload "$TAG" SHA256SUMS.txt --clobber
+      - name: Upload SHA256SUMS.txt (draft-guarded)
+        run: bash scripts/release_upload.sh "$TAG" SHA256SUMS.txt
 
-  # ── VirusTotal on every release, results posted in the notes. REQUIRES the VT_API_KEY repo secret:
-  # ── a missing key FAILS this job, because "no scan ran" must never read as a green release
-  # ── validation. The key is only ever passed via env to the scan script — never printed. ──
+  # VirusTotal on every release, results posted in the notes. REQUIRES the VT_API_KEY repo secret: a
+  # missing key FAILS this job, because "no scan ran" must never read as a green release validation.
+  # Runs only when preflight and checksums succeeded (default `needs` gating).
   virustotal:
     runs-on: ubuntu-latest
     needs: [preflight, checksums]
-    if: ${{ !cancelled() && needs.preflight.result == 'success' && needs.checksums.result == 'success' }}
     env:
       TAG: ${{ inputs.tag }}
       GH_TOKEN: ${{ github.token }}
@@ -295,7 +265,6 @@ jobs:
           fi
       - uses: actions/checkout@v4
         with:
-          # Exact tag: the scanner script must be the one the tag ships, not the default branch's.
           ref: ${{ inputs.tag }}
       - name: Re-verify draft status + full six-asset shape
         run: |

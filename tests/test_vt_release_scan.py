@@ -210,6 +210,8 @@ def test_main_fails_loudly_on_scan_error(monkeypatch, tmp_path):
     monkeypatch.setattr(vt.requests, "request", fake_request)
 
     def fake_run(cmd, *a, **kw):
+        if "view" in cmd and "isDraft" in cmd:
+            return _FakeCompleted(stdout="true\n")  # the pre-edit draft re-check
         if "view" in cmd:
             return _FakeCompleted(stdout="existing release notes\n")
         return _FakeCompleted()  # the `gh release edit` call
@@ -225,3 +227,145 @@ def test_main_fails_loudly_on_scan_error(monkeypatch, tmp_path):
     written = (tmp_path / "_vt_body.md").read_text(encoding="utf-8")
     assert "scan FAILED" in written, "the failed file must be labeled FAILED in the notes"
     assert "_scan pending_" not in written, "a real auth failure must not masquerade as 'pending'"
+
+
+def test_main_aborts_notes_edit_if_no_longer_draft(monkeypatch, tmp_path):
+    """If the release was published during the (long) scan, main() must refuse to edit its notes —
+    the pre-edit draft re-check raises rather than mutating a public release."""
+    bindir = tmp_path / "dist"
+    bindir.mkdir()
+    (bindir / "cyber-controller-linux-x64").write_bytes(b"BINARY-CONTENT")
+
+    def fake_request(method, url, headers=None, timeout=None, **kw):
+        return _Resp(200, {"data": {"attributes": {"last_analysis_stats":
+            {"malicious": 0, "suspicious": 0, "undetected": 70, "harmless": 5}}}})
+
+    monkeypatch.setattr(vt.requests, "request", fake_request)
+
+    edited = {"n": 0}
+
+    def fake_run(cmd, *a, **kw):
+        if "view" in cmd and "isDraft" in cmd:
+            return _FakeCompleted(stdout="false\n")  # published mid-scan
+        if "edit" in cmd:
+            edited["n"] += 1
+        return _FakeCompleted(stdout="notes\n")
+
+    monkeypatch.setattr(vt.subprocess, "run", fake_run)
+    monkeypatch.setenv("VT_API_KEY", "k")
+    monkeypatch.setattr(vt.sys, "argv", ["vt_release_scan.py", "v9.9.9", str(bindir)])
+    monkeypatch.chdir(tmp_path)
+
+    with pytest.raises(vt.VTError):
+        vt.main()
+    assert edited["n"] == 0, "must not edit the notes of a release that is no longer a draft"
+
+
+# ── tally: what counts as complete scan evidence (a completed scan requirement) ────────────────
+
+def _complete(malicious=0, suspicious=0, undetected=60, harmless=5):
+    return {"malicious": malicious, "suspicious": suspicious,
+            "undetected": undetected, "harmless": harmless,
+            "timeout": 0, "type-unsupported": 3, "failure": 0}
+
+
+def test_tally_counts_detections_and_engines():
+    assert vt.tally(_complete(malicious=2, suspicious=1)) == (3, 68)
+
+
+def test_tally_clean_scan():
+    assert vt.tally(_complete()) == (0, 65)
+
+
+def test_tally_pending_is_incomplete():
+    with pytest.raises(vt.VTError):
+        vt.tally(None)
+
+
+def test_tally_empty_stats_is_incomplete():
+    with pytest.raises(vt.VTError):
+        vt.tally({})
+
+
+def test_tally_non_dict_is_malformed():
+    for bad in ("nope", 5, [1, 2]):
+        with pytest.raises(vt.VTError):
+            vt.tally(bad)
+
+
+def test_tally_zero_evaluated_engines_is_incomplete():
+    """A dict full of zeros (an analysis with no engine results) must fail, not read as 0/0."""
+    with pytest.raises(vt.VTError):
+        vt.tally({"malicious": 0, "suspicious": 0, "undetected": 0, "harmless": 0})
+
+
+def test_tally_only_nonengine_buckets_is_incomplete():
+    """timeout/type-unsupported/failure alone are not evaluations — no engine actually scanned."""
+    with pytest.raises(vt.VTError):
+        vt.tally({"malicious": 0, "suspicious": 0, "undetected": 0, "harmless": 0,
+                  "timeout": 4, "type-unsupported": 2, "failure": 1})
+
+
+def test_tally_non_integer_stat_is_malformed():
+    with pytest.raises(vt.VTError):
+        vt.tally({"malicious": "2", "undetected": 60, "harmless": 0, "suspicious": 0})
+    with pytest.raises(vt.VTError):  # bool must not pass as an int count
+        vt.tally({"malicious": True, "undetected": 60, "harmless": 0, "suspicious": 0})
+
+
+# ── build_rows: aggregate pass/fail + review flagging (no network, get_stats injected) ─────────
+
+def _bins(tmp_path, n=2):
+    paths = []
+    for i in range(n):
+        p = tmp_path / f"cyber-controller-v2.0.1-plat{i}"
+        p.write_bytes(b"binary-%d" % i)
+        paths.append(str(p))
+    return paths
+
+
+def test_build_rows_all_clean_passes(tmp_path):
+    files = _bins(tmp_path)
+    rows, failed, flagged = vt.build_rows(
+        files, lambda f: ("deadbeef", _complete()), sleep=lambda *_: None)
+    assert failed is False and flagged == []
+    assert len(rows) == 2 and all("0/65" in r for r in rows)
+
+
+def test_build_rows_empty_file_list_fails():
+    rows, failed, flagged = vt.build_rows([], lambda f: ("x", _complete()), sleep=lambda *_: None)
+    assert failed is True and rows == []
+
+
+def test_build_rows_pending_fails_with_honest_row(tmp_path):
+    files = _bins(tmp_path, 1)
+    rows, failed, flagged = vt.build_rows(files, lambda f: ("sha", None), sleep=lambda *_: None)
+    assert failed is True and "scan FAILED" in rows[0]
+
+
+def test_build_rows_vterror_fails_with_honest_row(tmp_path):
+    files = _bins(tmp_path, 1)
+
+    def boom(f):
+        raise vt.VTError("bad key")
+
+    rows, failed, flagged = vt.build_rows(files, boom, sleep=lambda *_: None)
+    assert failed is True and "scan FAILED" in rows[0]
+
+
+def test_build_rows_detections_are_flagged_not_dismissed(tmp_path):
+    files = _bins(tmp_path, 1)
+    rows, failed, flagged = vt.build_rows(
+        files, lambda f: ("sha", _complete(malicious=3)), sleep=lambda *_: None)
+    # A clean, completed scan WITH detections is not a failure, but it is flagged for review.
+    assert failed is False
+    assert flagged == ["cyber-controller-v2.0.1-plat0"]
+    assert "3/" in rows[0]
+
+
+def test_build_rows_mixed_batch_fails_on_any_incomplete(tmp_path):
+    files = _bins(tmp_path, 2)
+    seq = iter([("a", _complete()), ("b", None)])
+    rows, failed, flagged = vt.build_rows(files, lambda f: next(seq), sleep=lambda *_: None)
+    assert failed is True  # one complete + one pending -> overall fail
+    assert len(rows) == 2
