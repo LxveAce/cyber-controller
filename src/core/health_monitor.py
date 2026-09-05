@@ -27,60 +27,67 @@ _CPU_STALE_SECONDS = 15.0
 
 _cpu_lock = threading.Lock()
 _cpu_value: float = 0.0
-_cpu_ts: float = 0.0        # time.monotonic() of the last successful sample (0 = never)
-_cpu_started = False
+_cpu_ts: float = 0.0        # time.monotonic() of the last SUCCESSFUL sample (0 = never sampled)
+_cpu_gen = 0               # generation: only the current-gen worker may write the cache
+_cpu_launching = False     # a worker is starting and hasn't posted its first sample yet
 
 
-def _cpu_sampler_loop() -> None:
-    global _cpu_value, _cpu_ts, _cpu_started
+def _cpu_sampler_loop(gen: int) -> None:
+    global _cpu_value, _cpu_ts, _cpu_launching
     try:
         psutil.cpu_percent(interval=None)  # prime the baseline in THIS dedicated thread
         while True:
             v = psutil.cpu_percent(interval=2.0)  # blocking sample, dedicated thread only
             with _cpu_lock:
+                if gen != _cpu_gen:
+                    return  # a newer worker superseded us — never touch the shared cache
                 _cpu_value = v
-                _cpu_ts = time.monotonic()
+                _cpu_ts = time.monotonic()   # advance freshness ONLY after a successful measurement
+                _cpu_launching = False       # first good sample clears the launch guard
     except Exception:  # noqa: BLE001 — a dead sampler must not take the app down
         log.exception("CPU sampler thread stopped")
     finally:
-        # Mark not-started so the next reader restarts a sampler instead of serving a frozen value forever.
         with _cpu_lock:
-            _cpu_started = False
+            if gen == _cpu_gen:
+                _cpu_launching = False       # allow a future restart; _cpu_ts stays (reads report stale)
 
 
 def _ensure_cpu_sampler() -> None:
-    global _cpu_started, _cpu_value, _cpu_ts
+    global _cpu_gen, _cpu_launching, _cpu_value, _cpu_ts
     with _cpu_lock:
-        if _cpu_started:
-            stale = bool(_cpu_ts) and (time.monotonic() - _cpu_ts) > _CPU_STALE_SECONDS
-            if not stale:
-                return
-            first_start = False   # sampler looks dead: relaunch, but keep the old value marked stale
-        else:
-            first_start = True
-        _cpu_started = True        # claim the (re)start
-    if first_start:
-        # First start only: take one honest immediate value so the very first read isn't a placeholder.
+        if _cpu_launching:
+            return  # a start/restart is already in flight — exactly one replacement, never a pile-up
+        fresh = _cpu_ts != 0.0 and (time.monotonic() - _cpu_ts) <= _CPU_STALE_SECONDS
+        if fresh:
+            return
+        _cpu_launching = True
+        _cpu_gen += 1
+        gen = _cpu_gen
+        first_ever = _cpu_ts == 0.0
+    if first_ever:
+        # First start only: one honest immediate value so the first read isn't a 2 s placeholder. A FAILED
+        # seed must NOT advance the timestamp — leaving _cpu_ts at 0 keeps the state stale/unavailable
+        # instead of fabricating a fresh 0%.
         try:
             seed = psutil.cpu_percent(interval=0.1)
         except Exception:  # noqa: BLE001
-            seed = 0.0
-        with _cpu_lock:
-            _cpu_value = seed
-            _cpu_ts = time.monotonic()
-    # A restart does NOT reseed synchronously — the old value stays (reads report it stale) until the
-    # relaunched thread posts a fresh sample, so a dead sampler is surfaced honestly, not silently reset.
-    threading.Thread(target=_cpu_sampler_loop, name="cpu-sampler", daemon=True).start()
+            seed = None
+        if seed is not None:
+            with _cpu_lock:
+                _cpu_value = seed
+                _cpu_ts = time.monotonic()
+                _cpu_launching = False
+    threading.Thread(target=_cpu_sampler_loop, name="cpu-sampler", args=(gen,), daemon=True).start()
 
 
 def _cpu_sample() -> tuple[float, bool]:
     """Return ``(cpu_percent, stale)`` from the dedicated sampler's cache, starting/restarting it on use.
-    ``stale`` is True when the last real sample is too old (sampler died) — readers never sample psutil
-    themselves, so a request thread can't read a spurious 0, and a frozen value is surfaced as stale."""
+    ``stale`` is True when there is no successful sample yet or the last one is too old (sampler died) —
+    readers never sample psutil themselves (no cold-thread false 0), a frozen value is surfaced as stale,
+    and a failed sampler yields stale rather than a fabricated fresh 0."""
     _ensure_cpu_sampler()
     with _cpu_lock:
-        age = (time.monotonic() - _cpu_ts) if _cpu_ts else None
-        stale = age is None or age > _CPU_STALE_SECONDS
+        stale = _cpu_ts == 0.0 or (time.monotonic() - _cpu_ts) > _CPU_STALE_SECONDS
         return _cpu_value, stale
 
 

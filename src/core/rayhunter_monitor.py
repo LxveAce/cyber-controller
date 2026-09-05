@@ -121,8 +121,13 @@ def parse_analysis_report(
         if isinstance(raw_events, list):
             truncated = False
             for i, ev in enumerate(raw_events):
+                if ev is None:
+                    continue  # a LEGITIMATE null positional slot (that analyzer produced no event)
                 if not isinstance(ev, dict):
-                    continue  # a null positional event contributes nothing
+                    # a scalar/list where an Event object belongs (e.g. events:[42]) is CORRUPT, not a
+                    # null slot — mark coverage incomplete, never silently drop it.
+                    losses.add("malformed-event")
+                    continue
                 if len(events) >= max_events:
                     losses.add("truncated-events")
                     truncated = True
@@ -130,8 +135,10 @@ def parse_analysis_report(
                 level = _event_level(ev.get("event_type"))
                 if level in counts_by_level:
                     counts_by_level[level] += 1
-                elif level is not None:
-                    losses.add("unknown-severity")   # a severity CC doesn't know -> coverage is uncertain
+                else:
+                    # unknown string ("Critical") OR an unparseable event_type ({}/missing) -> the warning
+                    # tally can't be trusted, so coverage is incomplete.
+                    losses.add("unknown-severity")
                 analyzer = analyzer_names[i] if i < len(analyzer_names) else None
                 events.append({
                     "level": level,
@@ -141,6 +148,11 @@ def parse_analysis_report(
                 })
             if truncated:
                 break
+
+    if metadata is None:
+        # No ReportMetadata line at all — we can't establish report version / analyzer identity, so the
+        # coverage is not complete (missing supported metadata can't back a "complete" verdict).
+        losses.add("missing-metadata")
 
     warnings = sum(counts_by_level[lvl] for lvl in _WARNING_LEVELS)
     complete = not losses

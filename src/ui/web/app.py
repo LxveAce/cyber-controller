@@ -1642,6 +1642,13 @@ def create_app(
         requested_variant = str(data.get("variant", "")).strip()
         if requested_variant:
             profile.variant = requested_variant
+        # Apply the saved flash baud (Settings) to THIS freshly-loaded profile so a user's explicit choice
+        # (e.g. a slower 115200 for a flaky cable) reaches the flash boundary instead of being ignored in
+        # favor of the profile default (F03). The profile instance is per-flash, so this mutates nothing
+        # shared. The engine still owns per-chip requirements; this is the operator's effective default.
+        _saved_flash_baud = app_settings.load_settings().get("flash", {}).get("flash_baud")
+        if _saved_flash_baud:
+            profile.baud = int(_saved_flash_baud)
         # Reject fast if the port is already mid flash/backup/erase — a second esptool on the same UART
         # can brick the board. (The engine's per-port guard is the hard backstop against the TOCTOU
         # window; this 409 is the clean API answer so a scripted caller doesn't kick off a doomed thread.)
@@ -1744,7 +1751,10 @@ def create_app(
                 return jsonify({"error": f"Unknown/unregistered port: {port}"}), 400
             device_manager.add_device(match)
         try:
-            device_manager.open_connection(port, owner="web")
+            # Apply the saved serial baud (Settings) at the connect boundary — the default arg silently
+            # forced 115200 and ignored a saved 9600 (F03).
+            serial_baud = int(app_settings.load_settings().get("serial", {}).get("default_baud", 115200))
+            device_manager.open_connection(port, baud=serial_baud, owner="web")
         except Exception:  # noqa: BLE001 — surface a clean 400; the OS/serial error text is logged, not leaked
             log.exception("web connect failed on %s", port)
             return jsonify({"error": f"Could not open a connection on {port}"}), 400

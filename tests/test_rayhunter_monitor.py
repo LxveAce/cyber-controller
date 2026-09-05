@@ -95,6 +95,32 @@ def test_unsupported_report_version_flagged():
     assert out["complete"] is False and "unsupported-report-version" in out["coverage"]
 
 
+def test_missing_metadata_is_incomplete():
+    # rows only, no ReportMetadata line
+    out = rm.parse_analysis_report(_ndjson({"packet_timestamp": "t", "events": [{"event_type": "Low"}]}))
+    assert out["complete"] is False and "missing-metadata" in out["coverage"]
+
+
+def test_scalar_event_is_malformed_not_a_null_slot():
+    out = rm.parse_analysis_report(_ndjson(META, {"packet_timestamp": "t", "events": [42]}))
+    assert out["complete"] is False and "malformed-event" in out["coverage"]
+    assert out["counts"]["warnings"] == 0
+
+
+def test_empty_event_type_object_flagged():
+    out = rm.parse_analysis_report(_ndjson(META, {"packet_timestamp": "t", "events": [{"event_type": {}}]}))
+    assert out["complete"] is False and "unknown-severity" in out["coverage"]
+
+
+def test_null_positional_slot_is_allowed():
+    # events: [null, High] — the null is a legit slot (analyzer[0] produced nothing); NOT a loss
+    out = rm.parse_analysis_report(
+        _ndjson(META, {"packet_timestamp": "t", "events": [None, {"event_type": "High", "message": "x"}]}))
+    assert out["complete"] is True and out["coverage"] == "complete"
+    assert out["counts"]["by_level"]["High"] == 1
+    assert out["events"][0]["analyzer"] == "cell"   # positional: index 1 -> analyzers[1]=cell
+
+
 def test_missing_timestamp_stays_unknown():
     out = rm.parse_analysis_report(_ndjson(META, {"events": [{"event_type": "Low"}]}))
     assert out["events"][0]["timestamp"] is None   # never coerced to epoch

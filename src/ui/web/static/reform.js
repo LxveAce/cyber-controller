@@ -285,11 +285,24 @@
 
   // ── Dashboard device actions (Connect / Disconnect / Scan) ─────────
   var selectedPort = null;
+  var lastDevices = [];
   var devMsg = document.getElementById("dash-dev-msg");
   function setDevMsg(text, isErr) {
     if (!devMsg) return;
     devMsg.textContent = text || "";
     devMsg.style.color = isErr ? "var(--red)" : "var(--dim)";
+  }
+  // The SELECTED (else first) connected device drives the Selected Device panel + dashboard terminal.
+  // When the selection disconnects/disappears, drop it so the labels + terminal don't keep pointing at a
+  // gone device (F01/F04).
+  function applySelectedDevice() {
+    var connected = lastDevices.filter(function (d) { return d.connected; });
+    var sel = connected.filter(function (d) { return d.port === selectedPort; })[0] || connected[0] || null;
+    selectedPort = sel ? sel.port : null;
+    document.querySelectorAll("#dash-devices .dev-row").forEach(function (r) {
+      r.classList.toggle("sel", r.dataset.port === selectedPort);
+    });
+    subscribeSerial(sel ? sel.port : null, sel ? sel.firmware : null);
   }
   var devTable = document.getElementById("dash-devices");
   if (devTable) {
@@ -297,10 +310,8 @@
       var row = e.target.closest("tr.dev-row");
       if (!row || !row.dataset.port) return;
       selectedPort = row.dataset.port;
-      document.querySelectorAll("#dash-devices .dev-row").forEach(function (r) {
-        r.classList.toggle("sel", r === row);
-      });
       setDevMsg("selected " + selectedPort);
+      applySelectedDevice();
     });
   }
   function wireBtn(id, fn) {
@@ -356,7 +367,12 @@
 
   function refreshHealth() {
     getJSON("/api/system-health").then(function (s) {
-      setGauge("cpu", Math.round(s.cpu_percent), Math.round(s.cpu_percent), s.cpu_percent.toFixed(1) + "%");
+      // cpu_stale: the sampler hasn't posted a fresh reading — show "stale" rather than a misleading number.
+      if (s.cpu_stale) {
+        setGauge("cpu", 0, 0, "stale");
+      } else {
+        setGauge("cpu", Math.round(s.cpu_percent), Math.round(s.cpu_percent), s.cpu_percent.toFixed(1) + "%");
+      }
       setGauge("ram", Math.round(s.memory_percent), Math.round(s.memory_percent),
         (s.memory_used_mb / 1024).toFixed(1) + "/" + Math.round(s.memory_total_mb / 1024) + " GB");
       setGauge("disk", Math.round(s.disk_percent), Math.round(s.disk_percent),
@@ -398,9 +414,9 @@
       var rc = document.getElementById("rail-device-count");
       if (rc) rc.textContent = count;
 
-      // first connected device drives Selected Device + the serial subscription
-      var sel = devs.filter(function (d) { return d.connected; })[0] || null;
-      subscribeSerial(sel ? sel.port : null, sel ? sel.firmware : null);
+      // the SELECTED (else first) connected device drives Selected Device + the serial subscription
+      lastDevices = devs;
+      applySelectedDevice();
       if (window.__opSyncDevices) window.__opSyncDevices(devs);
       if (window.__fwSyncPorts) window.__fwSyncPorts(devs);
       if (window.__termSyncDevices) window.__termSyncDevices(devs);
@@ -527,8 +543,18 @@
     }
     subscribePort(port);
   }
+  function unbindTerminalEl(el) {
+    // Drop this DOM sink from EVERY port so a shared terminal (Dashboard / OPERATE) stops receiving a
+    // previously-bound device's output after it switches devices (F02) — output from A must not appear
+    // under B.
+    if (!el) return;
+    Object.keys(serialSinks).forEach(function (p) {
+      var i = serialSinks[p].indexOf(el);
+      if (i !== -1) serialSinks[p].splice(i, 1);
+    });
+  }
 
-  // Dashboard terminal: bind to the first connected device's stream.
+  // Dashboard terminal: bind to the SELECTED (else first connected) device's stream.
   var dashTerm = document.getElementById("dash-term");
   var dashBoundPort = null;
   function subscribeSerial(port, fw) {
@@ -537,11 +563,14 @@
     if (!port) {
       if (title) title.textContent = "no device";
       if (selTitle) selTitle.textContent = "none connected";
+      unbindTerminalEl(dashTerm);
+      dashBoundPort = null;
       return;
     }
     if (title) title.textContent = port + " — " + (fw || "device");
     if (selTitle) selTitle.textContent = port + " · " + (fw || "device");
     if (dashBoundPort === port) return;
+    unbindTerminalEl(dashTerm);   // release the old port before binding the new one
     dashBoundPort = port;
     bindTerminal(port, dashTerm, "[Connected to " + port + "]");
   }
@@ -596,6 +625,7 @@
     if (!sel || !grid) return;
 
     function loadFor(port) {
+      unbindTerminalEl(termEl);   // release the previously-selected device so its output can't leak here (F02)
       if (!port) { grid.innerHTML = '<div class="dim" style="font-size:12px">Connect a device (DEVICE ▸ Dashboard) to load its command set.</div>'; if (fwEl) fwEl.textContent = "—"; return; }
       bindTerminal(port, termEl, "[Activity — " + port + "]");
       getJSON("/api/quick-commands?port=" + encodeURIComponent(port)).then(function (data) {
@@ -1861,17 +1891,34 @@
     if (!sel) return;
     var panel = document.getElementById("wl-catalog-panel");
     var foot = document.getElementById("wl-foot");
+    var byoEntries = [];   // user-added bring-your-own wordlists, preserved across catalog refreshes (F05)
     function wlOption(w, group) {
       var size = w.size_human ? " (" + esc(w.size_human) + ")" : "";
       return '<option value="' + esc(w.path || w.name) + '">' + esc(w.name) + size + (group ? " · " + group : "") + "</option>";
     }
     function load() {
+      var prev = sel.value;
       getJSON("/api/wordlists").then(function (d) {
         var opts = [];
         (d.bundled || []).forEach(function (w) { opts.push(wlOption(w, "bundled")); });
         (d.installed || []).forEach(function (w) { opts.push(wlOption(w, "installed")); });
+        // Keep user-added BYO entries across a refresh — the server reads them in place (not from the
+        // wordlist dir), so rebuilding from bundled+installed alone would drop them + jump the selection (F05).
+        byoEntries.forEach(function (e) {
+          opts.push('<option value="' + esc(e.path) + '">' + esc(e.name) + " · BYO</option>");
+        });
         sel.innerHTML = opts.length ? opts.join("") : '<option>no wordlists &#8212; Get more&#8230; or Bring your own&#8230;</option>';
-        if (foot && d.dir) foot.textContent = "Wordlists in " + d.dir + " · the bundled WPA core works offline.";
+        var stillThere = prev && Array.prototype.some.call(sel.options, function (o) { return o.value === prev; });
+        if (stillThere) sel.value = prev;   // preserve the selection instead of silently jumping to the first
+        if (foot) {
+          if (prev && !stillThere) {
+            foot.style.color = "var(--amber)";
+            foot.textContent = "the selected wordlist is no longer available — pick another";
+          } else if (d.dir) {
+            foot.style.color = "";
+            foot.textContent = "Wordlists in " + d.dir + " · the bundled WPA core works offline.";
+          }
+        }
         if (panel) { panel.__catalog = d.catalog || []; if (!panel.hidden) renderCatalog(); }
       }).catch(function () { sel.innerHTML = '<option>wordlist listing unavailable</option>'; });
     }
@@ -1921,6 +1968,10 @@
         // it's usable in the crack run right now (the run sends the option's value = the full path).
         var resolved = (r && r.path) || p;
         var name = resolved.replace(/\\/g, "/").split("/").pop() || resolved;
+        // Track it so a later catalog Refresh keeps it (F05), then append + select it now.
+        if (!byoEntries.some(function (e) { return e.path === resolved; })) {
+          byoEntries.push({ path: resolved, name: name });
+        }
         var opt = document.createElement("option");
         opt.value = resolved;
         opt.textContent = name + " · BYO";
@@ -2420,7 +2471,11 @@
   }
   function _pollTick() {
     var v = _activeView();
-    if (v === "device") { refreshHealth(); refreshDevices(); refreshTargets(); }
+    // Reconcile the shared device inventory on EVERY tick, regardless of the active view, so a device that
+    // disconnects while OPERATE/Terminal is showing stops being offered/selected there (F04) — previously
+    // this only ran in the DEVICE view.
+    refreshDevices();
+    if (v === "device") { refreshHealth(); refreshTargets(); }
     else if (v === "hunt") {
       refreshTargets();
       // only poll /api/sensing while the Sense sub-tab is actually showing (not every HUNT sub-tab)
