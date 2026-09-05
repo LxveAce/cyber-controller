@@ -229,15 +229,23 @@ def create_app(
         """True iff the current request's session carries the live credential generation."""
         return csrf_valid(creds.generation, session.get("cred_gen"))
 
-    def _revoke_other_sessions(new_generation: str) -> None:
-        """After the live generation rotates, disconnect every tracked socket whose generation no longer
-        matches. Called only once creds.generation is already the new value, so the connect handler's
-        under-lock re-check refuses any stale socket still mid-handshake — no stale socket can register
-        after this sweep. The acting operator's own socket is dropped here and auto-reconnects with the
-        re-stamped cookie (a brief stream blip); its NEW-generation reconnection is never swept."""
+    def _revoke_other_sessions() -> None:
+        """Disconnect every tracked socket whose generation no longer matches the CURRENT live credential
+        generation. The live value (creds.generation) is read UNDER _sids_lock — never a caller-captured
+        token — so a genuinely-later change/clear that already advanced the generation is respected: this
+        sweep keeps that newer session's socket and drops only the ones carrying a superseded generation.
+        (Sweeping against the caller's own returned generation was wrong: an earlier change that paused
+        before its sweep would disconnect a newer change's current socket.) The connect handler registers
+        new sids under this same lock only after re-checking creds.generation, so registration and this
+        sweep are serialized — a socket accepted for the live generation is never swept, and one whose
+        generation was superseded is always swept. The acting operator's own socket carries the old
+        generation and IS dropped here; the acting tab explicitly reconnects with its re-stamped cookie
+        (see recoverSocketAfterAuthChange in reform.js — Socket.IO does NOT auto-reconnect after a
+        server-initiated disconnect)."""
         with _sids_lock:
+            live_generation = creds.generation
             stale = [sid for sid, gen in _connected_sids.items()
-                     if not csrf_valid(new_generation, gen)]
+                     if not csrf_valid(live_generation, gen)]
             for sid in stale:
                 _connected_sids.pop(sid, None)
         for sid in stale:
@@ -1927,11 +1935,12 @@ def create_app(
                 removed, new_gen = web_auth.clear_and_rotate(creds)
             except OSError as exc:  # a real delete failure must NOT report success
                 return jsonify({"error": f"could not clear the saved password: {exc}"}), 500
-            # Keep THIS operator signed in: re-stamp the acting session with the new generation (the
-            # response carries the updated signed cookie). Then drop every OTHER cookie/socket, which now
-            # carries the old generation. The acting tab's own socket is dropped too and auto-reconnects.
+            # Keep THIS operator signed in: re-stamp the acting session with the exact generation this
+            # clear returned (the response carries the updated signed cookie). Then drop every socket whose
+            # generation is not the live one. The acting tab's own socket is dropped too; the tab explicitly
+            # reconnects once its cookie is updated (Socket.IO does not auto-reconnect a server disconnect).
             session["cred_gen"] = new_gen
-            _revoke_other_sessions(new_gen)
+            _revoke_other_sessions()
             _audit("web_password_reset", user=session.get("user"))
             note = ("Signed out other sessions and open connections; this session stays active. The "
                     "current password stays in effect until you restart, when CC reverts to CC_WEB_PASS "
@@ -1952,9 +1961,10 @@ def create_app(
             return jsonify({"error": f"could not save the password: {exc}"}), 500
         # Keep the acting operator signed in with the EXACT generation just published (captured under the
         # writer lock), so a genuinely-later concurrent change deterministically supersedes this one; then
-        # revoke every other cookie/socket carrying any other generation.
+        # sweep every socket whose generation is not the live one. If a later change already superseded
+        # this one, the sweep reads that newer live generation and leaves the newer session's socket alone.
         session["cred_gen"] = new_gen
-        _revoke_other_sessions(new_gen)
+        _revoke_other_sessions()
         _audit("web_password_set", user=session.get("user"), new_user=username)
         return jsonify({"ok": True, "username": username, "source": "saved"})
 

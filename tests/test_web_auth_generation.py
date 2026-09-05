@@ -115,18 +115,61 @@ def test_clear_and_rotate_idempotent_no_file_still_rotates(isolated):
     assert g1 != g0 and creds.generation == g1  # explicit clear still revokes other sessions
 
 
-def test_clear_and_rotate_delete_failure_raises_before_rotation(isolated, monkeypatch):
-    creds = web_auth.WebCredentials("admin", "keepme-123")
+def test_clear_and_rotate_delete_failure_leaves_file_and_generation(isolated, monkeypatch):
+    """A real unlink failure must leave the snapshot unchanged AND the saved file in place: the generation
+    is pre-minted but never published, so no session is revoked and nothing on disk was touched."""
+    web_auth.save_web_password("ace", "keepme-123")
+    creds, _ = web_auth.resolve_web_credentials(logging.getLogger("t"))
     g0 = creds.generation
 
-    class _FakePath:
-        def unlink(self):
-            raise PermissionError("file is locked")
+    def boom() -> bool:
+        raise PermissionError("file is locked")
 
-    monkeypatch.setattr(web_auth, "_WEB_AUTH_FILE", _FakePath())
+    monkeypatch.setattr(web_auth, "_unlink_web_auth_file", boom)
     with pytest.raises(OSError):
         web_auth.clear_and_rotate(creds)
     assert creds.generation == g0             # a clear that FAILED revokes nothing
+    assert web_auth.has_stored_password()     # the saved password file is untouched
+    assert creds.verify("ace", "keepme-123")
+
+
+def test_clear_and_rotate_entropy_failure_before_unlink_deletes_nothing(isolated, monkeypatch):
+    """Fault-injection (finding #2): if minting the new generation fails, it must fail BEFORE the unlink —
+    so the saved credential file is NOT deleted and no session is left dangling with a stale generation.
+    (The old order unlinked first, then minted, so an entropy failure deleted the file while leaving every
+    old session valid and reporting failure.)"""
+    web_auth.save_web_password("ace", "hunter2pw")
+    creds, _ = web_auth.resolve_web_credentials(logging.getLogger("t"))
+    g0 = creds.generation
+
+    def no_entropy() -> str:
+        raise OSError("no entropy available")
+
+    monkeypatch.setattr(web_auth, "_new_generation", no_entropy)
+    with pytest.raises(OSError):
+        web_auth.clear_and_rotate(creds)
+    assert web_auth.has_stored_password()     # mint failed BEFORE the unlink -> file intact
+    assert creds.generation == g0             # snapshot unchanged -> no session left dangling
+    assert creds.verify("ace", "hunter2pw")
+
+
+def test_apply_web_password_generation_mint_failure_leaves_everything_unchanged(isolated, monkeypatch):
+    """Sibling fault-injection for a change: a failure minting the generation happens before the disk write
+    and the publish, so neither the saved file nor the live snapshot changes."""
+    web_auth.save_web_password("admin", "old-password")
+    creds, _ = web_auth.resolve_web_credentials(logging.getLogger("t"))
+    g0 = creds.generation
+
+    def no_entropy() -> str:
+        raise OSError("no entropy available")
+
+    monkeypatch.setattr(web_auth, "_new_generation", no_entropy)
+    with pytest.raises(OSError):
+        web_auth.apply_web_password(creds, "brand-new-pw", "ace")
+    assert creds.generation == g0
+    assert creds.verify("admin", "old-password")
+    stored = web_auth.load_stored_credentials()               # disk still holds the old record
+    assert stored is not None and stored[0] == "admin"
 
 
 def test_clear_stored_password_signature_unchanged(isolated):

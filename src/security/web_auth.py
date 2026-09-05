@@ -136,13 +136,15 @@ class WebCredentials:
         self.source = "saved"
         return gen
 
-    def rotate_generation(self) -> str:
-        """Mint a NEW generation while keeping the current username/salt/hash — a single atomic snapshot
+    def rotate_generation(self, generation: str | None = None) -> str:
+        """Publish a NEW generation while keeping the current username/salt/hash — a single atomic snapshot
         swap. Used by an explicit password *clear*: every existing cookie/socket (which carries the old
         generation) stops authenticating, while the running password keeps verifying until restart. No
-        persisted state changes. Returns the new generation."""
+        persisted state changes. Pass ``generation`` to publish a PRE-MINTED token so the caller can run
+        every fallible step (fresh randomness, the file unlink) BEFORE this swap and leave the snapshot
+        untouched on failure; omit it to mint here. Returns the published generation."""
         u, s, h, _old = self._snapshot
-        gen = _new_generation()
+        gen = generation or _new_generation()
         self._snapshot = (u, s, h, gen)
         return gen
 
@@ -311,13 +313,18 @@ def clear_and_rotate(creds: "WebCredentials") -> tuple[bool, str]:
     persisted state; on the next start CC reverts to CC_WEB_PASS / a one-time password). Returns
     ``(removed, new_generation)``.
 
-    Ordering matters: a real delete failure (PermissionError/OSError) propagates from the unlink BEFORE
-    any rotation, so a clear that did not happen revokes nothing. The rotation runs under ``_cred_lock``
-    so it can never clobber a concurrent ``apply_web_password``: it swaps ONLY the generation onto
-    whatever (username, salt, hash) is current at that instant, never an older record."""
+    Ordering matters, and NOTHING fallible runs after the snapshot swap. The new generation is minted
+    FIRST (fresh randomness — its own possible failure changes no state and deletes no file), THEN the
+    saved password is unlinked (a real PermissionError/OSError propagates here and, because publishing
+    happens only afterward, leaves every session valid: a clear that did not happen revokes nothing),
+    THEN the PRE-MINTED generation is published with no further random call. So a failed mint OR a failed
+    unlink leaves the credential snapshot exactly as it was. The swap runs under ``_cred_lock`` so it can
+    never clobber a concurrent ``apply_web_password``: it swaps ONLY the generation onto whatever
+    (username, salt, hash) is current at that instant, never an older record."""
     with _cred_lock:
-        removed = _unlink_web_auth_file()   # raises on a real failure -> no rotation, nothing revoked
-        return removed, creds.rotate_generation()
+        generation = _new_generation()      # mint BEFORE any side effect; a failure here deletes nothing
+        removed = _unlink_web_auth_file()   # raises on a real failure -> nothing published, nothing revoked
+        return removed, creds.rotate_generation(generation)  # publish the pre-minted token; no fresh randomness
 
 
 def has_stored_password() -> bool:

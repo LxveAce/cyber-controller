@@ -11,6 +11,7 @@ All hardware / host-shell child processes are mocked; nothing touches the real ~
 from __future__ import annotations
 
 import base64
+import threading
 
 import pytest
 
@@ -319,3 +320,96 @@ def test_disconnect_deregisters_sid_no_double_disconnect(monkeypatch):
     # The sid was de-registered on disconnect, so a later rotation has nothing to disconnect for it.
     assert _change(actor, actor_csrf).status_code == 200
     assert disconnected == [], "a disconnected socket must not be swept again on rotation"
+
+
+# ── deterministic ordering regressions (finding #1): sweep against the LIVE generation, not the caller's ──
+
+def test_delayed_sweep_uses_live_generation_not_caller_captured(monkeypatch):
+    """Deterministic interleave with events (no sleeps): operator A publishes generation A and PAUSES before
+    its revoke sweep; operator B then publishes generation B and connects a B-generation socket; A resumes
+    and sweeps. The sweep must read the CURRENT live generation (B) so B's socket SURVIVES — not A's stale
+    captured generation, which would wrongly disconnect the newer session's socket. Fails on the pre-fix
+    caller-captured-generation code; passes once the sweep reads creds.generation."""
+    app, sio = _make()
+    a_published = threading.Event()
+    b_finished = threading.Event()
+
+    real_apply = web_auth.apply_web_password
+
+    def apply_with_pause(creds, new_pw, username):
+        gen = real_apply(creds, new_pw, username)     # publishes + releases the writer lock
+        if new_pw == "first-pass-A":
+            a_published.set()                          # A committed gen A (live == A); handler not yet swept
+            assert b_finished.wait(timeout=10)         # hold A BEFORE its sweep until B is fully done
+        return gen
+
+    monkeypatch.setattr(web_auth, "apply_web_password", apply_with_pause)
+
+    actor_a, csrf_a, _ = _login(app)
+    a_result: dict = {}
+
+    def do_a_change():
+        a_result["status"] = _change(actor_a, csrf_a, new_pw="first-pass-A").status_code
+
+    ta = threading.Thread(target=do_a_change)
+    ta.start()
+    assert a_published.wait(timeout=10)                # A is paused after publishing, before its sweep
+
+    # B re-authenticates with A's new password, makes a genuinely-LATER change (gen B), connects a B socket.
+    actor_b = app.test_client()
+    assert actor_b.get("/api/health", headers=_basic("admin", "first-pass-A")).status_code == 200
+    with actor_b.session_transaction() as s:
+        csrf_b = s["csrf"]
+    assert _change(actor_b, csrf_b, new_pw="second-pass-B").status_code == 200
+    bsock = sio.test_client(app, flask_test_client=actor_b, auth={"csrf": csrf_b})
+    assert bsock.is_connected()
+
+    b_finished.set()                                   # release A: its sweep now runs with live gen == B
+    ta.join(timeout=10)
+    assert a_result.get("status") == 200
+
+    # The newer session's socket survived A's delayed sweep (the crux of finding #1).
+    assert bsock.is_connected(), "a delayed earlier sweep must not disconnect a newer generation's socket"
+
+
+def test_old_cookie_rejected_during_change_before_sweep_runs(monkeypatch):
+    """Verify-during-change: the generation moves at PUBLISH time inside apply_web_password, so the instant a
+    change commits — even before its socket sweep runs — an old-generation cookie is already rejected by the
+    per-request auth check. Deterministic via an event that holds the actor between publish and its sweep."""
+    app, _sio = _make()
+    published = threading.Event()
+    release = threading.Event()
+
+    real_apply = web_auth.apply_web_password
+
+    def apply_then_pause(creds, new_pw, username):
+        gen = real_apply(creds, new_pw, username)
+        published.set()
+        assert release.wait(timeout=10)
+        return gen
+
+    monkeypatch.setattr(web_auth, "apply_web_password", apply_then_pause)
+
+    actor, actor_csrf, _ = _login(app)
+    victim, _c, _g = _login(app)
+    t = threading.Thread(target=lambda: _change(actor, actor_csrf))
+    t.start()
+    try:
+        assert published.wait(timeout=10)
+        # Published (live generation moved) but the sweep has NOT run yet: the victim cookie is already stale.
+        assert victim.get("/api/health").status_code == 401
+    finally:
+        release.set()
+        t.join(timeout=10)
+
+
+def test_connect_with_cookie_rotated_away_is_refused(monkeypatch):
+    """Connect-vs-rotation: a socket whose cookie generation was rotated away before the handshake registers
+    must be refused — the connect handler re-checks the LIVE generation under the sids lock, never the value
+    the cookie was minted with."""
+    app, sio = _make()
+    victim, victim_csrf, _ = _login(app)
+    # A rotation (another operator's change) advances the live generation before this cookie's socket connects.
+    app.extensions["cc_web_credentials"].rotate_generation()
+    stale = sio.test_client(app, flask_test_client=victim, auth={"csrf": victim_csrf})
+    assert not stale.is_connected(), "a connect carrying a rotated-away generation must be refused"

@@ -532,6 +532,12 @@
   var socket = null;
   var serialSinks = {};   // port -> [DOM elements]
   var subscribedPorts = {};
+  // Set true after THIS tab's own password save/clear response has updated our session cookie. The server
+  // revokes the old-generation cookie and actively disconnects this tab's socket; Socket.IO does NOT
+  // auto-reconnect after a server-initiated disconnect ("io server disconnect"), so we reconnect ONCE
+  // ourselves — only for our own deliberate password change, never for a victim revoked with a stale
+  // cookie (whose reconnect the server would just refuse). Bounded to a single attempt: no retry loop.
+  var reconnectAfterAuthChange = false;
 
   function appendLine(el, cls, text) {
     if (!el) return;
@@ -563,7 +569,33 @@
         if (serialSinks[p] && serialSinks[p].length) subscribePort(p);
       });
     });
+    socket.on("disconnect", function (reason) {
+      // The server actively disconnects THIS tab's socket when this operator changes/clears the web
+      // password (its old-generation cookie is revoked). On a server-initiated disconnect Socket.IO reports
+      // reason "io server disconnect" and does NOT auto-reconnect, so without this the live streams stay
+      // dead even though the page is still authenticated over HTTP. Reconnect exactly once, and only once
+      // our own password response has re-stamped the cookie (reconnectAfterAuthChange) so the new polling
+      // handshake carries the new generation. A transport-level drop (any other reason) is left to the
+      // Socket.IO manager's own reconnection, exactly as before.
+      if (reason === "io server disconnect" && reconnectAfterAuthChange) {
+        reconnectAfterAuthChange = false;
+        if (socket) socket.connect();   // the "connect" handler above then re-subscribes every open sink
+      }
+    });
     return socket;
+  }
+  function recoverSocketAfterAuthChange() {
+    // Called right after a password save/clear HTTP response has updated our session cookie. The revoking
+    // server disconnect and this response can land in either order, so handle both: if the socket is still
+    // up, arm the flag and let the disconnect handler reconnect when the server disconnect arrives; if it
+    // is already down, reconnect now with the fresh cookie. A single bounded attempt — never a loop.
+    if (!socket) return;                   // nothing was streaming; a later ensureSocket() connects fresh
+    if (socket.connected) {
+      reconnectAfterAuthChange = true;     // server disconnect still in flight — reconnect when it lands
+    } else {
+      reconnectAfterAuthChange = false;
+      socket.connect();                    // already disconnected — reconnect immediately with new cookie
+    }
   }
   function subscribePort(port) {
     if (!port) return;
@@ -1119,6 +1151,7 @@
           document.getElementById("pw-new").value = "";
           say("Password saved. Use it next time you log in (this session stays open).");
           loadRemote();
+          recoverSocketAfterAuthChange();   // our cookie is re-stamped; reconnect our revoked live socket
         }).catch(function (err) {
           say("Could not save: " + (typeof err === "string" ? err : "error"), true);
         }).then(function () { saveBtn.disabled = false; });
@@ -1128,6 +1161,7 @@
         postJSON("/api/web-password", { reset: true }).then(function (d) {
           say(d.note || "Saved password cleared.");
           loadRemote();
+          recoverSocketAfterAuthChange();   // our cookie is re-stamped; reconnect our revoked live socket
         }).catch(function (err) {
           say("Could not reset: " + (typeof err === "string" ? err : "error"), true);
         });
