@@ -362,8 +362,7 @@ authors radio frames.
   web-flashable support mapping (e.g. marauder esp32c5/c6) are reported under `skipped` rather than emitted with a
   broken segment set. Tracks the latest upstream release, so it is regenerated rather than committed stale.
 - **Firmware command-completeness (Wave-2) — every real command CC was missing, grounded to source.** Each
-  command firmware's CC surface was diffed against its ACTUAL upstream firmware source (an 18-agent grounding
-  workflow + per-batch verify-first) and the missing verbs added: **marauder** (sniff variants, LAN recon
+  firmware's CC commands were checked against upstream source, and missing commands were added: **marauder** (sniff variants, LAN recon
   join/pingscan/arpscan/portscan, mactrack + a consolidated GPS group, ls/brightness/add, MAC-spoof
   randapmac/clonestamac, attack-t badmsg/sae/csa/quiet/sleep, blespam vendors + spoofat), **ghost_esp** (on-LAN
   recon netbiosscan/httpbannerscan/snmpprobe/enumscan/congestion, the **Flock ALPR** group flockscan/flocklist/
@@ -394,8 +393,7 @@ authors radio frames.
   (`add -c -b -ap AA:BB 3`). `op_command` now RESOLVES `<...>` tokens in place — byte-identical to the
   Devices terminal, which already did (both now share `src/core/placeholders.py`); an under-filled arg returns
   `""` so the guarded send no-ops, mirroring the terminal's blank-field cancel. `safety.py` + the guarded send
-  are byte-untouched — only the string built changed. Flagged by Atlas's WS5 sweep; fixed behind a fresh-agent
-  DEBUG pass with a cross-surface equality test.
+  are byte-untouched — only the string built changed. Checked with a cross-surface equality test.
 
 ### Changed
 - **Spade v2 D6c-2 — Operate-Home is a pure LAUNCHER; the read-only domain-browser scaffold is deleted (D6 +
@@ -412,8 +410,7 @@ authors radio frames.
   gone.** The Operate-Home domain grid no longer builds a `DomainDetailView` browser for GPS-Wardrive or RF/Sub-GHz
   (their real screen lands in MAP at P4). Each is now a greyed, non-activating `OperationCard` labelled "P4 · opens
   in MAP" — Qt blocks input to a disabled widget, so it can't emit `domain_selected`; an honest roadmap marker, not
-  a navigate-to-nothing or a browser wearing an action name (Atlas's call over dropping them like nrf/nfc, since
-  these are real capabilities landing at P4). `DomainGrid` gains `roadmap_keys()`; OperateHome skips roadmap
+  a navigate-to-nothing or a browser wearing an action name (kept as placeholders for planned P4 capabilities). `DomainGrid` gains `roadmap_keys()`; OperateHome skips roadmap
   domains when building screens. The `DomainDetailView` scaffold + the four `*DomainView` classes are now unused by
   production (only a bare OperateHome still builds Wi-Fi/BLE) — wholesale deletion is D6c-2.
 - **Spade v2 D6b — the Operate console's per-command atom is now `OpPanel` on the REAL guarded send.** Clicking a
@@ -707,8 +704,7 @@ authors radio frames.
 
 ### Added
 - **The Operate Home landing strip now shows the most recent capture (GUI rebuild, Wave-10 Phase C, slice E+).**
-  Per Atlas's slice-E ruling, the landing strip should earn its place beyond the always-visible status bar with
-  grounded session value the bar doesn't show. Added a "Last capture: SSID (type)" readout sourced from the real
+  Added a "Last capture: SSID (type)" readout sourced from the real
   capture store (`hub.captures.all()[-1]` — insertion order, so the most recent; SSID falls back to the BSSID when a
   beacon hasn't resolved the ESSID yet). It stays empty until a capture is logged (invents nothing), refreshes on the
   same bus/poll path as the rest of the strip, and is optional (`set_summary(..., last_capture="")`). Verified other
@@ -744,8 +740,7 @@ authors radio frames.
   bar hidden (Qt persists a manual hide with `tabBarAutoHide` off; parity-tested across an `apply_loadout` round-trip).
   Detach loses its tab-bar affordances (double-click / context menu), so it stays reachable via the existing
   `Ctrl+Shift+D` shortcut, the `detach_current()` API, and a NEW "Detach Current Tab" command in the palette. Lands on
-  the clean single-sidebar + single-chrome state slices B/D produced. Per Atlas's ruled order (fold → reconcile →
-  hide-tab-bar); this is the render-gate milestone — the aesthetic pass is the owner's call (surfaced, not auto-acted).
+  the clean single-sidebar + single-chrome state slices B/D produced. The sidebar was folded and reconciled before hiding the tab bar.
 - **The Operate Home tab holds OperateHome directly — nested frame reconciled (GUI rebuild, Wave-10 Phase C,
   slice D).** Slices 1–2 wrapped OperateHome in a per-tab `PageLayout` (`_home_frame`) to prove the frame + chrome
   worked in the app; slice A then made the single app-shell wrap the whole top area, so that per-tab frame's global
@@ -755,16 +750,14 @@ authors radio frames.
   surfaces; grid = radios). Dropped `_home_frame` + `_home_binder` + the now-orphan `_on_home_nav`; repointed the
   loadout tuple, the default-landing view, and the tab-structure references to `_operate_home`. Parity-tested (the
   Operate Home tab IS OperateHome, no stray frame/binder, global chrome lives once on the app-shell, the domain grid
-  still navigates). Per Atlas's ruled order (fold → reconcile → hide-tab-bar); the tab-bar-hide slice now lands on a
-  clean single-sidebar + single-chrome state.
+  still navigates). The tab bar is hidden after consolidating the sidebar and shared window controls.
 - **The device-sidebar folded into the one app-shell sidebar (GUI rebuild, Wave-10 Phase C, slice B).** The top
   area previously had two left columns — the app-shell's nav sidebar AND the old device-sidebar (device list + scan)
   beside the tabs. The device-sidebar is now a child of the single app-shell sidebar (below the nav destinations), so
   there's one sidebar, not two — the clean single-sidebar state the tab-bar-hide slice needs to land on. Additive: the
   device list, its refresh, and its selection→Devices-tab wiring are unchanged (only the frame's parent moved); new
   `PageLayout.add_sidebar_widget`. Parity-tested (the device-sidebar is inside the app-shell, the device list still
-  works). Per Atlas's ruled order (B → reconcile → hide-tab-bar) and two-level IA (surfaces in the sidebar, radio
-  domains stay Operate content).
+  works). The sidebar holds the main views; radio controls stay inside Operate.
 - **The app-shell sidebar now tracks the mode system + the current tab (GUI rebuild, Wave-10 Phase C, slice B').**
   The shell's top-level nav sidebar previously listed all seven surfaces regardless of the interface mode; now it
   mirrors the tab strip — a destination is shown only when its surface is actually present (the pro/simple loadout
