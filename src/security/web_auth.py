@@ -129,49 +129,107 @@ class WebCredentials:
         return u_ok and p_ok
 
 
+# Serialize credential mutations so two concurrent password changes can't interleave a half-written
+# file with a published in-memory state (the web server runs threaded).
+_cred_lock = threading.Lock()
+
+_SALT_LEN = 16
+_HASH_LEN = 32
+
+
 def load_stored_credentials() -> tuple[str, bytes, bytes] | None:
     """Load a UI-set password from ``web_auth.json`` as ``(username, salt, hash)``, or None if there is
-    no saved password (or the file is unreadable/corrupt — we never fail open on a bad file, we just
-    fall through to the env/one-time path)."""
+    no saved password OR the record is structurally invalid (bad JSON, wrong types, empty/short salt or
+    hash, or KDF params this build can't reproduce). We never fail OPEN on a bad file — an invalid
+    record is ignored and CC falls through to the env / one-time path, never to blank credentials."""
     try:
-        data = json.loads(_WEB_AUTH_FILE.read_text("utf-8"))
-        return (str(data["username"]), bytes.fromhex(data["salt"]), bytes.fromhex(data["hash"]))
-    except (OSError, ValueError, KeyError, TypeError):
+        raw = _WEB_AUTH_FILE.read_text("utf-8")
+    except OSError:
         return None
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    username = data.get("username")
+    salt_hex = data.get("salt")
+    hash_hex = data.get("hash")
+    if not isinstance(username, str) or not username:
+        return None
+    if not isinstance(salt_hex, str) or not isinstance(hash_hex, str):
+        return None
+    try:
+        salt = bytes.fromhex(salt_hex)
+        hashed = bytes.fromhex(hash_hex)
+    except ValueError:
+        return None
+    if len(salt) != _SALT_LEN or len(hashed) != _HASH_LEN:
+        return None
+    # The stored hash was produced with these scrypt params; _derive() reproduces it only with the same
+    # ones. If a record carries different params, we can't verify against it — reject rather than accept
+    # a credential that can never authenticate.
+    for key, expected in (("n", _SCRYPT_N), ("r", _SCRYPT_R), ("p", _SCRYPT_P)):
+        if key in data and data[key] != expected:
+            return None
+    return (username, salt, hashed)
 
 
 def save_web_password(username: str, password: str) -> None:
     """Persist a user-chosen web password (username + fresh salt + scrypt hash, NEVER plaintext) to
-    ``web_auth.json``, owner-only (0600). This is what makes an in-app password change stick across
-    restarts and take priority over the env var / one-time password."""
+    ``web_auth.json``, owner-only (0600), **atomically** (write a temp file, then ``os.replace``) so an
+    interrupted or failed write can never leave a torn/partial record in place. Raises on any failure —
+    the caller must publish the new in-memory password only after this returns."""
     secure_dir(_CONFIG_DIR)
     salt = os.urandom(16)
     hashed = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R,
                             p=_SCRYPT_P, dklen=32, maxmem=64 * 1024 * 1024)
     payload = json.dumps({
-        "username": username, "salt": salt.hex(), "hash": hashed.hex(),
+        "v": 1, "username": username, "salt": salt.hex(), "hash": hashed.hex(),
         "n": _SCRYPT_N, "r": _SCRYPT_R, "p": _SCRYPT_P,
     })
-    fd = os.open(str(_WEB_AUTH_FILE), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    tmp = _WEB_AUTH_FILE.with_name(_WEB_AUTH_FILE.name + ".tmp-" + os.urandom(4).hex())
     try:
+        fd = os.open(str(tmp), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as fh:
             fh.write(payload)
-    finally:
+            fh.flush()
+            os.fsync(fh.fileno())
         try:
-            os.chmod(_WEB_AUTH_FILE, 0o600)
+            os.chmod(tmp, 0o600)
         except OSError:
             pass
+        restrict_to_current_user(tmp)
+        os.replace(str(tmp), str(_WEB_AUTH_FILE))  # atomic swap into place
+    except BaseException:
+        try:
+            os.remove(str(tmp))
+        except OSError:
+            pass
+        raise
     restrict_to_current_user(_WEB_AUTH_FILE)  # owner-only NTFS ACL on Windows
+
+
+def apply_web_password(creds: "WebCredentials", new_password: str, username: str) -> None:
+    """Persist THEN publish, under a lock: save the new password to disk first, and only update the live
+    in-memory credentials if that succeeded. So a failed save leaves the running password unchanged
+    (previously the in-memory swap happened first, so a save failure changed which password worked)."""
+    with _cred_lock:
+        save_web_password(username, new_password)   # raises on failure -> nothing published below
+        creds.set_password(new_password, username)
 
 
 def clear_stored_password() -> bool:
     """Delete the saved password so CC reverts to CC_WEB_PASS / a one-time password on next start.
-    Returns True if a file was removed."""
-    try:
-        _WEB_AUTH_FILE.unlink()
-        return True
-    except OSError:
-        return False
+    Returns True if a file was removed, False if none existed (both are success). **Raises OSError on a
+    real failure** (permission/I/O) so the caller can report it truthfully instead of claiming success."""
+    with _cred_lock:
+        try:
+            _WEB_AUTH_FILE.unlink()
+            return True
+        except FileNotFoundError:
+            return False  # already absent — idempotent success, nothing removed
+        # PermissionError / other OSError propagate to the caller
 
 
 def has_stored_password() -> bool:
@@ -187,6 +245,9 @@ def resolve_web_credentials(log: logging.Logger) -> tuple[WebCredentials, bool]:
     actually takes effect without touching environment variables — the thing users found confusing.
     """
     stored = load_stored_credentials()
+    if stored is None and _WEB_AUTH_FILE.exists():
+        log.warning("Saved web password file is present but invalid (bad schema/KDF) — ignoring it and "
+                    "using the env / one-time password. Set a new one in Settings -> Remote Access.")
     if stored is not None:
         username, salt, hashed = stored
         result = WebCredentials(username, salt=salt, hashed=hashed)

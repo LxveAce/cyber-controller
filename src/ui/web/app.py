@@ -1748,17 +1748,25 @@ def create_app(
         from src.security import web_auth
         data = _json_body()
         if bool(data.get("reset")):
-            removed = web_auth.clear_stored_password()
+            try:
+                removed = web_auth.clear_stored_password()
+            except OSError as exc:  # a real delete failure must NOT report success
+                return jsonify({"error": f"could not clear the saved password: {exc}"}), 500
             _audit("web_password_reset", user=session.get("user"))
-            return jsonify({"ok": True, "reset": True, "removed": removed,
-                            "note": "Saved password cleared. On the next start CC uses CC_WEB_PASS or "
-                                    "a one-time password. The current session stays valid until restart."})
+            note = ("Saved password cleared. On the next start CC uses CC_WEB_PASS or a one-time "
+                    "password. The current session stays valid until restart.") if removed else \
+                   "No saved password was set — nothing to clear."
+            return jsonify({"ok": True, "reset": True, "removed": removed, "note": note})
         new_pw = str(data.get("new_password", ""))
         username = str(data.get("username", "") or creds.username).strip() or creds.username
         if len(new_pw) < web_auth.MIN_PASSWORD_LEN:
             return jsonify({"error": f"password must be at least {web_auth.MIN_PASSWORD_LEN} characters"}), 400
-        creds.set_password(new_pw, username)          # update the live server immediately
-        web_auth.save_web_password(username, new_pw)   # and persist it (owner-only) for next start
+        try:
+            # Persist FIRST, publish to the live server only on success — a failed save leaves the
+            # current password working rather than half-changing it.
+            web_auth.apply_web_password(creds, new_pw, username)
+        except Exception as exc:  # noqa: BLE001 — surface the failure; do not change live credentials
+            return jsonify({"error": f"could not save the password: {exc}"}), 500
         _audit("web_password_set", user=session.get("user"), new_user=username)
         return jsonify({"ok": True, "username": username, "source": "saved"})
 

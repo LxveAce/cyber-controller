@@ -6,7 +6,9 @@ All filesystem-isolated to tmp_path — the real ~/.cyber-controller is never to
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 
 import pytest
 
@@ -96,3 +98,93 @@ def test_corrupt_store_falls_through_not_open(isolated, monkeypatch):
     # A corrupt saved file must not fail open — it falls through to the env password, not a blank one.
     assert creds.source == "env"
     assert creds.verify("admin", "env-password")
+
+
+# -- D01: persist-then-publish (a failed save must not change live creds) --
+
+def test_apply_web_password_save_failure_leaves_live_creds(isolated, monkeypatch):
+    creds = web_auth.WebCredentials("admin", "old-password")
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(web_auth, "save_web_password", boom)
+    with pytest.raises(OSError):
+        web_auth.apply_web_password(creds, "new-password", "ace")
+    assert creds.verify("admin", "old-password")       # live password unchanged
+    assert not creds.verify("ace", "new-password")
+
+
+def test_apply_web_password_success_persists_and_publishes(isolated):
+    creds = web_auth.WebCredentials("admin", "old-password")
+    web_auth.apply_web_password(creds, "brand-new-pw", "ace")
+    assert creds.verify("ace", "brand-new-pw")          # live updated
+    reloaded, _ = web_auth.resolve_web_credentials(logging.getLogger("t"))
+    assert reloaded.verify("ace", "brand-new-pw")       # and persisted
+
+
+def test_save_failure_leaves_old_file_intact(isolated, monkeypatch):
+    web_auth.save_web_password("ace", "first-password")
+    before = (isolated / "web_auth.json").read_text("utf-8")
+
+    def boom(src, dst):
+        raise OSError("atomic replace failed")
+
+    monkeypatch.setattr(web_auth.os, "replace", boom)
+    with pytest.raises(OSError):
+        web_auth.save_web_password("ace", "second-password")
+    assert (isolated / "web_auth.json").read_text("utf-8") == before   # torn write can't happen
+    assert not any(".tmp-" in n for n in os.listdir(str(isolated)))     # temp file cleaned up
+
+
+# -- D02: reset reports the truth ------------------------------------
+
+def test_clear_absent_is_idempotent_false(isolated):
+    assert web_auth.has_stored_password() is False
+    assert web_auth.clear_stored_password() is False   # nothing to remove, but not an error
+
+
+def test_clear_removed_returns_true(isolated):
+    web_auth.save_web_password("ace", "hunter2pw")
+    assert web_auth.clear_stored_password() is True
+    assert web_auth.has_stored_password() is False
+
+
+def test_clear_raises_on_permission_failure(isolated, monkeypatch):
+    class _FakePath:
+        def unlink(self):
+            raise PermissionError("file is locked")
+
+        def exists(self):
+            return True
+
+    monkeypatch.setattr(web_auth, "_WEB_AUTH_FILE", _FakePath())
+    with pytest.raises(OSError):
+        web_auth.clear_stored_password()               # must NOT swallow it as success
+
+
+# -- D03: structurally invalid records are rejected ------------------
+
+def test_load_rejects_invalid_records(isolated):
+    f = isolated / "web_auth.json"
+    good_salt, good_hash = "00" * 16, "00" * 32
+    bad_records = [
+        {"username": "ace", "salt": "", "hash": ""},                       # empty
+        {"username": "ace", "salt": "00", "hash": good_hash},              # short salt
+        {"username": "ace", "salt": good_salt, "hash": "00"},             # short hash
+        {"username": 123, "salt": good_salt, "hash": good_hash},          # wrong username type
+        {"username": "", "salt": good_salt, "hash": good_hash},           # empty username
+        {"username": "ace", "salt": good_salt, "hash": good_hash, "n": 2},  # unsupported KDF
+        {"username": "ace", "salt": "zz" * 16, "hash": good_hash},        # non-hex
+        ["not", "a", "dict"],                                              # wrong top-level type
+    ]
+    for rec in bad_records:
+        f.write_text(json.dumps(rec), "utf-8")
+        assert web_auth.load_stored_credentials() is None, rec
+
+
+def test_load_accepts_valid_record(isolated):
+    web_auth.save_web_password("ace", "hunter2pw")
+    got = web_auth.load_stored_credentials()
+    assert got is not None
+    assert got[0] == "ace" and len(got[1]) == 16 and len(got[2]) == 32
