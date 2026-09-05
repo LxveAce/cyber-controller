@@ -179,6 +179,7 @@ def test_send_command_rejects_empty_command(monkeypatch, tmp_path):
 
     with app.test_request_context(environ_base={"REMOTE_ADDR": "127.0.0.1"}):
         session["authenticated"] = True
+        session["cred_gen"] = app.extensions["cc_web_credentials"].generation
         handler({"port": "COM3", "command": ""})
         assert spy.writes == [], "an empty command must NOT reach conn.write() (no bare newline)"
         assert any("[Empty command ignored]" in (p.get("line", "")) for p in emitted)

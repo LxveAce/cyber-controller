@@ -119,6 +119,7 @@ def test_api_freshness_summarizes_the_live_pool():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
 
     r = client.get("/api/freshness")
     assert r.status_code == 200
@@ -134,6 +135,7 @@ def test_targets_page_renders_the_freshness_panel():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
 
     html = client.get("/targets").get_data(as_text=True)
     assert 'id="freshness"' in html        # the staleness panel is present

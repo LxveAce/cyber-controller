@@ -85,6 +85,7 @@ def test_api_channels_surveys_the_live_pool():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
 
     r = client.get("/api/channels")
     assert r.status_code == 200
@@ -103,6 +104,7 @@ def test_targets_page_renders_vendor_column_and_channel_panel():
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
 
     html = client.get("/targets").get_data(as_text=True)
     assert "<th>Vendor</th>" in html            # the new OUI-vendor column header

@@ -297,6 +297,7 @@ def test_rayhunter_api_rejects_malformed_admin_ip(monkeypatch, tmp_path):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = new_csrf_token()
         csrf = sess["csrf"]
     bad = "192.168.1.1'; whoami"

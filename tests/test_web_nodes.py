@@ -96,6 +96,7 @@ def _authed_client(controller):
     token = new_csrf_token()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = token
     return client, token
 

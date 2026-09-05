@@ -46,6 +46,7 @@ def _client(dm):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok"
     return client
 

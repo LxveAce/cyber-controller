@@ -75,14 +75,23 @@ class WebCredentials:
 
     def __init__(self, username: str, password: str | None = None, *,
                  salt: bytes | None = None, hashed: bytes | None = None) -> None:
-        # ONE immutable (username, salt, hash) record, swapped as a single reference. A reader (verify)
-        # binds the whole tuple at once, so a concurrent password change can never expose a mix of the
-        # new salt with the old hash (which would reject BOTH passwords) — no reader lock needed.
+        # ONE immutable (username, salt, hash, generation) snapshot, swapped as a single reference. A
+        # reader (verify / verify_generation) binds the whole tuple at once, so a concurrent password
+        # change can never expose a mix of the new salt with the old hash (which would reject BOTH
+        # passwords), NOR let a login stamp a session with a generation read from a DIFFERENT snapshot
+        # than the password it just verified — no reader lock needed.
+        #
+        # The generation is a random, process-lifetime token bound to the live credential. It is NEVER
+        # persisted: a fresh process mints a fresh generation, so every restart invalidates all existing
+        # session cookies (they carry the prior generation) and forces a re-login — a deliberate, honest
+        # auth-hardening property, not an accident. A password change or clear rotates it too, which is
+        # how those actions revoke every other still-open cookie and socket.
         if salt is not None and hashed is not None:
-            self._record: tuple[str, bytes, bytes] = (username, salt, hashed)
+            record = (username, salt, hashed)
         else:
             s = os.urandom(16)
-            self._record = (username, s, _scrypt(password or "", s))
+            record = (username, s, _scrypt(password or "", s))
+        self._snapshot: tuple[str, bytes, bytes, str] = (*record, _new_generation())
         # The plaintext of a GENERATED one-time password, kept in RAM only so an already-authenticated
         # operator can read it back in the UI to reach the server from a phone / another PC (a windowed
         # build swallows the stderr print). None for a user-set password — the owner already knows that
@@ -94,31 +103,66 @@ class WebCredentials:
 
     @property
     def username(self) -> str:
-        return self._record[0]
+        return self._snapshot[0]
+
+    @property
+    def _record(self) -> tuple[str, bytes, bytes]:
+        """The (username, salt, hash) credential, minus the generation — kept as a read-only view for
+        callers/tests that reason about the persisted credential alone."""
+        return self._snapshot[:3]
+
+    @property
+    def generation(self) -> str:
+        """The current, process-lifetime session generation bound to the live credential. A session
+        cookie is authentic only while its stamped generation equals this."""
+        return self._snapshot[3]
 
     def set_password(self, new_password: str, username: str | None = None) -> None:
         """Replace the in-memory password (fresh salt + hash) and optionally the username. Clears any
-        one-time generated password — after the user picks their own, there is no one-time to reveal."""
-        self.publish_record(username or self._record[0], *_new_record(new_password))
+        one-time generated password — after the user picks their own, there is no one-time to reveal.
+        Rotates the generation, so prior cookies stop authenticating."""
+        self.publish_record(username or self._snapshot[0], *_new_record(new_password))
 
-    def publish_record(self, username: str, salt: bytes, hashed: bytes) -> None:
-        """Adopt a PRE-DERIVED (salt, hash) via a single atomic record swap — no re-derivation. The live
-        password becomes exactly the snapshot persisted to disk, and readers only ever see the whole old
-        or whole new record, never a mix."""
-        self._record = (username, salt, hashed)
+    def publish_record(self, username: str, salt: bytes, hashed: bytes,
+                       generation: str | None = None) -> str:
+        """Adopt a PRE-DERIVED (salt, hash) plus a generation via a single atomic snapshot swap — no
+        re-derivation. The live password becomes exactly the snapshot persisted to disk, and readers only
+        ever see the whole old or whole new snapshot, never a mix. Pass ``generation`` to publish an
+        already-minted token (so the caller can stamp the acting session with the exact value); omit it to
+        mint a fresh one. Returns the published generation."""
+        gen = generation or _new_generation()
+        self._snapshot = (username, salt, hashed, gen)
         self.generated_password = None
         self.source = "saved"
+        return gen
+
+    def rotate_generation(self) -> str:
+        """Mint a NEW generation while keeping the current username/salt/hash — a single atomic snapshot
+        swap. Used by an explicit password *clear*: every existing cookie/socket (which carries the old
+        generation) stops authenticating, while the running password keeps verifying until restart. No
+        persisted state changes. Returns the new generation."""
+        u, s, h, _old = self._snapshot
+        gen = _new_generation()
+        self._snapshot = (u, s, h, gen)
+        return gen
 
     def verify(self, username: str | None, password: str | None) -> bool:
+        return self.verify_generation(username, password) is not None
+
+    def verify_generation(self, username: str | None, password: str | None) -> str | None:
+        """Verify credentials AND, on success, return the generation from the SAME snapshot the password
+        was checked against. Reading both from one atomic snapshot closes the race where a concurrent
+        password change could let an old password verify while a new generation is stamped into the
+        session (or vice-versa). Returns None on any failure."""
         if username is None or password is None:
-            return False
-        u, s, h = self._record   # one atomic read of the immutable record
+            return None
+        u, s, h, gen = self._snapshot   # one atomic read of the immutable snapshot
         try:
             u_ok = hmac.compare_digest(username.encode("utf-8"), u.encode("utf-8"))
             p_ok = hmac.compare_digest(_scrypt(password, s), h)
         except Exception:
-            return False
-        return u_ok and p_ok
+            return None
+        return gen if (u_ok and p_ok) else None
 
 
 # Serialize credential mutations so two concurrent password changes can't interleave a half-written
@@ -180,6 +224,13 @@ def _new_record(password: str) -> tuple[bytes, bytes]:
     return salt, _scrypt(password, salt)
 
 
+def _new_generation() -> str:
+    """Mint an unguessable, process-lifetime session generation token. Never persisted; compared with
+    ``hmac.compare_digest`` (equality is all we need, so a fresh random token avoids any counter /
+    read-modify-write race)."""
+    return secrets.token_urlsafe(32)
+
+
 def _write_record(username: str, salt: bytes, hashed: bytes) -> None:
     """Atomically persist a pre-derived credential record (temp file → fsync → ``os.replace``), owner-only
     (0600). Raises on any failure, cleaning up the temp file — never leaves a torn/partial file."""
@@ -217,15 +268,32 @@ def save_web_password(username: str, password: str) -> None:
     _write_record(username, *_new_record(password))
 
 
-def apply_web_password(creds: "WebCredentials", new_password: str, username: str) -> None:
-    """Persist THEN publish, under the writer lock, from ONE credential snapshot: derive (salt, hash)
-    once, persist it, then swap that exact snapshot into the live credentials as a single atomic record.
-    A failed save leaves the running password unchanged, and nothing fallible (no second derivation) runs
-    after the disk write, so a save failure never leaves the live password ahead of disk."""
+def apply_web_password(creds: "WebCredentials", new_password: str, username: str) -> str:
+    """Persist THEN publish, under the writer lock, from ONE credential snapshot: derive (salt, hash) AND
+    mint the new generation FIRST, persist the credential, then swap that exact snapshot + generation into
+    the live credentials as a single atomic record. A failed save leaves the running password AND the
+    generation unchanged (no session is revoked for a change that did not commit), and nothing fallible
+    (no second derivation, no separate epoch file) runs after the disk write — so a save failure can never
+    leave the live password ahead of disk, and the credential and its generation commit together. Returns
+    the new generation so the caller can re-stamp the acting session and revoke sockets that carry any
+    other generation."""
     with _cred_lock:
         salt, hashed = _new_record(new_password)          # derive ONCE
+        generation = _new_generation()                    # mint BEFORE persist; published together below
         _write_record(username, salt, hashed)             # persist first; raises -> nothing published
-        creds.publish_record(username, salt, hashed)      # publish the SAME snapshot, no re-derivation
+        # Single immutable (record, generation) swap — no fallible work after the disk commit.
+        return creds.publish_record(username, salt, hashed, generation)
+
+
+def _unlink_web_auth_file() -> bool:
+    """Delete ``web_auth.json``; True if a file was removed, False if none existed (both idempotent
+    success). Raises OSError on a real failure (permission/I/O). Caller must hold ``_cred_lock``."""
+    try:
+        _WEB_AUTH_FILE.unlink()
+        return True
+    except FileNotFoundError:
+        return False  # already absent — idempotent success, nothing removed
+    # PermissionError / other OSError propagate to the caller
 
 
 def clear_stored_password() -> bool:
@@ -233,12 +301,23 @@ def clear_stored_password() -> bool:
     Returns True if a file was removed, False if none existed (both are success). **Raises OSError on a
     real failure** (permission/I/O) so the caller can report it truthfully instead of claiming success."""
     with _cred_lock:
-        try:
-            _WEB_AUTH_FILE.unlink()
-            return True
-        except FileNotFoundError:
-            return False  # already absent — idempotent success, nothing removed
-        # PermissionError / other OSError propagate to the caller
+        return _unlink_web_auth_file()
+
+
+def clear_and_rotate(creds: "WebCredentials") -> tuple[bool, str]:
+    """Explicit password *clear*, revoking sessions: under the writer lock, delete the saved password
+    (idempotent) THEN rotate the live generation so every existing cookie/socket (which carries the old
+    generation) stops authenticating — while the RUNNING password keeps verifying until restart (no new
+    persisted state; on the next start CC reverts to CC_WEB_PASS / a one-time password). Returns
+    ``(removed, new_generation)``.
+
+    Ordering matters: a real delete failure (PermissionError/OSError) propagates from the unlink BEFORE
+    any rotation, so a clear that did not happen revokes nothing. The rotation runs under ``_cred_lock``
+    so it can never clobber a concurrent ``apply_web_password``: it swaps ONLY the generation onto
+    whatever (username, salt, hash) is current at that instant, never an older record."""
+    with _cred_lock:
+        removed = _unlink_web_auth_file()   # raises on a real failure -> no rotation, nothing revoked
+        return removed, creds.rotate_generation()
 
 
 def has_stored_password() -> bool:

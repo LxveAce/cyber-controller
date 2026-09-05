@@ -30,6 +30,7 @@ def _client(store=None, authed=True):
     if authed:
         with c.session_transaction() as sess:
             sess["authenticated"] = True
+            sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
             sess["csrf"] = "tok"
     return c
 

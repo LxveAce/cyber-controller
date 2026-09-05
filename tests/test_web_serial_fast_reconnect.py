@@ -117,6 +117,7 @@ def _build(monkeypatch, ports):
     def do_subscribe(port, ip="10.0.0.1"):
         with app.test_request_context(environ_base={"REMOTE_ADDR": ip}):
             session["authenticated"] = True
+            session["cred_gen"] = app.extensions["cc_web_credentials"].generation
             subscribe({"port": port})
 
     def lines_for(port):

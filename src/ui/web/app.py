@@ -211,6 +211,41 @@ def create_app(
     login_limiter = RateLimiter(max_events=8, window_seconds=60.0)
     cmd_limiter = RateLimiter(max_events=60, window_seconds=10.0)
 
+    # Expose the live credentials object to trusted IN-PROCESS callers (tests fabricating an authenticated
+    # session need the current generation). Never serialized, never a route — no network attack surface.
+    app.extensions["cc_web_credentials"] = creds
+
+    # ── Session revocation: per-connection generation tracking ────────────────────────────────────────
+    # A session cookie is authentic only while the generation it was stamped with equals the live
+    # credential's current generation (creds.generation). The generation is process-lifetime and rotates
+    # on a password change/clear, so changing/clearing the web password — or simply restarting — revokes
+    # every existing cookie. Each authenticated socket is tracked as sid -> the generation it presented at
+    # connect, so a rotation can ACTIVELY disconnect stale sockets: a passive serial subscriber or a live
+    # host PTY never re-hits a per-event auth check, so per-event enforcement alone can't stop them.
+    _connected_sids: dict[str, str] = {}
+    _sids_lock = threading.Lock()
+
+    def _session_generation_ok() -> bool:
+        """True iff the current request's session carries the live credential generation."""
+        return csrf_valid(creds.generation, session.get("cred_gen"))
+
+    def _revoke_other_sessions(new_generation: str) -> None:
+        """After the live generation rotates, disconnect every tracked socket whose generation no longer
+        matches. Called only once creds.generation is already the new value, so the connect handler's
+        under-lock re-check refuses any stale socket still mid-handshake — no stale socket can register
+        after this sweep. The acting operator's own socket is dropped here and auto-reconnects with the
+        re-stamped cookie (a brief stream blip); its NEW-generation reconnection is never swept."""
+        with _sids_lock:
+            stale = [sid for sid, gen in _connected_sids.items()
+                     if not csrf_valid(new_generation, gen)]
+            for sid in stale:
+                _connected_sids.pop(sid, None)
+        for sid in stale:
+            try:
+                socketio.server.disconnect(sid, namespace="/")
+            except Exception:  # noqa: BLE001 — a sid already gone is fine; keep sweeping the rest
+                log.debug("disconnect of stale socket %s failed (already gone?)", sid)
+
     # Host-shell envelope (C2). Decided ONCE, here, from the bind's loopback-ness + the env opt-ins. When it
     # is not enabled the host_shell_* socket handlers below are never even DEFINED (not merely refused), and
     # the /api/host-shell probe reports the honest reason so the UI hides the Local tab. RCE by nature, so it
@@ -287,15 +322,19 @@ def create_app(
             g._csp_nonce = nonce
         return nonce
 
-    def check_auth(username: str | None, password: str | None) -> bool:
-        return creds.verify(username, password)
-
     def requires_auth(f):
         @functools.wraps(f)
         def decorated(*args, **kwargs):
             if session.get("authenticated"):
-                _ensure_csrf()
-                return f(*args, **kwargs)
+                if _session_generation_ok():
+                    _ensure_csrf()
+                    return f(*args, **kwargs)
+                # The credential's generation moved (password changed/cleared, or the process
+                # restarted) since this cookie was issued: it is no longer authenticated. Drop the
+                # stale session and fall through to the Basic-auth challenge. The request carries no
+                # Authorization header (just a cookie), so the fall-through returns a clean 401 and does
+                # NOT drive the shared lockout (only a PRESENTED wrong credential counts, below).
+                session.clear()
             ip = _client_ip()
             if not login_limiter.allow(ip):
                 _audit("web_auth_ratelimited")
@@ -312,7 +351,11 @@ def create_app(
                     429,
                 )
             auth = request.authorization
-            if auth and check_auth(auth.username, auth.password):
+            # Verify AND read the generation from the SAME credential snapshot: a concurrent password
+            # change can then never let the old password verify while a new generation is stamped (or
+            # vice-versa). A None result means the credential did not verify.
+            login_generation = creds.verify_generation(auth.username, auth.password) if auth else None
+            if auth and login_generation is not None:
                 physical_key.record_successful_unlock()  # reset the shared persistent counter
                 # M-3: rotate the session + CSRF token at the auth boundary so any token an
                 # attacker could have observed or seeded *pre-auth* is invalidated (session
@@ -321,6 +364,7 @@ def create_app(
                 session["authenticated"] = True
                 session["user"] = auth.username
                 session["csrf"] = new_csrf_token()
+                session["cred_gen"] = login_generation
                 _audit("web_auth_ok", user=auth.username)
                 return f(*args, **kwargs)
             # Only count a failure when credentials were actually PRESENTED but wrong. A request with no
@@ -558,6 +602,10 @@ def create_app(
         session["authenticated"] = True
         session["user"] = "cc-desktop"
         session["csrf"] = new_csrf_token()
+        # Stamp the live generation so this bootstrap session is revoked by a later password change/clear
+        # and does not survive a restart — the one-time token is already consumed, so this is not a
+        # reusable bypass. A restart mints a new token AND a new generation, forcing a fresh bootstrap.
+        session["cred_gen"] = creds.generation
         physical_key.record_successful_unlock()
         _audit("desktop_auth_ok")
         return redirect("/reform")
@@ -1874,13 +1922,22 @@ def create_app(
         data = _json_body()
         if bool(data.get("reset")):
             try:
-                removed = web_auth.clear_stored_password()
+                # Delete the saved password AND rotate the live generation under the writer lock: a real
+                # delete failure raises before any rotation, so it revokes nothing and is reported truthfully.
+                removed, new_gen = web_auth.clear_and_rotate(creds)
             except OSError as exc:  # a real delete failure must NOT report success
                 return jsonify({"error": f"could not clear the saved password: {exc}"}), 500
+            # Keep THIS operator signed in: re-stamp the acting session with the new generation (the
+            # response carries the updated signed cookie). Then drop every OTHER cookie/socket, which now
+            # carries the old generation. The acting tab's own socket is dropped too and auto-reconnects.
+            session["cred_gen"] = new_gen
+            _revoke_other_sessions(new_gen)
             _audit("web_password_reset", user=session.get("user"))
-            note = ("Saved password cleared. On the next start CC uses CC_WEB_PASS or a one-time "
-                    "password. The current session stays valid until restart.") if removed else \
-                   "No saved password was set — nothing to clear."
+            note = ("Signed out other sessions and open connections; this session stays active. The "
+                    "current password stays in effect until you restart, when CC reverts to CC_WEB_PASS "
+                    "or a one-time password.") if removed else \
+                   ("No saved password was set — nothing to clear. Signed out other sessions and open "
+                    "connections; this session stays active.")
             return jsonify({"ok": True, "reset": True, "removed": removed, "note": note})
         new_pw = str(data.get("new_password", ""))
         username = str(data.get("username", "") or creds.username).strip() or creds.username
@@ -1888,10 +1945,16 @@ def create_app(
             return jsonify({"error": f"password must be at least {web_auth.MIN_PASSWORD_LEN} characters"}), 400
         try:
             # Persist FIRST, publish to the live server only on success — a failed save leaves the
-            # current password working rather than half-changing it.
-            web_auth.apply_web_password(creds, new_pw, username)
+            # current password (and its generation) working rather than half-changing it. Returns the new
+            # generation, minted before the disk write and published atomically with the credential.
+            new_gen = web_auth.apply_web_password(creds, new_pw, username)
         except Exception as exc:  # noqa: BLE001 — surface the failure; do not change live credentials
             return jsonify({"error": f"could not save the password: {exc}"}), 500
+        # Keep the acting operator signed in with the EXACT generation just published (captured under the
+        # writer lock), so a genuinely-later concurrent change deterministically supersedes this one; then
+        # revoke every other cookie/socket carrying any other generation.
+        session["cred_gen"] = new_gen
+        _revoke_other_sessions(new_gen)
         _audit("web_password_set", user=session.get("user"), new_user=username)
         return jsonify({"ok": True, "username": username, "source": "saved"})
 
@@ -2486,11 +2549,14 @@ def create_app(
     # ── SocketIO events (AUTHENTICATED) ─────────────────────────────
 
     def _socket_authed() -> bool:
-        return bool(session.get("authenticated"))
+        # Both the authenticated flag AND the live generation: every per-event handler calls this, so a
+        # generation rotation (password change/clear or restart) closes every FUTURE event on an
+        # already-open socket the instant it happens, and refuses new connects below.
+        return bool(session.get("authenticated")) and _session_generation_ok()
 
     @socketio.on("connect")
     def on_ws_connect(auth=None):
-        """Reject any socket that is not from an authenticated session with a valid
+        """Reject any socket that is not from an authenticated session (current generation) with a valid
         CSRF/connection token. Returning False refuses the connection."""
         if not _socket_authed():
             log.warning("Rejected unauthenticated WebSocket from %s", _client_ip())
@@ -2505,6 +2571,17 @@ def create_app(
             log.warning("Rejected WebSocket with bad CSRF from %s", _client_ip())
             _audit("ws_reject_csrf")
             return False
+        # Register this sid so a later rotation can actively disconnect it. Re-check the generation UNDER
+        # the same lock the revoke sweep uses, against the CURRENT live value: if a rotation raced ahead of
+        # this handshake (creds.generation already moved), refuse rather than register a socket the sweep
+        # may have already passed — this closes the registration-vs-rotation race in both orderings.
+        sess_gen = session.get("cred_gen")
+        with _sids_lock:
+            if not csrf_valid(creds.generation, sess_gen):
+                log.warning("Rejected WebSocket whose generation rotated mid-connect (%s)", _client_ip())
+                _audit("ws_reject_stale_gen")
+                return False
+            _connected_sids[request.sid] = sess_gen
         log.info("WebSocket client authenticated (%s)", session.get("user"))
         return True
 
@@ -2716,10 +2793,18 @@ def create_app(
             _close_host_shell(request.sid)
             emit("host_shell_status", {"open": False})
 
-        @socketio.on("disconnect")
-        def on_host_shell_disconnect() -> None:
+    # ONE unified disconnect handler (Flask-SocketIO allows a single handler per event): de-register the
+    # sid from generation tracking AND, when host-shell is enabled, tear down that sid's PTY. Defined
+    # unconditionally so socket bookkeeping is cleaned up on every bind, not only when host-shell is on —
+    # a second @socketio.on("disconnect") would have silently replaced this one.
+    @socketio.on("disconnect")
+    def on_ws_disconnect() -> None:
+        sid = request.sid
+        with _sids_lock:
+            _connected_sids.pop(sid, None)
+        if host_shell_enabled:
             # Never leak a live shell process when the socket goes away.
-            _close_host_shell(request.sid)
+            _close_host_shell(sid)
 
     return app, socketio
 

@@ -36,6 +36,7 @@ def _client(authed=True, **kw):
     if authed:
         with c.session_transaction() as sess:
             sess["authenticated"] = True
+            sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
             sess["csrf"] = "tok"
     return c
 
@@ -122,6 +123,7 @@ def _bc_client():
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok"
     return c, conn
 

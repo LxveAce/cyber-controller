@@ -57,5 +57,6 @@ def test_socket_handlers_ignore_non_dict_payload(monkeypatch, event, payload):
 
     with app.test_request_context(environ_base={"REMOTE_ADDR": "10.0.0.9"}):
         session["authenticated"] = True
+        session["cred_gen"] = app.extensions["cc_web_credentials"].generation
         # Was: AttributeError: 'list' object has no attribute 'get' (etc.) out of the handler.
         handler(payload)  # must not raise; the malformed payload is treated as an empty {} and ignored

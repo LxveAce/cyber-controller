@@ -40,6 +40,7 @@ def _client(dm, fe=None):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok"
     return client
 
@@ -181,6 +182,7 @@ def test_ws_send_command_rejected_while_port_is_flashing(monkeypatch):
 
     with app.test_request_context(environ_base={"REMOTE_ADDR": "10.0.0.1"}):
         session["authenticated"] = True
+        session["cred_gen"] = app.extensions["cc_web_credentials"].generation
         send_command({"port": "COM5", "command": "help"})
 
     assert writes == []  # the guard returned before any byte hit the UART

@@ -30,6 +30,7 @@ def _client(dm, authed=True):
     if authed:
         with c.session_transaction() as sess:
             sess["authenticated"] = True
+            sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
             sess["csrf"] = new_csrf_token()
     return c
 
@@ -221,6 +222,7 @@ def _client_with_pool(pool):
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok-xyz"
     return c
 
@@ -303,6 +305,7 @@ def _macro_run_client(tmp_path):
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok"
     return c
 
@@ -346,6 +349,7 @@ def test_web_connect_detects_firmware(monkeypatch):
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok"
     r = c.post("/api/connect", json={"port": "COM9"}, headers={"X-CSRF-Token": "tok"})
     assert r.status_code == 200
@@ -363,6 +367,7 @@ def test_remote_access_reveals_generated_password(monkeypatch):
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
     r = c.get("/api/remote-access")
     assert r.status_code == 200
     body = r.get_json()
@@ -381,6 +386,7 @@ def test_remote_access_withholds_password_over_lan(monkeypatch):
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
     body = c.get("/api/remote-access").get_json()
     assert body["generated"] is True
     assert body["revealed"] is False
@@ -395,6 +401,7 @@ def test_remote_access_never_echoes_user_set_password(monkeypatch):
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
     body = c.get("/api/remote-access").get_json()
     assert body["generated"] is False
     assert body["password"] is None
@@ -417,6 +424,7 @@ def test_broadcast_metadata_danger_verb_gated_by_firmware():
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok"
     # No consent → refused because COM9 runs bluestress (START is illegal-tx there).
     r = c.post("/api/broadcast", json={"command": "START", "ports": ["COM9"]},
@@ -475,6 +483,7 @@ def _broadcast_client():
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok"
     return c, conns
 
@@ -558,6 +567,7 @@ def _rules_client():
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok"
     return c, router
 
@@ -671,6 +681,7 @@ def test_every_mutating_route_is_csrf_gated():
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True  # authed, but deliberately NO csrf token in the request
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
     checked = 0
     for rule in app.url_map.iter_rules():
         methods = rule.methods - {"GET", "HEAD", "OPTIONS"}
@@ -699,6 +710,7 @@ def test_tails_reports_a_persistent_device():
     c = app.test_client()
     with c.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = c.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = "tok"
     data = c.get("/api/tails").get_json()
     assert any(h["device"] == "ble:e2:14:9c" and h["persistence"] >= 0.5 for h in data)

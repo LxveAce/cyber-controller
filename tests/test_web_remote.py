@@ -31,6 +31,7 @@ def _client(dm, authed=True):
     if authed:
         with client.session_transaction() as sess:
             sess["authenticated"] = True
+            sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
             sess["csrf"] = new_csrf_token()
     return client
 

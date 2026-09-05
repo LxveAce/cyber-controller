@@ -26,6 +26,7 @@ def _client(monkeypatch, tmp_path, dm, engine):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = new_csrf_token()
         sess["_csrf"] = sess["csrf"]
     return client

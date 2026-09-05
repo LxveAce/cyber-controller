@@ -118,6 +118,7 @@ def test_concurrent_subscribe_same_port_keeps_single_callback(monkeypatch):
         try:
             with app.test_request_context(environ_base={"REMOTE_ADDR": ip}):
                 session["authenticated"] = True
+                session["cred_gen"] = app.extensions["cc_web_credentials"].generation
                 subscribe({"port": port})
         except Exception as exc:  # pragma: no cover - reported via errors
             errors.append(exc)

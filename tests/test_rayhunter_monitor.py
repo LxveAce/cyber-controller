@@ -279,6 +279,7 @@ def test_snapshot_endpoint(monkeypatch, tmp_path):
     client = app.test_client()
     with client.session_transaction() as sess:
         sess["authenticated"] = True
+        sess["cred_gen"] = client.application.extensions["cc_web_credentials"].generation
         sess["csrf"] = new_csrf_token()
         csrf = sess["csrf"]
     # malformed IP rejected at the boundary
