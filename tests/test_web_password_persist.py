@@ -207,5 +207,5 @@ def test_apply_publishes_the_exact_snapshot_it_persisted(isolated):
     stored = web_auth.load_stored_credentials()
     assert stored is not None
     _username, salt, hashed = stored
-    assert creds._salt == salt and creds._hash == hashed   # identical snapshot, not a second re-hash
+    assert creds._record[1] == salt and creds._record[2] == hashed  # identical snapshot, not a re-hash
     assert creds.verify("ace", "new-password")

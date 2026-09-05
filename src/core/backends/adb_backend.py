@@ -991,25 +991,54 @@ def _sha256_file(path: str, chunk: int = 1 << 20) -> str:
 _ACTIVE_POINTER = "ACTIVE"
 
 
+def _valid_version_dir(tag: str, directory: str) -> bool:
+    """True only if *tag* is a safe single directory name that resolves INSIDE *directory* — so a
+    corrupt/malicious ACTIVE pointer (``../outside``, a separator, control chars) can never resolve an
+    installer outside the tools dir."""
+    if not tag or len(tag) > 128 or ".." in tag or "/" in tag or "\\" in tag:
+        return False
+    if any(ord(c) < 32 for c in tag):
+        return False
+    resolved = os.path.realpath(os.path.join(directory, tag))
+    return resolved == os.path.join(os.path.realpath(directory), tag)
+
+
+def _write_active_pointer(directory: str, tag: str) -> None:
+    """Write the ACTIVE version pointer atomically (temp file → os.replace), so an interrupted write
+    never leaves a torn pointer."""
+    tmp = os.path.join(directory, _ACTIVE_POINTER + ".tmp-" + os.urandom(4).hex())
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write(tag)
+        os.replace(tmp, os.path.join(directory, _ACTIVE_POINTER))
+    except OSError:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def find_installer(directory: Optional[str] = None) -> Optional[str]:
-    """Locate the active provisioned rayhunter installer binary, or None. Resolves the explicit
-    ``ACTIVE`` version pointer first so a leftover flat/legacy ``installer.exe`` can't be selected over
-    the promoted versioned install; only falls back to a directory walk when there is no pointer."""
+    """Locate the active provisioned rayhunter installer binary, or None. If an ``ACTIVE`` pointer exists
+    it is authoritative: the named version dir must be a validated single segment inside the tools dir and
+    hold an installer. A pointer that is present but corrupt/invalid returns None — it does NOT silently
+    fall back to arbitrary discovery (which could pick a stale/foreign installer). Only when there is NO
+    pointer at all does it walk (legacy flat layout)."""
     directory = directory or installer_tools_dir()
     if not os.path.isdir(directory):
         return None
-    try:
-        with open(os.path.join(directory, _ACTIVE_POINTER), encoding="utf-8") as fh:
-            tag = fh.read().strip()
-        if tag:
-            versioned = os.path.join(directory, tag)
-            if os.path.isdir(versioned):
-                found = _find_installer_binary(versioned)
-                if found:
-                    return found
-    except OSError:
-        pass
-    return _find_installer_binary(directory)  # no pointer / legacy layout
+    pointer = os.path.join(directory, _ACTIVE_POINTER)
+    if os.path.exists(pointer):
+        try:
+            with open(pointer, encoding="utf-8") as fh:
+                tag = fh.read().strip()
+        except (OSError, ValueError):  # ValueError covers a UnicodeDecodeError on a corrupt pointer
+            return None
+        if not _valid_version_dir(tag, directory):
+            return None
+        return _find_installer_binary(os.path.join(directory, tag))
+    return _find_installer_binary(directory)  # no pointer at all: legacy flat layout
 
 
 def provision_installer(on_line: Line, directory: Optional[str] = None) -> str:
@@ -1058,21 +1087,16 @@ def provision_installer(on_line: Line, directory: Optional[str] = None) -> str:
     finally:
         if staging is not None:
             shutil.rmtree(staging, ignore_errors=True)
-    # Now the fresh version is in place + validated (never before): drop older version dirs AND any
-    # legacy flat-layout root files, then record the active version so discovery resolves exactly it.
+    # Point ACTIVE at the fresh version FIRST (atomically), so discovery resolves it even if the cleanup
+    # below is interrupted; only THEN retire older version dirs. Never delete arbitrary files in the tools
+    # dir — a stale root-level artifact is harmless now that ACTIVE is authoritative for discovery.
+    _write_active_pointer(directory, str(tag))
     for entry in os.listdir(directory):
         p = os.path.join(directory, entry)
         if entry == _ACTIVE_POINTER or entry.startswith("."):
             continue
         if os.path.isdir(p) and os.path.abspath(p) != os.path.abspath(dest):
             shutil.rmtree(p, ignore_errors=True)
-        elif os.path.isfile(p):  # a stray root-level installer artifact from the old flat layout
-            try:
-                os.remove(p)
-            except OSError:
-                pass
-    with open(os.path.join(directory, _ACTIVE_POINTER), "w", encoding="utf-8") as fh:
-        fh.write(str(tag))
     inst = _find_installer_binary(dest)
     if not inst:
         raise RuntimeError("installer binary not found after install")
@@ -1160,15 +1184,21 @@ def _valid_ipv4(value: str) -> bool:
         return False
 
 
+#: The EXACT local-device ranges the Orbic (over RNDIS/Wi-Fi) is ever at — RFC1918 + loopback +
+#: link-local. Not Python's broader ``is_private``, which also admits TEST-NET/documentation/reserved
+#: ranges (192.0.2/24, 198.51.100/24, 203.0.113/24, 240/4) that are not our local-device policy.
+_LOCAL_NETS = tuple(ipaddress.ip_network(n) for n in (
+    "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "127.0.0.0/8"))
+
+
 def _is_local_ipv4(value: str) -> bool:
-    """True for a private / loopback / link-local IPv4 — the only kind a local hardware device (the
-    Orbic over its RNDIS/Wi-Fi link) is ever at. Scopes the status request to the local-device feature
-    so it can't be aimed at an arbitrary routable host."""
+    """True only for an IPv4 in the explicit local-device networks (RFC1918 + loopback + link-local).
+    Scopes the status request to the local-device feature so it can't be aimed at an arbitrary host."""
     try:
         a = ipaddress.IPv4Address(value)
     except (ipaddress.AddressValueError, ValueError):
         return False
-    return a.is_private or a.is_loopback or a.is_link_local
+    return any(a in net for net in _LOCAL_NETS)
 
 
 #: Cap on the rayhunter status response we'll read into memory (the real payload is a few KB).

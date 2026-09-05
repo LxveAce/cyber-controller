@@ -46,13 +46,8 @@ DEFAULT_MAX_REPORT_BYTES = 8 * 1024 * 1024   # 8 MiB per report
 DEFAULT_MAX_LINE_BYTES = 256 * 1024          # 256 KiB per NDJSON line
 DEFAULT_MAX_EVENTS = 20_000                  # retained events cap
 
-
-class ReportCoverage:
-    """Why a parsed report may be INCOMPLETE, so the UI never shows a partial total as complete."""
-
-    COMPLETE = "complete"
-    TRUNCATED_BYTES = "truncated:report-byte-budget"
-    TRUNCATED_EVENTS = "truncated:event-budget"
+#: The normalized report version this adapter understands (tagged v0.12.0 `REPORT_VERSION`).
+SUPPORTED_REPORT_VERSION = 2
 
 
 def parse_analysis_report(
@@ -61,71 +56,98 @@ def parse_analysis_report(
     max_bytes: int = DEFAULT_MAX_REPORT_BYTES,
     max_line_bytes: int = DEFAULT_MAX_LINE_BYTES,
     max_events: int = DEFAULT_MAX_EVENTS,
+    pre_truncated: bool = False,
 ) -> Dict[str, Any]:
     """Parse a Rayhunter analysis-report NDJSON blob into a bounded, honest summary. Pure — no I/O.
 
-    Returns ``{metadata, counts, events, complete, coverage, malformed_lines, oversized_lines,
-    total_rows}``. ``counts`` has ``by_level`` (per LEVELS), ``warnings`` (Low+Medium+High),
-    ``informational``, ``skipped``, and ``events`` (retained). Never raises: a malformed line is COUNTED
-    (``malformed_lines``) and skipped from the event tally, not silently dropped and not crashed on; a
-    line over ``max_line_bytes`` is counted (``oversized_lines``) and skipped; hitting the byte or event
-    budget sets ``complete=False`` with the reason, so a partial total is never presented as whole.
-    """
+    Schema is the tagged v0.12.0 normalized (report_version 2): a ``ReportMetadata`` first line
+    (``analyzers`` list + ``report_version``), then ``AnalysisRow`` lines with ``packet_timestamp``,
+    ``skipped_message_reason`` (singular), and a POSITIONAL ``events`` list where ``events[i]`` belongs to
+    ``metadata.analyzers[i]``. Event ``event_type`` is a string ("High"…) or a legacy object.
+
+    ``complete`` is derived from EVERY loss condition — a byte/line/event truncation, a malformed or
+    oversized line, an unsupported report version, or an unknown severity all make it False with the
+    reasons joined in ``coverage``. So a caller can never read a partial/garbled report as a complete
+    zero-warning result. Never raises: a bad line is counted (malformed/oversized), never crashed on and
+    never guessed into an event. ``pre_truncated`` lets a bounded fetch signal the bytes were already cut."""
     counts_by_level: Dict[str, int] = {lvl: 0 for lvl in LEVELS}
     events: List[Dict[str, Any]] = []
     metadata: Optional[Dict[str, Any]] = None
-    malformed = 0
-    oversized = 0
-    skipped = 0
-    total_rows = 0
-    coverage = ReportCoverage.COMPLETE
-    complete = True
+    analyzer_names: List[Optional[str]] = []
+    malformed = oversized = skipped = total_rows = 0
+    losses: set = set()
+    if pre_truncated:
+        losses.add("truncated-before-parse")
 
     if len(data) > max_bytes:
         data = data[:max_bytes]
-        complete = False
-        coverage = ReportCoverage.TRUNCATED_BYTES
+        losses.add("truncated-bytes")
 
-    # Split on newlines ourselves so a split/partial trailing line is handled, not assumed well-formed.
     for raw_line in data.split(b"\n"):
         line = raw_line.strip()
         if not line:
             continue
         if len(line) > max_line_bytes:
             oversized += 1
+            losses.add("oversized-line")
             continue
         try:
             obj = json.loads(line.decode("utf-8"))
         except (ValueError, UnicodeDecodeError):
-            malformed += 1  # a malformed/garbled line is flagged, never a crash and never a guessed event
+            malformed += 1
+            losses.add("malformed-line")
             continue
         if not isinstance(obj, dict):
             malformed += 1
+            losses.add("malformed-line")
             continue
-        # The FIRST well-formed object is the report metadata (analyzers + versions); the rest are rows.
+        # First metadata object: analyzers (positional) + report_version. Reject an unsupported version.
         if metadata is None and _looks_like_metadata(obj):
             metadata = obj
+            rv = obj.get("report_version")
+            if rv is not None and rv != SUPPORTED_REPORT_VERSION:
+                losses.add("unsupported-report-version")
+            an = obj.get("analyzers")
+            if isinstance(an, list):
+                analyzer_names = [_analyzer_name(a) for a in an]
             continue
         total_rows += 1
-        if _is_skipped_row(obj):
+        reason = obj.get("skipped_message_reason")
+        if isinstance(reason, str) and reason:
             skipped += 1
             continue
-        row_events = _events_of(obj)
-        for ev in row_events:
-            if len(events) >= max_events:
-                complete = False
-                coverage = ReportCoverage.TRUNCATED_EVENTS
+        ts = obj.get("packet_timestamp")   # optional; a missing timestamp stays None, never epoch
+        raw_events = obj.get("events")
+        if isinstance(raw_events, list):
+            truncated = False
+            for i, ev in enumerate(raw_events):
+                if not isinstance(ev, dict):
+                    continue  # a null positional event contributes nothing
+                if len(events) >= max_events:
+                    losses.add("truncated-events")
+                    truncated = True
+                    break
+                level = _event_level(ev.get("event_type"))
+                if level in counts_by_level:
+                    counts_by_level[level] += 1
+                elif level is not None:
+                    losses.add("unknown-severity")   # a severity CC doesn't know -> coverage is uncertain
+                analyzer = analyzer_names[i] if i < len(analyzer_names) else None
+                events.append({
+                    "level": level,
+                    "timestamp": ts,
+                    "analyzer": analyzer,
+                    "message": ev.get("message") if isinstance(ev.get("message"), str) else None,
+                })
+            if truncated:
                 break
-            level = ev.get("level")
-            if level in counts_by_level:
-                counts_by_level[level] += 1
-            events.append(ev)
-        if not complete and coverage == ReportCoverage.TRUNCATED_EVENTS:
-            break
 
     warnings = sum(counts_by_level[lvl] for lvl in _WARNING_LEVELS)
+    complete = not losses
     return {
         "metadata": metadata,
+        "report_version": metadata.get("report_version") if isinstance(metadata, dict) else None,
+        "analyzers": analyzer_names,
         "counts": {
             "by_level": counts_by_level,
             "warnings": warnings,
@@ -135,7 +157,7 @@ def parse_analysis_report(
         },
         "events": events,
         "complete": complete,
-        "coverage": coverage,
+        "coverage": "complete" if complete else ",".join(sorted(losses)),
         "malformed_lines": malformed,
         "oversized_lines": oversized,
         "total_rows": total_rows,
@@ -143,45 +165,23 @@ def parse_analysis_report(
 
 
 def _looks_like_metadata(obj: Dict[str, Any]) -> bool:
-    """A report metadata object carries analyzer/version info, not a packet timestamp + events."""
+    """A ReportMetadata line carries ``analyzers`` / ``report_version`` and NONE of the row fields."""
     keys = set(obj.keys())
-    return bool(keys & {"analyzers", "rayhunter", "report_version", "metadata", "version"}) and \
-        "events" not in keys
+    return bool(keys & {"analyzers", "report_version"}) and not (
+        keys & {"events", "packet_timestamp", "skipped_message_reason"})
 
 
-def _is_skipped_row(obj: Dict[str, Any]) -> bool:
-    """A 'skipped' row records that a packet couldn't be analyzed (a reason, no events)."""
-    if "skipped_message_reasons" in obj or "skipped_reasons" in obj or obj.get("skipped"):
-        return True
-    return obj.get("type") == "skipped"
-
-
-def _events_of(obj: Dict[str, Any]) -> List[Dict[str, Any]]:
-    """Normalize a packet-analysis row into a list of ``{level, timestamp, analyzer, message}`` events.
-
-    Positional nullable events (upstream keeps analyzer position); a null entry contributes nothing.
-    A MISSING timestamp stays ``None`` (never coerced to the Unix epoch — that would fabricate a time).
-    An unknown/absent level is preserved verbatim so the caller can surface a compatibility notice rather
-    than miscount it as a known level.
-    """
-    ts = obj.get("timestamp")  # optional in Rust; unknown stays unknown
-    out: List[Dict[str, Any]] = []
-    analyzers = obj.get("analyzers")
-    raw_events = obj.get("events")
-    if isinstance(raw_events, list):
-        for i, ev in enumerate(raw_events):
-            if not isinstance(ev, dict):
-                continue  # a null/absent positional event contributes nothing
-            analyzer = None
-            if isinstance(analyzers, list) and i < len(analyzers):
-                analyzer = analyzers[i]
-            out.append({
-                "level": ev.get("event_type") or ev.get("level"),
-                "timestamp": ts,
-                "analyzer": _analyzer_name(analyzer) or _analyzer_name(ev.get("analyzer")),
-                "message": ev.get("message") if isinstance(ev.get("message"), str) else None,
-            })
-    return out
+def _event_level(event_type: Any) -> Optional[str]:
+    """Level from an event's ``event_type`` — a plain string in normalized v2, or a legacy object
+    (``{"type":"Informational"}`` / ``{"type":"QualitativeWarning","severity":"High"}``). Unknown → None."""
+    if isinstance(event_type, str):
+        return event_type
+    if isinstance(event_type, dict):
+        if event_type.get("type") == "Informational":
+            return "Informational"
+        sev = event_type.get("severity")
+        return sev if isinstance(sev, str) else None
+    return None
 
 
 def _analyzer_name(a: Any) -> Optional[str]:
@@ -204,7 +204,11 @@ def build_snapshot(
     analysis: Optional[Dict[str, Any]],
 ) -> Dict[str, Any]:
     """Combine the three read endpoints into the honest three-indicator snapshot (pure). Any argument may
-    be None (endpoint unreachable/failed) — that surfaces as an unknown indicator, not a healthy default."""
+    be None (endpoint unreachable/failed) — that surfaces as an unknown indicator, not a healthy default.
+    A non-dict device reply is treated as absent (untrusted input never reaches a ``.get``)."""
+    system_stats = system_stats if isinstance(system_stats, dict) else None
+    manifest = manifest if isinstance(manifest, dict) else None
+    analysis = analysis if isinstance(analysis, dict) else None
     rt = (system_stats or {}).get("runtime_metadata") or {}
     version = rt.get("rayhunter_version") if isinstance(rt, dict) else None
 
@@ -258,7 +262,9 @@ def fetch_json(admin_ip: str, path: str, *, timeout: float = 6.0,
         _safe_close(r)
         if len(body) > max_bytes:
             return None
-        return json.loads(body.decode("utf-8"))
+        obj = json.loads(body.decode("utf-8"))
+        # These endpoints return JSON OBJECTS — a non-dict root is an untrusted/invalid device reply.
+        return obj if isinstance(obj, dict) else None
     except Exception:  # noqa: BLE001 — any failure is a None snapshot input, never a raise
         _safe_close(locals().get("r"))
         return None
@@ -326,11 +332,10 @@ def _fetch_bytes(admin_ip: str, path: str, *, timeout: float, max_bytes: int,
         r = get(url, timeout=timeout, allow_redirects=False, stream=True)
         if getattr(r, "status_code", None) != 200:
             return None
-        body = r.raw.read(max_bytes + 1, decode_content=True)
-        if len(body) > max_bytes:
-            # over budget: keep the bounded prefix; the parser marks coverage incomplete
-            return body[:max_bytes]
-        return body
+        # Read ONE byte past the budget and return it UNSLICED — if the report overflowed, the parser
+        # sees len > max_bytes and marks it incomplete. Slicing to exactly max_bytes here would hide the
+        # overflow and let an oversized, warning-bearing report read as complete + zero-warnings.
+        return r.raw.read(max_bytes + 1, decode_content=True)
     except Exception:  # noqa: BLE001
         return None
     finally:

@@ -75,14 +75,14 @@ class WebCredentials:
 
     def __init__(self, username: str, password: str | None = None, *,
                  salt: bytes | None = None, hashed: bytes | None = None) -> None:
-        self._username = username
+        # ONE immutable (username, salt, hash) record, swapped as a single reference. A reader (verify)
+        # binds the whole tuple at once, so a concurrent password change can never expose a mix of the
+        # new salt with the old hash (which would reject BOTH passwords) — no reader lock needed.
         if salt is not None and hashed is not None:
-            # Reconstruct from a persisted (salt, hash) — no plaintext needed or kept.
-            self._salt = salt
-            self._hash = hashed
+            self._record: tuple[str, bytes, bytes] = (username, salt, hashed)
         else:
-            self._salt = os.urandom(16)
-            self._hash = self._derive(password or "")
+            s = os.urandom(16)
+            self._record = (username, s, _scrypt(password or "", s))
         # The plaintext of a GENERATED one-time password, kept in RAM only so an already-authenticated
         # operator can read it back in the UI to reach the server from a phone / another PC (a windowed
         # build swallows the stderr print). None for a user-set password — the owner already knows that
@@ -94,41 +94,28 @@ class WebCredentials:
 
     @property
     def username(self) -> str:
-        return self._username
-
-    def _derive(self, password: str) -> bytes:
-        return hashlib.scrypt(
-            password.encode("utf-8"),
-            salt=self._salt,
-            n=_SCRYPT_N,
-            r=_SCRYPT_R,
-            p=_SCRYPT_P,
-            dklen=32,
-            maxmem=64 * 1024 * 1024,
-        )
+        return self._record[0]
 
     def set_password(self, new_password: str, username: str | None = None) -> None:
         """Replace the in-memory password (fresh salt + hash) and optionally the username. Clears any
-        one-time generated password — after the user picks their own, there is no one-time to reveal.
-        Persisting it to disk is :func:`save_web_password`'s job, kept separate so the class stays pure."""
-        self.publish_record(username or self._username, *_new_record(new_password))
+        one-time generated password — after the user picks their own, there is no one-time to reveal."""
+        self.publish_record(username or self._record[0], *_new_record(new_password))
 
     def publish_record(self, username: str, salt: bytes, hashed: bytes) -> None:
-        """Adopt a PRE-DERIVED (salt, hash) — no re-derivation. This is what makes the in-memory publish
-        share the exact snapshot that was persisted, so nothing fallible runs after the disk write (the
-        old set_password re-derived here, which could fail and leave disk and memory disagreeing)."""
-        self._username = username
-        self._salt = salt
-        self._hash = hashed
+        """Adopt a PRE-DERIVED (salt, hash) via a single atomic record swap — no re-derivation. The live
+        password becomes exactly the snapshot persisted to disk, and readers only ever see the whole old
+        or whole new record, never a mix."""
+        self._record = (username, salt, hashed)
         self.generated_password = None
         self.source = "saved"
 
     def verify(self, username: str | None, password: str | None) -> bool:
         if username is None or password is None:
             return False
+        u, s, h = self._record   # one atomic read of the immutable record
         try:
-            u_ok = hmac.compare_digest(username.encode("utf-8"), self._username.encode("utf-8"))
-            p_ok = hmac.compare_digest(self._derive(password), self._hash)
+            u_ok = hmac.compare_digest(username.encode("utf-8"), u.encode("utf-8"))
+            p_ok = hmac.compare_digest(_scrypt(password, s), h)
         except Exception:
             return False
         return u_ok and p_ok
@@ -231,10 +218,10 @@ def save_web_password(username: str, password: str) -> None:
 
 
 def apply_web_password(creds: "WebCredentials", new_password: str, username: str) -> None:
-    """Persist THEN publish, under a lock, from ONE credential snapshot: derive (salt, hash) once, persist
-    it, then publish that exact snapshot into the live credentials. A failed save leaves the running
-    password unchanged, and nothing fallible (no second derivation) runs after the disk write — so disk
-    and memory can never end up disagreeing."""
+    """Persist THEN publish, under the writer lock, from ONE credential snapshot: derive (salt, hash)
+    once, persist it, then swap that exact snapshot into the live credentials as a single atomic record.
+    A failed save leaves the running password unchanged, and nothing fallible (no second derivation) runs
+    after the disk write, so a save failure never leaves the live password ahead of disk."""
     with _cred_lock:
         salt, hashed = _new_record(new_password)          # derive ONCE
         _write_record(username, salt, hashed)             # persist first; raises -> nothing published

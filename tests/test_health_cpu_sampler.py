@@ -12,6 +12,7 @@ from src.core import health_monitor as hm
 def _reset_sampler(monkeypatch):
     monkeypatch.setattr(hm, "_cpu_started", False, raising=False)
     monkeypatch.setattr(hm, "_cpu_value", 0.0, raising=False)
+    monkeypatch.setattr(hm, "_cpu_ts", 0.0, raising=False)
 
 
 def test_reader_never_samples_psutil_itself(monkeypatch):
@@ -60,3 +61,31 @@ def test_sampler_starts_only_once(monkeypatch):
     for _ in range(5):
         hm._cpu_percent_nonblocking()
     assert starts["n"] == 1
+
+
+def test_stale_cache_is_flagged_and_restarts(monkeypatch):
+    """#5: a value older than the stale window is reported stale and triggers a fresh sampler."""
+    _reset_sampler(monkeypatch)
+    starts = {"n": 0}
+    real_thread = hm.threading.Thread
+
+    def counting_thread(*args, **kwargs):
+        if kwargs.get("name") == "cpu-sampler":
+            starts["n"] += 1
+        return real_thread(*args, **kwargs)
+
+    def fake_cpu_percent(interval=None):
+        if interval and interval >= 2:
+            time.sleep(30)
+        return 12.0
+
+    monkeypatch.setattr(hm.psutil, "cpu_percent", fake_cpu_percent)
+    monkeypatch.setattr(hm.threading, "Thread", counting_thread)
+    hm._cpu_percent_nonblocking()                 # starts + seeds a fresh ts
+    assert starts["n"] == 1
+    # simulate a dead sampler: mark started but with a very old timestamp
+    monkeypatch.setattr(hm, "_cpu_ts", time.monotonic() - hm._CPU_STALE_SECONDS - 5, raising=False)
+    monkeypatch.setattr(hm, "_cpu_started", True, raising=False)
+    value, stale = hm._cpu_sample()
+    assert stale is True                          # the old value is surfaced as stale
+    assert starts["n"] == 2                        # ...and a fresh sampler was restarted

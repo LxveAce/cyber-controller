@@ -15,82 +15,89 @@ def _ndjson(*objs) -> bytes:
     return ("\n".join(json.dumps(o) for o in objs)).encode("utf-8")
 
 
-META = {"report_version": 2, "analyzers": [{"name": "imsi", "version": "1"}],
-        "rayhunter": {"version": "0.12.0"}}
+# Tagged v0.12.0 schema: metadata carries analyzers (positional) + report_version; rows carry
+# packet_timestamp + a positional events list + singular skipped_message_reason.
+META = {"report_version": 2, "analyzers": [{"name": "imsi", "version": 1}, {"name": "cell", "version": 1}]}
 
 
 def test_counts_by_level_and_warnings():
     data = _ndjson(
         META,
-        {"timestamp": 1, "analyzers": ["imsi"], "events": [{"event_type": "High", "message": "x"}]},
-        {"timestamp": 2, "analyzers": ["imsi"], "events": [{"event_type": "Low", "message": "y"}]},
-        {"timestamp": 3, "analyzers": ["imsi"], "events": [{"event_type": "Informational", "message": "i"}]},
-        {"skipped_message_reasons": ["unsupported"]},
+        {"packet_timestamp": "2023-01-01T00:00:00+00:00",
+         "events": [{"event_type": "High", "message": "x"}, None]},
+        {"packet_timestamp": "2023-01-01T00:00:01+00:00",
+         "events": [None, {"event_type": "Low", "message": "y"}]},
+        {"packet_timestamp": "2023-01-01T00:00:02+00:00",
+         "events": [{"event_type": "Informational", "message": "i"}, None]},
+        {"skipped_message_reason": "unsupported"},
     )
     out = rm.parse_analysis_report(data)
     assert out["metadata"]["report_version"] == 2
+    assert out["analyzers"] == ["imsi", "cell"]
     c = out["counts"]
     assert c["by_level"]["High"] == 1 and c["by_level"]["Low"] == 1
-    assert c["warnings"] == 2                    # Low + Medium + High
-    assert c["informational"] == 1              # NOT counted as a warning
-    assert c["skipped"] == 1
-    assert out["complete"] is True and out["coverage"] == rm.ReportCoverage.COMPLETE
+    assert c["warnings"] == 2 and c["informational"] == 1 and c["skipped"] == 1
+    assert out["complete"] is True and out["coverage"] == "complete"
+    # positional analyzer mapping: the High event is analyzer[0]=imsi, the Low is analyzer[1]=cell
+    highs = [e for e in out["events"] if e["level"] == "High"]
+    lows = [e for e in out["events"] if e["level"] == "Low"]
+    assert highs[0]["analyzer"] == "imsi" and lows[0]["analyzer"] == "cell"
 
 
-def test_malformed_and_split_lines_do_not_crash():
+def test_malformed_lines_flag_incomplete():
     data = b"not json at all\n" + json.dumps(META).encode() + b"\n" + b'{"broken": \n' + \
         json.dumps({"events": [{"event_type": "Medium"}]}).encode() + b"\n\n"
     out = rm.parse_analysis_report(data)
-    assert out["malformed_lines"] >= 2          # the junk line + the broken-json line
+    assert out["malformed_lines"] >= 2
     assert out["counts"]["by_level"]["Medium"] == 1
-    assert out["complete"] is True              # malformed != incomplete coverage
+    assert out["complete"] is False                 # a malformed line IS a loss of coverage
+    assert "malformed-line" in out["coverage"]
 
 
 def test_invalid_utf8_line_is_flagged_not_raised():
     data = json.dumps(META).encode() + b"\n\xff\xfe\x00\n"
     out = rm.parse_analysis_report(data)
-    assert out["malformed_lines"] == 1
+    assert out["malformed_lines"] == 1 and out["complete"] is False
 
 
-def test_oversized_line_is_skipped():
+def test_oversized_line_flags_incomplete():
     big = {"events": [{"event_type": "High", "message": "z" * 5000}]}
     data = _ndjson(META, big)
-    out = rm.parse_analysis_report(data, max_line_bytes=1000)  # META fits, the 5 KB row doesn't
-    assert out["oversized_lines"] == 1
-    assert out["metadata"] is not None          # metadata still parsed
-    assert out["counts"]["warnings"] == 0       # the oversized row contributed nothing
+    out = rm.parse_analysis_report(data, max_line_bytes=1000)
+    assert out["oversized_lines"] == 1 and out["metadata"] is not None
+    assert out["counts"]["warnings"] == 0
+    assert out["complete"] is False and "oversized-line" in out["coverage"]
 
 
 def test_byte_budget_marks_incomplete():
-    rows = [{"timestamp": i, "events": [{"event_type": "Low"}]} for i in range(50)]
-    data = _ndjson(META, *rows)
-    out = rm.parse_analysis_report(data, max_bytes=120)
-    assert out["complete"] is False
-    assert out["coverage"] == rm.ReportCoverage.TRUNCATED_BYTES
+    rows = [{"packet_timestamp": str(i), "events": [{"event_type": "Low"}]} for i in range(50)]
+    out = rm.parse_analysis_report(_ndjson(META, *rows), max_bytes=120)
+    assert out["complete"] is False and "truncated-bytes" in out["coverage"]
 
 
 def test_event_budget_marks_incomplete():
-    rows = [{"timestamp": i, "events": [{"event_type": "Low"}]} for i in range(20)]
-    data = _ndjson(META, *rows)
-    out = rm.parse_analysis_report(data, max_events=5)
-    assert out["complete"] is False
-    assert out["coverage"] == rm.ReportCoverage.TRUNCATED_EVENTS
+    rows = [{"packet_timestamp": str(i), "events": [{"event_type": "Low"}]} for i in range(20)]
+    out = rm.parse_analysis_report(_ndjson(META, *rows), max_events=5)
+    assert out["complete"] is False and "truncated-events" in out["coverage"]
     assert out["counts"]["events"] == 5
 
 
-def test_unknown_severity_preserved_not_miscounted():
-    data = _ndjson(META, {"events": [{"event_type": "Critical", "message": "?"}]})
-    out = rm.parse_analysis_report(data)
-    # An unknown level is not folded into a known bucket; it stays as an event for a compatibility notice.
+def test_unknown_severity_flagged_not_miscounted():
+    out = rm.parse_analysis_report(_ndjson(META, {"events": [{"event_type": "Critical", "message": "?"}]}))
     assert all(v == 0 for v in out["counts"]["by_level"].values())
-    assert out["counts"]["events"] == 1
-    assert out["events"][0]["level"] == "Critical"
+    assert out["counts"]["events"] == 1 and out["events"][0]["level"] == "Critical"
+    assert out["complete"] is False and "unknown-severity" in out["coverage"]
+
+
+def test_unsupported_report_version_flagged():
+    bad_meta = {"report_version": 99, "analyzers": []}
+    out = rm.parse_analysis_report(_ndjson(bad_meta, {"packet_timestamp": "t", "events": []}))
+    assert out["complete"] is False and "unsupported-report-version" in out["coverage"]
 
 
 def test_missing_timestamp_stays_unknown():
-    data = _ndjson(META, {"events": [{"event_type": "Low"}]})  # no timestamp
-    out = rm.parse_analysis_report(data)
-    assert out["events"][0]["timestamp"] is None   # never coerced to the Unix epoch
+    out = rm.parse_analysis_report(_ndjson(META, {"events": [{"event_type": "Low"}]}))
+    assert out["events"][0]["timestamp"] is None   # never coerced to epoch
 
 
 # -- snapshot ---------------------------------------------------------
@@ -252,8 +259,28 @@ def test_fetch_report_happy_path():
     assert out is not None and out["counts"]["warnings"] == 1
 
 
+def test_fetch_report_oversized_flags_incomplete():
+    """#9: an oversized report must NOT read as complete/zero-warnings — the overflow reaches the parser."""
+    big_row = json.dumps({"packet_timestamp": "t", "events": [{"event_type": "High", "message": "z"}]})
+    ndjson = (json.dumps(META) + "\n" + big_row).encode("utf-8")
+
+    def getter(url, **kw):
+        return _Resp(200, ndjson)
+
+    out = rm.fetch_report("192.168.1.1", "known", manifest={"entries": [{"name": "known"}]},
+                          getter=getter, max_bytes=len(json.dumps(META)) + 5)
+    assert out is not None
+    assert out["complete"] is False and "truncated-bytes" in out["coverage"]
+
+
+def test_build_snapshot_ignores_non_dict_device_reply():
+    """#8: a non-dict endpoint reply must not crash build_snapshot; it reads as unreachable/unknown."""
+    snap = rm.build_snapshot([1, 2, 3], "not-a-dict", 42)
+    assert snap["transport"] == "unreachable" and snap["recording"] == "unknown"
+
+
 def _sample_parsed(msg="secret-imsi-12345"):
-    data = _ndjson(META, {"timestamp": 5, "analyzers": ["imsi"],
+    data = _ndjson(META, {"packet_timestamp": "2023-01-01T00:00:00+00:00",
                           "events": [{"event_type": "High", "message": msg}]})
     return rm.parse_analysis_report(data)
 

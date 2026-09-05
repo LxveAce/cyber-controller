@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from datetime import datetime, timezone
 from typing import Any, Callable
 
@@ -20,44 +21,71 @@ _DEFAULT_INTERVAL = 5.0
 # thread that never established a baseline (a per-thread warm flag can't be a process-global). So ONE
 # dedicated daemon thread owns the sampling and every reader — any request thread — gets its cached
 # value. The reader never touches psutil, so it can't return a cold-thread 0.
+#: A cached CPU value older than this (the loop samples every ~2s) means the sampler thread died — the
+#: value is stale and the reader/health surface says so, and a fresh sampler is (re)started.
+_CPU_STALE_SECONDS = 15.0
+
 _cpu_lock = threading.Lock()
 _cpu_value: float = 0.0
+_cpu_ts: float = 0.0        # time.monotonic() of the last successful sample (0 = never)
 _cpu_started = False
 
 
 def _cpu_sampler_loop() -> None:
-    global _cpu_value
+    global _cpu_value, _cpu_ts, _cpu_started
     try:
         psutil.cpu_percent(interval=None)  # prime the baseline in THIS dedicated thread
         while True:
             v = psutil.cpu_percent(interval=2.0)  # blocking sample, dedicated thread only
             with _cpu_lock:
                 _cpu_value = v
-    except Exception:  # noqa: BLE001 — a dead sampler must not take the app down; readers keep the last value
+                _cpu_ts = time.monotonic()
+    except Exception:  # noqa: BLE001 — a dead sampler must not take the app down
         log.exception("CPU sampler thread stopped")
+    finally:
+        # Mark not-started so the next reader restarts a sampler instead of serving a frozen value forever.
+        with _cpu_lock:
+            _cpu_started = False
 
 
 def _ensure_cpu_sampler() -> None:
-    global _cpu_started, _cpu_value
+    global _cpu_started, _cpu_value, _cpu_ts
     with _cpu_lock:
         if _cpu_started:
-            return
-        _cpu_started = True
-    try:
-        seed = psutil.cpu_percent(interval=0.1)  # one honest seed value before the loop's first interval
-    except Exception:  # noqa: BLE001
-        seed = 0.0
-    with _cpu_lock:
-        _cpu_value = seed
+            stale = bool(_cpu_ts) and (time.monotonic() - _cpu_ts) > _CPU_STALE_SECONDS
+            if not stale:
+                return
+            first_start = False   # sampler looks dead: relaunch, but keep the old value marked stale
+        else:
+            first_start = True
+        _cpu_started = True        # claim the (re)start
+    if first_start:
+        # First start only: take one honest immediate value so the very first read isn't a placeholder.
+        try:
+            seed = psutil.cpu_percent(interval=0.1)
+        except Exception:  # noqa: BLE001
+            seed = 0.0
+        with _cpu_lock:
+            _cpu_value = seed
+            _cpu_ts = time.monotonic()
+    # A restart does NOT reseed synchronously — the old value stays (reads report it stale) until the
+    # relaunched thread posts a fresh sample, so a dead sampler is surfaced honestly, not silently reset.
     threading.Thread(target=_cpu_sampler_loop, name="cpu-sampler", daemon=True).start()
 
 
-def _cpu_percent_nonblocking() -> float:
-    """Return the CPU utilisation from the dedicated sampler's cache (starting it on first use). Readers
-    never sample psutil themselves, so a request thread can't read a spurious 0."""
+def _cpu_sample() -> tuple[float, bool]:
+    """Return ``(cpu_percent, stale)`` from the dedicated sampler's cache, starting/restarting it on use.
+    ``stale`` is True when the last real sample is too old (sampler died) — readers never sample psutil
+    themselves, so a request thread can't read a spurious 0, and a frozen value is surfaced as stale."""
     _ensure_cpu_sampler()
     with _cpu_lock:
-        return _cpu_value
+        age = (time.monotonic() - _cpu_ts) if _cpu_ts else None
+        stale = age is None or age > _CPU_STALE_SECONDS
+        return _cpu_value, stale
+
+
+def _cpu_percent_nonblocking() -> float:
+    return _cpu_sample()[0]
 
 
 class HealthMonitor:
@@ -168,7 +196,7 @@ class HealthMonitor:
             battery_percent (None if no battery), gps_fix (always False
             unless gpsd is available).
         """
-        cpu = _cpu_percent_nonblocking()
+        cpu, cpu_stale = _cpu_sample()
         mem = psutil.virtual_memory()
         disk = psutil.disk_usage("/") if not hasattr(psutil.disk_usage, "__wrapped__") else psutil.disk_usage("C:\\")
 
@@ -191,6 +219,7 @@ class HealthMonitor:
 
         return {
             "cpu_percent": cpu,
+            "cpu_stale": cpu_stale,   # True if the sampler died and this value is old (don't trust it)
             "memory_percent": mem.percent,
             "memory_used_mb": round(mem.used / (1024 * 1024)),
             "memory_total_mb": round(mem.total / (1024 * 1024)),

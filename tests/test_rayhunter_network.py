@@ -117,7 +117,8 @@ def test_valid_ipv4_accepts_good_rejects_injection():
 def test_is_local_ipv4():
     for local in ("192.168.1.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "169.254.1.1", "127.0.0.1"):
         assert a._is_local_ipv4(local), local
-    for public in ("8.8.8.8", "1.1.1.1", "172.32.0.1", "172.15.0.1"):
+    for public in ("8.8.8.8", "1.1.1.1", "172.32.0.1", "172.15.0.1",
+                   "192.0.2.1", "198.51.100.1", "203.0.113.1", "240.0.0.1"):  # TEST-NET/reserved: NOT local
         assert not a._is_local_ipv4(public), public
 
 
@@ -166,6 +167,29 @@ def test_find_installer_prefers_active_pointer_over_stale_root(tmp_path):
     found = a.find_installer(d)
     assert found is not None
     assert open(found).read() == "FRESH-VERSIONED"
+
+
+def test_find_installer_rejects_traversal_pointer(tmp_path):
+    """#2: an ACTIVE pointer that escapes the tools dir must resolve nothing (never a foreign installer),
+    and a present-but-invalid pointer must NOT fall back to arbitrary discovery."""
+    import os as _os
+    d = str(tmp_path / "rh")
+    _os.makedirs(d)
+    # a legacy root installer that a walk-fallback would wrongly pick
+    with open(_os.path.join(d, "installer.exe"), "w") as f:
+        f.write("STALE")
+    with open(_os.path.join(d, "ACTIVE"), "w") as f:
+        f.write("../outside")
+    assert a.find_installer(d) is None            # invalid pointer -> nothing, not the stale root file
+
+
+def test_find_installer_corrupt_pointer_returns_none(tmp_path):
+    import os as _os
+    d = str(tmp_path / "rh")
+    _os.makedirs(d)
+    with open(_os.path.join(d, "ACTIVE"), "wb") as f:
+        f.write(b"\xff\xfe\x00")                   # invalid UTF-8 pointer
+    assert a.find_installer(d) is None            # corruption handled, no crash, no arbitrary fallback
 
 
 def test_subnet_conflict_never_shells_a_malformed_ip(monkeypatch):
