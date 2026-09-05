@@ -1086,13 +1086,43 @@ def install_orbic_network(admin_password: str, on_line: Line, *, admin_ip: str =
     return rc
 
 
+def _valid_ipv4(value: str) -> bool:
+    """True only for a well-formed dotted IPv4 (four ASCII 0-255 octets). Every ``admin_ip`` that
+    reaches a URL or a subprocess is gated on this, so a malformed value (a quote, a shell metachar, a
+    hostname) can't inject into either."""
+    parts = value.split(".")
+    if len(parts) != 4:
+        return False
+    for p in parts:
+        if not p or len(p) > 3 or any(c not in "0123456789" for c in p) or int(p) > 255:
+            return False
+    return True
+
+
+def _is_local_ipv4(value: str) -> bool:
+    """True for a private / loopback / link-local IPv4 — the only kind a local hardware device (the
+    Orbic over its RNDIS/Wi-Fi link) is ever at. Scopes the status request to the local-device feature
+    so it can't be aimed at an arbitrary routable host. Assumes ``value`` already passed _valid_ipv4."""
+    o = [int(p) for p in value.split(".")]
+    return (o[0] == 10
+            or (o[0] == 172 and 16 <= o[1] <= 31)
+            or (o[0] == 192 and o[1] == 168)
+            or (o[0] == 169 and o[1] == 254)
+            or o[0] == 127)
+
+
 def orbic_status(admin_ip: str = "192.168.1.1", timeout: float = 6.0) -> Dict:
     """Query the rayhunter web UI on the Orbic. Returns {reachable, running, version, url, stats};
-    never raises (offline/unreachable -> reachable False). NOTE: on a host that shares the Orbic's
-    192.168.1.0/24 subnet with another network this can hit the wrong device - pair it with
-    orbic_subnet_conflict()."""
+    never raises (offline/unreachable -> reachable False). ``admin_ip`` must be a local/private IPv4
+    (the Orbic is always a local device) — anything else is refused without a request, so the status
+    probe can't be pointed at an arbitrary host. NOTE: on a host that shares the Orbic's 192.168.1.0/24
+    subnet with another network this can hit the wrong device - pair it with orbic_subnet_conflict()."""
+    out: Dict = {"reachable": False, "running": False, "version": None, "url": None, "stats": None}
+    if not _valid_ipv4(admin_ip) or not _is_local_ipv4(admin_ip):
+        out["error"] = "admin_ip must be a local/private IPv4 address"
+        return out
     base = "http://" + admin_ip + ":8080"
-    out: Dict = {"reachable": False, "running": False, "version": None, "url": base, "stats": None}
+    out["url"] = base
     try:
         r = requests.get(base + "/api/system-stats", timeout=timeout)
         out["reachable"] = True
@@ -1111,24 +1141,28 @@ def orbic_subnet_conflict(admin_ip: str = "192.168.1.1") -> Dict:
     one active interface on the Orbic's /24. Returns {conflict, orbic_iface, other_ifaces}; on
     non-Windows or any error it returns conflict=False (unknown) rather than guessing."""
     out: Dict = {"conflict": False, "orbic_iface": None, "other_ifaces": []}
-    if os.name != "nt":
+    if os.name != "nt" or not _valid_ipv4(admin_ip):
         return out
+    # The /24 prefix to match. admin_ip is validated IPv4, so this never carries a shell metachar — and
+    # it is used ONLY in Python below, never interpolated into the PowerShell command, which is a fixed
+    # constant string. That removes the command-injection surface entirely.
+    prefix = ".".join(admin_ip.split(".")[:3]) + "."
+    ps = ("Get-NetIPAddress -AddressFamily IPv4 | ForEach-Object { "
+          "$ad = Get-NetAdapter -InterfaceIndex $_.InterfaceIndex -ErrorAction SilentlyContinue; "
+          "\"$($_.IPAddress)|$($ad.InterfaceDescription)\" }")
     try:
-        prefix = ".".join(admin_ip.split(".")[:3]) + "."
-        ps = ("Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -like '"
-              + prefix + "*' } | ForEach-Object { $ad = Get-NetAdapter -InterfaceIndex "
-              "$_.InterfaceIndex -ErrorAction SilentlyContinue; "
-              "\"$($_.IPAddress)|$($ad.InterfaceDescription)\" }")
         res = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
                              capture_output=True, text=True, timeout=15)
         for ln in res.stdout.splitlines():
             ln = ln.strip()
             if "|" not in ln:
                 continue
-            _ip, desc = ln.split("|", 1)
+            ip, desc = ln.split("|", 1)
+            if not ip.startswith(prefix):   # filter to the Orbic's /24 in Python, not in the shell
+                continue
             if "remote ndis" in desc.lower() or "rndis" in desc.lower():
                 out["orbic_iface"] = desc
-            else:
+            elif desc:
                 out["other_ifaces"].append(desc)
         out["conflict"] = bool(out["orbic_iface"]) and bool(out["other_ifaces"])
     except Exception:  # noqa: BLE001

@@ -92,3 +92,90 @@ def test_subnet_conflict_shape_non_windows(monkeypatch):
     monkeypatch.setattr(a.os, "name", "posix")
     out = a.orbic_subnet_conflict()
     assert out == {"conflict": False, "orbic_iface": None, "other_ifaces": []}
+
+
+# -- D05/D06: admin_ip validation + no shell/URL injection -----------
+
+def test_valid_ipv4_accepts_good_rejects_injection():
+    for good in ("192.168.1.1", "10.0.0.255", "172.16.0.1", "127.0.0.1"):
+        assert a._valid_ipv4(good), good
+    for bad in ("192.168.1.1'; whoami", "192.168.1", "192.168.1.1.1", "256.0.0.1",
+                "192.168.1.-1", "orbic.local", "", "192.168.1.x", "0x7f.0.0.1", "1.1.1.1 "):
+        assert not a._valid_ipv4(bad), bad
+
+
+def test_is_local_ipv4():
+    for local in ("192.168.1.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "169.254.1.1", "127.0.0.1"):
+        assert a._is_local_ipv4(local), local
+    for public in ("8.8.8.8", "1.1.1.1", "172.32.0.1", "172.15.0.1"):
+        assert not a._is_local_ipv4(public), public
+
+
+def test_subnet_conflict_never_shells_a_malformed_ip(monkeypatch):
+    """A malformed admin_ip must short-circuit before any subprocess — the old code interpolated it
+    straight into a PowerShell -Command."""
+    monkeypatch.setattr(a.os, "name", "nt")
+
+    def boom(*args, **kw):
+        raise AssertionError("subprocess.run must not be reached for a malformed admin_ip")
+
+    monkeypatch.setattr(a.subprocess, "run", boom)
+    out = a.orbic_subnet_conflict("192.168.1.1'; Remove-Item C:\\ -Recurse -Force")
+    assert out == {"conflict": False, "orbic_iface": None, "other_ifaces": []}
+
+
+def test_subnet_conflict_ps_command_is_constant(monkeypatch):
+    """Even for a VALID admin_ip, the value must never appear in the PowerShell command text — the
+    /24 filtering happens in Python now."""
+    monkeypatch.setattr(a.os, "name", "nt")
+    captured = {}
+
+    class _R:
+        stdout = "10.9.8.7|Remote NDIS based Internet Sharing Device\n10.9.8.7|Realtek USB GbE\n"
+
+    def fake_run(argv, **kw):
+        captured["cmd"] = argv[-1]
+        return _R()
+
+    monkeypatch.setattr(a.subprocess, "run", fake_run)
+    out = a.orbic_subnet_conflict("10.9.8.7")
+    assert "10.9.8.7" not in captured["cmd"]          # no interpolation of the address
+    assert out["conflict"] is True                    # still detects the collision (Python-side filter)
+    assert "Remote NDIS" in (out["orbic_iface"] or "")
+
+
+def test_orbic_status_refuses_non_local_or_malformed_without_request(monkeypatch):
+    def boom(*args, **kw):
+        raise AssertionError("requests.get must not run for a non-local / invalid admin_ip")
+
+    monkeypatch.setattr(a.requests, "get", boom)
+    for bad in ("8.8.8.8", "evil.example.com", "192.168.1.1'", "1.1.1.1"):
+        st = a.orbic_status(bad)
+        assert st["reachable"] is False
+        assert st["url"] is None
+        assert "error" in st
+
+
+def test_rayhunter_api_rejects_malformed_admin_ip(monkeypatch, tmp_path):
+    """Both the status GET and the install POST must 400 a malformed admin_ip at the boundary."""
+    monkeypatch.setenv("CC_GATE_CONFIG", str(tmp_path / "gate.json"))
+    monkeypatch.setenv("CC_WEB_USER", "admin")
+    monkeypatch.setenv("CC_WEB_PASS", "test-pass-123")
+    from src.ui.web.app import create_app
+    from src.core.cross_comm import EventBus, TargetPool
+    from src.core.device_manager import DeviceManager
+    from src.core.flash_engine import FlashEngine
+    from src.security.web_auth import new_csrf_token
+
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool())
+    client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["csrf"] = new_csrf_token()
+        csrf = sess["csrf"]
+    bad = "192.168.1.1'; whoami"
+    assert client.get("/api/rayhunter?admin_ip=" + bad,
+                      headers={"X-CSRF-Token": csrf}).status_code == 400
+    assert client.post("/api/rayhunter/install",
+                       json={"admin_password": "x", "admin_ip": bad},
+                       headers={"X-CSRF-Token": csrf}).status_code == 400

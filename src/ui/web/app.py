@@ -813,6 +813,8 @@ def create_app(
         a (deactivated) SIM."""
         from src.core.backends import adb_backend
         admin_ip = request.args.get("admin_ip", "192.168.1.1")
+        if not adb_backend._valid_ipv4(admin_ip):
+            return jsonify({"error": "admin_ip must be an IPv4 address"}), 400
         status = adb_backend.orbic_status(admin_ip)
         conflict = adb_backend.orbic_subnet_conflict(admin_ip)
         return jsonify({
@@ -836,6 +838,8 @@ def create_app(
         if not pw:
             return jsonify({"error": "admin_password is required (the Orbic's WiFi/admin password)"}), 400
         admin_ip = str(data.get("admin_ip") or "192.168.1.1")
+        if not adb_backend._valid_ipv4(admin_ip):
+            return jsonify({"error": "admin_ip must be an IPv4 address"}), 400
         admin_user = str(data.get("admin_username") or "admin")
         # Warn (don't block) on the subnet collision that makes the install hit the wrong 192.168.1.1.
         conflict = adb_backend.orbic_subnet_conflict(admin_ip)
