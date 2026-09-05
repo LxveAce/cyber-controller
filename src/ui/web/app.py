@@ -2518,6 +2518,9 @@ def create_app(
     # threads can both see the same/None prev, both call conn.on_line(cb), and the last writer wins the
     # store — orphaning the earlier callback on the SerialConnection with no way to ever remove it,
     # re-introducing the exact untracked-callback leak this map exists to prevent.
+    # port -> (emit_cb, bound_connection). Tracking the connection the callback is bound TO lets a
+    # connection swap re-bind delivery to the new object (see _reconcile_serial_on_open) and lets a
+    # re-subscribe detach the callback from the exact connection it was on.
     _serial_subs: dict = {}
     _serial_subs_lock = threading.Lock()
 
@@ -2536,18 +2539,62 @@ def create_app(
         if not _known_port(port):
             emit("serial_output", {"port": port, "line": f"[Unknown port {port}]"})
             return
-        conn = device_manager.get_connection(port)
-        if conn and conn.is_connected:
-            with _serial_subs_lock:
+        # Resolve the current connection AND (re)bind atomically under the subscription lock. Fetching the
+        # connection outside the lock is a TOCTOU: a managed reconnect (the lifecycle hook below) could
+        # replace the connection between the lookup and the bind, so the handler would re-bind delivery onto
+        # the already-replaced object — the new connection then emits nothing while the dead one keeps its
+        # callback. get_connection takes the DeviceManager lock; the hook likewise takes the subscription
+        # lock first and only then the DM lock (never the reverse), so this ordering cannot invert.
+        subscribed = False
+        with _serial_subs_lock:
+            conn = device_manager.get_connection(port)
+            if conn is not None and conn.is_connected:
                 prev = _serial_subs.get(port)
                 if prev is not None:
-                    conn.remove_line_callback(prev)  # drop any prior/stale callback first
+                    prev_cb, prev_conn = prev
+                    # Detach the prior callback from the connection it was actually bound to (which may be a
+                    # replaced/older object), not just the current one — no orphaned callback survives.
+                    if prev_conn is not None:
+                        prev_conn.remove_line_callback(prev_cb)
+                    conn.remove_line_callback(prev_cb)
                 cb = (lambda line, p=port: socketio.emit("serial_output", {"port": p, "line": line}))
                 conn.on_line(cb)
-                _serial_subs[port] = cb
+                _serial_subs[port] = (cb, conn)
+                subscribed = True
+        if subscribed:
             emit("serial_output", {"port": port, "line": f"[Subscribed to {port}]"})
         else:
             emit("serial_output", {"port": port, "line": f"[Not connected to {port}]"})
+
+    def _reconcile_serial_on_open(port: str, _conn: Any) -> None:
+        """Follow the connection lifecycle: when the DeviceManager announces a connection change for a port
+        that has an active serial subscription, re-attach that subscription's callback to the port's CURRENT
+        connection. This covers a fast disconnect+reconnect where the connection object is replaced but the
+        frontend never sampled a "disconnected" poll (so the client-side transition re-subscribe can't fire)
+        — delivery follows the managed connection instead of dying on the replaced object. Fires for every
+        real replacement path (``open_connection`` rebuild + ``attach_connection`` injected link).
+
+        The bind target is re-read from ``get_connection`` inside the lock, NOT the ``_conn`` announced by
+        this callback: a delayed or out-of-order open notification must not pin delivery to a connection that
+        is already stale by the time we run. Idempotent and isolation-safe — the callback is removed from the
+        previously-bound connection and bound exactly once to the current one, so repeated replacements never
+        duplicate lines and one port's stream can never surface under another; a re-announce of the
+        already-bound connection is a no-op."""
+        with _serial_subs_lock:
+            prev = _serial_subs.get(port)
+            if prev is None:
+                return
+            cb, prev_conn = prev
+            current = device_manager.get_connection(port)
+            if current is None or current is prev_conn:
+                return  # nothing live to move onto, or the callback is already on the current connection
+            if prev_conn is not None:
+                prev_conn.remove_line_callback(cb)  # drop the binding on the replaced object
+            current.remove_line_callback(cb)        # guard against a double-bind on the current object
+            current.on_line(cb)
+            _serial_subs[port] = (cb, current)
+
+    device_manager.on_connection_opened(_reconcile_serial_on_open)
 
     @socketio.on("send_command")
     def on_send_command(data: dict) -> None:
