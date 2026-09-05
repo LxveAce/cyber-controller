@@ -394,7 +394,7 @@
       <tbody id="macros-body"><tr><td class="off" colspan="4">loading macros&#8230;</td></tr></tbody></table>
       <div class="footnote" id="macro-status" style="min-height:14px"></div>
       <div class="footnote">Playback replays the steps to the selected device. A transmitting/offensive macro is refused unless "authorized use" is checked (the engine hard-gates it too); every step still passes the serial write-guard.</div>
-    </div>
+    </div></div>
     <div class="sub pro" data-sub="broadcast"><div class="card"><h3><span class="t">Broadcast</span><span class="r">one command &#8594; many devices</span></h3>
       <div class="footnote" style="margin:-2px 0 10px">Sends the SAME command to every checked device at once. Because fan-out amplifies, a transmitting/offensive command is refused unless "authorized use" is checked (re-checked server-side); recon commands fan out freely. Each device is gated on its own &#8212; a busy/disconnected one is skipped, not a whole-batch failure.</div>
       <div id="bc-devices" class="row" style="flex-wrap:wrap;gap:10px;margin-bottom:10px"><span class="dim" style="font-size:12px">no connected devices &#8212; connect some in DEVICE &#9656; Dashboard</span></div>
@@ -503,7 +503,7 @@
         </div>
         <div class="mapover"><span class="chip" style="background:#2a2109;color:var(--amber)">sample</span><span class="chip">1.8 km</span><span class="chip">42 APs &#183; 6 open</span></div>
       </div>
-      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample track + counts. A real survey renders live once a GPS device is attached.</div>
+      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample track + counts. Live in-browser survey isn&#8217;t wired yet; upload a WiGLE CSV to view a real track. Live tracking is a desktop feature.</div>
     </div></div>
     <div class="sub" data-sub="multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3>
       <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-multi-start">Start all</button><span class="chip">merged &#8594; 1 CSV</span><span class="dim" id="wd-multi-msg" style="font-size:11px"></span></div>
@@ -518,7 +518,7 @@
         <div class="maplegend"><div class="li"><span class="dot9" style="background:#a371f7"></span>COM4 track</div><div class="li"><span class="dot9" style="background:#58a6ff"></span>COM7 track</div></div>
         <div class="mapover"><span class="chip" style="background:#2a2109;color:var(--amber)">sample</span></div>
       </div>
-      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample tracks. Live per-board tracks render once GPS devices are attached.</div>
+      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample tracks. Live in-browser multi-survey isn&#8217;t wired yet.</div>
     </div></div>
     <div class="sub" data-sub="flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r" id="flock-count">awareness &#183; OSINT</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Awareness map of publicly-visible ALPR cameras, imported from OpenStreetMap (Overpass). Passive OSINT &#8212; CC transmits nothing and drives no device.</div>

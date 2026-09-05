@@ -1195,7 +1195,7 @@
 
     getJSON("/api/macros").then(function (ms) {
       if (count) count.textContent = ms.length + (ms.length === 1 ? " macro" : " macros");
-      body.innerHTML = ms.length ? "" : '<tr><td class="off" colspan="4">no saved macros yet — record one in the desktop app</td></tr>';
+      body.innerHTML = ms.length ? "" : '<tr><td class="off" colspan="4">no saved macros yet — this build plays back saved macros; recording isn\'t exposed in the web UI yet</td></tr>';
       ms.forEach(function (m) {
         var tr = document.createElement("tr");
         var badge = m.offensive ? ' <span class="badge" style="background:#2b1416;color:var(--red)">transmits</span>' : "";

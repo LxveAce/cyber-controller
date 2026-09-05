@@ -111,10 +111,15 @@ class WebCredentials:
         """Replace the in-memory password (fresh salt + hash) and optionally the username. Clears any
         one-time generated password — after the user picks their own, there is no one-time to reveal.
         Persisting it to disk is :func:`save_web_password`'s job, kept separate so the class stays pure."""
-        if username:
-            self._username = username
-        self._salt = os.urandom(16)
-        self._hash = self._derive(new_password)
+        self.publish_record(username or self._username, *_new_record(new_password))
+
+    def publish_record(self, username: str, salt: bytes, hashed: bytes) -> None:
+        """Adopt a PRE-DERIVED (salt, hash) — no re-derivation. This is what makes the in-memory publish
+        share the exact snapshot that was persisted, so nothing fallible runs after the disk write (the
+        old set_password re-derived here, which could fail and leave disk and memory disagreeing)."""
+        self._username = username
+        self._salt = salt
+        self._hash = hashed
         self.generated_password = None
         self.source = "saved"
 
@@ -144,7 +149,8 @@ def load_stored_credentials() -> tuple[str, bytes, bytes] | None:
     record is ignored and CC falls through to the env / one-time path, never to blank credentials."""
     try:
         raw = _WEB_AUTH_FILE.read_text("utf-8")
-    except OSError:
+    except (OSError, ValueError):
+        # ValueError covers UnicodeDecodeError — a binary/garbled file is a corrupt record, not a crash.
         return None
     try:
         data = json.loads(raw)
@@ -175,15 +181,22 @@ def load_stored_credentials() -> tuple[str, bytes, bytes] | None:
     return (username, salt, hashed)
 
 
-def save_web_password(username: str, password: str) -> None:
-    """Persist a user-chosen web password (username + fresh salt + scrypt hash, NEVER plaintext) to
-    ``web_auth.json``, owner-only (0600), **atomically** (write a temp file, then ``os.replace``) so an
-    interrupted or failed write can never leave a torn/partial record in place. Raises on any failure —
-    the caller must publish the new in-memory password only after this returns."""
-    secure_dir(_CONFIG_DIR)
+def _scrypt(password: str, salt: bytes) -> bytes:
+    return hashlib.scrypt(password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R,
+                          p=_SCRYPT_P, dklen=32, maxmem=64 * 1024 * 1024)
+
+
+def _new_record(password: str) -> tuple[bytes, bytes]:
+    """Derive ONE (salt, hash) snapshot for a password. Deriving once — instead of separately for the
+    disk write and the in-memory publish — is what lets both share the exact same credential (R04)."""
     salt = os.urandom(16)
-    hashed = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R,
-                            p=_SCRYPT_P, dklen=32, maxmem=64 * 1024 * 1024)
+    return salt, _scrypt(password, salt)
+
+
+def _write_record(username: str, salt: bytes, hashed: bytes) -> None:
+    """Atomically persist a pre-derived credential record (temp file → fsync → ``os.replace``), owner-only
+    (0600). Raises on any failure, cleaning up the temp file — never leaves a torn/partial file."""
+    secure_dir(_CONFIG_DIR)
     payload = json.dumps({
         "v": 1, "username": username, "salt": salt.hex(), "hash": hashed.hex(),
         "n": _SCRYPT_N, "r": _SCRYPT_R, "p": _SCRYPT_P,
@@ -210,13 +223,22 @@ def save_web_password(username: str, password: str) -> None:
     restrict_to_current_user(_WEB_AUTH_FILE)  # owner-only NTFS ACL on Windows
 
 
+def save_web_password(username: str, password: str) -> None:
+    """Persist a user-chosen web password (username + fresh salt + scrypt hash, NEVER plaintext) to
+    ``web_auth.json``, owner-only (0600), atomically. Raises on any failure — the caller must publish the
+    new in-memory password only after this returns."""
+    _write_record(username, *_new_record(password))
+
+
 def apply_web_password(creds: "WebCredentials", new_password: str, username: str) -> None:
-    """Persist THEN publish, under a lock: save the new password to disk first, and only update the live
-    in-memory credentials if that succeeded. So a failed save leaves the running password unchanged
-    (previously the in-memory swap happened first, so a save failure changed which password worked)."""
+    """Persist THEN publish, under a lock, from ONE credential snapshot: derive (salt, hash) once, persist
+    it, then publish that exact snapshot into the live credentials. A failed save leaves the running
+    password unchanged, and nothing fallible (no second derivation) runs after the disk write — so disk
+    and memory can never end up disagreeing."""
     with _cred_lock:
-        save_web_password(username, new_password)   # raises on failure -> nothing published below
-        creds.set_password(new_password, username)
+        salt, hashed = _new_record(new_password)          # derive ONCE
+        _write_record(username, salt, hashed)             # persist first; raises -> nothing published
+        creds.publish_record(username, salt, hashed)      # publish the SAME snapshot, no re-derivation
 
 
 def clear_stored_password() -> bool:

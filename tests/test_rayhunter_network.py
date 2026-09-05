@@ -6,6 +6,7 @@ subnet-collision guard's shape."""
 
 from __future__ import annotations
 
+import json
 import os
 
 from src.core.backends import adb_backend as a
@@ -55,18 +56,27 @@ def test_install_orbic_network_nonzero_exit_is_failure(monkeypatch):
     assert any("exited 2" in ln for ln in lines)
 
 
-class _Resp:
-    def __init__(self, ok, payload):
-        self.ok = ok
-        self._payload = payload
+class _Raw:
+    def __init__(self, data):
+        self._data = data
 
-    def json(self):
-        return self._payload
+    def read(self, n, decode_content=True):
+        return self._data[:n]
+
+
+class _Resp:
+    """Mimics the streaming interface orbic_status now uses: status_code + raw.read + close."""
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self.raw = _Raw(json.dumps(payload).encode("utf-8") if payload is not None else b"")
+
+    def close(self):
+        pass
 
 
 def test_orbic_status_running(monkeypatch):
     payload = {"runtime_metadata": {"rayhunter_version": "0.12.0"}, "battery_status": {"level": 100}}
-    monkeypatch.setattr(a.requests, "get", lambda *args, **kw: _Resp(True, payload))
+    monkeypatch.setattr(a.requests, "get", lambda *args, **kw: _Resp(200, payload))
     st = a.orbic_status("192.168.1.1")
     assert st["reachable"] and st["running"]
     assert st["version"] == "0.12.0"
@@ -109,6 +119,53 @@ def test_is_local_ipv4():
         assert a._is_local_ipv4(local), local
     for public in ("8.8.8.8", "1.1.1.1", "172.32.0.1", "172.15.0.1"):
         assert not a._is_local_ipv4(public), public
+
+
+def test_valid_ipv4_rejects_leading_zero_ambiguity():
+    # R01: 010.0.0.1 is octal-ambiguous (a C resolver reads it as 8.0.0.1) — must be rejected, not
+    # accepted-as-10.x, so the local-device scoping can't be bypassed.
+    assert not a._valid_ipv4("010.0.0.1")
+    assert not a._valid_ipv4("192.168.001.1")
+    assert not a._valid_ipv4("1.1.1.1 ")
+    assert not a._valid_ipv4("::1")
+    assert not a._is_local_ipv4("010.0.0.1")   # non-canonical -> IPv4Address rejects -> not local
+
+
+def test_orbic_status_does_not_follow_redirects(monkeypatch):
+    """R01: a validated local endpoint that answers with a redirect must NOT be followed, and a 3xx is
+    not 'running'."""
+    seen = {}
+
+    class _Resp:
+        status_code = 302
+
+        def close(self):
+            seen["closed"] = True
+
+    def fake_get(url, **kw):
+        seen["allow_redirects"] = kw.get("allow_redirects")
+        return _Resp()
+
+    monkeypatch.setattr(a.requests, "get", fake_get)
+    st = a.orbic_status("192.168.1.1")
+    assert seen["allow_redirects"] is False
+    assert st["reachable"] is True and st["running"] is False
+
+
+def test_find_installer_prefers_active_pointer_over_stale_root(tmp_path):
+    """R03: a stale root-level installer.exe must not be selected over the promoted versioned install."""
+    import os as _os
+    d = str(tmp_path / "rh")
+    _os.makedirs(_os.path.join(d, "v9", "rayhunter-v9"))
+    with open(_os.path.join(d, "installer.exe"), "w") as f:
+        f.write("STALE-ROOT")
+    with open(_os.path.join(d, "v9", "rayhunter-v9", "installer.exe"), "w") as f:
+        f.write("FRESH-VERSIONED")
+    with open(_os.path.join(d, "ACTIVE"), "w") as f:
+        f.write("v9")
+    found = a.find_installer(d)
+    assert found is not None
+    assert open(found).read() == "FRESH-VERSIONED"
 
 
 def test_subnet_conflict_never_shells_a_malformed_ip(monkeypatch):

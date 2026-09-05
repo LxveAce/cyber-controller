@@ -18,6 +18,10 @@
 
 [**Download**](https://github.com/LxveAce/cyber-controller/releases/latest) · [**Website + live demo**](https://cybercontroller.org) · [**Hardware guides**](https://github.com/LxveAce/cyber-controller-guides) · [**Changelog**](CHANGELOG.md) · [**Discord**](https://discord.gg/lxvelabs)
 
+<img src="assets/cc-dashboard.png" alt="Cyber Controller single-window dashboard" width="900">
+
+<sub>The single-window dashboard — development build, no devices connected.</sub>
+
 </div>
 
 ---
@@ -42,7 +46,7 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 
 **🔥 Flash.** **52 firmware profiles** across 5 flash backends (esptool for ESP32, qFlipper for Flipper Zero, ADB for Android, SD-image for Pi/SBC boards, and the Realtek RTL8720 loader) — a few more (TI CC2652/Sniffle, HackRF/PortaPack, nRF52 DFU, RP2040 UF2) have their flow unit-tested but aren't validated on real silicon yet, so they don't count toward that 5. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress, see the beta caveats) auto-detects the chip (`esptool chip_id` first, never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
 
-**🎮 Control.** A protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **14 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro recorder & playback with variable substitution, and a tamper-evident SHA-256 audit trail over every flash and command.
+**🎮 Control.** A protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **14 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro playback with variable substitution (recording is in the desktop Qt UI; the current single-window UI plays saved macros), and a tamper-evident SHA-256 audit trail over every flash and command.
 
 **🛰 Coordinate.** The **Unified Action Broadcast**: one intent (*Find APs, Deauth All, BLE Scan, Capture Handshakes, STOP ALL*) fans out to **every connected radio at once**, each translated into that firmware's own native command. A **shared target pool** means one board's discovery is instantly actionable by another.
 

@@ -15,20 +15,49 @@ HealthCallback = Callable[[dict[str, Any]], None]
 
 _DEFAULT_INTERVAL = 5.0
 
-# Non-blocking CPU sampling. ``psutil.cpu_percent(interval=None)`` reports utilisation since the
-# previous call — free, with no 100ms busy-wait in the poll/request path. The only catch is the FIRST
-# call has no prior reference (returns 0.0), so warm it once with a single brief sample; every read
-# after that is non-blocking. Module-level so the warm state is shared across the static reader.
-_cpu_warm = False
+# CPU sampling. ``psutil.cpu_percent(interval=None)`` is non-blocking but reports utilisation *since the
+# previous call in that context* — sampled from arbitrary web-request threads it reads a false 0.0 in a
+# thread that never established a baseline (a per-thread warm flag can't be a process-global). So ONE
+# dedicated daemon thread owns the sampling and every reader — any request thread — gets its cached
+# value. The reader never touches psutil, so it can't return a cold-thread 0.
+_cpu_lock = threading.Lock()
+_cpu_value: float = 0.0
+_cpu_started = False
+
+
+def _cpu_sampler_loop() -> None:
+    global _cpu_value
+    try:
+        psutil.cpu_percent(interval=None)  # prime the baseline in THIS dedicated thread
+        while True:
+            v = psutil.cpu_percent(interval=2.0)  # blocking sample, dedicated thread only
+            with _cpu_lock:
+                _cpu_value = v
+    except Exception:  # noqa: BLE001 — a dead sampler must not take the app down; readers keep the last value
+        log.exception("CPU sampler thread stopped")
+
+
+def _ensure_cpu_sampler() -> None:
+    global _cpu_started, _cpu_value
+    with _cpu_lock:
+        if _cpu_started:
+            return
+        _cpu_started = True
+    try:
+        seed = psutil.cpu_percent(interval=0.1)  # one honest seed value before the loop's first interval
+    except Exception:  # noqa: BLE001
+        seed = 0.0
+    with _cpu_lock:
+        _cpu_value = seed
+    threading.Thread(target=_cpu_sampler_loop, name="cpu-sampler", daemon=True).start()
 
 
 def _cpu_percent_nonblocking() -> float:
-    global _cpu_warm
-    pct = psutil.cpu_percent(interval=None)
-    if not _cpu_warm:
-        pct = psutil.cpu_percent(interval=0.1)  # one honest warm-up sample, then never block again
-        _cpu_warm = True
-    return pct
+    """Return the CPU utilisation from the dedicated sampler's cache (starting it on first use). Readers
+    never sample psutil themselves, so a request thread can't read a spurious 0."""
+    _ensure_cpu_sampler()
+    with _cpu_lock:
+        return _cpu_value
 
 
 class HealthMonitor:

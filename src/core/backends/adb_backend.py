@@ -18,6 +18,7 @@ Key facts (RayHunter on Orbic RC400L):
 """
 
 import json
+import ipaddress
 import os
 import platform
 import shutil
@@ -985,12 +986,30 @@ def _sha256_file(path: str, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
+#: File under the tools dir naming the active promoted version, so discovery resolves EXACTLY that
+#: install and can't pick a stale root-level or older installer (R03).
+_ACTIVE_POINTER = "ACTIVE"
+
+
 def find_installer(directory: Optional[str] = None) -> Optional[str]:
-    """Locate a provisioned rayhunter installer binary, or None."""
+    """Locate the active provisioned rayhunter installer binary, or None. Resolves the explicit
+    ``ACTIVE`` version pointer first so a leftover flat/legacy ``installer.exe`` can't be selected over
+    the promoted versioned install; only falls back to a directory walk when there is no pointer."""
     directory = directory or installer_tools_dir()
     if not os.path.isdir(directory):
         return None
-    return _find_installer_binary(directory)
+    try:
+        with open(os.path.join(directory, _ACTIVE_POINTER), encoding="utf-8") as fh:
+            tag = fh.read().strip()
+        if tag:
+            versioned = os.path.join(directory, tag)
+            if os.path.isdir(versioned):
+                found = _find_installer_binary(versioned)
+                if found:
+                    return found
+    except OSError:
+        pass
+    return _find_installer_binary(directory)  # no pointer / legacy layout
 
 
 def provision_installer(on_line: Line, directory: Optional[str] = None) -> str:
@@ -1039,11 +1058,21 @@ def provision_installer(on_line: Line, directory: Optional[str] = None) -> str:
     finally:
         if staging is not None:
             shutil.rmtree(staging, ignore_errors=True)
-    # Drop older version dirs now that the fresh one is in place + validated (never before).
+    # Now the fresh version is in place + validated (never before): drop older version dirs AND any
+    # legacy flat-layout root files, then record the active version so discovery resolves exactly it.
     for entry in os.listdir(directory):
         p = os.path.join(directory, entry)
-        if os.path.isdir(p) and not entry.startswith(".") and os.path.abspath(p) != os.path.abspath(dest):
+        if entry == _ACTIVE_POINTER or entry.startswith("."):
+            continue
+        if os.path.isdir(p) and os.path.abspath(p) != os.path.abspath(dest):
             shutil.rmtree(p, ignore_errors=True)
+        elif os.path.isfile(p):  # a stray root-level installer artifact from the old flat layout
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    with open(os.path.join(directory, _ACTIVE_POINTER), "w", encoding="utf-8") as fh:
+        fh.write(str(tag))
     inst = _find_installer_binary(dest)
     if not inst:
         raise RuntimeError("installer binary not found after install")
@@ -1120,28 +1149,30 @@ def install_orbic_network(admin_password: str, on_line: Line, *, admin_ip: str =
 
 
 def _valid_ipv4(value: str) -> bool:
-    """True only for a well-formed dotted IPv4 (four ASCII 0-255 octets). Every ``admin_ip`` that
-    reaches a URL or a subprocess is gated on this, so a malformed value (a quote, a shell metachar, a
-    hostname) can't inject into either."""
-    parts = value.split(".")
-    if len(parts) != 4:
+    """True only for a CANONICAL dotted IPv4 — no leading zeros, whitespace, or octal/hex forms. Every
+    ``admin_ip`` that reaches a URL or a subprocess is gated on this, so a malformed value can't inject
+    AND an ambiguous one (``010.0.0.1``, which a C resolver reads as octal 8.0.0.1) can't be reinterpreted
+    downstream. ``ipaddress.IPv4Address`` rejects leading-zero octets; the round-trip check is belt-and-
+    suspenders and also rejects trailing junk."""
+    try:
+        return str(ipaddress.IPv4Address(value)) == value
+    except (ipaddress.AddressValueError, ValueError):
         return False
-    for p in parts:
-        if not p or len(p) > 3 or any(c not in "0123456789" for c in p) or int(p) > 255:
-            return False
-    return True
 
 
 def _is_local_ipv4(value: str) -> bool:
     """True for a private / loopback / link-local IPv4 — the only kind a local hardware device (the
     Orbic over its RNDIS/Wi-Fi link) is ever at. Scopes the status request to the local-device feature
-    so it can't be aimed at an arbitrary routable host. Assumes ``value`` already passed _valid_ipv4."""
-    o = [int(p) for p in value.split(".")]
-    return (o[0] == 10
-            or (o[0] == 172 and 16 <= o[1] <= 31)
-            or (o[0] == 192 and o[1] == 168)
-            or (o[0] == 169 and o[1] == 254)
-            or o[0] == 127)
+    so it can't be aimed at an arbitrary routable host."""
+    try:
+        a = ipaddress.IPv4Address(value)
+    except (ipaddress.AddressValueError, ValueError):
+        return False
+    return a.is_private or a.is_loopback or a.is_link_local
+
+
+#: Cap on the rayhunter status response we'll read into memory (the real payload is a few KB).
+_STATUS_MAX_BYTES = 256 * 1024
 
 
 def orbic_status(admin_ip: str = "192.168.1.1", timeout: float = 6.0) -> Dict:
@@ -1157,13 +1188,21 @@ def orbic_status(admin_ip: str = "192.168.1.1", timeout: float = 6.0) -> Dict:
     base = "http://" + admin_ip + ":8080"
     out["url"] = base
     try:
-        r = requests.get(base + "/api/system-stats", timeout=timeout)
+        # Do NOT follow redirects — the validated local endpoint must not be able to bounce the probe to
+        # another host. Only a real 200 counts as "running"; a 3xx/anything-else stays reachable-only.
+        # Cap the body so a hostile/oversized response can't exhaust memory.
+        r = requests.get(base + "/api/system-stats", timeout=timeout, allow_redirects=False,
+                         stream=True)
         out["reachable"] = True
-        if r.ok:
-            j = r.json()
-            out["running"] = True
-            out["version"] = (j.get("runtime_metadata") or {}).get("rayhunter_version")
-            out["stats"] = j
+        if r.status_code == 200:
+            body = r.raw.read(_STATUS_MAX_BYTES + 1, decode_content=True)
+            if len(body) <= _STATUS_MAX_BYTES:
+                j = json.loads(body.decode("utf-8"))
+                if isinstance(j, dict):
+                    out["running"] = True
+                    out["version"] = (j.get("runtime_metadata") or {}).get("rayhunter_version")
+                    out["stats"] = j
+        r.close()
     except Exception:  # noqa: BLE001 - unreachable is a normal state, not an error
         pass
     return out

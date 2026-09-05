@@ -108,7 +108,7 @@ def test_apply_web_password_save_failure_leaves_live_creds(isolated, monkeypatch
     def boom(*a, **k):
         raise OSError("disk full")
 
-    monkeypatch.setattr(web_auth, "save_web_password", boom)
+    monkeypatch.setattr(web_auth, "_write_record", boom)  # persistence is what fails
     with pytest.raises(OSError):
         web_auth.apply_web_password(creds, "new-password", "ace")
     assert creds.verify("admin", "old-password")       # live password unchanged
@@ -188,3 +188,24 @@ def test_load_accepts_valid_record(isolated):
     got = web_auth.load_stored_credentials()
     assert got is not None
     assert got[0] == "ace" and len(got[1]) == 16 and len(got[2]) == 32
+
+
+def test_load_rejects_binary_file_without_crashing(isolated):
+    """R02: an invalid-UTF8 (binary) file must be treated as a corrupt record, not raise."""
+    (isolated / "web_auth.json").write_bytes(b"\xff\xfe\x00\x01\x02")
+    assert web_auth.load_stored_credentials() is None
+    # and the resolver falls through cleanly rather than crashing
+    creds, generated = web_auth.resolve_web_credentials(logging.getLogger("t"))
+    assert generated is True and creds.source == "generated"
+
+
+def test_apply_publishes_the_exact_snapshot_it_persisted(isolated):
+    """R04: one derivation — the live credential is the SAME salt/hash written to disk, so nothing
+    fallible runs after the write and disk/memory can't disagree."""
+    creds = web_auth.WebCredentials("admin", "old-password")
+    web_auth.apply_web_password(creds, "new-password", "ace")
+    stored = web_auth.load_stored_credentials()
+    assert stored is not None
+    _username, salt, hashed = stored
+    assert creds._salt == salt and creds._hash == hashed   # identical snapshot, not a second re-hash
+    assert creds.verify("ace", "new-password")
