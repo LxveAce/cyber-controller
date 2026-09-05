@@ -5,6 +5,11 @@ All notable changes to Cyber Controller are documented here. This project adhere
 
 ## [Unreleased]
 
+## [2.0.1] — 2026-09-04
+
+A functional-audit and independent-review patch on top of 2.0.0. No public-facing feature removals; the
+default-branch documentation cleanup and README screenshot from 2.0.0 are preserved.
+
 ### Added
 - **Flipper Zero: qFlipper is now provisioned and driven by CC.** The Device dashboard has a Flipper card
   that installs the official qFlipper on demand (downloaded + SHA-256 verified into CC's tools folder — not
@@ -24,6 +29,22 @@ All notable changes to Cyber Controller are documented here. This project adhere
   deactivated SIM is needed for actual capture and that rayhunter runs headless.
 
 ### Fixed
+- **First device connect no longer loses the selection.** With no devices connected, clicking a board and then
+  Connect could drop the chosen device before the connection opened; the selection is now preserved through the
+  first connect so Connect reaches the right port.
+- **Serial output keeps flowing across a fast disconnect/reconnect.** Live serial delivery now follows the
+  device-manager connection lifecycle instead of the specific connection object captured when the client
+  subscribed. A reconnect that replaces the connection object between polls — where the frontend never observes a
+  "disconnected" sample — now re-binds delivery on the managed open, and the subscribe path resolves and binds the
+  connection under a single lock so a reconnect racing a subscribe can no longer pin delivery to a replaced
+  object. Repeated replacements do not duplicate output, and one port's output never appears under another.
+- **Rayhunter report validation.** Malformed report payloads (missing version, missing events, scalar events, or
+  a non-list analyzers field) are now reported as incomplete rather than parsed into a broken state; valid empty
+  slots remain accepted.
+- **Bring-your-own wordlist is revalidated.** A selected BYO wordlist file that is missing or removed is caught
+  with an explicit warning instead of silently proceeding.
+- **Flash baud "Auto" default.** The web flash flow exposes an Auto option and saves `flash_baud` as null by
+  default, honoring an explicit override and the backup-baud argument when set.
 - **Flipper flashing was broken.** The old path shelled `qFlipper --install <package>`, but the qFlipper GUI
   has no `--install` flag — it opened the window and flashed nothing. CC now uses `qFlipper-cli` on the
   extracted firmware, and says plainly when a custom-firmware install is core-only (SD resources need the app

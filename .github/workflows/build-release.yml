@@ -3,14 +3,16 @@ name: Build & Release
 on:
   release:
     types: [published]
-  # Manual re-run for the best-effort Linux-ARM binary against an existing release (the other
-  # platforms only build on a real release event — see the `if:` guards below).
+  # Manual build against an EXISTING tag: every platform job checks out that exact tag (see the
+  # `ref:` on each checkout) and attaches its binary to the matching release. Use this to build a
+  # tag into a DRAFT release for staged verification (checksums + VirusTotal + launch test) before
+  # publishing — publishing is NOT required to produce the first build.
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to attach the ARM binary to (e.g. v1.3.0)"
+        description: "Existing tag to build and attach assets to (e.g. v2.0.1)"
         required: true
-        default: "v1.3.0"
+        default: "v2.0.1"
 
 permissions:
   contents: write
@@ -32,6 +34,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Build the EXACT tagged source, not the dispatch branch. On a real release this is the
+          # release tag; on workflow_dispatch it is inputs.tag. This keeps the built bytes identical to
+          # the tag the asset name claims (provenance), so a staged dispatch build against a DRAFT
+          # release is verifiable before publishing.
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
           submodules: recursive
       - uses: actions/setup-python@v5
         with:
@@ -90,6 +97,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Build the EXACT tagged source, not the dispatch branch. On a real release this is the
+          # release tag; on workflow_dispatch it is inputs.tag. This keeps the built bytes identical to
+          # the tag the asset name claims (provenance), so a staged dispatch build against a DRAFT
+          # release is verifiable before publishing.
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
           submodules: recursive
       - uses: actions/setup-python@v5
         with:
@@ -126,6 +138,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Build the EXACT tagged source, not the dispatch branch. On a real release this is the
+          # release tag; on workflow_dispatch it is inputs.tag. This keeps the built bytes identical to
+          # the tag the asset name claims (provenance), so a staged dispatch build against a DRAFT
+          # release is verifiable before publishing.
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
           submodules: recursive
       - uses: docker/setup-qemu-action@v3
         with:
@@ -171,6 +188,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          # Build the EXACT tagged source, not the dispatch branch. On a real release this is the
+          # release tag; on workflow_dispatch it is inputs.tag. This keeps the built bytes identical to
+          # the tag the asset name claims (provenance), so a staged dispatch build against a DRAFT
+          # release is verifiable before publishing.
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
           submodules: recursive
       - uses: actions/setup-python@v5
         with:
