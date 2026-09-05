@@ -512,8 +512,10 @@ def _extract_zip(zip_path: str, dest_dir: str, on_line: Line) -> str:
 
 
 def _find_installer_binary(extract_dir: str) -> Optional[str]:
-    """Locate the installer binary inside the extracted release."""
-    for root, _dirs, files in os.walk(extract_dir):
+    """Locate the installer binary inside the extracted release. Skips in-progress staging dirs
+    (``.stage-*``) and backups (``.old-*``) so a half-finished provision is never resolved as usable."""
+    for root, dirs, files in os.walk(extract_dir):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
         for f in files:
             if f.startswith("installer") and not f.endswith((".sha256", ".md")):
                 return os.path.join(root, f)
@@ -983,13 +985,6 @@ def _sha256_file(path: str, chunk: int = 1 << 20) -> str:
     return h.hexdigest()
 
 
-def _rm(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass
-
-
 def find_installer(directory: Optional[str] = None) -> Optional[str]:
     """Locate a provisioned rayhunter installer binary, or None."""
     directory = directory or installer_tools_dir()
@@ -1012,26 +1007,46 @@ def provision_installer(on_line: Line, directory: Optional[str] = None) -> str:
     on_line("[rayhunter] " + str(tag) + ": " + name)
     zip_path = _download_to(
         _require_allowed_url(asset["browser_download_url"]), cache_dir(), name, on_line)
+    # Require a verified digest before extracting — the published .sha256 sidecar, or an owner-approved
+    # pin in CC_RAYHUNTER_SHA256. Never extract an unpinned download (fail-closed, as the docstring says).
     sidecar = next((a for a in assets if a.get("name") == name + ".sha256"), None)
+    pinned = os.environ.get("CC_RAYHUNTER_SHA256", "").strip().lower()
     if sidecar:
         want = _http_get(
             _require_allowed_url(sidecar["browser_download_url"])).decode("utf-8").split()[0].lower()
-        got = _sha256_file(zip_path)
-        if got != want:
-            raise RuntimeError("rayhunter SHA-256 mismatch (got " + got[:12] + ", expected " + want[:12] + ")")
-        on_line("[rayhunter] SHA-256 verified")
+    elif pinned:
+        want = pinned
+        on_line("[rayhunter] no .sha256 sidecar — using the CC_RAYHUNTER_SHA256 pinned digest")
     else:
-        on_line("[rayhunter] no .sha256 sidecar in the release - proceeding without a hash pin")
+        raise RuntimeError(
+            "rayhunter release has no .sha256 sidecar and no CC_RAYHUNTER_SHA256 pin set — refusing to "
+            "extract an unverified installer")
+    got = _sha256_file(zip_path)
+    if got != want:
+        raise RuntimeError("rayhunter SHA-256 mismatch (got " + got[:12] + ", expected " + want[:12] + ")")
+    on_line("[rayhunter] SHA-256 verified")
+
+    # Stage → validate → atomically promote. The existing install is only replaced AFTER a good extract,
+    # so a failed re-provision never deletes a working installer (the old cleanup wiped the dir first).
+    dest = os.path.join(directory, str(tag))
+    staging = tempfile.mkdtemp(prefix=".stage-rayhunter-", dir=directory)
+    try:
+        _extract_zip(zip_path, staging, on_line)
+        if not _find_installer_binary(staging):
+            raise RuntimeError("installer binary not found after extract (release layout changed?)")
+        _atomic_promote(staging, dest)
+        staging = None
+    finally:
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)
+    # Drop older version dirs now that the fresh one is in place + validated (never before).
     for entry in os.listdir(directory):
         p = os.path.join(directory, entry)
-        if os.path.isdir(p):
+        if os.path.isdir(p) and not entry.startswith(".") and os.path.abspath(p) != os.path.abspath(dest):
             shutil.rmtree(p, ignore_errors=True)
-        else:
-            _rm(p)
-    _extract_zip(zip_path, directory, on_line)
-    inst = _find_installer_binary(directory)
+    inst = _find_installer_binary(dest)
     if not inst:
-        raise RuntimeError("installer binary not found after extract (release layout changed?)")
+        raise RuntimeError("installer binary not found after install")
     if os.name != "nt":
         try:
             os.chmod(inst, os.stat(inst).st_mode | 0o755)
@@ -1039,6 +1054,24 @@ def provision_installer(on_line: Line, directory: Optional[str] = None) -> str:
             pass
     on_line("[rayhunter] installer ready: " + inst)
     return inst
+
+
+def _atomic_promote(staging: str, dest: str) -> None:
+    """Replace *dest* with the validated *staging* tree, keeping the old *dest* until the swap succeeds
+    (Windows can't os.replace onto a non-empty dir): move any existing dest aside, move staging in, drop
+    the backup — restoring the backup if the swap fails, so a failure never leaves no install."""
+    backup = None
+    if os.path.exists(dest):
+        backup = dest + ".old-" + os.urandom(4).hex()
+        os.replace(dest, backup)
+    try:
+        os.replace(staging, dest)
+    except OSError:
+        if backup is not None:
+            os.replace(backup, dest)
+        raise
+    if backup is not None:
+        shutil.rmtree(backup, ignore_errors=True)
 
 
 def _default_installer_runner(argv: List[str], on_line: Line) -> int:

@@ -115,6 +115,8 @@ def _first_existing(directory: str, names: tuple[str, ...]) -> Optional[str]:
         if os.path.isfile(direct):
             return direct
     for entry in sorted(os.listdir(directory)):
+        if entry.startswith("."):
+            continue  # skip in-progress staging dirs (.stage-*) and backups (.old-*)
         sub = os.path.join(directory, entry)
         if os.path.isdir(sub):
             for name in names:
@@ -319,13 +321,16 @@ def provision_qflipper(on_line: Optional[Line] = None, *, directory: Optional[st
             "Install qFlipper from https://flipperzero.one/update and CC will find it on PATH.")
 
     directory = directory or default_qflipper_dir()
+    os.makedirs(directory, exist_ok=True)
     url, sha256, version = _resolve_portable(log, timeout=timeout)
     dest = os.path.join(directory, version or "release")
-    os.makedirs(dest, exist_ok=True)
     log(f"[qflipper] downloading qFlipper {version or ''} portable…")
 
-    tmp = tempfile.NamedTemporaryFile(prefix="cc-qflipper-", suffix=".zip",
-                                      dir=os.path.dirname(dest), delete=False)
+    # Everything happens in a private staging dir; the existing install at `dest` is only replaced
+    # AFTER the download verifies, extracts, and the CLI launches — so a failed re-provision (network
+    # drop, bad hash, changed layout) can never delete a working qFlipper.
+    staging = tempfile.mkdtemp(prefix=".stage-qflipper-", dir=directory)
+    tmp = tempfile.NamedTemporaryFile(prefix="cc-qflipper-", suffix=".zip", dir=directory, delete=False)
     tmp.close()
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "cyber-controller-qflipper-provision"})
@@ -339,29 +344,51 @@ def provision_qflipper(on_line: Optional[Line] = None, *, directory: Optional[st
             for name in zf.namelist():
                 if name.endswith("/"):
                     continue
-                target = os.path.join(dest, name)
-                if not os.path.realpath(target).startswith(os.path.realpath(dest) + os.sep):
+                target = os.path.join(staging, name)
+                if not os.path.realpath(target).startswith(os.path.realpath(staging) + os.sep):
                     raise RuntimeError(f"unsafe archive member: {name!r}")
-                os.makedirs(os.path.dirname(target) or dest, exist_ok=True)
+                os.makedirs(os.path.dirname(target) or staging, exist_ok=True)
                 with zf.open(name) as src, open(target, "wb") as out:
                     shutil.copyfileobj(src, out)
-    except Exception:
         _rm(tmp.name)
-        shutil.rmtree(dest, ignore_errors=True)
-        raise
-    _rm(tmp.name)
+        staged_cli = _first_existing(staging, _CLI_NAMES)
+        if not staged_cli:
+            raise RuntimeError("qFlipper-cli not found after extract (bundle layout changed?)")
+        if not _launches(staged_cli):
+            raise RuntimeError(
+                "qFlipper-cli extracted but would not launch (missing system libraries?). "
+                "Install qFlipper from https://flipperzero.one/update instead.")
+        _atomic_promote(staging, dest)   # validated → swap in; the old install survived until now
+        staging = None
+    finally:
+        _rm(tmp.name)
+        if staging is not None:
+            shutil.rmtree(staging, ignore_errors=True)   # nothing promoted → old install untouched
 
     cli = _first_existing(dest, _CLI_NAMES)
-    if not cli:
-        shutil.rmtree(dest, ignore_errors=True)
-        raise RuntimeError("qFlipper-cli not found after extract (bundle layout changed?)")
-    if not _launches(cli):
-        shutil.rmtree(dest, ignore_errors=True)
-        raise RuntimeError(
-            f"qFlipper-cli extracted to {cli} but would not launch (missing system libraries?). "
-            "Install qFlipper from https://flipperzero.one/update instead — nothing was left behind.")
+    if not cli:  # defensive — promote just placed a validated tree here
+        raise RuntimeError("qFlipper-cli not found after install")
     log(f"[qflipper] ready: {cli}")
     return cli
+
+
+def _atomic_promote(staging: str, dest: str) -> None:
+    """Replace *dest* with the validated *staging* tree, keeping the old *dest* until the swap
+    succeeds. Windows can't ``os.replace`` onto a non-empty dir, so: move any existing dest aside,
+    move staging into place, then drop the backup — and restore the backup if the swap fails, so a
+    failure never leaves the tool with no install."""
+    backup = None
+    if os.path.exists(dest):
+        backup = dest + ".old-" + os.urandom(4).hex()
+        os.replace(dest, backup)
+    try:
+        os.replace(staging, dest)
+    except OSError:
+        if backup is not None:
+            os.replace(backup, dest)   # restore the previous install
+        raise
+    if backup is not None:
+        shutil.rmtree(backup, ignore_errors=True)
 
 
 def _rm(path: str) -> None:

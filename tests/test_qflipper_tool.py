@@ -158,3 +158,45 @@ def test_flash_bundle_rejects_unknown_file(tmp_path, monkeypatch):
     rc = q.flash_bundle(str(tmp_path / "firmware.bin"), lines.append)
     assert rc == 1
     assert any("not a Flipper firmware package" in ln for ln in lines)
+
+
+# -- D04: staged install / atomic promote ----------------------------
+
+def test_atomic_promote_creates_and_replaces(tmp_path):
+    d = tmp_path / "qflipper"
+    d.mkdir()
+    dest = str(d / "1.3.3")
+    st1 = str(d / ".stage-a")
+    os.makedirs(st1)
+    (tmp_path / "qflipper" / ".stage-a" / "qFlipper-cli.exe").write_text("v1")
+    q._atomic_promote(st1, dest)
+    assert os.path.isfile(os.path.join(dest, "qFlipper-cli.exe"))
+    assert not os.path.exists(st1)
+    # replace an existing install; old content is gone, no backup left behind
+    st2 = str(d / ".stage-b")
+    os.makedirs(st2)
+    (d / ".stage-b" / "qFlipper-cli.exe").write_text("v2")
+    q._atomic_promote(st2, dest)
+    assert open(os.path.join(dest, "qFlipper-cli.exe")).read() == "v2"
+    assert not any(n.startswith("1.3.3.old") for n in os.listdir(str(d)))
+
+
+def test_provision_qflipper_failure_keeps_existing_install(tmp_path, monkeypatch):
+    d = str(tmp_path / "qflipper")
+    os.makedirs(os.path.join(d, "1.3.3"))
+    marker = os.path.join(d, "1.3.3", "qFlipper-cli.exe")
+    with open(marker, "w") as f:
+        f.write("EXISTING-GOOD-INSTALL")
+    monkeypatch.setattr(q.os, "name", "nt")  # get past the windows-only guard
+    monkeypatch.setattr(q, "_resolve_portable",
+                        lambda log, timeout: ("https://x/q.zip", "00" * 32, "1.3.3"))
+
+    def boom(*a, **k):
+        raise RuntimeError("network dropped mid-download")
+
+    monkeypatch.setattr(q.urllib.request, "urlopen", boom)
+    with pytest.raises(Exception):
+        q.provision_qflipper(directory=d)
+    # the working install must survive a failed re-provision, and no staging litter is left
+    assert open(marker).read() == "EXISTING-GOOD-INSTALL"
+    assert not any(n.startswith(".stage") for n in os.listdir(d))

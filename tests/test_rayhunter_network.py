@@ -156,6 +156,51 @@ def test_orbic_status_refuses_non_local_or_malformed_without_request(monkeypatch
         assert "error" in st
 
 
+# -- D04b/D07: staged rayhunter install + required checksum ----------
+
+def test_provision_installer_requires_a_checksum(tmp_path, monkeypatch):
+    """No .sha256 sidecar and no CC_RAYHUNTER_SHA256 pin → refuse to extract (fail-closed)."""
+    monkeypatch.delenv("CC_RAYHUNTER_SHA256", raising=False)
+    monkeypatch.setattr(a, "_github_latest", lambda repo: ("v9", [
+        {"name": "pkg-windows-x86_64.zip", "browser_download_url": "https://github.com/x/pkg-windows-x86_64.zip"}]))
+    monkeypatch.setattr(a, "_pick_platform_asset", lambda assets: assets[0])
+    z = tmp_path / "z.zip"
+    z.write_text("zip")
+    monkeypatch.setattr(a, "_download_to", lambda *args, **kw: str(z))
+    import pytest
+    with pytest.raises(RuntimeError, match="refusing to extract"):
+        a.provision_installer(lambda s: None, directory=str(tmp_path / "rh"))
+
+
+def test_provision_installer_failure_keeps_existing(tmp_path, monkeypatch):
+    """A failed extraction must preserve an existing installer (D04b) — the old code wiped the dir first."""
+    import os as _os
+    import pytest
+    d = str(tmp_path / "rh")
+    _os.makedirs(_os.path.join(d, "v1"))
+    old = _os.path.join(d, "v1", "installer.exe")
+    with open(old, "w") as f:
+        f.write("OLD-INSTALLER")
+    monkeypatch.setattr(a, "_github_latest", lambda repo: ("v2", [
+        {"name": "pkg.zip", "browser_download_url": "https://github.com/x/pkg.zip"},
+        {"name": "pkg.zip.sha256", "browser_download_url": "https://github.com/x/pkg.zip.sha256"}]))
+    monkeypatch.setattr(a, "_pick_platform_asset", lambda assets: assets[0])
+    z = tmp_path / "z.zip"
+    z.write_text("zip")
+    monkeypatch.setattr(a, "_download_to", lambda *args, **kw: str(z))
+    monkeypatch.setattr(a, "_http_get", lambda url: b"deadbeef sidecar")
+    monkeypatch.setattr(a, "_sha256_file", lambda p: "deadbeef")  # matches the sidecar digest
+
+    def bad_extract(zip_path, dest, on_line):
+        raise RuntimeError("corrupt archive")
+
+    monkeypatch.setattr(a, "_extract_zip", bad_extract)
+    with pytest.raises(RuntimeError, match="corrupt"):
+        a.provision_installer(lambda s: None, directory=d)
+    assert open(old).read() == "OLD-INSTALLER"                       # existing install survived
+    assert not any(n.startswith(".stage") for n in _os.listdir(d))   # staging cleaned up
+
+
 def test_rayhunter_api_rejects_malformed_admin_ip(monkeypatch, tmp_path):
     """Both the status GET and the install POST must 400 a malformed admin_ip at the boundary."""
     monkeypatch.setenv("CC_GATE_CONFIG", str(tmp_path / "gate.json"))
