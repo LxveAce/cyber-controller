@@ -2571,7 +2571,9 @@ class CyberControllerWindow(QMainWindow):
                     dlg = UpdateAvailableDialog(
                         result.latest_tag, _VERSION, updater.apply_update_url(result),
                         behind=result.behind, parent=self,
-                        can_self_update=self_update.is_frozen(),
+                        # Offer in-place update only for a swap-safe onefile build — a onedir/installer
+                        # or unidentified build would be corrupted by the binary swap (U3).
+                        can_self_update=self_update.can_self_update_in_place(),
                     )
                     dlg.exec_()
                     action = dlg.action()
@@ -2589,8 +2591,9 @@ class CyberControllerWindow(QMainWindow):
 
     def _begin_self_update(self, result) -> None:
         """Run the in-place self-update: a modal progress dialog over a background download+verify,
-        then swap the binary and restart. Offered only on frozen builds. A failure falls back to the
-        release page so the user is never stranded."""
+        then swap the binary and restart. Offered only on swap-safe onefile builds
+        (can_self_update_in_place). A failure falls back to the release page so the user is never
+        stranded."""
         from PyQt5.QtWidgets import QProgressDialog
 
         prog = QProgressDialog("Downloading update…", None, 0, 0, self)  # None → no cancel button
@@ -2660,6 +2663,7 @@ class CyberControllerWindow(QMainWindow):
     def _on_suicide_setup(self) -> None:
         """Open the Dead Man's Switch host-side password & duress setup dialog."""
         try:
+            from src.core.suicide_setup import dms_runtime_status
             from src.ui.qt.suicide_dialog import SuicideSetupDialog
         except Exception as exc:  # noqa: BLE001 — missing submodule / import error
             QMessageBox.critical(
@@ -2668,6 +2672,14 @@ class CyberControllerWindow(QMainWindow):
                 f"Could not open the setup dialog: {exc}\n\n"
                 "Ensure the deadmans-switch submodule is initialised:\n"
                 "  git submodule update --init deadmans-switch",
+            )
+            return
+        runtime_ok, runtime_reason = dms_runtime_status()
+        if not runtime_ok:
+            QMessageBox.warning(
+                self,
+                "Dead Man's Switch Setup",
+                f"Setup is unavailable before configuration or password entry:\n\n{runtime_reason}",
             )
             return
         SuicideSetupDialog(self).exec_()

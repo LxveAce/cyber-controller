@@ -335,6 +335,11 @@ def main(argv: list[str] | None = None) -> int:
     # esptool in-process and exit. This MUST precede the single-instance lock — the esptool "subprocess"
     # is a child of the running GUI, and the lock would otherwise abort it as a duplicate instance.
     _argv = sys.argv[1:] if argv is None else argv
+    # Frozen packaging diagnostic only: an inert fixture, never the device/server bootstrap or
+    # operator configuration. This must run before install reconciliation and the access gate.
+    if _argv == ["--_smoke-startup"]:
+        from src.ui.packaged_smoke import run
+        return run()
     if _argv and _argv[0] == "--_run-esptool":
         # A frozen WINDOWED build (PyInstaller --noconsole) has sys.stdout/stderr = None, so esptool's
         # progress print(".", flush=True) / print("") raises `OSError: [Errno 22] Invalid argument` and
@@ -482,16 +487,22 @@ def main(argv: list[str] | None = None) -> int:
         print("Cyber Controller is already running.", file=sys.stderr)
         return 1
 
-    # If no --ui flag was given, show the launcher dialog to let the user pick.
+    # Qt aborts the process (not a catchable Python exception) when no display is available.
+    # Select the console-gated browser mode before importing the chooser on headless Linux.
     if args.ui is None:
-        try:
-            from src.ui.launcher import select_ui
-            args.ui = select_ui()
-        except Exception:
-            # No display to show the picker (headless Pi / SSH) → the browser mode is the one that
-            # actually works there, so default to it rather than a desktop window that can't render.
-            log.warning("Launcher dialog unavailable (no display?); defaulting to --ui web")
+        import os
+        if sys.platform.startswith("linux") and not (
+            os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
+        ):
+            log.info("No graphical display; defaulting to --ui web")
             args.ui = "web"
+        else:
+            try:
+                from src.ui.launcher import select_ui
+                args.ui = select_ui()
+            except Exception:
+                log.warning("Launcher dialog unavailable; defaulting to --ui web")
+                args.ui = "web"
 
     # Accept older --ui names (qt/qtweb/webview/tk/tui) but run them as one of the two current modes.
     if args.ui in _UI_LEGACY:
@@ -521,7 +532,7 @@ def main(argv: list[str] | None = None) -> int:
             code = launcher(dm, fe, bus, pool, vault, health, macro,
                             host=args.host, port=args.port, audit=audit)
         else:
-            code = launcher(dm, fe, bus, pool, vault, health, macro)
+            code = launcher(dm, fe, bus, pool, vault, health, macro, audit=audit)
     except KeyboardInterrupt:
         log.info("Interrupted — shutting down")
         code = 0

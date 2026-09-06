@@ -53,6 +53,53 @@ def _builtin_macros_dir() -> Path:
     return resource_path("src", "core", "default_macros")
 
 
+def _substitute_variables(command: str, variables: dict[str, str]) -> str:
+    """Replace ``{{VARIABLE}}`` placeholders in *command* using *variables*.
+
+    Single pass (a substituted value is never re-scanned, so a value that itself contains
+    ``{{X}}`` can't trigger recursive expansion). A present-but-non-string value is coerced with
+    ``str()`` so a malformed substitution (e.g. an int/None slipped in by a caller) still resolves
+    and classifies rather than raising ``TypeError`` — this runs synchronously inside ``play()``
+    before the playback thread starts, so an unhandled error here would escape to the UI slot, not
+    just wedge the daemon thread. An unknown placeholder is left verbatim (not silently dropped)."""
+    def replacer(match: re.Match) -> str:
+        key = match.group(1)
+        if key in variables:
+            return str(variables[key])
+        return match.group(0)
+    return _VARIABLE_PATTERN.sub(replacer, command)
+
+
+def resolve_macro(macro: Macro, variables: dict[str, str] | None) -> Macro:
+    """Return a DETACHED copy of *macro* with each step's ``{{VARIABLE}}`` placeholders resolved.
+
+    The consent invariant is that the exact strings that will be transmitted are the strings that
+    get classified (:func:`is_offensive_macro`) and shown for confirmation. Classifying the raw
+    template instead let a benign-looking ``{{ACTION}}`` expand to ``attack -d -t all`` at send time
+    AFTER the arm gate had already passed. Resolving once, up front, into an immutable snapshot
+    closes that gap: name / description / device_protocol / created_at are preserved (so the
+    protocol-aware classifier and the ``[TEMPLATE`` / ``-attack`` heuristics still fire and the
+    display name is intact), only the step commands are expanded. The returned macro is independent
+    of the caller's ``variables`` dict, so a later mutation of that dict cannot change what was
+    classified/confirmed vs. what is sent (no substitution race, no double substitution)."""
+    resolved_vars = variables or {}
+    steps = [
+        MacroStep(
+            command=_substitute_variables(step.command, resolved_vars),
+            delay_ms=step.delay_ms,
+            expected_response=step.expected_response,
+        )
+        for step in macro.steps
+    ]
+    return Macro(
+        name=macro.name,
+        description=macro.description,
+        steps=steps,
+        created_at=macro.created_at,
+        device_protocol=macro.device_protocol,
+    )
+
+
 def is_offensive_macro(macro: Macro) -> bool:
     """Return True if a macro transmits / can disrupt and therefore needs the play-time arm gate.
 
@@ -396,13 +443,21 @@ class MacroRecorder:
                    silently claimed as matched).
             async_: If True (default), run playback in a background thread.
         """
+        # Resolve variables into a DETACHED snapshot BEFORE the arm gate so classification and
+        # transmission act on the exact expanded strings. Classifying the raw template let a benign-
+        # looking ``{{ACTION}}`` pass the gate then expand to ``attack -d -t all`` at send time; the
+        # snapshot closes that. Substitution happens exactly once here (not again per step), and the
+        # snapshot is independent of the caller's dict, so no later mutation can change what is sent
+        # vs. what was gated.
+        resolved = resolve_macro(macro, variables)
+
         # Play-time arm gate, ENFORCED IN THE ENGINE (not just one UI): a transmitting/offensive
         # macro must be explicitly armed by the caller — else refuse. Previously only the Qt tab
         # gated this, so `--ui tk` (or any other caller) replayed attack templates with NO
         # confirmation. This is a confirm gate, never a hard block: the caller's arm IS the
         # always-available "Yes, proceed".
-        if is_offensive_macro(macro) and not armed:
-            log.warning("Refusing to play offensive macro %r: not armed", macro.name)
+        if is_offensive_macro(resolved) and not armed:
+            log.warning("Refusing to play offensive macro %r: not armed", resolved.name)
             if complete_callback:
                 complete_callback(
                     False,
@@ -419,10 +474,12 @@ class MacroRecorder:
             self._playing = True
             self._stop_playback.clear()
 
+        # The playback loop transmits the already-resolved snapshot; variables were applied once
+        # above, so no per-step re-substitution happens (no double expansion).
         if async_:
             t = threading.Thread(
                 target=self._playback_loop,
-                args=(macro, send_command, speed_multiplier, variables or {},
+                args=(resolved, send_command, speed_multiplier,
                       progress_callback, complete_callback, read_response),
                 name="macro-playback",
                 daemon=True,
@@ -430,7 +487,7 @@ class MacroRecorder:
             t.start()
         else:
             self._playback_loop(
-                macro, send_command, speed_multiplier, variables or {},
+                resolved, send_command, speed_multiplier,
                 progress_callback, complete_callback, read_response,
             )
 
@@ -443,12 +500,12 @@ class MacroRecorder:
         macro: Macro,
         send_command: Callable[[str], None],
         speed: float,
-        variables: dict[str, str],
         progress: PlaybackProgress | None,
         complete: PlaybackComplete | None,
         read_response: Callable[[float], str] | None = None,
     ) -> None:
-        """Internal playback loop."""
+        """Internal playback loop. *macro* is the already variable-resolved snapshot from
+        :func:`resolve_macro`, so each ``step.command`` is transmitted verbatim (no re-substitution)."""
         total = len(macro.steps)
         log.info("Macro playback: %s (%d steps, speed=%.1fx)", macro.name, total, speed)
         unverified = 0  # steps that declared expected_response but had no response channel to check
@@ -472,8 +529,9 @@ class MacroRecorder:
                             complete(False, f"Stopped during delay at step {i + 1}/{total}")
                         return
 
-                # Substitute variables
-                cmd = self._substitute_variables(step.command, variables)
+                # Commands were variable-resolved once in resolve_macro() before the arm gate; send
+                # the exact classified string (never re-substitute here).
+                cmd = step.command
 
                 # Send command
                 if progress:
@@ -535,11 +593,11 @@ class MacroRecorder:
 
     @staticmethod
     def _substitute_variables(command: str, variables: dict[str, str]) -> str:
-        """Replace ``{{VARIABLE}}`` placeholders in a command string."""
-        def replacer(match: re.Match) -> str:
-            key = match.group(1)
-            return variables.get(key, match.group(0))
-        return _VARIABLE_PATTERN.sub(replacer, command)
+        """Replace ``{{VARIABLE}}`` placeholders in a command string.
+
+        Thin back-compat delegator to the module-level :func:`_substitute_variables`, which
+        playback now applies once up front via :func:`resolve_macro` (before the arm gate)."""
+        return _substitute_variables(command, variables)
 
     # ── Persistence ──────────────────────────────────────────────────
 

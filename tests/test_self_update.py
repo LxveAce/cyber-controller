@@ -200,10 +200,45 @@ def test_failed_update_marker_roundtrip(tmp_path):
     msg = su.read_failed_update(str(cur))                   # next launch surfaces the failure
     assert msg is not None and "did not apply" in msg
 
-    su.clear_failed_update(str(cur))                        # acknowledging clears + sweeps leftovers
+    su.clear_failed_update(str(cur))                        # acknowledge the notice only
     assert su.read_failed_update(str(cur)) is None
     assert not os.path.exists(marker)
-    assert not orphan.exists()
+    assert orphan.read_bytes() == b"NEW"
+
+
+@pytest.mark.parametrize("marker_state", ["present", "missing", "locked"])
+def test_failed_update_ack_preserves_other_files(tmp_path, monkeypatch, marker_state):
+    cur = tmp_path / "cyber-controller.exe"
+    files = {
+        cur: b"CURRENT",
+        tmp_path / "other-app.new": b"UNRELATED",
+        tmp_path / "cyber-controller-v9.exe.new": b"STAGED",
+        tmp_path / "cyber-controller-v9.exe.part": b"DOWNLOADING",
+        tmp_path / "other-app.update-failed": b"OTHER NOTICE",
+        tmp_path / "nested" / "settings.new": b"NESTED",
+    }
+    for path, content in files.items():
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    marker = su.failed_update_marker(str(cur))
+    if marker_state != "missing":
+        # A free-text message, including a path, does not establish file ownership.
+        with open(marker, "w", encoding="ascii") as fh:
+            fh.write('staged update left at "other-app.new"')
+    real_remove = os.remove
+
+    def remove(path):
+        if marker_state == "locked" and os.fspath(path) == marker:
+            raise PermissionError("marker is locked")
+        return real_remove(path)
+
+    monkeypatch.setattr(su.os, "remove", remove)
+    monkeypatch.setattr(su, "current_exe", lambda: str(cur))
+    su.clear_failed_update()
+    su.clear_failed_update()  # repeated startup acknowledgment is harmless
+    assert os.path.exists(marker) == (marker_state == "locked")
+    for path, content in files.items():
+        assert path.read_bytes() == content
 
 
 # ── frozen-build guard (destructive paths refuse on a source checkout) ────────────────────────────
@@ -237,6 +272,9 @@ def _stage_env(monkeypatch, tmp_path, content: bytes):
     monkeypatch.setattr(su, "is_frozen", lambda: True)
     monkeypatch.setattr(su, "current_exe", lambda: str(cur))
     monkeypatch.setattr(su, "platform_key", lambda *a, **k: "linux-x64")
+    # Model a KNOWN onefile build (a _MEI… extraction dir) so installed_kind()=="onefile" and the swap
+    # path is exercised — a frozen build with no shape metadata is now 'unknown' and would be refused (U3).
+    monkeypatch.setattr(su.sys, "_MEIPASS", str(tmp_path / "_MEI424242"), raising=False)
 
     def fake_download(url, dest, timeout=su.DEFAULT_TIMEOUT, progress=None):
         with open(dest, "wb") as fh:

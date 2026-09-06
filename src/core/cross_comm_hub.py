@@ -231,27 +231,37 @@ class CrossCommHub:
         Meshtastic panel reads node/channel state and drives ``send_text`` through this."""
         return self.mesh_backends.get(port)
 
-    def send_to_port(self, port: str, command: str) -> None:
+    def send_to_port(self, port: str, command: str) -> bool:
         """Deliver a command to a connected device (the AutoRouter / Network-tab send sink).
 
         Pure core. The *how* is delegated to the node's :class:`~src.core.drivers.Driver` (selected by its
         ``driver_type``): a text-CLI node gets the firmware terminator stamped + a serial write; a stream
         (Meshtastic protobuf) or control-map (BlueJammer web-UI) node has no text command channel, so the
-        command is an honest logged no-op rather than useless bytes on the wire. No-ops with a warning when
-        the port has no live connection.
+        command is an honest logged refusal rather than useless bytes on the wire. Returns whether the
+        driver accepted the delivery. Refuses with a warning when the port has no live connection.
         """
         conn = self.dm.get_connection(port)
         if not (conn and conn.is_connected):
             log.warning("send_to_port: no active connection on %s for routed command", port)
-            return
+            return False
         dev = self.dm.get_device(port)
         try:
-            driver_for(dev).deliver_text(conn, dev, command)
-            # A device list-clear/reboot through THIS sink flushes the port's parser scan
-            # ordinals so a later `select -a {index}` binds right. The reset lives on the
-            # ingestor (which owns the per-port parser) so the Devices-tab terminal Send
-            # shares the exact same path — see TargetIngestor.note_command_sent. NOT fired
-            # on a UI `target.cleared` pool wipe (the on-device list stays populated there).
-            self.ingestor.note_command_sent(port, command)
+            delivered = driver_for(dev).deliver_text(conn, dev, command)
         except Exception:
             log.exception("send_to_port %s failed", port)
+            return False
+        if not delivered:
+            log.warning("send_to_port: driver refused text delivery on %s", port)
+            return False
+        # A device list-clear/reboot through THIS sink flushes the port's parser scan
+        # ordinals so a later `select -a {index}` binds right. The reset lives on the
+        # ingestor (which owns the per-port parser) so the Devices-tab terminal Send
+        # shares the exact same path — see TargetIngestor.note_command_sent. NOT fired
+        # on a UI `target.cleared` pool wipe (the on-device list stays populated there).
+        try:
+            self.ingestor.note_command_sent(port, command)
+        except Exception:
+            # Delivery already happened. Accounting failure must not report an unsent
+            # command and invite a caller to retry a potentially non-idempotent action.
+            log.exception("send_to_port: post-delivery accounting failed on %s", port)
+        return True

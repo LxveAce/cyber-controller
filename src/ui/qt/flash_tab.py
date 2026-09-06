@@ -1063,9 +1063,18 @@ class FlashTab(QWidget):
         # If Dead Man's Switch is enabled, open setup dialog before flashing
         if self._suicide_checkbox.isChecked():
             try:
+                from src.core.suicide_setup import dms_runtime_status
                 from src.ui.qt.suicide_dialog import SuicideSetupDialog
             except Exception as exc:
                 self._log(f"Could not load Dead Man's Switch setup dialog: {exc}")
+                return
+
+            runtime_ok, runtime_reason = dms_runtime_status()
+            if not runtime_ok:
+                self._log(
+                    "Dead Man's Switch setup is unavailable before configuration or password "
+                    f"entry: {runtime_reason}"
+                )
                 return
 
             dlg = SuicideSetupDialog(self)

@@ -10,6 +10,7 @@ Usage:
 
 from __future__ import annotations
 
+import importlib
 import platform
 import subprocess
 import sys
@@ -21,6 +22,21 @@ _ENTRY = _ROOT / "src" / "app.py"
 _ICON = _ROOT / "assets" / "icon.ico"
 _LOGO = _ROOT / "assets" / "cc-logo.png"
 _NAME = "CyberController"
+
+
+def _require_linux_runtime() -> None:
+    """Fail before freezing when the Linux GUI or core web runtime cannot import."""
+    required = (
+        "PyQt5.QtWebEngineWidgets", "PyQt5.QtWebEngineCore", "qtpy.QtWebEngineWidgets",
+        "webview", "flask", "flask_socketio", "engineio.async_drivers.threading",
+        "cryptography.hazmat.primitives.ciphers.aead", "esptool", "pyzipper", "defusedxml",
+        "esp_idf_nvs_partition_gen",
+    )
+    for name in required:
+        try:
+            importlib.import_module(name)
+        except Exception as exc:
+            raise RuntimeError(f"Linux runtime dependency {name} could not load: {exc}") from exc
 
 
 def _detect_platform() -> str:
@@ -41,6 +57,8 @@ def _detect_platform() -> str:
 def _build() -> int:
     onedir = "--onedir" in sys.argv[1:]
     plat = _detect_platform()
+    if platform.system() == "Linux":
+        _require_linux_runtime()
     print(f"Platform : {plat}")
     print(f"Mode     : {'--onedir (folder; instant startup, for the installer)' if onedir else '--onefile'}")
     print(f"Entry    : {_ENTRY}")
@@ -215,6 +233,8 @@ def _build() -> int:
     # run it in the frozen app. flash_core only ever shelled it as `-m esptool` before, so PyInstaller's
     # dependency graph never saw it and left it out of the bundle entirely.
     cmd.extend(["--collect-all", "esptool"])
+    if platform.system() == "Linux":
+        cmd.extend(["--collect-all", "qtpy"])
 
     # esp-idf-nvs-partition-gen: the Dead Man's Switch provisioner (deadmans-switch/host/provision.py)
     # imports this ESP-IDF tool DYNAMICALLY at runtime to bake the guardcfg NVS image, so PyInstaller's

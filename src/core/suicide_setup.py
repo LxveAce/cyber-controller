@@ -15,7 +15,10 @@ first); the password/config (``guardcfg.bin``) is provisioned here regardless.
 from __future__ import annotations
 
 import argparse
+import importlib.util
+import inspect
 import os
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -137,15 +140,246 @@ def partitions_csv(cfg: SuicideConfig) -> Path:
 
 def _load_provision():
     """Import the Dead Man's Switch host provisioner from the submodule."""
-    if not (_HOST / "provision.py").exists():
-        raise FileNotFoundError(
-            f"Dead Man's Switch provisioner not found at {_HOST}. Initialise the submodule: "
-            f"git submodule update --init deadmans-switch"
-        )
+    provision_path = _HOST / "provision.py"
+    if not provision_path.is_file():
+        raise FileNotFoundError(_runtime_unavailable_message())
     if str(_HOST) not in sys.path:
         sys.path.insert(0, str(_HOST))
-    import provision  # noqa: E402 — dynamic submodule import
+    spec = importlib.util.spec_from_file_location("_cc_dms_provision", provision_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"cannot load Dead Man's Switch provisioner at {provision_path}")
+    provision = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(provision)
     return provision
+
+
+def _runtime_unavailable_message() -> str:
+    """Explain an absent DMS runtime without prescribing a source-only fix to wheel users."""
+    checkout_root = Path(__file__).resolve().parents[2]
+    if (checkout_root / ".gitmodules").is_file():
+        return (
+            f"Dead Man's Switch provisioner not found at {_HOST}. This source checkout needs: "
+            "git submodule update --init deadmans-switch"
+        )
+    return (
+        "Dead Man's Switch setup is unavailable in this installation because its host provisioner "
+        "is not packaged. Use a distribution that explicitly includes the DMS runtime, or run from "
+        "a source checkout with the deadmans-switch submodule initialized."
+    )
+
+
+def _nvs_generator_interface_error(selection) -> str | None:
+    """Return why a discovered NVS generator cannot support the provisioner's real call path.
+
+    This is a dependency/interface probe only: it never supplies configuration, a password, or an
+    output path. Callable package APIs are accepted directly. A CLI-only implementation must prove
+    that the exact ``generate`` subcommand is loadable through a bounded ``--help`` invocation.
+    """
+    try:
+        if not isinstance(selection, tuple) or len(selection) != 2:
+            return "the provisioner returned an invalid generator descriptor"
+        kind, target = selection
+        if kind == "module":
+            # Mirror the pinned provisioner's exact target selection: the nested module wins when
+            # it merely exposes ``generate`` (even a non-callable value), because provisioning then
+            # uses the nested module name for its CLI fallback.  Probing the parent here would report
+            # a different path ready from the one that will actually run after the password prompt.
+            missing = object()
+            selected = target
+            nested = getattr(target, "nvs_part_gen", missing)
+            if nested is not missing and getattr(nested, "generate", missing) is not missing:
+                selected = nested
+
+            generate = getattr(selected, "generate", None)
+            if callable(generate):
+                call_impl = getattr(generate, "__call__", None)
+                deferred = any(
+                    detector(candidate)
+                    for candidate in (generate, call_impl)
+                    if candidate is not None
+                    for detector in (
+                        inspect.iscoroutinefunction,
+                        inspect.isasyncgenfunction,
+                        inspect.isgeneratorfunction,
+                    )
+                )
+                if deferred:
+                    # The pinned provisioner invokes generate(ns) synchronously and treats a normal
+                    # return as success.  A coroutine/generator return therefore produces no image
+                    # and never reaches its exception-driven CLI fallback.
+                    return "the selected module's generator does not execute synchronously"
+                try:
+                    signature = inspect.signature(generate)
+                    signature.bind(argparse.Namespace())
+                except (TypeError, ValueError):
+                    # The real provisioner catches an incompatible in-process call and falls back
+                    # to ``python -m <selected module> generate ...``.  Validate that exact fallback
+                    # below instead of declaring any arbitrary callable ready.
+                    pass
+                else:
+                    return None
+
+            module_name = getattr(selected, "__name__", "")
+            if not isinstance(module_name, str) or not module_name:
+                return (
+                    "the selected module has neither a compatible generator nor a runnable "
+                    "module name"
+                )
+            command = [sys.executable, "-m", module_name, "generate", "--help"]
+            label = f"module {module_name!r}"
+        elif kind == "script":
+            if not isinstance(target, (str, os.PathLike)):
+                return "the provisioner returned an invalid generator script path"
+            script = Path(target)
+            if not script.is_file():
+                return f"the selected generator script does not exist: {script}"
+            command = [sys.executable, str(script), "generate", "--help"]
+            label = f"script {script}"
+        else:
+            return f"the provisioner returned unsupported generator kind {kind!r}"
+
+        # In a PyInstaller/frozen app ``sys.executable`` is CyberController.exe, not Python.  The
+        # pinned provisioner currently uses that same executable for its CLI fallback, so treating
+        # the app's unrelated zero-exit help as generator readiness would only defer failure until
+        # after secret collection.  A frozen distribution needs a callable packaged generator API
+        # (accepted above) or an explicit embedded runner before this fallback is genuinely usable.
+        if getattr(sys, "frozen", False):
+            return (
+                "the selected generator only exposes a Python CLI fallback, which is unavailable "
+                "in this frozen application"
+            )
+
+        probe = subprocess.run(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=5,
+            check=False,
+        )
+        if probe.returncode == 0:
+            return None
+        output = (
+            probe.stdout.decode("utf-8", "replace")
+            if isinstance(probe.stdout, bytes)
+            else probe.stdout
+        )
+        detail = " ".join(str(output or "").split())[:240]
+        suffix = f": {detail}" if detail else ""
+        return f"the selected CLI-only generator rejected its generate interface ({label}){suffix}"
+    except Exception as exc:  # noqa: BLE001 - readiness is a fail-closed UI boundary
+        return f"the selected NVS generator interface could not be validated: {exc}"
+
+
+def dms_runtime_status() -> tuple[bool, str]:
+    """Validate the complete minimum setup runtime without collecting a password or writing files."""
+    try:
+        provision = _load_provision()
+    except Exception as exc:  # noqa: BLE001 - optional runtime may fail through any import dependency
+        return (False, str(exc))
+
+    build_bundle = getattr(provision, "build_bundle", None)
+    if not callable(build_bundle):
+        return (False, "Dead Man's Switch provisioner has no compatible build_bundle entry point.")
+    try:
+        build_impl = getattr(build_bundle, "__call__", None)
+        if any(
+            detector(candidate)
+            for candidate in (build_bundle, build_impl)
+            if candidate is not None
+            for detector in (
+                inspect.iscoroutinefunction,
+                inspect.isasyncgenfunction,
+                inspect.isgeneratorfunction,
+            )
+        ):
+            return (False, "Dead Man's Switch build_bundle entry point must execute synchronously.")
+        inspect.signature(build_bundle).bind(argparse.Namespace(), bytearray())
+    except Exception:  # noqa: BLE001 - optional runtime interface inspection must fail closed
+        return (
+            False,
+            "Dead Man's Switch provisioner has an incompatible build_bundle(args, pw_buf) entry "
+            "point.",
+        )
+    find_nvs_gen = getattr(provision, "_find_nvs_gen", None)
+    if not callable(find_nvs_gen):
+        return (False, "Dead Man's Switch provisioner cannot validate its NVS generator dependency.")
+    try:
+        # build_bundle passes args.nvs_gen_dir (None in this wrapper) into the pinned finder.  Calling
+        # a no-argument lookalike here would report ready and then fail only after password collection.
+        inspect.signature(find_nvs_gen).bind(None)
+        generator = find_nvs_gen(None)
+    except Exception as exc:  # noqa: BLE001 - provisioner exposes a user-facing dependency error
+        return (False, f"Dead Man's Switch NVS generator is unavailable: {exc}")
+    generator_error = _nvs_generator_interface_error(generator)
+    if generator_error:
+        return (False, f"Dead Man's Switch NVS generator is unavailable: {generator_error}")
+
+    missing_tables = []
+    tables = []
+    try:
+        for flash_size, variant in _CSV_BY_SIZE:
+            table = partitions_csv(SuicideConfig(flash_size=flash_size, variant=variant))
+            if not table.is_file():
+                missing_tables.append(table.name)
+            else:
+                tables.append((variant, table))
+    except Exception as exc:  # noqa: BLE001 - availability must remain a reasoned false, not crash UI
+        return (False, f"Dead Man's Switch partition data cannot be validated: {exc}")
+    if missing_tables:
+        return (False, "Dead Man's Switch partition data is incomplete: " + ", ".join(missing_tables))
+
+    parse_partitions = getattr(provision, "parse_partitions_csv", None)
+    require_partition = getattr(provision, "require_partition", None)
+    if not callable(parse_partitions) or not callable(require_partition):
+        return (
+            False,
+            "Dead Man's Switch provisioner cannot structurally validate its partition data.",
+        )
+    guard_name = getattr(provision, "GUARDCFG_PART", "guardcfg")
+    otadata_name = getattr(provision, "OTADATA_PART", "otadata")
+    try:
+        for variant, table in tables:
+            parts = parse_partitions(str(table))
+            required = [
+                (str(guard_name), require_partition(parts, guard_name)),
+                (str(otadata_name), require_partition(parts, otadata_name)),
+            ]
+            if variant == "guardian":
+                required.extend(
+                    [
+                        ("factory", require_partition(parts, "factory")),
+                        ("ota_0", require_partition(parts, "ota_0")),
+                    ]
+                )
+            for name, record in required:
+                if not isinstance(record, dict):
+                    raise ValueError(f"partition {name!r} has an invalid record")
+                for field in ("offset", "size"):
+                    value = record.get(field)
+                    if type(value) is not int or value <= 0:
+                        raise ValueError(
+                            f"partition {name!r} has an invalid {field}: {value!r}"
+                        )
+            guard = required[0][1]
+            if guard.get("subtype") != "nvs":
+                raise ValueError(
+                    f"partition {guard_name!r} must have subtype 'nvs' "
+                    f"(found {guard.get('subtype')!r})"
+                )
+            if guard["size"] < 0x3000 or guard["size"] % 0x1000:
+                raise ValueError(
+                    f"partition {guard_name!r} size must be a 0x1000-aligned value of at least "
+                    f"0x3000 (found 0x{guard['size']:X})"
+                )
+    except Exception as exc:  # noqa: BLE001 - optional pinned parser exposes user-facing failures
+        return (False, f"Dead Man's Switch partition data is invalid: {exc}")
+    return (True, "ready")
+
+
+def dms_runtime_available() -> bool:
+    """Whether ``--deadman-setup`` has a loadable provisioner, generator, and partition data."""
+    return dms_runtime_status()[0]
 
 
 # Range/domain checks mirroring the provisioner's argparse ``choices=``. build() constructs the
@@ -205,6 +439,11 @@ def run_cli(argv: list[str] | None = None) -> int:
     """Interactive CLI setup (``cyber-controller --suicide-setup``). Collects config + password
     (via getpass — never on argv), builds the bundle, prints next steps."""
     import getpass
+
+    runtime_ok, runtime_reason = dms_runtime_status()
+    if not runtime_ok:
+        print(f"Provisioning unavailable: {runtime_reason}", file=sys.stderr)
+        return 1
 
     print("=== Dead Man's Switch — password & duress setup (host-side) ===")
     print("Owner-only DEFENSIVE use on hardware you own. A disarmed/unprovisioned board NEVER wipes.\n")

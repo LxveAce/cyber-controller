@@ -27,7 +27,6 @@ replaced live while running (the kernel holds the old inode), so we swap in plac
 
 from __future__ import annotations
 
-import glob
 import hashlib
 import logging
 import os
@@ -66,6 +65,60 @@ def current_exe() -> str:
     return os.path.realpath(sys.executable)
 
 
+def installed_kind() -> str:
+    """Which build shape are we running? One of:
+
+    * source  — not frozen (a dev checkout).
+    * onefile — a PyInstaller single-exe. sys._MEIPASS is a per-run _MEI… extraction dir, which may
+      sit anywhere, including inside the exe's own folder when the exe is run from a temp dir.
+    * onedir  — a one-folder build (the shape the Windows installer lays down). _MEIPASS is the app
+      dir itself (legacy layout) or its _internal child (PyInstaller >= 6).
+    * unknown — frozen but the layout matches neither positively; we do NOT guess onedir.
+
+    Load-bearing for updates: the in-place swap replaces sys.executable itself. Right for a onefile
+    binary, but WRONG for a onedir build, where sys.executable is a bootstrap loading the app from
+    _internal/ — overwriting it orphans that folder and corrupts the install, so a onedir build must
+    update via its installer. Detection is POSITIVE-only (U2): a onefile run from its own extraction
+    parent must not be read as onedir, so we key on the specific onedir layouts and on the _MEI…
+    extraction naming, never on a bare ancestor relationship. Reports the build SHAPE, not installer
+    ownership — a hand-copied onedir folder is onedir but not an installed product."""
+    if not is_frozen():
+        return "source"
+    meipass = getattr(sys, "_MEIPASS", None)
+    if not meipass:
+        return "unknown"   # frozen but no extraction bundle reported → unidentified, don't guess
+    try:
+        exe_dir = os.path.realpath(os.path.dirname(current_exe()))
+        bundle = os.path.realpath(meipass)
+    except (ValueError, OSError):
+        return "unknown"
+    # Positive onedir signals: the bundle IS the exe dir (legacy one-folder) or its _internal child.
+    if bundle == exe_dir or bundle == os.path.join(exe_dir, "_internal"):
+        return "onedir"
+    # Onefile signal: a PyInstaller per-run extraction dir is named _MEIxxxxxx (wherever it lives,
+    # including as a child of a temp exe dir — exactly the case that used to misclassify).
+    if os.path.basename(bundle).startswith("_MEI"):
+        return "onefile"
+    return "unknown"   # ambiguous layout → don't assume onedir (and don't refuse below)
+
+
+def can_self_update_in_place() -> bool:
+    """True only for a positively-identified ONEFILE build — the one shape the in-place binary swap
+    safely handles. onedir, unknown, and source all return False (an ``unknown`` layout is never
+    offered an in-place swap). See :func:`installed_kind`."""
+    return installed_kind() == "onefile"
+
+
+def _non_onefile_refusal(kind: str) -> str:
+    """The user-facing message when an in-place update is refused because the build isn't a swap-safe
+    onefile — shape-specific so the UI (which falls to the release page) is truthful."""
+    if kind == "onedir":
+        return ("this is a one-folder (installer) build; in-place auto-update isn't available for "
+                "it yet — download the latest installer from the release page")
+    return ("couldn't identify this build's layout, so in-place auto-update is disabled for safety "
+            "— download the latest build from the release page to update")
+
+
 def platform_key(system: str | None = None, machine: str | None = None) -> str:
     """Canonical asset key for the current (or given) platform — matches the release asset naming
     (``cyber-controller-<tag>-<key>``). Parameterized so the mapping is table-testable.
@@ -86,15 +139,24 @@ def platform_key(system: str | None = None, machine: str | None = None) -> str:
 
 # ── Pure selection + verification ────────────────────────────────────────────────────────────────
 
-def select_asset(assets: Sequence[Mapping[str, Any]], key: str) -> dict | None:
-    """Pick the onefile release binary for *key*. Skips the Windows setup installer (self-update
-    swaps the standalone binary, not the installer) and the checksums file. Returns the raw asset
-    dict (``name`` + ``browser_download_url``) or None if the platform isn't in this release."""
+def select_asset(assets: Sequence[Mapping[str, Any]], key: str, *,
+                 installer: bool = False) -> dict | None:
+    """Pick a release asset for *key*. For a Windows key, ``installer=True`` selects the setup
+    installer (``…-setup.exe`` — the correct upgrade for a onedir/installer build); the default
+    selects the standalone onefile binary (skipping the installer, since the in-place swap replaces
+    that binary). ``installer`` is a no-op for non-Windows keys. Returns the raw asset dict, or None
+    when this release has no matching asset."""
     want_exe = key.startswith("windows")
     for a in assets:
         name = str(a.get("name", ""))
         low = name.lower()
-        if "setup" in low or low.startswith("sha256sums"):
+        if low.startswith("sha256sums"):
+            continue
+        is_setup = "setup" in low
+        if want_exe:
+            if installer != is_setup:   # want the installer XOR this is the installer → not a match
+                continue
+        elif is_setup:
             continue
         if key not in name:
             continue
@@ -221,17 +283,13 @@ def read_failed_update(cur_exe: str | None = None) -> str | None:
 
 
 def clear_failed_update(cur_exe: str | None = None) -> None:
-    """Dismiss the breadcrumb and sweep the orphaned ``*.new`` staged binaries left beside the exe by
-    a failed swap, so a reported failure can be acknowledged and the leftovers don't linger forever."""
+    """Dismiss this executable's failure notice without deleting staged files.
+
+    The notice has no durable record of which files an update attempt owns. A sibling's name or
+    suffix is not sufficient proof, so acknowledgment must not sweep the installation directory.
+    """
     exe = cur_exe if cur_exe is not None else current_exe()
     _quiet_remove(failed_update_marker(exe))
-    # glob.escape the install DIRECTORY before appending the "*.new" wildcard: a real install
-    # path may contain glob metacharacters ([ ] ? * are all legal folder-name chars, esp. on
-    # Windows) which, left unescaped, are read as pattern syntax — so the sweep would silently
-    # match nothing (orphaned verified .new binaries linger forever) or match the wrong files.
-    # Same path-literalizing care the module already takes with %-doubling in win_swap_script.
-    for orphan in glob.glob(os.path.join(glob.escape(os.path.dirname(exe)), "*.new")):
-        _quiet_remove(orphan)
 
 
 def win_swap_script(pid: int, new_exe: str, cur_exe: str) -> str:
@@ -350,6 +408,11 @@ def apply(cur_exe: str, staged: str, key: str, pid: int | None = None,
     so a source checkout can never clobber ``sys.executable`` (the Python interpreter)."""
     if not is_frozen():
         raise SelfUpdateError("refusing to self-update a non-frozen (source) build")
+    # Defense in depth: apply() is a separate entry point (the UI calls it after staging). Only a
+    # positively-identified onefile is swap-safe; refuse onedir (corrupts the install) and unknown.
+    kind = installed_kind()
+    if kind != "onefile":
+        raise SelfUpdateError(_non_onefile_refusal(kind))
     if key.startswith("windows"):
         _apply_windows(cur_exe, staged, pid if pid is not None else os.getpid())
     else:
@@ -370,6 +433,12 @@ def self_update(result: "updater.CheckResult", releases: list[dict] | None = Non
     """
     if not is_frozen():
         raise SelfUpdateError("refusing to self-update a non-frozen (source) build")
+    kind = installed_kind()
+    if kind != "onefile":
+        # Only a positively-identified onefile is swap-safe. A onedir build must update via its
+        # installer (a swap orphans _internal/ and corrupts it); an unknown layout is refused for
+        # safety. Fail BEFORE any download; the UI already falls back to the release page.
+        raise SelfUpdateError(_non_onefile_refusal(kind))
     tag = result.latest_tag
     if not tag:
         raise SelfUpdateError("no target release tag to update to")

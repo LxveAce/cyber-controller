@@ -10,9 +10,19 @@ All notable changes to Cyber Controller are documented here. This project adhere
 A patch release on top of 2.0.0: a batch of connection and validation fixes, plus the additions below.
 Nothing was removed.
 
+### Workspace and installation updates
+- Keep the firmware catalog and flash output in separate scroll areas, with a readable status row on short screens. The Cross-Comm target list can be collapsed.
+- Bundle the Linux QtWebEngine renderer and its Qt/XCB dependencies. Builds now check bundled library compatibility and run the frozen chooser and interface before upload. Linux x64 targets glibc 2.35; ARM64 targets glibc 2.39.
+- Choose browser mode before opening Qt when Linux has no graphical display configured.
+- Preserve the previous bundled-tool installation if replacement fails or is interrupted, and retain a successful outcome if the final progress callback fails.
+- Include required runtime resources in Python distributions and check optional setup dependencies before configuration prompts.
+- Invalidate existing web sessions when the password changes. Report transport refusals accurately and check expanded macro commands before sending them.
+- Protect Windows installer layouts from standalone binary replacement. Dismissing an update-failure notice preserves staged files. Automatic installer upgrades remain in development.
+- Clarify that the Map survey controls are not implemented in the shared desktop/browser view yet, and that CSV upload sends an existing survey to WiGLE.
+
 ### Added
 - **Flipper Zero: qFlipper is now provisioned and driven by CC.** The Device dashboard has a Flipper card
-  that installs the official qFlipper on demand (downloaded + SHA-256 verified into CC's tools folder — not
+  that installs the official qFlipper on demand on Windows (downloaded + SHA-256 verified into CC's tools folder — not
   bundled into the installer) and runs its headless `qFlipper-cli` for firmware and device management
   (update / backup / restore / erase / wipe). Live serial control (SubGHz / NFC / RFID / IR / GPIO) already
   works under Operate & Terminal.

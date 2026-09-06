@@ -44,6 +44,18 @@
     if (g) g.setAttribute("aria-hidden", "true");   // decorative glyph — the label carries the name
   });
 
+  // The Firmware workspace uses a full-height flex/grid layout that must activate only while the FW
+  // sub-tab is showing. The desktop app renders in QtWebEngine (Qt 5.15 → Chromium 87), which has no
+  // :has() support, so we drive it from a class toggled here instead of a CSS :has() selector — that
+  // keeps "flash transcript stays visible" working on the shipped GUI, not just a modern browser.
+  function updateFwMode() {
+    var main = document.getElementById("main");
+    if (!main) return;
+    var view = main.querySelector(".view.on");
+    var sub = view ? view.querySelector(":scope > .sub.on") : null;
+    main.classList.toggle("fw-mode", !!(sub && sub.dataset.sub === "fw"));
+  }
+
   function activateNav(it, focusIt) {
     if (!it) return;
     var v = it.dataset.view;
@@ -54,6 +66,7 @@
       n.setAttribute("tabindex", on ? "0" : "-1");
     });
     document.querySelectorAll(".main .view").forEach(function (sec) { sec.classList.toggle("on", sec.dataset.view === v); });
+    updateFwMode();   // the newly-shown view may (or may not) have the FW sub-tab active
     var view = document.querySelector('.view[data-view="' + v + '"]');
     var tabs = view.querySelector(".subtabs button.on");
     var subName = tabs ? tabs.textContent : "";
@@ -101,11 +114,13 @@
         x.setAttribute("aria-selected", on ? "true" : "false");
       });
       scope.querySelectorAll(":scope > .sub").forEach(function (s) { s.classList.toggle("on", s.dataset.sub === b.dataset.sub); });
+      updateFwMode();   // entering/leaving the FW sub-tab toggles the full-height workspace layout
       if (bar.dataset.tabs && crumbNames[scope.dataset.view]) {
         crumb.innerHTML = "<b>" + crumbNames[scope.dataset.view] + "</b> ▸ " + b.textContent;
       }
     });
   });
+  updateFwMode();   // reflect whatever sub-tab the page loaded with (e.g. a #view deep-link)
 
   document.querySelectorAll("#depth button").forEach(function (x) {
     x.setAttribute("aria-pressed", x.classList.contains("on") ? "true" : "false");
@@ -941,6 +956,8 @@
 
     function selectPort(port) {
       activePort = port;
+      var empty = document.getElementById("reform-term-empty");
+      if (empty) empty.hidden = port !== null;
       listEl.querySelectorAll(".termrow").forEach(function (r) { r.classList.toggle("on", r.dataset.term === port); });
       panesEl.querySelectorAll(".rterm-pane").forEach(function (p) { p.style.display = p.dataset.term === port ? "block" : "none"; });
       if (port === HOST) openHostShell();
@@ -1047,7 +1064,7 @@
       if (!stillValid) {
         if (connected.length) selectPort(connected[0].port);
         else if (hostShellEnabled) selectPort(HOST);
-        else activePort = null;
+        else selectPort(null);
       }
     };
     listEl.addEventListener("click", function (e) {
@@ -2480,20 +2497,18 @@
   }
   initFlock();
 
-  // MAP Wardrive: honest gating (no dead buttons). A survey needs a connected GPS-equipped device
-  // running wardrive firmware; there's no web wardrive backend yet, so the buttons say so plainly
-  // rather than doing nothing.
+  // The shared desktop/browser view currently supports uploading existing CSVs to WiGLE.
+  // Survey capture, export and local track rendering are not connected to this view yet.
   function initWardrive() {
     var msg = document.getElementById("wd-msg");
     var multiMsg = document.getElementById("wd-multi-msg");
-    var need = "Wardrive needs a connected GPS-equipped device running wardrive firmware. Connect one " +
-      "under DEVICE, then survey + export to WiGLE CSV. (Web wardrive wiring lands with that device.)";
+    var need = "Live survey capture is not available in this view yet. You can upload an existing CSV to WiGLE.";
     wireBtn("wd-start", function () { if (msg) msg.textContent = need; });
-    wireBtn("wd-export", function () { if (msg) msg.textContent = "No survey to export yet — start a GPS survey first."; });
-    wireBtn("wd-multi-start", function () { if (multiMsg) multiMsg.textContent = "Needs 2+ connected GPS devices."; });
+    wireBtn("wd-export", function () { if (msg) msg.textContent = "Survey export is not available in this view yet."; });
+    wireBtn("wd-multi-start", function () { if (multiMsg) multiMsg.textContent = "Live multi-device surveys are not available in this view yet."; });
 
-    // Upload a WiGLE CSV you already have. The survey/export above still need a GPS device, but sending an
-    // already-exported CSV doesn't — so this path is live. The token comes from Settings (server-side); the
+    // Upload a WiGLE CSV you already have. This sends it to WiGLE; it does not render a local track.
+    // The token comes from Settings (server-side); the
     // server rejects with a plain message if it isn't set. Browse uses the native picker on the desktop shell.
     var upRow = document.getElementById("wd-upload-row");
     var upPath = document.getElementById("wd-upload-path");

@@ -29,7 +29,7 @@ from PyQt5.QtWidgets import (
     QWidget,
 )
 
-from src.core.suicide_setup import SuicideConfig, build
+from src.core.suicide_setup import SuicideConfig, build, dms_runtime_status
 
 log = logging.getLogger(__name__)
 
@@ -190,6 +190,16 @@ class SuicideSetupDialog(QDialog):
         )
 
     def _on_provision(self) -> None:
+        runtime_ok, runtime_reason = dms_runtime_status()
+        if not runtime_ok:
+            QMessageBox.warning(
+                self,
+                "Provisioning unavailable",
+                "The setup runtime became unavailable before password collection:\n\n"
+                f"{runtime_reason}",
+            )
+            return
+
         p1 = self.pw1.text()
         p2 = self.pw2.text()
         if not p1 or p1 != p2:

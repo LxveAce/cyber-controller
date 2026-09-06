@@ -19,15 +19,52 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import shutil
+import threading
+import uuid
 from dataclasses import dataclass
 from typing import Callable, Optional
 
 from .resources import resource_path
 
 Line = Callable[[str], None]
+ShouldCancel = Callable[[], bool]
+#: Called ONCE at the transaction's point of no return — right before the first publish mutation, after
+#: staging/verification and the last cancel check. May raise (e.g. a pending cancel) to abort fail-closed
+#: before anything irreversible; the prior install is then left intact.
+BeginCommit = Callable[[], None]
 
 #: Public by design — see the module docstring + scripts/build_tool_packs.py.
 PACK_PASSWORD = b"cyber-controller-tools"
+
+
+class ToolCancelled(RuntimeError):
+    """Raised when an enable/extract was cancelled cooperatively BEFORE the atomic publish."""
+
+
+# One lock per destination tool dir so two concurrent enables of one tool can't interleave their
+# stage/promote (one writer per destination). Keyed by the realpath of the final dir.
+_dest_locks: dict[str, threading.Lock] = {}
+_dest_locks_guard = threading.Lock()
+
+
+def canonical_dest(dest_dir: str) -> str:
+    """A platform-appropriate canonical key for a destination dir, shared by the transaction and (later)
+    the job layer so they agree on identity. ``os.path.normcase`` folds case on Windows (where
+    ``tools/aircrack-ng`` and ``tools/AIRCRACK-NG`` are the SAME dir, but ``realpath`` alone doesn't
+    normalize the case of a not-yet-existing trailing segment — T4) and is identity on POSIX (where they
+    are distinct). NOTE: these locks are in-process only, not cross-process serialization."""
+    return os.path.normcase(os.path.realpath(dest_dir))
+
+
+def _lock_for_dest(dest_dir: str) -> threading.Lock:
+    key = canonical_dest(dest_dir)
+    with _dest_locks_guard:
+        lock = _dest_locks.get(key)
+        if lock is None:
+            lock = threading.Lock()
+            _dest_locks[key] = lock
+        return lock
 
 
 def packs_dir() -> str:
@@ -76,43 +113,138 @@ def pack_for_tool(tool: str, platform_key: str) -> Optional[ToolPack]:
     return next((p for p in list_packs() if p.tool == tool and p.platform == platform_key), None)
 
 
-def extract_pack(pack: ToolPack, dest_dir: str, on_line: Optional[Line] = None) -> str:
-    """Decrypt + extract *pack* into *dest_dir* and return the primary-exe path.
-
-    The caller MUST have already excluded *dest_dir* from Defender (else the extracted PUA binaries are
-    re-quarantined). Verifies each file against the manifest SHA-256 before writing; a mismatch raises
-    RuntimeError and the extraction is abandoned (fail-closed). Requires ``pyzipper`` (a CC dep)."""
+def _extract_verified(pack: ToolPack, into_dir: str, log: Line,
+                      should_cancel: Optional[ShouldCancel]) -> None:
+    """Decrypt + verify EVERY member of *pack* into *into_dir* (a fresh, owned staging dir).
+    Fail-closed: raises on an unlisted or SHA-mismatched member (the public pack password makes the
+    manifest SHA-256 the ONLY integrity control), a zip-slip path, an INCOMPLETE archive (a manifest
+    member missing), or cancellation. Each member is written to a ``.part`` sibling then renamed, so
+    staging leaves no partial final-named file. Requires ``pyzipper`` (a CC dep)."""
     import pyzipper  # local import: only needed when actually extracting (keeps import graph light)
 
-    log: Line = on_line or (lambda *_a: None)
-    os.makedirs(dest_dir, exist_ok=True)
     want = {f["name"]: f["sha256"] for f in pack.manifest.get("files", []) if "sha256" in f}
+    seen: set[str] = set()
+    root = os.path.realpath(into_dir)
     with pyzipper.AESZipFile(pack.pack_path) as z:
         z.setpassword(PACK_PASSWORD)
         for name in z.namelist():
             if name.endswith("/"):
                 continue  # directory entry — nothing to write or verify
+            if should_cancel and should_cancel():
+                raise ToolCancelled("cancelled before install completed")
             blob = z.read(name)
-            # Fail-closed: the pack password is public (see module docstring), so the per-file
-            # SHA-256 is the ONLY integrity control. Every extracted member MUST be named in the
-            # manifest with a matching hash — an unlisted file (e.g. a planted sideload DLL added
-            # to a tampered pack) is rejected, not silently written into the Defender-excluded dir.
             exp = want.get(name)
             if exp is None:
                 raise RuntimeError(f"{name}: not listed in the manifest — refusing to install")
             if hashlib.sha256(blob).hexdigest() != exp:
                 raise RuntimeError(f"{name}: SHA-256 mismatch on extract — refusing to install")
-            # zip-slip guard: the resolved path must stay inside dest_dir.
-            out_path = os.path.join(dest_dir, name)
-            if not os.path.realpath(out_path).startswith(os.path.realpath(dest_dir) + os.sep):
+            out_path = os.path.join(into_dir, name)
+            if not os.path.realpath(out_path).startswith(root + os.sep):
                 raise RuntimeError(f"unsafe pack member path: {name!r}")
-            os.makedirs(os.path.dirname(out_path) or dest_dir, exist_ok=True)  # hashcat has kernels/ etc.
-            with open(out_path, "wb") as out:
+            os.makedirs(os.path.dirname(out_path) or into_dir, exist_ok=True)  # hashcat: kernels/
+            tmp = out_path + ".part"
+            with open(tmp, "wb") as out:
                 out.write(blob)
+            os.replace(tmp, out_path)   # atomic in staging: no partial final-named file on a tear
+            seen.add(name)
             log(f"[tools] extracted {name}")
-    exe = os.path.join(dest_dir, pack.primary_exe)
-    log(f"[tools] {pack.tool} {pack.version} unpacked into {dest_dir}")
-    return exe
+    missing = sorted(set(want) - seen)
+    if missing:
+        raise RuntimeError(f"pack incomplete — manifest member(s) missing: {missing[:3]}")
+
+
+def extract_pack(pack: ToolPack, dest_dir: str, on_line: Optional[Line] = None, *,
+                 should_cancel: Optional[ShouldCancel] = None,
+                 begin_commit: Optional[BeginCommit] = None) -> str:
+    """Transactionally publish *pack* at *dest_dir* and return the primary-exe path.
+
+    Decrypt + verify EVERY manifest member and confirm the primary exe into a UNIQUE staging dir — a
+    sibling of *dest_dir* (same filesystem, for an atomic rename) that is NOT a resolver search path, so
+    a partial/failed extraction is never discoverable by ``installed_tools``/``detect_tools`` — then
+    ATOMICALLY swap it in. A prior install at *dest_dir* is preserved until the swap commits and RESTORED
+    if promotion fails; only this call's own staging is cleaned up. Concurrent calls to the same
+    *dest_dir* are serialized (one writer per destination).
+
+    Fail-closed (leaving *dest_dir*'s prior contents intact) on any bad/unlisted member, an incomplete
+    archive, a zip-slip path, an I/O error, or cancellation before the swap. The caller MUST have already
+    Defender-excluded the tools tree (else the PUA binaries return). Needs pyzipper."""
+    log: Line = on_line or (lambda *_a: None)
+    dest_dir = os.path.abspath(dest_dir)
+    parent = os.path.dirname(dest_dir) or "."
+    os.makedirs(parent, exist_ok=True)
+    with _lock_for_dest(dest_dir):
+        # staging_root holds the new tree; the prior install's backup lives in its OWN root (NOT
+        # staging_root), so the finally that cleans staging can never delete the last surviving copy
+        # good install. Both are nested so their exes sit two levels below the tools dir — deeper
+        # installed_tools()'s one-level scan, hence invisible — while still inside the
+        # on Windows) tree so the PUA binary isn't quarantined mid-stage.
+        staging_root = os.path.join(parent, ".cc-stage-" + uuid.uuid4().hex)
+        backup_root = os.path.join(parent, ".cc-backup-" + uuid.uuid4().hex)
+        pkg = os.path.join(staging_root, "pkg")
+        backup = os.path.join(backup_root, "old")
+        # T5: the backup is retained BY DEFAULT and deleted only once its replacement is verifiably
+        # published or the prior tree has been restored — never merely because a particular exception
+        # type was caught. An interruption (KeyboardInterrupt/SystemExit) unwinds through the try
+        # WITHOUT going through `except OSError`, so a caught-exception gate would let the finally
+        # delete the only surviving prior copy. Completion flags, not a caught type, drive the cleanup.
+        had_prev = False
+        published = False
+        restored = False
+        try:
+            os.makedirs(pkg, exist_ok=True)
+            _extract_verified(pack, pkg, log, should_cancel)
+            if not os.path.isfile(os.path.join(pkg, pack.primary_exe)):
+                raise RuntimeError(f"pack primary exe {pack.primary_exe!r} missing after extract")
+            if should_cancel and should_cancel():
+                raise ToolCancelled("cancelled before install completed")
+            # Point of no return: staging + verification are done and this is the LAST cancel-safe moment.
+            # begin_commit() lets a job registry atomically refuse a late cancel (or raise to abort). If it
+            # raises, we unwind here — before any publish mutation — so the prior install stays intact.
+            if begin_commit is not None:
+                begin_commit()
+            # Publish: move any prior install aside, move the verified tree in. On a failed move-in,
+            # restore the prior install; if the RESTORE also fails (a persistent destination error —
+            # a sharing violation, or another process recreating the dir — can hit both), the backup
+            # is the only surviving copy, so report BOTH errors. It is retained by the default policy.
+            # Two renames are not one atomic exchange: a crash between them leaves the prior install
+            # recoverable at backup_root/old.
+            had_prev = os.path.exists(dest_dir)
+            if had_prev:
+                os.makedirs(backup_root, exist_ok=True)
+                os.replace(dest_dir, backup)
+            try:
+                os.replace(pkg, dest_dir)
+                published = True   # set IMMEDIATELY after the successful rename, before anything else
+            except OSError as promote_err:
+                if had_prev:
+                    try:
+                        os.replace(backup, dest_dir)   # restore the previous install
+                        restored = True
+                    except OSError as restore_err:
+                        raise RuntimeError(
+                            f"install failed and the previous {pack.tool} install could not be restored "
+                            f"automatically; a recovered copy is preserved at {backup} "
+                            f"(promote: {promote_err}; restore: {restore_err})") from restore_err
+                raise
+            # B2: the publish is done and irreversible. A failing progress OBSERVER after this point must
+            # NOT propagate — a caught observer exception would relabel a COMPLETED install as failed/cancelled
+            # and invite the UI to retry an already-published operation. Swallow ordinary observer exceptions
+            # here (never emitting their text); KeyboardInterrupt/SystemExit still propagate. The real
+            # verification/probe outcome is judged by the caller, not by whether this notification succeeded.
+            try:
+                log(f"[tools] {pack.tool} {pack.version} published to {dest_dir}")
+            except Exception:  # noqa: BLE001 — a post-publish notification failure can't undo the publish
+                pass
+            return os.path.join(dest_dir, pack.primary_exe)
+        finally:
+            shutil.rmtree(staging_root, ignore_errors=True)   # clean ONLY this job's owned staging
+            # Delete the backup only when it is provably safe: the replacement is published (the old
+            # is superseded) or the old was restored (the backup was consumed by that rename). Any
+            # other unwind — a double-I/O error, or an interruption between move-aside and publish —
+            # RETAINS it so the only prior copy is never lost; keeping an extra backup is the
+            # acceptable failure mode.
+            if had_prev and (published or restored):
+                shutil.rmtree(backup_root, ignore_errors=True)
 
 
 def enable_dir() -> str:
@@ -122,23 +254,55 @@ def enable_dir() -> str:
     return default_tools_dir()
 
 
-def enable_bundled(pack: ToolPack, on_line: Optional[Line] = None) -> tuple[bool, str]:
-    """Extract *pack* into ``enable_dir()/<tool>/`` and confirm the primary exe actually runs.
+@dataclass(frozen=True)
+class EnableOutcome:
+    """Typed result of a bundled enable so cancel / failure / success are DISTINGUISHABLE (the legacy
+    ``(ok, message)`` tuple flattened all three, which an exception-only job wrapper can't tell apart).
 
-    The caller MUST have already added a Defender exclusion for :func:`enable_dir` (else the extracted
-    PUA binary is re-quarantined). Returns (ok, message) — a Defender block is reported honestly, never
-    as a fake success."""
+    ``status`` is exactly one of ``"succeeded"`` / ``"cancelled"`` / ``"failed"``. ``exe`` and
+    ``verification_method`` are set only on success (``verification_method`` names the integrity check that
+    actually ran — bundled packs verify every member by manifest SHA-256, so ``"sha256"``)."""
+    status: str
+    message: str
+    exe: Optional[str] = None
+    verification_method: Optional[str] = None
+
+
+def enable_bundled_result(pack: ToolPack, on_line: Optional[Line] = None, *,
+                          should_cancel: Optional[ShouldCancel] = None,
+                          begin_commit: Optional[BeginCommit] = None) -> EnableOutcome:
+    """Transactionally publish *pack* into ``enable_dir()/<tool>/`` and return a typed :class:`EnableOutcome`.
+
+    Same transaction as :func:`extract_pack` (staged + atomically promoted; a failed/cancelled enable leaves
+    any prior install intact and exposes no partial tree). ``begin_commit`` is threaded to the publish
+    boundary. A pre-commit cancellation is reported as ``cancelled``; any extraction error or a Defender
+    block is ``failed`` — never a fake success. The caller MUST have already Defender-excluded
+    :func:`enable_dir`."""
     from . import defender
     log: Line = on_line or (lambda *_a: None)
     dest = os.path.join(enable_dir(), pack.tool)
     try:
-        exe = extract_pack(pack, dest, log)
+        exe = extract_pack(pack, dest, log, should_cancel=should_cancel, begin_commit=begin_commit)
+    except ToolCancelled as exc:
+        return EnableOutcome("cancelled", str(exc))
     except Exception as exc:  # noqa: BLE001
-        return (False, f"extract failed: {exc}")
+        return EnableOutcome("failed", f"extract failed: {exc}")
     if not os.path.isfile(exe):
-        return (False, "extracted, but the tool binary is missing — Windows Defender likely quarantined "
-                       "it. Add the exclusion (see the notice) for this folder and try again.")
+        return EnableOutcome("failed", "extracted, but the tool binary is missing — Windows Defender likely "
+                             "quarantined it. Add the exclusion (see the notice) for this folder and try again.")
     if defender.is_windows() and not defender.exe_runs(exe):
-        return (False, "extracted, but the tool won't launch — Defender is still blocking it. Make sure "
-                       "the exclusion covers this folder, then try again.")
-    return (True, f"{pack.tool} enabled: {exe}")
+        return EnableOutcome("failed", "extracted, but the tool won't launch — Defender is still blocking it. "
+                             "Make sure the exclusion covers this folder, then try again.")
+    return EnableOutcome("succeeded", f"{pack.tool} enabled: {exe}", exe=exe, verification_method="sha256")
+
+
+def enable_bundled(pack: ToolPack, on_line: Optional[Line] = None, *,
+                   should_cancel: Optional[ShouldCancel] = None) -> tuple[bool, str]:
+    """Back-compat ``(ok, message)`` wrapper over :func:`enable_bundled_result` for the synchronous callers.
+
+    Extraction is staged + atomically promoted (see :func:`extract_pack`): a failed or cancelled
+    enable leaves any prior install untouched and no partial tree becomes discoverable. The caller
+    MUST have already Defender-excluded :func:`enable_dir` (else the extracted PUA binary returns).
+    Returns (ok, message) — a cancel or Defender block is reported honestly, never a fake success."""
+    outcome = enable_bundled_result(pack, on_line, should_cancel=should_cancel)
+    return (outcome.status == "succeeded", outcome.message)

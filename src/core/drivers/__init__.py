@@ -4,7 +4,8 @@
 strategy that knows HOW to deliver an intent to a node given its live connection, so the send path stops
 assuming every firmware speaks a line-based text CLI:
 
-- **TextCliDriver** (`text-cli`, the default): today's behavior — stamp the firmware's line terminator, then
+- **TextCliDriver** (`text-cli`, the declared/default firmware protocol): today's behavior — stamp the
+  firmware's line terminator, then
   `SerialConnection.write` (which rejects embedded control chars). Every line-shell firmware uses this.
 - **StreamDriver** (`stream`, e.g. Meshtastic): a binary/framed link, NOT a text CLI. Writing plain text to it
   is discarded by the firmware and can desync the protobuf framing, so a routed text command is an honest
@@ -12,6 +13,8 @@ assuming every firmware speaks a line-based text CLI:
 - **ControlMapDriver** (`controlmap`, e.g. BlueJammer): no serial command channel at all — control is the
   device's web UI / a hardware-validated ControlMap (see `bluejammer_control.py`). A routed serial text
   command can't drive it, so it too is an honest no-op.
+- **UnsupportedDriver**: a fail-closed sink for an unregistered driver kind. It never inherits
+  text-CLI behavior, so a typo or future binary transport cannot receive plaintext by accident.
 
 `CrossCommHub.send_to_port` dispatches through `driver_for(dev)`. Selection reuses the `Device.driver_type`
 accessor so there's a single source of truth for "what kind of node is this."
@@ -60,8 +63,10 @@ class StreamDriver(Driver):
 
     def deliver_text(self, conn, dev, command: str) -> bool:
         # Plain text is discarded by the firmware and could desync the framing — don't write it.
-        log.warning("stream driver: %r has no text command channel (protobuf/stream); dropping %r",
-                    getattr(dev, "firmware", ""), command)
+        log.warning(
+            "stream driver: %r has no text command channel (protobuf/stream); refusing text command",
+            getattr(dev, "firmware", ""),
+        )
         return False
 
     def deliver_raw(self, conn, payload: bytes) -> bool:
@@ -93,20 +98,49 @@ class ControlMapDriver(Driver):
 
     def deliver_text(self, conn, dev, command: str) -> bool:
         # There is no serial CLI to write to — see bluejammer_control.py (web-UI / hardware-validated map).
-        log.warning("controlmap driver: %r has no serial command channel (web-UI/controlmap); dropping %r",
-                    getattr(dev, "firmware", ""), command)
+        log.warning(
+            "controlmap driver: %r has no serial command channel (web-UI/controlmap); refusing text command",
+            getattr(dev, "firmware", ""),
+        )
+        return False
+
+
+class UnsupportedDriver(Driver):
+    """Fail-closed sink for an unregistered transport/driver kind."""
+
+    driver_type = "unsupported"
+
+    def deliver_text(self, conn, dev, command: str) -> bool:
+        log.error(
+            "unsupported driver type %r for %r; refusing text command",
+            getattr(dev, "driver_type", None),
+            getattr(dev, "firmware", ""),
+        )
         return False
 
 
 # One stateless instance per kind (strategies hold no per-node state).
 _DRIVERS: "dict[str, Driver]" = {d.driver_type: d for d in (TextCliDriver(), StreamDriver(), ControlMapDriver())}
+_UNSUPPORTED_DRIVER = UnsupportedDriver()
 
 
 def driver_for(dev) -> Driver:
-    """The Driver for a device, selected by its `driver_type` (reusing the Device accessor). Unknown kinds
-    and a missing device fall back to the text-CLI driver (the historical default send path)."""
+    """Select a device's declared driver without guessing across transport kinds.
+
+    A missing device retains the historical text-CLI default; callers only reach it after separately
+    confirming a live connection. Unknown firmware also resolves to ``text-cli`` in the protocol
+    registry. An explicit but unregistered driver kind is different: it fails closed so future
+    binary/control transports never inherit plaintext writes accidentally.
+    """
     dt = getattr(dev, "driver_type", "text-cli") if dev is not None else "text-cli"
-    return _DRIVERS.get(dt, _DRIVERS["text-cli"])
+    return _DRIVERS.get(dt, _UNSUPPORTED_DRIVER)
 
 
-__all__ = ["Driver", "TextCliDriver", "StreamDriver", "ControlMapDriver", "driver_for"]
+__all__ = [
+    "ControlMapDriver",
+    "Driver",
+    "StreamDriver",
+    "TextCliDriver",
+    "UnsupportedDriver",
+    "driver_for",
+]

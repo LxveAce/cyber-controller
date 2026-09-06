@@ -13,9 +13,9 @@ minimally, and is pinned here:
       re-register the device while detach then closed the dongle + removed the just-attached device
       (phantom node on a closed port). detach now holds the RLock across the ENTIRE teardown, like
       attach().
-    S3 (LOW) self_update.clear_failed_update — globbed the exe directory without glob.escape(), so a
-      glob metacharacter in the install path ([ ] ? * — all legal folder chars) made the orphan-.new
-      sweep match nothing (leftovers linger) or the wrong files. Now the directory is escaped.
+    S3 (LOW) self_update.clear_failed_update — originally globbed the install directory. Warning
+      acknowledgment now removes only its exact marker and leaves staged files alone, including
+      when the install path contains glob metacharacters.
     S4 (LOW) wordlist_manager.download_wordlist — the final atomic os.replace was the only failure
       path NOT wrapped in _rm cleanup, so a replace failure (e.g. a Windows sharing violation when
       dest is held open by a running crack) leaked the verified temp (many MiB). Now wrapped.
@@ -113,9 +113,9 @@ def test_detach_holds_lock_through_entire_teardown(monkeypatch):
     assert seen["remove"] is True, "lock was released before remove_device — re-attach race window"
 
 
-# ── S3: clear_failed_update sweeps .new orphans even when the install path has glob metachars ──
+# ── S3: warning acknowledgment treats install paths literally and preserves staging ──
 
-def test_clear_failed_update_sweeps_new_with_glob_metachars_in_path(tmp_path):
+def test_clear_failed_update_preserves_new_with_glob_metachars_in_path(tmp_path):
     from src.core import self_update
 
     d = tmp_path / "cyber[portable]"          # legal folder name; '[ ]' are glob metacharacters
@@ -124,9 +124,13 @@ def test_clear_failed_update_sweeps_new_with_glob_metachars_in_path(tmp_path):
     exe.write_text("x", encoding="ascii")
     orphan = d / "cyber-controller-v2-windows-x64.exe.new"
     orphan.write_text("staged verified binary", encoding="ascii")
+    marker = d / "cyber-controller.exe.update-failed"
+    marker.write_text("update did not apply", encoding="ascii")
 
     self_update.clear_failed_update(cur_exe=str(exe))
-    assert not orphan.exists(), "the orphaned .new must be swept even with [ ] in the install path"
+    assert not marker.exists()
+    assert orphan.read_text(encoding="ascii") == "staged verified binary"
+    assert exe.read_text(encoding="ascii") == "x"
 
 
 # ── S4: a final os.replace failure cleans up the verified temp instead of leaking it ──────────────

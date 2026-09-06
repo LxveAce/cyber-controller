@@ -28,7 +28,7 @@ from PyQt5.QtWidgets import (
 )
 
 from src.core.device_manager import DeviceManager
-from src.core.macro_recorder import Macro, MacroRecorder, is_offensive_macro
+from src.core.macro_recorder import Macro, MacroRecorder, is_offensive_macro, resolve_macro
 
 log = logging.getLogger(__name__)
 
@@ -481,12 +481,6 @@ class MacroTab(QWidget):
             )
             return
 
-        # Arm gate: offensive/transmitting macros (attack templates) must be explicitly confirmed
-        # before playback — the engine has no per-macro arm gate, so this is the "user must arm"
-        # that keeps a template from firing on a stray Play click. Safe recon macros play ungated.
-        if is_offensive_macro(self._current_macro) and not self._confirm_offensive():
-            return
-
         # Parse speed
         speed_text = self._speed_combo.currentText().replace("x", "")
         try:
@@ -494,7 +488,10 @@ class MacroTab(QWidget):
         except ValueError:
             speed = 1.0
 
-        # Gather variables
+        # Gather variables BEFORE the arm gate so classification and confirmation act on the exact
+        # expanded command, not the raw template. A benign-looking ``{{ACTION}}`` that expands to
+        # ``attack -d -t all`` must trigger the confirm prompt — classifying the unexpanded template
+        # here (as the old order did) skipped the prompt yet still passed armed=True to the engine.
         variables = {}
         mac = self._var_mac.text().strip()
         if mac:
@@ -506,6 +503,14 @@ class MacroTab(QWidget):
         if channel:
             variables["CHANNEL"] = channel
 
+        # Resolve once into a detached snapshot; classify and (if offensive) confirm that snapshot,
+        # then hand the SAME snapshot to the engine so confirmation, classification and transmission
+        # all target identical strings. Recon macros play ungated.
+        resolved = resolve_macro(self._current_macro, variables)
+        offensive = is_offensive_macro(resolved)
+        if offensive and not self._confirm_offensive():
+            return
+
         # Start playback
         self._btn_play.setEnabled(False)
         self._btn_record.setEnabled(False)
@@ -513,15 +518,15 @@ class MacroTab(QWidget):
         self._progress.setValue(0)
 
         self._recorder.play(
-            macro=self._current_macro,
+            macro=resolved,
             send_command=conn.write,
             speed_multiplier=speed,
-            variables=variables,
+            # Variables are already baked into the snapshot; don't pass them again (no double sub).
             progress_callback=self._playback_signal.progress.emit,
             complete_callback=self._playback_signal.complete.emit,
-            # An offensive macro was already confirmed above; the engine now also enforces the arm
-            # gate, so tell it this play is armed. Recon macros are unaffected (not offensive).
-            armed=True,
+            # armed is True ONLY when the resolved macro is offensive AND the operator just
+            # confirmed above; a benign macro passes armed=False (the engine ignores it for recon).
+            armed=offensive,
             async_=True,
         )
 

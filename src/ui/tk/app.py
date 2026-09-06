@@ -52,8 +52,13 @@ except ImportError:
     _HAS_SETTINGS = False
 
 try:
-    from src.core.suicide_setup import SuicideConfig  # noqa: F401  (availability probe → _HAS_DEADMAN)
-    from src.core.suicide_setup import run_cli as sm_run_cli  # noqa: F401  (availability probe)
+    from src.core.suicide_setup import (  # noqa: F401  (availability probe → _HAS_DEADMAN)
+        SuicideConfig,
+        dms_runtime_status,
+    )
+    from src.core.suicide_setup import (
+        run_cli as sm_run_cli,  # noqa: F401  (availability probe)
+    )
     _HAS_DEADMAN = True
 except ImportError:
     _HAS_DEADMAN = False
@@ -860,15 +865,19 @@ class TkLightApp:
         conn = self._active_conn
         variables = dict(self._macro_variables) if self._macro_variables else None
 
-        # Arm gate for transmitting/offensive macros. The engine now ENFORCES this
-        # (play(armed=...)), but confirm here too so the Tk operator gets the same "this transmits
-        # — proceed?" prompt the Qt tab shows; a stray Play must never fire an attack template.
-        # Recon macros play ungated.
-        from src.core.macro_recorder import is_offensive_macro
-        if is_offensive_macro(macro):
+        # Arm gate for transmitting/offensive macros. Resolve variables into a detached snapshot
+        # FIRST so classification and the confirm prompt act on the exact expanded command — a
+        # template like ``{{ACTION}}`` that expands to an attack must trigger the prompt, which
+        # classifying the raw template skipped while still passing armed=True. The engine also
+        # ENFORCES this gate; here we confirm and set armed only after a Yes. Recon macros play
+        # ungated. The SAME snapshot is handed to the engine (no re-substitution / mutation race).
+        from src.core.macro_recorder import is_offensive_macro, resolve_macro
+        resolved = resolve_macro(macro, variables)
+        offensive = is_offensive_macro(resolved)
+        if offensive:
             if not messagebox.askyesno(
                 "Arm transmitting macro?",
-                f"'{macro.name}' transmits and can disrupt nearby devices/networks.\n\n"
+                f"'{resolved.name}' transmits and can disrupt nearby devices/networks.\n\n"
                 "Only proceed on hardware you own or are authorized to test. Play it now?",
                 icon=messagebox.WARNING, default=messagebox.NO,
             ):
@@ -893,11 +902,12 @@ class TkLightApp:
         # through complete_callback (never by raising), so wrapping it in our own thread + try/except
         # left both the status reset and the error dialog dead. Drive them from the callback instead.
         self._macro_recorder.play(
-            macro,
+            resolved,
             send_command=lambda cmd: conn.write(cmd),
-            variables=variables,
+            # Variables are already baked into the resolved snapshot; don't pass them again.
             complete_callback=_on_complete,
-            armed=True,  # offensive macros were arm-confirmed above; recon macros are unaffected
+            # armed only when the resolved macro is offensive AND confirmed above; recon => False.
+            armed=offensive,
         )
 
     def _on_add_macro_variable(self) -> None:
@@ -1407,6 +1417,16 @@ class TkLightApp:
                 "Dead Man's Switch module not available.\n\n"
                 "Ensure the Dead Man's Switch submodule is initialised:\n"
                 "  git submodule update --init")
+            if on_complete:
+                on_complete(False)
+            return
+        runtime_ok, runtime_reason = dms_runtime_status()
+        if not runtime_ok:
+            messagebox.showwarning(
+                "Dead Man's Switch Setup",
+                "Setup is unavailable before configuration or password entry:\n\n"
+                f"{runtime_reason}",
+            )
             if on_complete:
                 on_complete(False)
             return

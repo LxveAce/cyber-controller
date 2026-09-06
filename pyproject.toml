@@ -62,9 +62,11 @@ dependencies = [
 tk = []
 tui = ["textual>=0.50"]
 web = ["flask>=3.0", "flask-socketio>=5.3"]
-desktop = ["flask>=3.0", "flask-socketio>=5.3", "pywebview>=5.0", "pythonnet>=3.0; sys_platform=='win32'"]
+# Linux pywebview needs an explicit renderer. Keep one Qt binding (Qt5) across the launcher,
+# pywebview and the direct Qt shell; installing plain pywebview supplies neither Linux backend.
+desktop = ["flask>=3.0", "flask-socketio>=5.3", "pywebview>=5.0", "PyQtWebEngine>=5.15; sys_platform=='linux'", "QtPy>=2.4; sys_platform=='linux'", "pythonnet>=3.0; sys_platform=='win32'"]
 qtweb = ["flask>=3.0", "flask-socketio>=5.3", "PyQtWebEngine>=5.15"]
-full = ["textual>=0.50", "flask>=3.0", "flask-socketio>=5.3", "pywebview>=5.0", "PyQtWebEngine>=5.15", "pythonnet>=3.0; sys_platform=='win32'"]
+full = ["textual>=0.50", "flask>=3.0", "flask-socketio>=5.3", "pywebview>=5.0", "PyQtWebEngine>=5.15", "QtPy>=2.4; sys_platform=='linux'", "pythonnet>=3.0; sys_platform=='win32'"]
 dev = ["pytest>=8.0", "ruff>=0.4"]
 
 [project.scripts]
@@ -86,6 +88,41 @@ select = ["E", "F", "W", "I"]
 pythonpath = [".", "tests"]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["src", "src.*"]
+
+[tool.setuptools.package-data]
+# Runtime data that lives under the importable `src` package. Keep this list aligned with
+# scripts/verify_distribution_resources.py and build.py. The encrypted executable tool pack is
+# intentionally not added to Python distributions; that delivery design is pending security review.
+src = [
+    "config/*.json",
+    "config/*.tsv.gz",
+    "config/dms_partitions/*.csv",
+    "config/maps/*.geojson",
+    "config/probes/*.bin",
+    "config/profiles/*.json",
+    "config/wordlists/*.md",
+    "config/wordlists/*.txt",
+    "core/default_macros/*.json",
+    "ui/qt/theme/*.qss",
+    "ui/tui/*.tcss",
+    "ui/web/static/*",
+    "ui/web/static/icons/*",
+    "ui/web/static/vendor/*",
+    "ui/web/templates/*.html",
+]
+
+[tool.setuptools.data-files]
+# These legacy repo-root resources cannot be package-data. pip installs them below sys.prefix;
+# src.core.resources checks this documented fallback after the source/PyInstaller layout.
+"share/cyber-controller/assets" = ["assets/*.ico", "assets/*.png"]
+"share/cyber-controller/assets/icons" = ["assets/icons/*.svg"]
+"share/cyber-controller/docs" = ["docs/HOWTO.md"]
 
 [build-system]
 requires = ["setuptools>=75"]

@@ -53,7 +53,7 @@ def _hub_with_marauder(monkeypatch, port="COM_X"):
     monkeypatch.setattr(hub.dm, "get_device", lambda p: object())
     monkeypatch.setattr(
         "src.core.cross_comm_hub.driver_for",
-        lambda dev: type("_D", (), {"deliver_text": staticmethod(lambda *a, **k: None)})(),
+        lambda dev: type("_D", (), {"deliver_text": staticmethod(lambda *a, **k: True)})(),
     )
     return hub, conn, proto, port
 

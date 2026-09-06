@@ -2055,8 +2055,7 @@ def create_app(
             # operator and not sensitive — safe to surface.
             return jsonify({"error": str(exc)}), 400
         except Exception:
-            # Never leak internal exception text (an AI-codegen classic). Log server-side,
-            # return a generic message.
+            # Keep exception details in the server log and return a generic message.
             log.exception("serial command failed on %s", port)
             return jsonify({"error": "internal error sending command"}), 500
 

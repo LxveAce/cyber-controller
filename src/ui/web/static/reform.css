@@ -49,7 +49,7 @@ body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--ui);font-si
 .rail .hint{color:var(--dim);font-size:10px;text-align:center;padding:6px 4px;border-top:1px solid var(--bd2);margin-top:6px}
 
 /* main */
-.main{overflow:auto;padding:14px 16px 40px}
+.main{min-width:0;min-height:0;overflow:auto;padding:14px 16px 40px}
 .view{display:none}
 .view.on{display:block}
 .subtabs{display:flex;gap:4px;border-bottom:1px solid var(--bd2);margin:-2px 0 14px}
@@ -93,6 +93,9 @@ body{margin:0;background:var(--bg);color:var(--tx);font-family:var(--ui);font-si
 .card.collapsible>summary .r{margin-left:auto;color:var(--dim);font-weight:600;letter-spacing:.3px;text-transform:none;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card.collapsible>*:not(summary){margin-left:13px;margin-right:13px}
 .card.collapsible[open]{padding-bottom:13px}
+.pool-disclosure .pool-scroll{max-height:18rem;overflow:auto}
+.pool-disclosure summary:focus-visible,.pool-scroll:focus-visible{outline:2px solid var(--acc);outline-offset:2px}
+.grid > *, .split > *{min-width:0}
 .muted{color:var(--mut)} .dim{color:var(--dim)} .mono{font-family:var(--mono)}
 .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center} .between{display:flex;align-items:center;justify-content:space-between;gap:10px}
 
@@ -221,3 +224,51 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 /* A link-styled button — keeps the Rescan control a real <button> (keyboard + role) while looking inline. */
 .linkbtn{background:none;border:0;color:var(--acc);cursor:pointer;font:inherit;padding:0}
 .linkbtn:hover{text-decoration:underline}
+
+/* Keep the flash transcript on screen while the catalog scrolls independently. Driven by a JS-toggled
+   .fw-mode class (see updateFwMode in reform.js) rather than :has() — the desktop app's QtWebEngine
+   (Qt 5.15 / Chromium 87) has no :has() support, so a :has() selector would silently fail there. */
+.main.fw-mode{overflow:hidden;padding-bottom:14px}
+.main.fw-mode .view.on{height:100%;display:flex;flex-direction:column;min-height:0}
+.main.fw-mode .view.on > .subtabs{flex:none}
+.sub.on[data-sub="fw"]{display:flex;flex-direction:column;flex:1;min-height:0;gap:8px}
+/* Both panes keep viewport space. Instructions scroll with setup so expanded help cannot consume
+   the controls' track on a small display. Output metadata can scroll without displacing the log. */
+.fw-workspace{display:grid;grid-template-rows:minmax(0,1fr) minmax(0,clamp(104px,42%,300px));gap:12px;flex:1;min-height:0}
+.fw-setup{min-height:0;overflow:auto;display:grid;grid-template-columns:210px minmax(0,1fr);gap:12px;align-content:start}
+.fw-setup > *{min-width:0}
+.fw-guidance{grid-column:1 / -1}
+.fw-guidance .notebar{display:block;margin:0 0 8px}
+.fw-guidance .notebar:last-child{margin-bottom:0}
+.fw-controls{flex-wrap:wrap}
+.fw-output{display:flex;flex-direction:column;min-height:0}
+.fw-output > h3{flex:none}
+.fw-output-status{flex:0 1 auto;min-height:1.5em;overflow:auto;overflow-wrap:anywhere}
+.fw-output #fw-log{flex:1 0 48px;min-height:0;height:auto;margin-top:8px;overflow:auto;overflow-wrap:anywhere}
+.fw-output #fw-bootcallout{display:block}
+.fw-setup:focus-visible,.fw-output-status:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+@media(max-width:1079px){
+ .fw-setup{grid-template-columns:minmax(0,1fr)}
+ .fw-port-panel h3{margin-bottom:4px}
+}
+
+.fw-help summary{cursor:pointer;font-weight:600}
+.fw-help > div{margin-top:6px;max-height:64px;overflow:auto}
+/* Leave more room for the two panes on short displays. */
+@media(max-height:720px){
+ .fw-workspace{gap:8px}
+ .fw-workspace .card{padding:8px}
+ .fw-workspace h3{margin-bottom:5px}
+ .fw-output h3{display:none}
+}
+
+/* Layout display rules must not expose intentionally hidden controls. */
+[hidden]{display:none!important}
+.capture-scroll{overflow:auto;max-width:100%}
+#crack-tools-panel{overflow-wrap:anywhere}
+@media(min-width:1080px){.crack-layout{grid-template-columns:minmax(320px,360px) minmax(0,1fr)}}
+
+.rterm-pane .term.termbig{height:clamp(180px,55vh,620px);min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}
+.terminput .field{flex:1;min-width:0;width:auto}
+.terminput .btn{flex:none}
+.termrow .nm{min-width:0;overflow-wrap:anywhere}

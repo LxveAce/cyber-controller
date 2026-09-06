@@ -37,7 +37,7 @@ Built to run a multi-device cyberdeck on a 7″ touchscreen, headless over SSH, 
 <!-- STATUS-ROADMAP:START -->
 ## 📦 Latest release
 
-**[v2.0.0](https://github.com/LxveAce/cyber-controller/releases/latest)** is the first stable cut of the reformed single-window GUI — the 2.0 line graduating from beta, and the release the in-app updater offers everyone on 1.8.0. On top of the reform: the **Ace Purple** palette, a **searchable, category-grouped firmware flasher**, **BFFB** (Flipper expansion) as a one-pick ESP32-C5 board, **Marauder support current to v1.15.1**, and a **Flock map that follows your live GPS** (loads a small window around you, frees areas as you move). The reform itself brought the everything-echoing terminal, a real OpenStreetMap Flock map, wardrive upload, the regrouped Operate surface, and much fuller honest per-firmware control. Backend/serial control only: CC issues firmware CLI commands and never authors radio frames.
+**[v2.0.1](https://github.com/LxveAce/cyber-controller/releases/latest)** keeps flash output visible beside the firmware workflow, adds a collapsible target list, and improves connection recovery, Flipper controls, Rayhunter reports, web-session handling and installation reliability. Linux builds now include the native renderer and check the packaged interface before upload. See the platform requirements below before downloading.
 
 The full version-by-version history, down to every fix, hardening pass, and added firmware, is in the **[Changelog](CHANGELOG.md)** and the **[Releases](https://github.com/LxveAce/cyber-controller/releases)**. Where it's headed next is on the **[roadmap at cybercontroller.org](https://cybercontroller.org/#firmware)**.
 <!-- STATUS-ROADMAP:END -->
@@ -50,7 +50,7 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 
 **🛰 Coordinate.** The **Unified Action Broadcast**: one intent (*Find APs, Deauth All, BLE Scan, Capture Handshakes, STOP ALL*) fans out to **every connected radio at once**, each translated into that firmware's own native command. A **shared target pool** means one board's discovery is instantly actionable by another.
 
-**♻️ One-click updates** · **🔒 optional physical-key access gate** · **🧨 Dead Man's Switch anti-forensic provisioning** · **🗺 Flock/ALPR awareness map** · **📡 GPS wardriving → WiGLE CSV**. Details below and in the [docs](#-learn-more--get-help).
+**♻️ In-app update checks** · **🔒 optional physical-key access gate** · **🧨 Dead Man's Switch anti-forensic provisioning** · **🗺 Flock/ALPR awareness map** · **📡 WiGLE CSV upload**. Recognized standalone binaries support in-place updates; Windows installer builds use the latest installer. Live survey capture and track rendering in the single-window Map view remain in development. Details below and in the [docs](#-learn-more--get-help).
 
 ## 🧩 Supported firmware
 
@@ -153,7 +153,7 @@ Two modes, one reformed single-window UI underneath — the same dashboard wheth
 
 | Mode | How it renders | Best for |
 |------|----------------|----------|
-| **Normal GUI** | Native desktop window (pywebview → WebView2 / WebKitGTK, ARM + x64) | Day-to-day use on a laptop, mini-PC, or 7″ touchscreen |
+| **Normal GUI** | Native desktop window (WebView2 on Windows, QtWebEngine on Linux, WebKit on macOS) | Day-to-day use on a laptop, mini-PC, or 7″ touchscreen |
 | **Web based** | Flask + SocketIO in your browser (auth + CSRF, binds `127.0.0.1` by default) | Phone control of a headless Pi, or any remote box |
 
 Launch with no `--ui` for a picker. A **Simple / Pro** depth toggle (Ctrl+M) trims or reveals controls with zero feature penalty. Which mode suits which machine → [`docs/RECOMMENDED-SPECS.md`](docs/RECOMMENDED-SPECS.md).
@@ -169,6 +169,17 @@ cyber-controller --ui web       # Web based, binds 127.0.0.1:5000
 ```
 
 Prefer a prebuilt binary? Grab the **[latest release](https://github.com/LxveAce/cyber-controller/releases/latest)** (Windows portable `.exe` + installer, Linux, macOS, ARM), each with `SHA256SUMS.txt` and a VirusTotal report. The build isn't code-signed yet, so Windows SmartScreen may warn; [`docs/WINDOWS-SECURITY.md`](docs/WINDOWS-SECURITY.md) explains why and gives three ways to verify your download.
+
+The Linux x64 binary requires **glibc 2.35 or later** and is built on Ubuntu 22.04. The Linux ARM64 binary requires **glibc 2.39 or later** and is built on Ubuntu 24.04. A graphical session is required for the desktop window; use `--ui web` on a headless machine. The two Linux downloads have different compatibility floors.
+
+After downloading on Linux, grant executable permission and launch from a terminal. For x64:
+
+```bash
+chmod +x cyber-controller-v2.0.1-linux-x64
+./cyber-controller-v2.0.1-linux-x64
+```
+
+Use the `linux-arm64` filename for ARM64. If startup fails, keep the terminal error with your distribution and version when reporting it. **Windows installer users:** run the new installer to upgrade; automatic installer upgrades are still in development.
 
 ## 🔒 Security
 

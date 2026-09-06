@@ -25,6 +25,7 @@ log = logging.getLogger(__name__)
 
 _MAX_TRIES = 5
 _CURRENT_VAULT: Optional["vault.Vault"] = None
+_GUI_UI_MODES = frozenset({"desktop", "qt", "qtweb", "webview", "gui", "tk"})
 
 
 def get_current_vault() -> Optional["vault.Vault"]:
@@ -33,6 +34,17 @@ def get_current_vault() -> Optional["vault.Vault"]:
 
 
 # ── enforcement (startup) ────────────────────────────────────────────
+
+def _uses_gui_unlock(ui: str | None) -> bool:
+    """Whether *ui* can present the Qt access-gate dialog.
+
+    ``src.app`` normalizes every native-window alias to ``desktop`` before
+    calling :func:`enforce`.  Keeping the legacy aliases here also protects
+    direct callers and older integrations that have not normalized yet.
+    ``None`` retains the historic launcher/setup-dialog behavior.
+    """
+    return ui is None or ui in _GUI_UI_MODES
+
 
 def enforce(ui: str | None) -> bool:
     """Return True if access is granted (or no gate is configured); False if denied/cancelled."""
@@ -59,7 +71,7 @@ def enforce(ui: str | None) -> bool:
         return True
 
     log.info("Access gate active (policy=%s) — authentication required.", pk.get_policy())
-    gui = ui in ("qt", "tk", None)
+    gui = _uses_gui_unlock(ui)
     ok, pw = (False, None)
     if gui:
         try:

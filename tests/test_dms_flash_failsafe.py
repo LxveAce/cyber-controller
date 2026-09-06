@@ -54,6 +54,10 @@ def test_qt_dms_enabled_does_not_start_plain_flash(qapp, monkeypatch):
     tab._profile_combo.setCurrentText("marauder")
     tab._suicide_checkbox.setChecked(True)
 
+    monkeypatch.setattr(
+        "src.core.suicide_setup.dms_runtime_status",
+        lambda: (True, "ready"),
+    )
     # Auto-accept the DMS setup dialog.
     monkeypatch.setattr("src.ui.qt.suicide_dialog.SuicideSetupDialog", _AcceptDlg, raising=False)
 
@@ -73,3 +77,30 @@ def test_qt_dms_enabled_does_not_start_plain_flash(qapp, monkeypatch):
     assert started["n"] == 0, "DMS-enabled flash must NOT start a plain firmware flash"
     log = tab._log_output.toPlainText().lower()
     assert "abort" in log and ("unprotected" in log or "deadman-setup" in log)
+
+
+def test_qt_dms_unavailable_never_opens_password_dialog(qapp, monkeypatch):
+    tab = FT.FlashTab(DeviceManager(), FlashEngine())
+    tab._port_combo.addItem("COM_TEST", "COM_TEST")
+    tab._port_combo.setCurrentIndex(tab._port_combo.count() - 1)
+    tab._profiles["marauder"] = resource_path("src", "config", "profiles", "marauder.json")
+    tab._profile_combo.addItem("marauder")
+    tab._profile_combo.setCurrentText("marauder")
+    tab._suicide_checkbox.setChecked(True)
+
+    monkeypatch.setattr(
+        "src.core.suicide_setup.dms_runtime_status",
+        lambda: (False, "synthetic missing generator"),
+    )
+
+    class _MustNotOpen:
+        def __init__(self, *_args, **_kwargs):
+            raise AssertionError("password dialog must not open")
+
+    monkeypatch.setattr("src.ui.qt.suicide_dialog.SuicideSetupDialog", _MustNotOpen)
+
+    tab._on_flash()
+
+    output = tab._log_output.toPlainText().lower()
+    assert "unavailable before configuration or password entry" in output
+    assert "synthetic missing generator" in output

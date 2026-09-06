@@ -155,6 +155,9 @@
               <button data-sub="stream" class="pro-tab">Stream</button>
             </div>
             <div class="sub on" data-sub="pool">
+              <details class="card collapsible pool-disclosure" id="cross-comm-pool" open>
+                <summary><span class="t">Discovered targets</span><span class="r">Expand / collapse</span></summary>
+                <div class="pool-scroll" role="region" aria-label="Discovered targets" tabindex="0">
               <table>
                 <thead><tr><th>Type</th><th>SSID</th><th class="r">RSSI</th><th class="r">Ch</th></tr></thead>
                 <tbody id="dash-pool">
@@ -166,6 +169,8 @@
                   {% endfor %}
                 </tbody>
               </table>
+                </div>
+              </details>
               <div class="row" style="margin-top:8px"><button class="btn sm" id="pool-refresh">Refresh</button><button class="btn sm danger" id="pool-clear">Clear Pool</button></div>
             </div>
             <div class="sub pro" data-sub="rules">
@@ -201,15 +206,18 @@
 
     <!-- Firmware — board/port-first flashing (LIVE, wired to /api/flash) -->
     <div class="sub" data-sub="fw">
+      <div class="fw-workspace">
+        <div class="fw-setup" tabindex="0" aria-label="Firmware setup">
+        <div class="fw-guidance">
       <div class="notebar warnbar">Flashing writes to the device and cannot be undone mid-write. Pick the target port + a firmware, then Flash. The port must be free (disconnect any serial monitor first).</div>
-      <div class="notebar" style="margin:8px 0 0">&#128161; <b>Download mode:</b> many boards (the CYD, and anything with a CP210x/CH340 USB chip) don&#8217;t auto-enter the bootloader. If Flash can&#8217;t connect, <b>hold BOOT</b> (a.k.a. IO0/FLASH), tap EN/RST once, and keep holding BOOT until it connects &#8212; then release. Use a data USB cable, not charge-only.</div>
-      <div class="split side">
-        <div class="card">
+      <details class="fw-help notebar"><summary>Download mode help</summary><div tabindex="0" aria-label="Download mode instructions"> many boards (the CYD, and anything with a CP210x/CH340 USB chip) don&#8217;t auto-enter the bootloader. If Flash can&#8217;t connect, <b>hold BOOT</b> (a.k.a. IO0/FLASH), tap EN/RST once, and keep holding BOOT until it connects &#8212; then release. Use a data USB cable, not charge-only.</div></details>
+        </div>
+        <div class="card fw-port-panel">
           <h3><span class="t">Target Port</span><span class="r">Scan</span></h3>
           <table><tbody id="fw-ports"><tr><td class="off">scanning ports&#8230;</td></tr></tbody></table>
           <div class="footnote" id="fw-port-msg" style="margin-top:6px;min-height:14px"></div>
         </div>
-        <div class="card">
+        <div class="card fw-catalog">
           <h3><span class="t">Firmware</span><span class="r">esptool bundled</span></h3>
           <div class="fw-controls" style="display:flex;gap:8px;margin-bottom:8px;align-items:center">
             <input class="field" id="fw-search" type="search" placeholder="Search firmware&#8230;" aria-label="Search firmware" style="flex:1 1 auto;width:auto;min-width:0">
@@ -239,11 +247,17 @@
           </div>
           <div class="footnote off" id="fw-nomatch" style="display:none">No firmware matches your search.</div>
           <div class="footnote">Variants load from each firmware&#8217;s own release. Leave on &#8220;Default&#8221; unless a board with a shared chip ID flashes a blank screen.</div>
-          <div class="row" style="margin-top:10px;align-items:center;gap:8px;justify-content:space-between"><span class="mono" id="fw-status" style="font-size:12px">idle</span><span class="mono muted" id="fw-pct" style="font-size:12px"></span></div>
+        </div>
+        </div><!-- /.fw-setup -->
+        <section class="card fw-output" aria-label="Flash output">
+          <h3><span class="t">Flash output</span></h3>
+          <div class="fw-output-status" tabindex="0" aria-label="Flash status and recovery help">
+          <div class="row" style="align-items:center;gap:8px;justify-content:space-between"><span class="mono" id="fw-status" style="font-size:12px">idle</span><span class="mono muted" id="fw-pct" style="font-size:12px"></span></div>
           <div style="margin-top:6px"><div class="progress" style="height:6px;background:#0d1117;border:1px solid var(--bd);border-radius:4px;overflow:hidden"><div id="fw-bar" style="height:100%;width:0;background:var(--acc);transition:width .2s"></div></div></div>
           <div class="notebar warnbar" id="fw-bootcallout" style="display:none;margin:8px 0 0">&#9888;&#xFE0E; <b>Can&#8217;t connect to the board.</b> It isn&#8217;t in download mode. <b>Hold BOOT</b> (IO0/FLASH), tap EN/RST once, keep holding BOOT until it connects &#8212; then release &amp; Flash again. Use a data USB cable, not charge-only.</div>
-          <div class="term" id="fw-log" style="height:130px;margin-top:8px"><div class="p">Pick a port + firmware, then Flash.</div></div>
-        </div>
+          </div>
+          <div class="term" id="fw-log" tabindex="0" aria-label="Flash terminal"><div class="p">Pick a port + firmware, then Flash.</div></div>
+        </section>
       </div>
     </div>
 
@@ -421,7 +435,7 @@
   <!-- ============ CRACK (live: tools/wordlists/captures + gated run) ============ -->
   <section class="view" data-view="crack">
     <div class="notebar">Offline WPA/WPA2 key recovery: capture &#8594; wordlist &#8594; per-run consent &#8594; crack. Dictionary-only; the consent gate is never bypassed.</div>
-    <div class="split side">
+    <div class="split crack-layout">
       <div class="grid" style="align-content:start">
         <div class="card">
           <h3><span class="t">Engine</span><span class="r">native always works</span></h3>
@@ -432,7 +446,7 @@
         </div>
         <div class="card">
           <h3><span class="t">Wordlists</span><span class="r">dictionary attack</span></h3>
-          <select class="field" id="wl-select" aria-label="Wordlist"><option>loading wordlists&#8230;</option></select>
+          <select class="field" id="wl-select" aria-label="Wordlist"><option value="">loading wordlists&#8230;</option></select>
           <div class="row" style="margin-top:8px"><button class="btn sm" id="wl-catalog">Get more&#8230;</button><button class="btn sm" id="wl-byo">Bring your own&#8230;</button><button class="btn sm" id="wl-refresh">Refresh</button></div>
           <div class="row" id="wl-byo-row" hidden style="margin-top:8px"><input class="field mono" id="wl-byo-path" placeholder="path to your .txt wordlist" aria-label="Wordlist path"><button class="btn sm" id="wl-byo-browse" data-native-only hidden>Browse&#8230;</button><button class="btn sm" id="wl-byo-add">Add</button></div>
           <div class="footnote" id="wl-foot">A dictionary attack needs a wordlist. A tiny WPA core is bundled (works offline); download a bigger list or point at your own.</div>
@@ -449,12 +463,12 @@
         <div class="card">
           <h3><span class="t">Captured Handshakes</span><span class="r"><button class="btn sm" id="captures-export">Export CSV</button></span></h3>
           <div class="footnote" style="margin:-4px 0 9px">Auto-logged as your devices capture &#8212; click a crackable row to load it into the run.</div>
-          <table>
+          <div class="capture-scroll" tabindex="0" role="region" aria-label="Captured handshakes"><table>
             <thead><tr><th>SSID</th><th>BSSID</th><th>Type</th><th>Source</th><th>Captured</th><th>Password</th></tr></thead>
             <tbody id="crack-captures-body">
               <tr><td class="off" colspan="6">reading captures&#8230;</td></tr>
             </tbody>
-          </table>
+          </table></div>
         </div>
         <div class="card">
           <h3><span class="t">Log</span><span class="r">tool output</span></h3>
@@ -472,7 +486,7 @@
       <button data-sub="flock">Flock / ALPR</button>
     </div>
     <div class="sub on" data-sub="wardrive"><div class="card"><h3><span class="t">Wardrive &#8212; GPS-tagged Wi-Fi survey</span><span class="r">&#8594; WiGLE CSV</span></h3>
-      <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-start">Start survey</button><button class="btn sm" id="wd-export">Export WiGLE CSV</button><button class="btn sm" id="wd-upload">Upload saved CSV&#8230;</button><span class="chip" id="wd-status">needs a GPS device</span></div>
+      <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-start">Start survey</button><button class="btn sm" id="wd-export">Export WiGLE CSV</button><button class="btn sm" id="wd-upload">Upload CSV to WiGLE&#8230;</button><span class="chip" id="wd-status">live survey unavailable</span></div>
       <div class="row" id="wd-upload-row" hidden style="margin-bottom:10px"><input class="field mono" id="wd-upload-path" placeholder="path to a WiGLE .csv you exported" aria-label="WiGLE CSV path"><button class="btn sm" id="wd-upload-browse" data-native-only hidden>Browse&#8230;</button><button class="btn green sm" id="wd-upload-go">Upload to WiGLE</button><label class="dim" style="font-size:11px;white-space:nowrap"><input type="checkbox" id="wd-upload-donate"> donate to WiGLE</label></div>
       <div class="footnote" id="wd-msg" style="margin:-4px 0 8px;min-height:14px"></div>
       <div class="mapwrap">
@@ -503,7 +517,7 @@
         </div>
         <div class="mapover"><span class="chip" style="background:#2a2109;color:var(--amber)">sample</span><span class="chip">1.8 km</span><span class="chip">42 APs &#183; 6 open</span></div>
       </div>
-      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample track + counts. Live in-browser survey isn&#8217;t wired yet; upload a WiGLE CSV to view a real track. Live tracking is a desktop feature.</div>
+      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample track and counts. Live surveys and recorded-track viewing are not available in this view yet. Upload CSV sends an existing survey to WiGLE.</div>
     </div></div>
     <div class="sub" data-sub="multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3>
       <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-multi-start">Start all</button><span class="chip">merged &#8594; 1 CSV</span><span class="dim" id="wd-multi-msg" style="font-size:11px"></span></div>
@@ -518,7 +532,7 @@
         <div class="maplegend"><div class="li"><span class="dot9" style="background:#a371f7"></span>COM4 track</div><div class="li"><span class="dot9" style="background:#58a6ff"></span>COM7 track</div></div>
         <div class="mapover"><span class="chip" style="background:#2a2109;color:var(--amber)">sample</span></div>
       </div>
-      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample tracks. Live in-browser multi-survey isn&#8217;t wired yet.</div>
+      <div class="footnote" style="margin-top:6px">Illustration &#8212; sample tracks. Live multi-device surveys are not available in this view yet.</div>
     </div></div>
     <div class="sub" data-sub="flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r" id="flock-count">awareness &#183; OSINT</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Awareness map of publicly-visible ALPR cameras, imported from OpenStreetMap (Overpass). Passive OSINT &#8212; CC transmits nothing and drives no device.</div>
@@ -552,7 +566,7 @@
         <div class="footnote" style="margin-top:10px">Every connected serial port keeps its own live terminal. Danger verbs still confirm before sending.</div>
       </div>
       <div id="reform-termpanes">
-        <div class="term termbig"><div class="p">Select a connected port on the left to open its terminal.</div></div>
+        <div class="term termbig" id="reform-term-empty"><div class="p">Select a connected port on the left to open its terminal.</div></div>
       </div>
     </div>
   </section>
