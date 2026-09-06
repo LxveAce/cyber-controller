@@ -44,7 +44,9 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 
 ## ✨ Highlights
 
-**🔥 Flash.** **52 firmware profiles** across 5 flash backends (esptool for ESP32, qFlipper for Flipper Zero, ADB for Android, SD-image for Pi/SBC boards, and the Realtek RTL8720 loader) — a few more (TI CC2652/Sniffle, HackRF/PortaPack, nRF52 DFU, RP2040 UF2) have their flow unit-tested but aren't validated on real silicon yet, so they don't count toward that 5. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress, see the beta caveats) auto-detects the chip (`esptool chip_id` first, never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Offline Firmware Vault with SHA-256 integrity pinning, batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+**🔥 Flash.** **52 firmware profiles** across 5 flash backends (esptool for ESP32, qFlipper for Flipper Zero, ADB for Android, SD-image for Pi/SBC boards, and the Realtek RTL8720 loader) — a few more (TI CC2652/Sniffle, HackRF/PortaPack, nRF52 DFU, RP2040 UF2) have their flow unit-tested but aren't validated on real silicon yet, so they don't count toward that 5. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress, see the beta caveats) auto-detects the chip (`esptool chip_id` first, never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+
+Offline Vault controls are still being connected to the single-window interface. The existing cache supports selected merged images; it cannot store firmware that needs separate bootloader, partition and application files.
 
 **🎮 Control.** A protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **14 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro playback with variable substitution (recording is in the desktop Qt UI; the current single-window UI plays saved macros), and a tamper-evident SHA-256 audit trail over every flash and command.
 
@@ -54,7 +56,9 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 
 ## 🧩 Supported firmware
 
-52 firmware profiles ship in `src/config/profiles/`. Each tracks its **latest upstream release** at flash time and auto-selects the correct per-board binary.
+52 firmware profiles ship in `src/config/profiles/`. These are download and board definitions, not a bundled image library. Depending on the profile, the source is the latest upstream release, a named or pinned build, or a local file. Some entries have no downloadable image yet.
+
+Check the exact board variant before flashing, especially for display, pinout and flash-size differences. Automatic selection starts from the chip family; it cannot identify every board that uses that chip.
 
 > 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)**: a per-firmware walkthrough for every entry below (what to buy, how to build it, how to flash & run it, how to wire it into Cyber Controller, and troubleshooting), each with a downloadable PDF.
 
@@ -124,7 +128,7 @@ The full version-by-version history, down to every fix, hardening pass, and adde
 
 ## 🔌 Supported hardware
 
-Cyber Controller drives whatever these firmwares run on. Coverage by class:
+Available profiles and backends cover these hardware classes. Flashing and live-control support depend on the selected firmware and board:
 
 - **ESP32 family:** ESP32 (WROOM/WROVER/PICO), **ESP32-S2, S3, C3, C6**, and the dual-band Wi-Fi 6 **ESP32-C5** (2.4 + 5 GHz).
 - **ESP8266:** D1 mini, NodeMCU, DSTIKE (Deauther / WiFiDuck).
@@ -133,7 +137,9 @@ Cyber Controller drives whatever these firmwares run on. Coverage by class:
 - **Raspberry Pi:** Pi 5, Pi Zero 2 W and friends, via verified SD-image writing (Pwnagotchi / RaspyJack / Kali).
 - **Qualcomm LTE:** Orbic RC400L hotspot for RayHunter IMSI-catcher detection (installs over the network via the official rayhunter installer; needs a deactivated SIM to capture).
 
-**Popular boards, confirmed:** Lonely Binary ESP32 Gold · Cheap Yellow Display (2.4″/2.8″/3.2″/3.5″; use the resistive `2432S028R`) · M5Stack Cardputer / Cardputer ADV / StickC Plus2 / Stick-S3 · LilyGo T-Deck / T-Deck Plus / T-Embed CC1101 / T-Dongle-S3 · Seeed XIAO ESP32-S3 · Heltec LoRa V3 (915 MHz US) · Waveshare ESP32-C5 · Marauder Mini / Mini v3 · Flipper Zero Wi-Fi Dev Board (ESP32-S2) · Ai-Thinker BW16.
+**Board examples — compatibility and tested operations vary by firmware:** Lonely Binary ESP32 Gold · Cheap Yellow Display (2.4″/2.8″/3.2″/3.5″; use the resistive `2432S028R`) · M5Stack Cardputer / Cardputer ADV / StickC Plus2 / Stick-S3 · LilyGo T-Deck / T-Deck Plus / T-Embed CC1101 / T-Dongle-S3 · Seeed XIAO ESP32-S3 · Heltec LoRa V3 (915 MHz US) · Waveshare ESP32-C5 · Marauder Mini / Mini v3 · Flipper Zero Wi-Fi Dev Board (ESP32-S2) · Ai-Thinker BW16.
+
+The [hardware test matrix](docs/HARDWARE-FIRMWARE-MATRIX.md) records earlier bench results. Listing a board here does not mean every firmware, display variant or operation has been tested on it.
 
 <details>
 <summary><b>Flash-offset reference</b> (the part that bricks boards if you get it wrong)</summary>
@@ -226,7 +232,7 @@ Issues and PRs welcome. Run `python -m pytest` before submitting; the suite cove
 
 ## 🙏 Credits
 
-Cyber Controller flashes, drives, and coordinates firmware and tools it did not write. It builds on the work of many upstream authors, none of whom endorse it. Nothing upstream is vendored here; binaries are fetched from official releases, pinned and SHA-256 verified. Full acknowledgments + licenses in **[CREDITS.md](CREDITS.md)**.
+Cyber Controller flashes, drives, and coordinates firmware and tools it did not write. It builds on the work of many upstream authors, none of whom endorse it. Firmware images are normally downloaded from upstream sources. Profiles with known SHA-256 pins enforce them; verification coverage varies by profile. Bundled tools and dependencies retain their upstream licenses and credits. Full acknowledgments + licenses in **[CREDITS.md](CREDITS.md)**.
 
 A few shout-outs for pointing the way:
 

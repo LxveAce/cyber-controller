@@ -1,8 +1,9 @@
 # Cyber Controller — How-To
 
 Cyber Controller is an all-in-one controller, flasher, logger, and pentest GUI for ESP32 security
-gear and cyberdecks. Everything works **offline**; online features (latest firmware/OS versions) are
-conveniences, never requirements. **Lawful, owner-authorized use only.**
+gear and cyberdecks. No account is required. Firmware and OS downloads need internet; the bundled
+catalogs contain definitions and download links, not an image library. Offline OS flashing needs a
+compatible local image and any verification files needed for it. **Lawful, owner-authorized use only.**
 
 Hover any button or field to see a tooltip explaining what it does. The tabs across the top are:
 
@@ -11,18 +12,31 @@ Write firmware to a connected board (ESP32 Marauder, GhostESP, Bruce, etc.).
 1. Plug in the board; pick its **Port** (Refresh re-scans).
 2. Pick a **Firmware Profile** and, if your board has a screen (CYD/M5/…), the matching **Board /
    variant** (Auto guesses per-chip and can be wrong for display boards).
-3. **Flash**. Use **Firmware Vault → Download to Vault** to cache firmware for offline flashing later.
+3. **Flash**. The current dashboard resolves the configured upstream source and downloads the image.
 4. Optional **Dead Man's Switch**: enable it to weave the anti-forensic wipe into the flash (a setup
    dialog opens first).
 
+**Offline Vault:** the download/cache controls are not connected to the current single-window
+interface yet. The legacy Vault supports selected merged images; it cannot cache firmware that needs
+separate bootloader, partition and application files. Setting a Vault directory does not enable
+offline flashing in the dashboard.
+
 ## Software OS (flash an OS to USB)
-Write a verified bootable operating system to a **USB stick** (separate from board firmware).
-1. Pick an OS — **Tails** (amnesiac/Tor), **Kali** (pentest), **Parrot** (security), or **Arch** (general).
-2. **Check latest** resolves the current version from the official source (or tick **Use bundled
-   version (offline)** to use the version shipped with the app).
-3. Pick the **target USB** (only removable drives are listed; the whole drive is erased) — or **Use
-   local image…** if you already downloaded one.
-4. **Flash OS**. The image is integrity-verified (SHA-256 + OpenPGP signature) before any write.
+Write a bootable operating system to a **USB stick** (separate from board firmware) using the CLI.
+
+1. Run `cyber-controller --list-os` to see the catalog, then choose an ID for `--flash-os <id>` —
+   **Tails**, **Kali**, **Parrot** or **Arch**, for example.
+2. By default, the app tries to resolve the current version online. `--offline` uses the saved
+   catalog version instead; it **does not disable image downloads**. The old Software tab calls this
+   “Use bundled version (offline),” but only the version metadata is bundled.
+3. For a local image, pass `--os-image <path>` and, where applicable, `--os-sig <path>` for its detached
+   signature. The image must match the selected catalog entry/version. Without a local image, the
+   app still needs to download it.
+4. Pick the **target USB** when prompted (only removable drives are listed). Confirm the target
+   carefully: the whole drive is erased.
+5. Review the verification output. Depending on the available files and keys, the app may verify a
+   signature, verify only a checksum, or report the image as unverified. Check the image against its
+   official source before starting; a checksum match alone is not signature verification.
 
 ## Devices
 Connect to and control attached radios/boards: open a serial console, send commands, and watch live
@@ -71,6 +85,11 @@ Manage it from the command line: `--gate-status`, `--set-admin-password`, `--cre
 - Gate flags above.
 
 ## Staying current + offline
-The firmware/OS catalog refreshes automatically (a weekly job updates the bundled versions; the app
-also checks live). With no internet, everything falls back to the bundled catalog and any cached
-images — you can still flash in the field.
+Profiles that track upstream releases and the OS resolver can check versions online. Pinned firmware
+profiles stay on their configured build until the profile changes. A weekly repository job proposes
+updated **OS catalog metadata** on a separate branch; it still needs to be merged and shipped in an
+app update before installed copies receive it.
+
+A version check does not download an offline image library. Firmware Vault update checks cover
+profiles already cached, not the whole catalog. Prepare compatible local images and verification
+files before going offline, and check that the interface you use supports that local-image path.

@@ -9,9 +9,11 @@ hard parts first. This file thanks them by name.
 **None of the projects, people, or organizations listed below endorse, sponsor, or are
 affiliated with Cyber Controller.** Cyber Controller is an independent, self-taught hobby
 project by the author (LxveAce). All firmware, tools, distributions, trademarks, logos,
-and copyrights named here belong to their respective owners. Firmware and OS binaries are
-fetched from each project's own official releases at flash time, pinned and SHA-256
-verified. They are **never vendored, modified, or redistributed by this repository**.
+and copyrights named here belong to their respective owners. Firmware and OS images are normally
+downloaded from their upstream sources rather than bundled with the app. Profiles with known SHA-256
+pins enforce them; signature and checksum coverage varies by image. A locally computed download hash
+alone does not establish upstream authenticity. Bundled tools and dependencies retain their own
+licenses and acknowledgments.
 
 Licenses below were checked against each project's published license metadata where
 possible. Anything that could not be confirmed is marked **`verify:`** rather than
@@ -22,9 +24,9 @@ asserted. If you are the author and a marking is wrong, please tell us (see
 
 ## Firmware projects (flashed / controlled)
 
-These are the upstream firmwares Cyber Controller can flash and/or talk to. Cyber
-Controller pulls each project's official release binaries at flash time; it does not
-build, bundle, or alter them.
+These projects provide firmware that Cyber Controller can flash or communicate with. Profiles may
+use the latest release, a named or pinned build, or a local image. Some entries need a separate local
+build or have no downloadable image yet; a catalog entry is not a bundled firmware binary.
 
 ### ESP32 family (esptool / rtl8720 backends)
 
@@ -128,11 +130,10 @@ Cyber Controller is written in Python and depends on the following open-source l
 
 ## Operating-system images (Software-OS writer)
 
-The Software (OS) tab can write these bootable operating systems to a removable USB drive.
-Each image is downloaded from the project's own official mirror, **SHA-256 + OpenPGP
-integrity-checked**, and written **as-is** by the user. Cyber Controller does **not** host,
-mirror, repackage, or redistribute any of these. It only verifies and writes what the user
-fetches from the upstream project.
+The OS writer can write these bootable operating systems to a removable USB drive. Images come from
+the project's official source or a local file and are written **as-is**. The app reports whether it
+verified a signature, matched only a checksum, or could not verify the image. Cyber Controller does
+**not** host, mirror, repackage or redistribute these OS images.
 
 | OS image | Author / Org | Official source | License / status |
 |----------|-------------|-----------------|------------------|
@@ -183,10 +184,10 @@ and real-device field testing of its community. Named here with thanks:
 - **No endorsement.** None of the projects, authors, or organizations above endorse,
   sponsor, or are affiliated with Cyber Controller. Their inclusion documents
   interoperability, not partnership.
-- **Nothing is vendored or redistributed.** Firmware and OS binaries are fetched from each
-  project's official releases at flash time, version-pinned and **SHA-256 verified** before
-  writing. This repository ships no upstream firmware binaries, no OS images, and no
-  proprietary vendor tools (e.g. Realtek's `upload_image_tool` must be supplied by the user).
+- **Image sources and bundled tools.** Firmware profiles and the OS catalog describe where to get
+  images; they do not include an image library. Known SHA-256 pins are enforced where provided.
+  Bundled tools and dependencies carry their upstream licenses; proprietary tools such as
+  Realtek's `upload_image_tool` must be supplied by the user.
 - **Trademarks & copyrights** belong to their respective owners. Project names, logos, and
   marks are used here only for identification and attribution.
 - **Licenses marked `verify:`** could not be confidently confirmed from published metadata
