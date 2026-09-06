@@ -654,3 +654,94 @@ def test_status_and_result_non_success_has_no_result():
     bundle = reg.status_and_result(jid, "sess:1")
     assert bundle["is_success"] is False and bundle["result"] is None
     assert bundle["snapshot"]["state"] == tj.FAILED
+
+
+# ── on_finish: a per-job finalizer runs EXACTLY once on every terminal path (queue-lifetime cleanup) ──
+
+def test_on_finish_runs_once_on_success():
+    reg = tj.JobRegistry()
+    calls = []
+    jid = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True}, on_finish=lambda: calls.append(1))
+    _wait_terminal(reg, jid, "s")
+    time.sleep(0.02)
+    assert calls == [1]
+
+
+def test_on_finish_runs_once_on_failure():
+    reg = tj.JobRegistry()
+    calls = []
+
+    def worker(emit, should_cancel, begin_commit):
+        raise RuntimeError("boom")
+
+    jid = reg.start("t", "/tools/x", "s", worker, on_finish=lambda: calls.append(1))
+    _wait_terminal(reg, jid, "s")
+    time.sleep(0.02)
+    assert calls == [1]
+
+
+def test_on_finish_runs_on_explicit_cancel():
+    reg = tj.JobRegistry()
+    calls = []
+    started = threading.Event()
+
+    def worker(emit, should_cancel, begin_commit):
+        started.set()
+        while not should_cancel():
+            time.sleep(0.005)
+        begin_commit()          # raises JobCancelled (cancel is pending)
+        return {"ok": True}
+
+    jid = reg.start("t", "/tools/x", "s", worker, on_finish=lambda: calls.append(1))
+    assert started.wait(2.0)
+    reg.cancel(jid, "s")
+    assert _wait_terminal(reg, jid, "s")["state"] == tj.CANCELLED
+    time.sleep(0.02)
+    assert calls == [1]
+
+
+def test_on_finish_runs_on_launch_failure(monkeypatch):
+    reg = tj.JobRegistry()
+    calls = []
+
+    def boom(self):
+        raise RuntimeError("cannot start new thread")
+
+    monkeypatch.setattr(tj.threading.Thread, "start", boom)
+    with pytest.raises(tj.JobLaunchError):
+        reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True}, on_finish=lambda: calls.append(1))
+    assert calls == [1]                         # a launch failure still runs the finalizer
+
+
+def test_on_finish_runs_on_cancel_before_the_worker_runs(monkeypatch):
+    reg = tj.JobRegistry()
+    calls = []
+    monkeypatch.setattr(tj.threading.Thread, "start", lambda self: None)   # don't auto-run the worker
+    jid = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True}, on_finish=lambda: calls.append(1))
+    assert reg.cancel(jid, "s") is True         # cancel lands before the worker executes
+    monkeypatch.undo()
+    reg._run(jid, lambda e, s, b: {"ok": True})  # now drive the run: sees _cancel -> CANCELLED path
+    assert reg.get(jid, "s")["state"] == tj.CANCELLED
+    assert calls == [1]
+
+
+def test_cleanup_failure_is_visible_without_relabelling_success():
+    reg = tj.JobRegistry()
+
+    def bad_finish():
+        raise OSError("release failed and the destination is still reserved")
+
+    jid = reg.start("t", "/tools/x", "s", lambda e, s, b: {"path": "/x"}, on_finish=bad_finish)
+    snap = _wait_terminal(reg, jid, "s")
+    assert snap["state"] == tj.SUCCEEDED and snap["error"] == ""     # committed work is NOT relabelled
+    assert reg.result(jid, "s") == {"path": "/x"}                    # the result is preserved
+    assert any("cleanup" in line for line in snap["log"])           # F1: an owner-visible note appears...
+    assert not any("release failed" in line for line in snap["log"])  # ...without the callback's own text
+
+
+def test_terminal_job_clears_the_spent_finalizer_reference():
+    reg = tj.JobRegistry()
+    jid = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True}, on_finish=lambda: None)
+    _wait_terminal(reg, jid, "s")
+    time.sleep(0.02)
+    assert reg._jobs[jid].on_finish is None   # F2: the spent callback is dropped after its single invocation

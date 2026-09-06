@@ -11,6 +11,9 @@ cross-resource path, end to end.
 from __future__ import annotations
 
 import logging
+import threading
+from collections import deque
+from datetime import datetime, timezone
 from typing import Any, Callable
 
 from src.core import oui
@@ -45,6 +48,13 @@ class TargetIngestor:
         # can tap fields the pool Target drops. (The Target keeps mac/name/rssi and reads the mac
         # key, so LxveOS BLE adverts, keyed addr, with tracker/company, never reach it.)
         self._event_observers: list[Callable[[Any, str], None]] = []
+        # Addressless BLE output is observation history, not a Target identity.
+        # Keep only the latest 200 records in memory; never persist raw serial data.
+        self._ble_lock = threading.Lock()
+        self._ble_history: deque[dict] = deque(maxlen=200)
+        self._ble_sessions: dict[str, tuple[int, int, Any]] = {}
+        self._ble_epoch = 0
+        self._ble_sequence = 0
 
     def attach(self, conn: Any, protocol: Any) -> Callable[[str], None]:
         """Register an on_line handler on *conn* that parses each line with *protocol* and adds any
@@ -55,12 +65,20 @@ class TargetIngestor:
         # a devices-tab disconnect, so open_connection returns the SAME object and a second attach would
         # stack a duplicate on_line -> every serial line parsed and pooled twice. Drop any prior first.
         prev = self._attached.get(port)
-        remover = getattr(conn, "remove_line_callback", None)
+        with self._ble_lock:
+            previous_session = self._ble_sessions.get(port)
+        previous_conn = previous_session[2] if previous_session else conn
+        remover = getattr(previous_conn, "remove_line_callback", None)
         if prev is not None and callable(remover):
             try:
                 remover(prev)
             except Exception:
                 pass
+
+        with self._ble_lock:
+            self._ble_epoch += 1
+            connection_epoch = self._ble_epoch
+            self._ble_sessions[port] = (connection_epoch, connection_epoch, conn)
 
         def on_line(line: str) -> None:
             try:
@@ -77,6 +95,9 @@ class TargetIngestor:
             # update is logged and swallowed instead of killing the callback (_apply_device_info
             # keeps its own inner guards too).
             try:
+                if ev.event_type == "ble_observation":
+                    if not self._retain_ble_observation(ev, port, connection_epoch):
+                        return
                 self._route(ev, port)
             except Exception:
                 log.exception("TargetIngestor: routing error on %s", port)
@@ -84,11 +105,61 @@ class TargetIngestor:
             # and swallowed, observers still fire; an observer error is isolated too. Both run.
             self._notify_observers(ev, port)
 
-        conn.on_line(on_line)
+        try:
+            conn.on_line(on_line)
+        except BaseException:
+            with self._ble_lock:
+                current = self._ble_sessions.get(port)
+                if current and current[0] == connection_epoch:
+                    self._ble_sessions.pop(port, None)
+            raise
         self._attached[port] = on_line
         self._parsers[port] = protocol  # so send_to_port can reset scan ordinals on a list-clear
         log.info("TargetIngestor attached to %s via %s", port, type(protocol).__name__)
         return on_line
+
+    def ble_observations(self) -> list[dict]:
+        """Detached oldest-to-newest snapshot of the latest 200 BLE observations.
+
+        Rows are reports, not unique devices: labels and reported list indices do
+        not convey an address or selection authority. Epochs are local provenance
+        for a connection and observed sent scan/list-clear/reboot command, not proof
+        that firmware cleared its list or that two sightings share an identity.
+        History is memory-only and bounded; explicit-address events still use the
+        existing TargetPool. No raw lines, commands or credentials are retained.
+        """
+        with self._ble_lock:
+            return [dict(row) for row in self._ble_history]
+
+    def _retain_ble_observation(self, ev: Any, port: str, connection_epoch: int) -> bool:
+        data = getattr(ev, "data", None)
+        if type(data) is not dict or type(port) is not str or len(port) > 512:
+            return False
+        label, rssi = data.get("label"), data.get("rssi")
+        index, record_format = data.get("reported_index"), data.get("format")
+        truncated = data.get("label_truncated", False)
+        if (type(label) is not str or not label or len(label) > 256
+                or type(rssi) is not int or not -128 <= rssi <= 127
+                or type(truncated) is not bool or data.get("addressable") is not False
+                or type(record_format) is not str or record_format not in ("live", "list")
+                or (index is not None and (type(index) is not int or not 0 <= index <= 999999999))
+                or (record_format == "live" and index is not None)
+                or (record_format == "list" and index is None)):
+            return False
+        with self._ble_lock:
+            current = self._ble_sessions.get(port)
+            if current is None or current[0] != connection_epoch:
+                return False  # A retained callback from an earlier connection is stale.
+            self._ble_sequence += 1
+            self._ble_history.append({
+                "observation_id": str(self._ble_sequence),
+                "label": label, "rssi": rssi, "reported_index": index,
+                "format": record_format, "label_truncated": truncated,
+                "addressable": False, "device_source": port,
+                "connection_epoch": str(current[0]), "scan_epoch": str(current[1]),
+                "observed_at": datetime.now(timezone.utc).isoformat(),
+            })
+        return True
 
     def add_event_observer(self, cb: "Callable[[Any, str], None]") -> None:
         """Register *cb*, called cb(parsed_event, port) for every parsed serial event after it is
@@ -117,6 +188,11 @@ class TargetIngestor:
     def detach(self, conn: Any) -> None:
         """Best-effort removal of the on_line handler for *conn*."""
         port = getattr(conn, "port", "?")
+        with self._ble_lock:
+            current = self._ble_sessions.get(port)
+            if current is not None and current[2] is not conn:
+                return  # A delayed detach for an old connection must not detach its replacement.
+            self._ble_sessions.pop(port, None)
         cb = self._attached.pop(port, None)
         self._parsers.pop(port, None)  # drop the per-port parser handle alongside its callback
         # Drop the port's pending pcap-attach target too, so a pcap written by the NEXT device to
@@ -150,6 +226,12 @@ class TargetIngestor:
             return
         norm = " ".join(command.strip().lower().split())
         is_reboot = norm == "reboot" or norm.startswith("reboot ")
+        if is_reboot or norm == "sniffbt" or norm.startswith("sniffbt ") or norm == "clearlist -b":
+            with self._ble_lock:
+                current = self._ble_sessions.get(port)
+                if current is not None:
+                    self._ble_epoch += 1
+                    self._ble_sessions[port] = (current[0], self._ble_epoch, current[2])
         if is_reboot or norm.startswith("clearlist -a"):
             fn = getattr(parser, "reset_scan_index", None)
             if callable(fn):

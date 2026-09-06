@@ -22,6 +22,7 @@ import os
 import shutil
 import threading
 import uuid
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -65,6 +66,133 @@ def _lock_for_dest(dest_dir: str) -> threading.Lock:
             lock = threading.Lock()
             _dest_locks[key] = lock
         return lock
+
+
+# ── destination admission: ONE process-wide reservation per canonical destination ─────────────────────
+# The per-dest transaction lock above only serializes overlapping extract_pack windows; it does NOT stop a
+# synchronous enable from publishing while an async job merely holds a reservation (they take different
+# locks). This admission gate is the shared arbitration EVERY mutation entry point (sync enable, sync
+# install, the async job worker, and the Qt _ToolEnableWorker) holds for the WHOLE operation. A held
+# reservation makes a competing acquire raise DestinationBusy; the route layer maps that to 409.
+
+class DestinationBusy(RuntimeError):
+    """Raised when a destination is already reserved, or a supplied lease is not the active reservation."""
+
+
+@dataclass(frozen=True)
+class _Lease:
+    """An opaque, operation-specific reservation of one canonical destination, minted only by
+    :func:`acquire_destination`. NOT the authenticated job owner — purely internal.
+
+    ``dest`` is the CAPTURED canonical map key (``normcase(realpath)``); every later map operation uses this
+    stored key, never a re-resolution of the visible path. ``path`` is the CAPTURED resolved real path
+    (``realpath``): the operation mutates, probes and cleans up THIS pinned path, not the caller's visible
+    spelling (A2), so replacing a junction mid-operation can't leave the reservation on one directory while
+    the bytes land on another. ``token`` + ``epoch`` identify this exact reservation."""
+    dest: str
+    path: str
+    token: str
+    epoch: int
+
+
+_admissions: dict[str, _Lease] = {}       # captured key -> active lease
+_borrows: dict[str, int] = {}             # captured key -> live borrow count
+_pending_release: set[str] = set()        # keys whose owner released while borrowers were still active
+_admissions_guard = threading.Lock()
+_admission_epoch = 0
+
+
+def _minted_lease(lease: object) -> bool:
+    """A4: True only for a genuinely minted lease with EXACT built-in field types. Checked before any
+    protected lookup or comparison, so a forged ``_Lease`` carrying equality/hash-overriding dest/token/epoch
+    objects can't release or borrow a real reservation (and no foreign ``__eq__``/``__hash__`` runs under the
+    map lock). Identity (``held is lease``) is the actual authority; this guards the dict-key + type surface."""
+    return (type(lease) is _Lease and type(lease.dest) is str and type(lease.path) is str
+            and type(lease.token) is str and type(lease.epoch) is int)
+
+
+def acquire_destination(dest_dir: str) -> _Lease:
+    """Reserve *dest_dir* for one operation, capturing both its resolved real path (for the operation) and
+    its canonical map key (for the reservation). Raises :class:`DestinationBusy` if a different operation
+    already holds it. Only dict work happens under the guard (never I/O/callbacks)."""
+    global _admission_epoch
+    resolved = os.path.realpath(dest_dir)
+    key = os.path.normcase(resolved)
+    with _admissions_guard:
+        if key in _admissions:
+            raise DestinationBusy(f"another install is already using {dest_dir}")
+        _admission_epoch += 1
+        lease = _Lease(key, resolved, uuid.uuid4().hex, _admission_epoch)
+        _admissions[key] = lease
+        return lease
+
+
+def release_destination(lease: _Lease) -> bool:
+    """Release *lease*'s reservation, keyed by the lease's OWN captured ``dest`` (A2 — never re-resolves the
+    visible path). Removes it only when the currently held lease IS this exact object (A4 identity), so a
+    stale/foreign/forged release is a no-op. If borrowers are still active the removal is DEFERRED until the
+    last borrow exits (A3), so cancellation/finalizer cleanup can't clear admission out from under a running
+    borrower. Total (never raises — it runs in ``finally`` blocks): a forged/foreign/stale lease is a no-op
+    returning False. Returns whether it removed the reservation now."""
+    if not _minted_lease(lease):
+        return False
+    with _admissions_guard:
+        if _admissions.get(lease.dest) is not lease:
+            return False
+        if _borrows.get(lease.dest, 0) > 0:
+            _pending_release.add(lease.dest)
+            return False
+        del _admissions[lease.dest]
+        _pending_release.discard(lease.dest)
+        return True
+
+
+@contextmanager
+def borrow_destination(lease: _Lease):
+    """Scoped borrow of an owner's active reservation (A3): a nested public entry point runs under the
+    owner's lease without acquiring twice, and NEVER releases it. Raises :class:`DestinationBusy` if *lease*
+    is not the current active reservation. While any borrow is live the owner's release is deferred."""
+    if not _minted_lease(lease):
+        raise DestinationBusy("invalid destination lease")
+    with _admissions_guard:
+        if _admissions.get(lease.dest) is not lease:
+            raise DestinationBusy("borrowed reservation is not the active one")
+        _borrows[lease.dest] = _borrows.get(lease.dest, 0) + 1
+    try:
+        yield lease
+    finally:
+        with _admissions_guard:
+            remaining = _borrows.get(lease.dest, 0) - 1
+            if remaining > 0:
+                _borrows[lease.dest] = remaining
+            else:
+                _borrows.pop(lease.dest, None)
+                # honor an owner release that was deferred while this borrow was live
+                if lease.dest in _pending_release and _admissions.get(lease.dest) is lease:
+                    del _admissions[lease.dest]
+                _pending_release.discard(lease.dest)
+
+
+@contextmanager
+def _admission(dest_dir: str, lease: Optional[_Lease]):
+    """Hold the destination admission for a public backend entry point, yielding the active lease. Acquire +
+    release our own reservation when *lease* is None, else borrow the caller's (never releasing it).
+
+    A5: on the borrow path the requested *dest_dir* is BOUND to the lease — the lease must be for exactly this
+    canonical destination, else :class:`DestinationBusy`. This stops a genuine lease for A from being used to
+    mutate a different destination B (which may have its own owner). Callers must operate on the yielded
+    lease's ``.path`` (the pinned resolved destination), never their own visible spelling."""
+    if lease is None:
+        own = acquire_destination(dest_dir)
+        try:
+            yield own
+        finally:
+            release_destination(own)
+    else:
+        if not _minted_lease(lease) or os.path.normcase(os.path.realpath(dest_dir)) != lease.dest:
+            raise DestinationBusy("lease does not match the requested destination")
+        with borrow_destination(lease) as borrowed:
+            yield borrowed
 
 
 def packs_dir() -> str:
@@ -155,8 +283,24 @@ def _extract_verified(pack: ToolPack, into_dir: str, log: Line,
 
 def extract_pack(pack: ToolPack, dest_dir: str, on_line: Optional[Line] = None, *,
                  should_cancel: Optional[ShouldCancel] = None,
-                 begin_commit: Optional[BeginCommit] = None) -> str:
-    """Transactionally publish *pack* at *dest_dir* and return the primary-exe path.
+                 begin_commit: Optional[BeginCommit] = None,
+                 lease: Optional[_Lease] = None) -> str:
+    """Transactionally publish *pack* at *dest_dir* and return the primary-exe path (public entry point).
+
+    Holds the shared destination admission for the whole call: acquires its own reservation, or — when
+    *lease* is passed — validates and BORROWS a reservation an outer operation already owns (a borrow never
+    releases the owner's lease). Raises :class:`DestinationBusy` if the destination is already reserved by a
+    different operation. The transaction itself is :func:`_extract_pack_transaction`, run against the lease's
+    pinned resolved path (A2)."""
+    with _admission(dest_dir, lease) as active:
+        return _extract_pack_transaction(pack, active.path, on_line,
+                                         should_cancel=should_cancel, begin_commit=begin_commit)
+
+
+def _extract_pack_transaction(pack: ToolPack, dest_dir: str, on_line: Optional[Line] = None, *,
+                              should_cancel: Optional[ShouldCancel] = None,
+                              begin_commit: Optional[BeginCommit] = None) -> str:
+    """The staged + atomically-promoted publish, WITHOUT admission (the caller holds the reservation).
 
     Decrypt + verify EVERY manifest member and confirm the primary exe into a UNIQUE staging dir — a
     sibling of *dest_dir* (same filesystem, for an atomic rename) that is NOT a resolver search path, so
@@ -270,30 +414,41 @@ class EnableOutcome:
 
 def enable_bundled_result(pack: ToolPack, on_line: Optional[Line] = None, *,
                           should_cancel: Optional[ShouldCancel] = None,
-                          begin_commit: Optional[BeginCommit] = None) -> EnableOutcome:
+                          begin_commit: Optional[BeginCommit] = None,
+                          lease: Optional[_Lease] = None) -> EnableOutcome:
     """Transactionally publish *pack* into ``enable_dir()/<tool>/`` and return a typed :class:`EnableOutcome`.
 
     Same transaction as :func:`extract_pack` (staged + atomically promoted; a failed/cancelled enable leaves
     any prior install intact and exposes no partial tree). ``begin_commit`` is threaded to the publish
     boundary. A pre-commit cancellation is reported as ``cancelled``; any extraction error or a Defender
-    block is ``failed`` — never a fake success. The caller MUST have already Defender-excluded
-    :func:`enable_dir`."""
+    block is ``failed`` — never a fake success.
+
+    Holds the destination admission across the WHOLE operation, including the post-install probe: acquires
+    its own reservation, or BORROWS *lease* when an outer operation (the async job) already owns it. Raises
+    :class:`DestinationBusy` if the destination is reserved by another operation. The caller MUST have
+    already Defender-excluded :func:`enable_dir`."""
     from . import defender
     log: Line = on_line or (lambda *_a: None)
     dest = os.path.join(enable_dir(), pack.tool)
-    try:
-        exe = extract_pack(pack, dest, log, should_cancel=should_cancel, begin_commit=begin_commit)
-    except ToolCancelled as exc:
-        return EnableOutcome("cancelled", str(exc))
-    except Exception as exc:  # noqa: BLE001
-        return EnableOutcome("failed", f"extract failed: {exc}")
-    if not os.path.isfile(exe):
-        return EnableOutcome("failed", "extracted, but the tool binary is missing — Windows Defender likely "
-                             "quarantined it. Add the exclusion (see the notice) for this folder and try again.")
-    if defender.is_windows() and not defender.exe_runs(exe):
-        return EnableOutcome("failed", "extracted, but the tool won't launch — Defender is still blocking it. "
-                             "Make sure the exclusion covers this folder, then try again.")
-    return EnableOutcome("succeeded", f"{pack.tool} enabled: {exe}", exe=exe, verification_method="sha256")
+    # Hold admission (own or borrowed) across BOTH the transaction and the post-install probe, and operate on
+    # the lease's pinned resolved path (A2). The inner extract_pack borrows this same lease (A5-bound to that
+    # path) so it doesn't acquire twice.
+    with _admission(dest, lease) as active:
+        try:
+            exe = extract_pack(pack, active.path, log, should_cancel=should_cancel,
+                               begin_commit=begin_commit, lease=active)
+        except ToolCancelled as exc:
+            return EnableOutcome("cancelled", str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return EnableOutcome("failed", f"extract failed: {exc}")
+        if not os.path.isfile(exe):
+            return EnableOutcome("failed", "extracted, but the tool binary is missing — Windows Defender "
+                                 "likely quarantined it. Add the exclusion (see the notice) for this folder "
+                                 "and try again.")
+        if defender.is_windows() and not defender.exe_runs(exe):
+            return EnableOutcome("failed", "extracted, but the tool won't launch — Defender is still blocking "
+                                 "it. Make sure the exclusion covers this folder, then try again.")
+        return EnableOutcome("succeeded", f"{pack.tool} enabled: {exe}", exe=exe, verification_method="sha256")
 
 
 def enable_bundled(pack: ToolPack, on_line: Optional[Line] = None, *,

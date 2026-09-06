@@ -57,6 +57,11 @@ _RE_PROBE = re.compile(r"Probe\s+(?:request|response)", re.IGNORECASE)
 _RE_BLE = re.compile(
     r"BLE:\s*([\da-fA-F:]{17})\s+Name:\s*(.+?)\s+RSSI:\s*(-?\d+)",
 )
+# Marauder v1.15.1 (91724fd), WiFiScan.cpp and CommandLine.cpp: general BLE
+# scan/list output reports a name OR address in one field, never both. Even a
+# MAC-shaped label may be an advertised name, so it cannot identify a target.
+_RE_BLE_LIVE_LABEL = re.compile(r"^(-?[0-9]{1,3})[ \t]+Device:[ \t]*")
+_RE_BLE_LIST_LABEL = re.compile(r"^\[([0-9]{1,9})\]\[RSSI:(-?[0-9]{1,3})\][ \t]*")
 _RE_KARMA = re.compile(r"Karma\s+(?:AP|attack)", re.IGNORECASE)
 _RE_CHANNEL = re.compile(r"(?:Set|Changed)\s+channel\s+(\d+)", re.IGNORECASE)
 _RE_STATUS = re.compile(r"^>\s*(.+)", re.MULTILINE)
@@ -130,6 +135,26 @@ class MarauderProtocol(BaseProtocol):
         line = line.strip()
         if not line:
             return None
+
+        # Recognize the outer record before searching its untrusted label for AP,
+        # client or capture text. These observations carry no actionable address.
+        live = _RE_BLE_LIVE_LABEL.match(line)
+        listed = None if live else _RE_BLE_LIST_LABEL.match(line)
+        if live or listed:
+            match = live or listed
+            label = line[match.end():].strip()
+            return ParsedEvent(
+                event_type="ble_observation",
+                data={
+                    "label": label[:256],
+                    "rssi": int(live.group(1) if live else listed.group(2)),
+                    "reported_index": None if live else int(listed.group(1)),
+                    "format": "live" if live else "list",
+                    "label_truncated": len(label) > 256,
+                    "addressable": False,
+                },
+                raw=line,
+            )
 
         # AP discovered — legacy single-line form (kept for back-compat / other tools).
         # _RE_AP.search() scans mid-line, and a BLE device's advertised Name (printed verbatim

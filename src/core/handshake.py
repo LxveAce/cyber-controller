@@ -32,6 +32,14 @@ log = logging.getLogger(__name__)
 DEFAULT_PROBE_COMMANDS = ("help", "status")
 
 
+def _safe_probe_log(level: int, message: str, *args: object) -> None:
+    """Keep diagnostics from changing an already-established probe outcome."""
+    try:
+        log.log(level, message, *args)
+    except Exception:
+        pass
+
+
 @dataclass
 class HandshakeResult:
     """Outcome of a probe. ``health`` is the same vocabulary as ``Device.health``."""
@@ -143,15 +151,28 @@ def _probe_meshtastic_stream(conn, *, timeout: float = 1.2) -> bool:
     ports never reach here (the connect probe skips them), so this inherits that safety; it only runs for a
     device the text probe left unidentified.
     """
-    writer = getattr(conn, "write_bytes", None)
-    on_bytes = getattr(conn, "on_bytes", None)
-    remove_bytes = getattr(conn, "remove_byte_callback", None)
-    if writer is None or on_bytes is None or remove_bytes is None:
-        return False
-    from src.protocols import meshtastic_proto as mp
-    from src.protocols.stream_framer import StreamFramer
+    try:
+        receipt_writer = getattr(conn, "write_bytes_receipt", None)
+        # Do not inspect an obsolete adapter property when the typed writer is usable; a hostile
+        # legacy descriptor must not disable the modern one-attempt path.
+        legacy_writer = (
+            getattr(conn, "write_bytes", None) if receipt_writer is None else None
+        )
+        on_bytes = getattr(conn, "on_bytes", None)
+        remove_bytes = getattr(conn, "remove_byte_callback", None)
+        prev_raw = getattr(conn, "raw", False)
+        from src.protocols import meshtastic_proto as mp
+        from src.protocols.stream_framer import StreamFramer
 
-    framer = StreamFramer()
+        framer = StreamFramer()
+    except Exception:  # noqa: BLE001 -- a probe must never raise
+        return False
+    if (
+        (receipt_writer is None and legacy_writer is None)
+        or on_bytes is None
+        or remove_bytes is None
+    ):
+        return False
     frames: list[bytes] = []
 
     def _collect(data: bytes) -> None:
@@ -160,27 +181,59 @@ def _probe_meshtastic_stream(conn, *, timeout: float = 1.2) -> bool:
         except Exception:  # noqa: BLE001
             pass
 
-    prev_raw = getattr(conn, "raw", False)
+    def _cleanup_probe(*, preserve_active_control: bool) -> None:
+        first_control: BaseException | None = None
+        try:
+            conn.raw = prev_raw
+        except Exception:  # noqa: BLE001 -- best-effort adapter cleanup
+            pass
+        except BaseException as cleanup_exc:
+            if not preserve_active_control:
+                first_control = cleanup_exc
+        try:
+            remove_bytes(_collect)
+        except Exception:  # noqa: BLE001 -- best-effort adapter cleanup
+            pass
+        except BaseException as cleanup_exc:
+            if not preserve_active_control and first_control is None:
+                first_control = cleanup_exc
+        if first_control is not None:
+            raise first_control
+
     config_id = 0x63636363
     try:
         on_bytes(_collect)
         conn.raw = True
-        writer(StreamFramer.frame(mp.encode_want_config(config_id)))
+        payload = StreamFramer.frame(mp.encode_want_config(config_id))
+        try:
+            if receipt_writer is not None:
+                if not callable(receipt_writer):
+                    raise TypeError("receipt writer is not callable")
+                receipt_writer(payload)
+            else:
+                if not callable(legacy_writer):
+                    raise TypeError("legacy writer is not callable")
+                legacy_writer(payload)
+        except Exception:  # noqa: BLE001 -- bytes may be in flight; observe once, never replay
+            _safe_probe_log(
+                logging.DEBUG,
+                "Meshtastic probe write failed; observing without replay",
+            )
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline and not _is_meshtastic_reply(frames, config_id):
             time.sleep(0.05)
     except Exception:  # noqa: BLE001 — a probe must never raise
+        _cleanup_probe(preserve_active_control=False)
         return False
-    finally:
-        try:
-            conn.raw = prev_raw
-        except Exception:  # noqa: BLE001
-            pass
-        try:
-            remove_bytes(_collect)
-        except Exception:  # noqa: BLE001
-            pass
-    return _is_meshtastic_reply(frames, config_id)
+    except BaseException:
+        _cleanup_probe(preserve_active_control=True)
+        raise
+    else:
+        _cleanup_probe(preserve_active_control=False)
+    try:
+        return _is_meshtastic_reply(frames, config_id)
+    except Exception:  # noqa: BLE001 -- final classification is also best-effort
+        return False
 
 
 def _is_meshtastic_reply(frames, config_id: int) -> bool:
@@ -191,17 +244,103 @@ def _is_meshtastic_reply(frames, config_id: int) -> bool:
     never sent: node_info / channel / a text packet (fields 4/10/2, impossible to echo from our field-3
     frame), a config_complete_id that echoes OUR id (field 7), or a my_info carrying a REAL my_node_num
     (field 3 as a MyNodeInfo sub-message, not our reflected varint)."""
-    from src.protocols import meshtastic_proto as mp
+    try:
+        from src.protocols import meshtastic_proto as mp
+    except Exception:  # noqa: BLE001 -- malformed/optional protocol support is not fatal
+        return False
 
     for f in frames:
-        res = mp.decode_fromradio(f)
-        if res.kind in ("node_info", "channel", "text"):
-            return True
-        if res.kind == "config_complete" and res.config_complete_id == config_id:
-            return True
-        if res.kind == "my_info" and res.my_node_num is not None:
-            return True
+        try:
+            res = mp.decode_fromradio(f)
+            if res.kind in ("node_info", "channel", "text"):
+                return True
+            if res.kind == "config_complete" and res.config_complete_id == config_id:
+                return True
+            if res.kind == "my_info" and res.my_node_num is not None:
+                return True
+        except Exception:  # noqa: BLE001 -- hostile/malformed frames are ignored
+            continue
     return False
+
+
+def _probe_write_completed(conn, command: str) -> bool:
+    """Make one probe-write attempt and report only host-complete delivery.
+
+    Newer connections expose ``write_receipt`` returning the canonical
+    ``WriteReceipt``. Alternate adapters must normalize into that contract;
+    a disposition label alone is not evidence of completed host delivery.
+    Handshake probing must not replay either failure: even a command that was
+    definitely not written can become unsafe to retry after the connection's
+    state changes.  Legacy connections retain their historical contract, where
+    a normally-returning ``write`` is the only available success signal.
+
+    This helper deliberately logs neither the command nor exception details.
+    Probe commands are currently fixed, but keeping transport diagnostics
+    payload-free prevents future probe additions from becoming a log leak.
+    """
+    try:
+        receipt_writer = getattr(conn, "write_receipt", None)
+    except Exception:  # noqa: BLE001 -- transport adapters are best-effort here
+        _safe_probe_log(
+            logging.DEBUG,
+            "handshake probe transport lookup failed; stopping retries",
+        )
+        return False
+
+    if receipt_writer is not None:
+        if not callable(receipt_writer):
+            _safe_probe_log(
+                logging.DEBUG,
+                "handshake probe receipt writer is unavailable; stopping retries",
+            )
+            return False
+        try:
+            receipt = receipt_writer(command)
+        except Exception:  # noqa: BLE001 -- outcome may be uncertain; never replay
+            _safe_probe_log(
+                logging.DEBUG,
+                "handshake probe receipt write failed; stopping retries",
+            )
+            return False
+
+        try:
+            # Import only for typed adapters; legacy-only probing keeps its existing optional
+            # dependency behavior. These probes send nonempty text, so an empty-operation receipt
+            # cannot authorize another attempt.
+            from .serial_handler import WriteDisposition, WriteReceipt
+
+            host_write_complete = (
+                type(receipt) is WriteReceipt
+                and receipt.disposition is WriteDisposition.HOST_WRITE_COMPLETE
+                and type(receipt.bytes_requested) is int
+                and receipt.bytes_requested > 0
+                and type(receipt.bytes_reported) is int
+                and receipt.bytes_reported == receipt.bytes_requested
+                and receipt.safe_error_code is None
+            )
+        except Exception:  # noqa: BLE001 -- malformed receipts fail closed
+            _safe_probe_log(
+                logging.DEBUG,
+                "handshake probe receipt was unreadable; stopping retries",
+            )
+            return False
+        if host_write_complete:
+            return True
+        _safe_probe_log(
+            logging.DEBUG,
+            "handshake probe write was not host-complete; stopping retries",
+        )
+        return False
+
+    try:
+        conn.write(command)
+    except Exception:  # noqa: BLE001 -- legacy failures may follow an accepted write
+        _safe_probe_log(
+            logging.DEBUG,
+            "handshake probe legacy write failed; stopping retries",
+        )
+        return False
+    return True
 
 
 def probe_device(conn, device, *, timeout: float = 0.8, settle: float = 0.15) -> HandshakeResult:
@@ -219,8 +358,23 @@ def probe_device(conn, device, *, timeout: float = 0.8, settle: float = 0.15) ->
     try:
         conn.on_line(cb)
     except Exception:  # noqa: BLE001 — can't observe the stream, so we can't probe; leave health as-is
+        # Some adapters append before their registration hook raises. Mirror the raw-probe cleanup
+        # policy so that partial registration cannot accumulate a dead callback.
+        try:
+            conn.remove_line_callback(cb)
+        except Exception:  # noqa: BLE001 -- best-effort adapter cleanup
+            pass
         return HandshakeResult(health=getattr(device, "health", "unknown"))
+    except BaseException:
+        # Preserve control-flow exceptions, but first undo an adapter that appended the callback
+        # before raising. Cleanup failures must not replace the original interruption.
+        try:
+            conn.remove_line_callback(cb)
+        except BaseException:
+            pass
+        raise
 
+    write_failed = False
     try:
         # Send the probe command(s), then wait for a reply. A slow-booting firmware — Marauder on a CYD does
         # its display + touch init before the serial CLI answers — can miss a single probe, so re-send a
@@ -230,18 +384,37 @@ def probe_device(conn, device, *, timeout: float = 0.8, settle: float = 0.15) ->
         cmds = probe_commands_for(device)
         for _attempt in range(3):
             for cmd in cmds:
-                try:
-                    conn.write(cmd)
-                except Exception:  # noqa: BLE001
-                    log.debug("probe write %r failed", cmd, exc_info=True)
+                if not _probe_write_completed(conn, cmd):
+                    write_failed = True
+                    break
+            # Even an uncertain result may have placed bytes on the wire.  Observe the already-
+            # registered reply channel once, but never replay the command or fall through to a
+            # different probe.  A definitely-not-written outcome pays the same small bounded wait
+            # so this control path never has to infer delivery from an error subtype.
             _wait_for_reply(lines, timeout=timeout, settle=settle)
-            if lines:
+            if lines or write_failed:
                 break
             time.sleep(0.5)  # give a still-booting board a moment, then re-probe
-    finally:
+    except Exception:
+        # Preserve an ordinary body failure unless cleanup raises control flow. As on the raw probe,
+        # KeyboardInterrupt/SystemExit from otherwise-uncontended cleanup must remain observable.
         try:
             conn.remove_line_callback(cb)
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001 -- preserve the active ordinary failure
+            pass
+        raise
+    except BaseException:
+        # Cleanup must not replace a control-flow exception raised by the typed writer, wait hook,
+        # or observer. An adapter may itself use hostile cleanup hooks.
+        try:
+            conn.remove_line_callback(cb)
+        except BaseException:
+            pass
+        raise
+    else:
+        try:
+            conn.remove_line_callback(cb)
+        except Exception:  # noqa: BLE001 -- ordinary best-effort cleanup behavior is unchanged
             pass
 
     # Identify the firmware from what it printed, BEFORE classifying — so an unknown board gets its real
@@ -269,7 +442,11 @@ def probe_device(conn, device, *, timeout: float = 0.8, settle: float = 0.15) ->
     # A running Meshtastic node has no text tell, so the text probe above found nothing. Ask the StreamAPI
     # directly — a single framed want_config draws a valid FromRadio only from a Meshtastic node. Same
     # banner-not-firmware handling as above, for the same on_device_changed reason.
-    if not _has_known_firmware(device) and _probe_meshtastic_stream(conn):
+    if (
+        not write_failed
+        and not _has_known_firmware(device)
+        and _probe_meshtastic_stream(conn)
+    ):
         device.health = "no-cli"
         device.fw_banner = "meshtastic/firmware (StreamAPI)"
         return HandshakeResult(health="no-cli", banner=device.fw_banner)
@@ -278,8 +455,14 @@ def probe_device(conn, device, *, timeout: float = 0.8, settle: float = 0.15) ->
     vocab = learn_vocabulary(lines, device)
     device.health = health
     device.fw_banner = banner
-    log.info("handshake %s: %s (banner=%r, %d live commands)",
-             getattr(device, "port", "?"), health, banner, len(vocab))
+    _safe_probe_log(
+        logging.INFO,
+        "handshake %s: %s (banner=%r, %d live commands)",
+        getattr(device, "port", "?"),
+        health,
+        banner,
+        len(vocab),
+    )
     return HandshakeResult(health=health, banner=banner, live_commands=vocab, lines=tuple(lines))
 
 

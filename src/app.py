@@ -215,8 +215,9 @@ def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None,
         # see nothing. Open the default browser at the server URL once it's had a moment to start.
         _open_browser_when_ready(host, port)
         return launch_web(dm, fe, bus, pool, host=host, port=port, audit=audit)
-    except ImportError:
-        log.error("Flask is not installed.  pip install cyber-controller[web]")
+    except ImportError as exc:
+        log.exception("Browser UI startup import failed (module: %s)",
+                      exc.name or "unspecified; see traceback")
         return 1
 
 
@@ -245,13 +246,14 @@ def _launch_desktop(dm, fe, bus, pool, vault=None, health=None, macro=None, audi
                 return rc
             log.warning("The system-webview shell did not start (rc=%s)", rc)
         except Exception as exc:  # noqa: BLE001 — any backend failure should fall back, not crash
-            log.warning("The system-webview shell failed (%s)", exc)
+            log.warning("The system-webview shell failed (%s): %s",
+                        type(exc).__name__, exc, exc_info=True)
     else:
         log.info("pywebview is not installed; trying the QtWebEngine desktop window")
 
     if shell == "pywebview":
-        log.error("CC_DESKTOP_SHELL=pywebview but the system webview is unavailable. "
-                  "Install it (pip install pywebview; on Linux also WebKit2GTK), or run --ui web.")
+        log.error("The selected pywebview shell could not start; see the preceding diagnostic. "
+                  "Run --ui web to try the browser interface.")
         return 1
 
     rc = _launch_desktop_qt(dm, fe, bus, pool, vault, health, macro, audit)
@@ -272,8 +274,9 @@ def _launch_desktop_qt(dm, fe, bus, pool, vault=None, health=None, macro=None, a
     try:
         from src.ui.web.desktop_qt import launch_desktop_qt
         return launch_desktop_qt(dm, fe, bus, pool, audit=audit)
-    except ImportError:
-        log.error("Neither pywebview nor PyQtWebEngine is installed. pip install pywebview")
+    except ImportError as exc:
+        log.exception("Qt desktop UI startup import failed (module: %s)",
+                      exc.name or "unspecified; see traceback")
         return 1
 
 
@@ -487,6 +490,14 @@ def main(argv: list[str] | None = None) -> int:
         print("Cyber Controller is already running.", file=sys.stderr)
         return 1
 
+    # Explicit --ui modes skip the chooser, so dismiss the extraction overlay here before
+    # either the chooser or an access-gate dialog can be covered by its always-on-top window.
+    try:
+        import pyi_splash
+        pyi_splash.close()
+    except Exception:
+        pass  # absent in source/onedir builds; splash IPC failure must not alter authentication
+
     # Qt aborts the process (not a catchable Python exception) when no display is available.
     # Select the console-gated browser mode before importing the chooser on headless Linux.
     if args.ui is None:
@@ -527,6 +538,7 @@ def main(argv: list[str] | None = None) -> int:
         log.error("Unknown UI backend: %s", args.ui)
         return 1
 
+    code = 1
     try:
         if args.ui == "web":
             code = launcher(dm, fe, bus, pool, vault, health, macro,
@@ -540,7 +552,14 @@ def main(argv: list[str] | None = None) -> int:
         log.exception("Fatal error in UI")
         code = 1
     finally:
-        dm.shutdown()
+        try:
+            dm.shutdown()
+        except KeyboardInterrupt:
+            # Do not retry an interrupted lifecycle operation here. The existing atexit
+            # registration remains available; do not claim every connection has been closed.
+            log.warning("Shutdown interrupted; cleanup may be incomplete.")
+            if code == 0:
+                code = 130
 
     log.info("Cyber Controller exited (code=%d)", code)
     return code

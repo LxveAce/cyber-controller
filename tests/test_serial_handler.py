@@ -23,6 +23,7 @@ pytest.importorskip("serial")
 serial_handler = pytest.importorskip("src.core.serial_handler")
 
 SerialConnection = serial_handler.SerialConnection
+ConnectionState = serial_handler.ConnectionState
 
 
 class _FakeSerial:
@@ -45,6 +46,7 @@ def _make_conn() -> tuple[SerialConnection, _FakeSerial]:
     conn = SerialConnection("COM-TEST", baud=115200)
     fake = _FakeSerial()
     conn._serial = fake  # do NOT open a real port
+    conn._state = ConnectionState.CONNECTED
     return conn, fake
 
 

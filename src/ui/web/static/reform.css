@@ -237,6 +237,12 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .fw-workspace{display:grid;grid-template-rows:minmax(0,1fr) minmax(0,clamp(104px,42%,300px));gap:12px;flex:1;min-height:0}
 .fw-setup{min-height:0;overflow:auto;display:grid;grid-template-columns:210px minmax(0,1fr);gap:12px;align-content:start}
 .fw-setup > *{min-width:0}
+@media(min-width:1080px){
+ .fw-setup{grid-template-rows:auto minmax(0,1fr);align-content:stretch}
+ .fw-catalog{display:flex;flex-direction:column;min-height:0}
+ .fw-catalog #fw-profiles{flex:1;max-height:none;min-height:72px}
+ .fw-catalog .fw-controls,.fw-catalog .footnote{flex:none}
+}
 .fw-guidance{grid-column:1 / -1}
 .fw-guidance .notebar{display:block;margin:0 0 8px}
 .fw-guidance .notebar:last-child{margin-bottom:0}
@@ -264,8 +270,17 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 
 /* Layout display rules must not expose intentionally hidden controls. */
 [hidden]{display:none!important}
+.ble-observation-scroll{max-height:360px;overflow:auto}
+.ble-observation-scroll table{min-width:540px;table-layout:fixed}
+.ble-observation-scroll td{white-space:normal;overflow-wrap:anywhere}
+.ble-observation-scroll th:first-child{width:32%}
+.ble-observation-scroll:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.sub[data-sub="ble"] > .card + .card{margin-top:12px}
 .capture-scroll{overflow:auto;max-width:100%}
 #crack-tools-panel{overflow-wrap:anywhere}
+.crack-tool-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;margin:10px 0;font-size:11px}
+.crack-tool-guidance{grid-column:1 / -1}
+.crack-tool-row .btn{grid-column:2;grid-row:1;align-self:start}
 @media(min-width:1080px){.crack-layout{grid-template-columns:minmax(320px,360px) minmax(0,1fr)}}
 
 .rterm-pane .term.termbig{height:clamp(180px,55vh,620px);min-width:0;white-space:pre-wrap;overflow-wrap:anywhere}

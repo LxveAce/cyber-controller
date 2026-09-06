@@ -30,6 +30,7 @@ from urllib.parse import quote
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FlashEngine
+from src.security.desktop_bootstrap import DesktopBootstrap
 
 log = logging.getLogger(__name__)
 
@@ -83,7 +84,8 @@ def launch_desktop(
         os.environ["CC_WEB_USER"] = os.environ.get("CC_WEB_USER", "cc-desktop")
         os.environ["CC_WEB_PASS"] = secrets.token_urlsafe(24)
 
-    token = secrets.token_urlsafe(32)
+    bootstrap = DesktopBootstrap()
+    token = bootstrap.rotate()
     port = _free_loopback_port()
 
     # launch_web() blocks on socketio.run(), so run it on a daemon thread; the window owns the main
@@ -94,7 +96,7 @@ def launch_desktop(
         try:
             launch_web(
                 device_manager, flash_engine, event_bus, target_pool,
-                host="127.0.0.1", port=port, audit=audit, desktop_token=token,
+                host="127.0.0.1", port=port, audit=audit, desktop_token=bootstrap,
             )
         except Exception:
             log.exception("Desktop web server thread crashed")
@@ -127,13 +129,17 @@ def launch_desktop(
         # we open the same UI in the user's default browser. The desktop-auth token in the URL logs the
         # window in, so no password is needed, and we keep the process alive so the server keeps serving.
         log.warning(
-            "The native desktop window could not open (%s); showing the UI in your browser instead. "
-            "On Windows this usually means the WebView2 runtime is missing "
-            "(https://developer.microsoft.com/microsoft-edge/webview2/).", exc,
+            "The native desktop window failed (%s); trying the browser fallback.", exc,
         )
         import webbrowser
 
-        webbrowser.open(url)
+        # The failed renderer may already have consumed its token. Issue a new one for the browser's
+        # separate cookie store; rotation also invalidates the old URL if it was never consumed.
+        token = bootstrap.rotate()
+        url = f"http://127.0.0.1:{port}/desktop-auth?token={quote(token, safe='')}"
+        if not webbrowser.open(url):
+            log.error("The browser fallback could not open; desktop startup did not complete.")
+            return 1
         try:
             while True:
                 time.sleep(1.0)

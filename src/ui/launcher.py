@@ -93,8 +93,8 @@ class LauncherDialog(QDialog):
         options = [
             ("desktop", "Normal GUI (Recommended)",
              "Cyber Controller in a native desktop window — the single-window workspace (Device, "
-             "Hunt, Operate, Crack, Map, Terminal, Settings). Uses your system's own webview, so it "
-             "runs the same on Windows and Linux, ARM and x86."),
+             "Hunt, Operate, Crack, Map, Terminal, Settings). Choose the download for your operating "
+             "system and processor, and check its system requirements."),
             ("web", "Web based",
              "The same interface served over your network, driven from a browser or phone. Ideal for "
              "a headless Raspberry Pi cyberdeck — control it from any device on your LAN."),

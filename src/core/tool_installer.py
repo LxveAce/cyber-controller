@@ -237,15 +237,30 @@ def install_tool(spec: ToolInstallSpec, directory: Optional[str] = None,
     Self-verifying + fail-closed: download to a temp file, verify the integrity anchor, extract only the
     members under ``member_prefix``, confirm the expected exe landed, and finally probe that it launches
     — any failure raises RuntimeError and leaves nothing half-installed. Only ``.zip`` is supported here
-    (stdlib); a ``.7z`` spec raises a clear 'needs a 7-Zip extractor' error rather than pretending."""
-    log: Line = on_line or (lambda *_a: None)
+    (stdlib); a ``.7z`` spec raises a clear 'needs a 7-Zip extractor' error rather than pretending.
+
+    Holds the shared destination admission (see :mod:`tool_bundle`) for the whole download+extract+probe, so
+    a sync install can't race a bundled enable / async job on the same tool dir. Raises
+    :class:`tool_bundle.DestinationBusy` if the destination is already reserved."""
     directory = directory or default_tools_dir()
     if spec.archive != "zip":
         raise RuntimeError(
             f"{spec.tool}: only .zip auto-install is supported; {spec.archive} needs a 7-Zip extractor "
             "CC doesn't bundle — see the install guidance instead.")
-
     tool_dir = os.path.join(directory, spec.tool)
+    from .tool_bundle import acquire_destination, release_destination
+    active = acquire_destination(tool_dir)
+    try:
+        # operate on the lease's pinned resolved path (A2), not the caller's visible spelling
+        return _install_tool_download(spec, directory, active.path, on_line, timeout)
+    finally:
+        release_destination(active)
+
+
+def _install_tool_download(spec: ToolInstallSpec, directory: str, tool_dir: str,
+                           on_line: Optional[Line], timeout: float) -> str:
+    """The download+verify+extract+probe transaction WITHOUT admission (the caller holds the reservation)."""
+    log: Line = on_line or (lambda *_a: None)
     os.makedirs(tool_dir, exist_ok=True)
     log(f"[install] downloading {spec.tool} {spec.version} from {spec.url}")
 

@@ -118,6 +118,7 @@
       if (bar.dataset.tabs && crumbNames[scope.dataset.view]) {
         crumb.innerHTML = "<b>" + crumbNames[scope.dataset.view] + "</b> ▸ " + b.textContent;
       }
+      if (window.__ccPollTick) window.__ccPollTick();
     });
   });
   updateFwMode();   // reflect whatever sub-tab the page loaded with (e.g. a #view deep-link)
@@ -489,7 +490,35 @@
     }).catch(function () {});
   }
 
-  // HUNT surfaces are derived from the shared target pool (real discovered targets, no separate backend).
+  var bleObservationLoading = false;
+  function refreshBleObservations() {
+    if (bleObservationLoading) return;
+    var body = document.getElementById("ble-observation-rows");
+    var status = document.getElementById("ble-observation-status");
+    if (!body || !status) return;
+    bleObservationLoading = true;
+    getJSON("/api/ble-observations").then(function (data) {
+      if (!data.available) {
+        status.textContent = "Scan report collection is unavailable in this session.";
+        return;
+      }
+      var reports = data.observations.slice(-200).reverse();
+      document.getElementById("ble-observation-count").textContent = reports.length;
+      status.textContent = "Newest first. Repeated reports are kept separately; address not reported separately by this firmware.";
+      body.innerHTML = reports.length ? reports.map(function (r) {
+        var provenance = r.format === "list" ? "List entry " + r.reported_index : "Live scan";
+        var detail = "Connection " + r.connection_epoch + "; scan " + r.scan_epoch + "; " + r.observed_at;
+        return '<tr><td>' + esc(r.label || "(empty label)") + (r.label_truncated ? " … (truncated)" : "") +
+          '</td><td class="r mono">' + esc(r.rssi) + ' dBm</td><td class="mono">' + esc(r.device_source) +
+          '</td><td title="' + esc(detail) + '">' + esc(provenance) + '</td><td class="r" title="' +
+          esc(r.observed_at) + '">' + esc(ageOf(r.observed_at)) + "</td></tr>";
+      }).join("") : '<tr><td class="off" colspan="5">No scan reports yet. Start a BLE scan from a connected device.</td></tr>';
+    }).catch(function () {
+      status.textContent = "Scan reports could not refresh. Any rows shown are from the last successful refresh.";
+    }).then(function () { bleObservationLoading = false; });
+  }
+
+  // Address-bearing targets keep their existing shared-pool identity.
   function tile(cls, n, label) {
     return '<div class="tile ' + cls + '"><div class="n">' + esc(n) + '</div><div class="l">' + esc(label) + "</div></div>";
   }
@@ -513,11 +542,12 @@
     var strongest = ble.reduce(function (m, t) { return (t.rssi != null && t.rssi > m) ? t.rssi : m; }, -999);
     var named = ble.filter(function (t) { return t.ssid; });
     var bt = document.getElementById("hunt-ble-tiles");
-    if (bt) bt.innerHTML = tile("green", ble.length, "Present") + tile("", named.length, "Named") +
+    if (bt) bt.innerHTML = tile("green", ble.length, "Addresses") + tile("", named.length, "Named") +
       tile("green", strongest > -999 ? strongest : "—", "Strongest");
     // signal sparkline: one bar per BLE device, height scaled from RSSI (~-100..-30 dBm → 0..100%)
     var spark = document.querySelector("#hunt-ble-spark .bars");
     if (spark) {
+      spark.parentElement.hidden = !ble.length;
       spark.innerHTML = ble.length ? ble.map(function (t) {
         var h = t.rssi == null ? 5 : Math.max(5, Math.min(100, Math.round((t.rssi + 100) / 70 * 100)));
         return '<i style="height:' + h + '%"></i>';
@@ -1641,15 +1671,15 @@
     var col = a.present ? "var(--green)" : "var(--dim)";
     var where = a.present ? (a.source === "PATH" ? "on PATH" : (a.source === "installed" ? "installed" : "ready")) : "not installed";
     var btn = (!a.present && a.can_autofetch) ? '<button class="btn sm" data-install="' + esc(a.tool) + '">Install</button>' : "";
-    return '<div class="row" style="align-items:center;margin:4px 0;font-size:11px">' +
-      '<span style="color:' + col + ';min-width:170px">' + mark + " " + esc(a.tool) + " · " + where + "</span>" +
-      '<span class="dim" style="flex:1">' + esc(a.guidance || "") + "</span>" + btn + "</div>";
+    return '<div class="crack-tool-row">' +
+      '<span style="color:' + col + '">' + mark + " " + esc(a.tool) + " · " + where + "</span>" +
+      '<span class="dim crack-tool-guidance">' + esc(a.guidance || "") + "</span>" + btn + "</div>";
   }
   function renderCrackPanel(panel) {
     var avail = panel.__avail || [];
     var packs = panel.__packs || [];
     var dfn = panel.__defender || {};
-    var html = '<div class="dim" style="font-size:11px;margin-bottom:4px">Optional engines. The built-in native cracker needs none of these, and everything here is bundled (no download).</div>';
+    var html = '<div class="dim" style="font-size:11px;margin-bottom:4px">Optional engines. The built-in engine needs none of these. Bundled tools can be enabled offline; other tools need a compatible download.</div>';
     // Windows Defender flags these standard tools as PUA — offer the one-time folder exclusion up front.
     if (dfn.is_windows && dfn.pua_on) {
       html +=
@@ -2138,7 +2168,7 @@
     crackSel = c;
     var selEl = document.getElementById("crack-sel");
     if (selEl) {
-      if (!c) selEl.textContent = "Select a captured handshake below to load it into the run.";
+      if (!c) selEl.textContent = "Choose a row in Captured Handshakes to load it into the run.";
       else if (!c.crackable) { selEl.style.color = "var(--amber)"; selEl.textContent = "“" + (c.ssid || c.bssid) + "” has no local capture to crack yet — retrieve its .pcap first."; }
       else { selEl.style.color = "var(--dim)"; selEl.textContent = "Loaded: " + (c.ssid || c.bssid) + " (" + c.type + ")"; }
     }
@@ -2603,6 +2633,7 @@
     if (v === "device") { refreshHealth(); refreshTargets(); }
     else if (v === "hunt") {
       refreshTargets();
+      if (_activeHuntSub() === "ble") refreshBleObservations();
       // only poll /api/sensing while the Sense sub-tab is actually showing (not every HUNT sub-tab)
       if (_activeHuntSub() === "sense" && window.__ccRefreshSense) window.__ccRefreshSense();
     }
@@ -2632,5 +2663,6 @@
     else { _forcePoll(); _startPoll(); }   // catch-up on re-show, then resume fast
   });
   window.__ccPollTick = _forcePoll;        // nav handlers + actions force an instant refresh on switch
+  if (_activeView() === "hunt" && _activeHuntSub() === "ble") refreshBleObservations();
   if (!document.hidden) { _startPoll(); }
 })();

@@ -21,6 +21,9 @@ Security posture (hardened — see SECURITY findings remediation):
 from __future__ import annotations
 
 import functools
+import hashlib
+import hmac
+import json
 import logging
 import os
 import secrets
@@ -28,6 +31,7 @@ import socket
 import tempfile
 import threading
 import time
+from ipaddress import ip_address
 from pathlib import Path
 from typing import Any
 
@@ -55,6 +59,7 @@ from src.core.nodes_controller import NodesController
 from src.core.resources import resource_path
 from src.core.target_freshness import summarize_freshness
 from src.security import physical_key
+from src.security.desktop_bootstrap import BootstrapResult, DesktopBootstrap
 from src.security.web_auth import (
     RateLimiter,
     csrf_valid,
@@ -158,7 +163,7 @@ def create_app(
     allowed_origins: list[str] | None = None,
     nodes_controller: NodesController | None = None,
     trusted_proxies: list[str] | None = None,
-    desktop_token: str | None = None,
+    desktop_token: str | DesktopBootstrap | None = None,
     capture_store: Any = None,
     host_shell_loopback: bool = False,
     macro_recorder: Any = None,
@@ -172,7 +177,8 @@ def create_app(
     the CRACK captures surface can read it once wired; ``None`` keeps every existing caller (and
     the tests) unchanged.
 
-    ``desktop_token`` (loopback desktop shell only): a one-time bootstrap secret. When set, the
+    ``desktop_token`` (loopback desktop shell only): a one-time secret or an in-process
+    DesktopBootstrap holder whose owner can rotate the secret on renderer fallback. When set, the
     ``/desktop-auth?token=`` route consumes it once to establish a session WITHOUT credentials in the
     URL — a browser refuses relative fetch() from a ``user:pass@host`` document, so the desktop window
     must reach a clean URL. It is inert (404) for the LAN ``--ui web`` server, which never sets it, so
@@ -406,6 +412,58 @@ def create_app(
 
         return decorated
 
+    # ── async "Get tools" job service (owner-bound, polling) ──────────────────────────────────────────
+    # One shared registry per app instance; a process-local HMAC key so the owner discriminator never
+    # leaves this process and is not derivable from anything a client sends.
+    from src.core import tool_jobs as _tool_jobs
+    _tool_job_registry = _tool_jobs.JobRegistry()
+    _tool_job_owner_key = secrets.token_bytes(32)
+    _TOOL_JOB_OWNER_DOMAIN = b"cc.tooljobs.owner.v1"
+
+    def _tool_job_owner() -> "str | None":
+        """An opaque owner discriminator bound to THIS authenticated session (its CSRF token) and the
+        credential generation it was stamped with, via HMAC over a process-local key. A page refresh with
+        the same cookie keeps ownership; a separate login (new CSRF token) or a rotated generation does not.
+        Never derived from the request body; returns None if the session isn't valid so the route 401s. The
+        raw CSRF/key never leave this process — only the digest enters the registry."""
+        csrf_token = session.get("csrf")
+        cred_gen = session.get("cred_gen")
+        if not isinstance(csrf_token, str) or not csrf_token or not _session_generation_ok():
+            return None
+        msg = json.dumps([_TOOL_JOB_OWNER_DOMAIN.decode(), csrf_token, str(cred_gen)]).encode("utf-8")
+        return hmac.new(_tool_job_owner_key, msg, hashlib.sha256).hexdigest()
+
+    def _make_enable_worker(pack, lease):
+        """Build the job worker for a bundled enable: it BORROWS the queue-time destination lease, streams
+        log lines to the job, bridges the registry's JobCancelled at the commit boundary to the bundle
+        layer's ToolCancelled (B1), and maps the typed EnableOutcome back to the registry's contract —
+        cancelled -> JobCancelled, failed -> a plain error (=> FAILED), succeeded -> the typed envelope."""
+        from src.core import tool_bundle
+
+        def worker(emit, should_cancel, begin_commit):
+            def on_line(line):
+                emit("", None, None, str(line))   # a log line; phase/counters left unchanged
+
+            def bridged_begin_commit():
+                try:
+                    begin_commit()
+                except _tool_jobs.JobCancelled:
+                    raise tool_bundle.ToolCancelled("cancelled before commit")
+
+            outcome = tool_bundle.enable_bundled_result(
+                pack, on_line=on_line, should_cancel=should_cancel,
+                begin_commit=bridged_begin_commit, lease=lease)
+            if outcome.status == "cancelled":
+                raise _tool_jobs.JobCancelled(outcome.message)
+            if outcome.status == "failed":
+                raise RuntimeError(outcome.message)
+            return {"schema_version": 1, "tool": pack.tool, "path": outcome.exe,
+                    "version": pack.version, "source": "bundled",
+                    "verification_method": outcome.verification_method or "sha256",
+                    "state": "succeeded"}
+
+        return worker
+
     def _known_port(port: str) -> bool:
         """True if *port* is a registered device port OR a live, currently-present serial port.
 
@@ -592,20 +650,27 @@ def create_app(
             parts.append(f"heap {heap // 1024} KB")
         return "  ·  ".join(parts)
 
-    # Single-use bootstrap holder for the loopback desktop shell (see create_app docstring). A list
-    # so the route can null it after one use; None (LAN web) keeps the route inert.
-    _desktop_token = [desktop_token]
+    # Keep the same in-process holder the desktop shell owns, so fallback can rotate an already
+    # consumed token. Legacy string callers receive an equivalent single-use holder of their own.
+    _desktop_bootstrap = (desktop_token if isinstance(desktop_token, DesktopBootstrap)
+                          else DesktopBootstrap(desktop_token))
 
     @app.route("/desktop-auth")
     def desktop_auth():
-        want = _desktop_token[0]
-        if not want:
+        # A forwarded header never turns a remote peer into the local desktop. launch_web also
+        # refuses any non-loopback bind carrying a bootstrap holder, including an opted-in LAN bind.
+        try:
+            local_peer = ip_address(request.remote_addr or "").is_loopback
+        except ValueError:
+            local_peer = False
+        if not local_peer:
+            abort(404)
+        result = _desktop_bootstrap.consume(str(request.args.get("token", "")))
+        if result is BootstrapResult.ABSENT:
             abort(404)  # inert for the LAN web server — never a network auth bypass
-        got = str(request.args.get("token", ""))
-        if not (got and secrets.compare_digest(got, want)):
+        if result is not BootstrapResult.CONSUMED:
             _audit("desktop_auth_fail")
             abort(403)
-        _desktop_token[0] = None  # consume: one navigation only
         session.clear()
         session["authenticated"] = True
         session["user"] = "cc-desktop"
@@ -767,6 +832,7 @@ def create_app(
         Download + integrity-verify + extract + launch-probe, fail-closed — anything CC can't safely
         auto-install is refused here with the honest guidance instead. This grants NO authorization to
         crack: a crack RUN keeps its own separate per-run consent gate, never bypassed by installing a tool."""
+        from src.core import tool_bundle
         from src.core.tool_installer import install_tool, installable_tools, spec_for
 
         data = _json_body()
@@ -781,6 +847,10 @@ def create_app(
         log_lines: list[str] = []
         try:
             exe = install_tool(spec, on_line=lambda line: log_lines.append(str(line)))
+        except tool_bundle.DestinationBusy:
+            # R2: another op (e.g. a queued async job) holds this destination — a 409 conflict, not a 502.
+            return jsonify({"ok": False, "tool": tool,
+                            "error": "an install for this tool is already running"}), 409
         except Exception as exc:  # noqa: BLE001 — surface the honest failure to the panel, install nothing
             return jsonify({"ok": False, "tool": tool, "error": str(exc), "log": log_lines}), 502
         return jsonify({"ok": True, "tool": tool, "path": exe, "log": log_lines})
@@ -995,10 +1065,122 @@ def create_app(
             return jsonify({"ok": False, "error": f"no bundled pack for {name or 'that tool'}"}), 400
         _audit("crack_enable_bundled", user=session.get("user"), tool=pack.tool)
         log_lines: list[str] = []
-        ok, msg = tool_bundle.enable_bundled(pack, on_line=lambda line: log_lines.append(str(line)))
+        try:
+            ok, msg = tool_bundle.enable_bundled(pack, on_line=lambda line: log_lines.append(str(line)))
+        except tool_bundle.DestinationBusy:
+            # R2: an async job (or another op) holds this destination — report the conflict as 409, not a 500.
+            return jsonify({"ok": False, "error": "an install for this tool is already running"}), 409
         # 200 even on a non-fatal enable failure (e.g. Defender quarantine): the honest message is the
         # point of the panel, so the UI shows it via .then rather than losing it in a reject.
         return jsonify({"ok": ok, "tool": pack.tool, "message": msg, "log": log_lines})
+
+    # ── async Get-tools job routes (owner-bound, polling; consumed by tool_jobs_client.js) ────────────
+    # The sync routes above stay during the additive UI transition. Async paths reserve the destination
+    # admission at QUEUE time and release it via the registry finalizer on every terminal outcome.
+
+    def _lookup_pack(name):
+        from src.core import tool_bundle
+        return next((p for p in tool_bundle.list_packs() if p.name == name or p.tool == name), None)
+
+    @app.route("/api/crack/enable-bundled/async", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_crack_enable_bundled_async():
+        """Start an async bundled-enable job. 202 {job_id}; 400 unknown pack; 409 destination busy; 503
+        launch failure. The tool identity in the snapshot/result is the TOOL (pack.tool), not the pack name."""
+        from src.core import tool_bundle
+        owner = _tool_job_owner()
+        if owner is None:
+            return jsonify({"error": "authentication required"}), 401
+        name = str(_json_body().get("pack") or "").strip()
+        pack = _lookup_pack(name)
+        if pack is None:
+            return jsonify({"error": f"no bundled pack for {name or 'that tool'}"}), 400
+        dest = os.path.join(tool_bundle.enable_dir(), pack.tool)
+        try:
+            lease = tool_bundle.acquire_destination(dest)     # admission held from queue time
+        except tool_bundle.DestinationBusy:
+            return jsonify({"error": "an install for this tool is already running"}), 409
+        _audit("crack_enable_bundled_async", user=session.get("user"), tool=pack.tool)
+        worker = _make_enable_worker(pack, lease)
+        try:
+            job_id = _tool_job_registry.start(
+                pack.tool, dest, owner, worker,
+                on_finish=lambda: tool_bundle.release_destination(lease))
+        except _tool_jobs.JobConflict:
+            tool_bundle.release_destination(lease)
+            return jsonify({"error": "an install for this tool is already running"}), 409
+        except _tool_jobs.JobLaunchError:
+            tool_bundle.release_destination(lease)            # idempotent — no-op if the finalizer ran
+            return jsonify({"error": "could not start the install"}), 503
+        except Exception:  # noqa: BLE001 — R1: any pre-registration failure (e.g. dest resolution) leaves no
+            # job/finalizer to own the lease we already acquired; release it here so the destination doesn't
+            # stay stranded, and return a finite 503 (never the raw exception).
+            tool_bundle.release_destination(lease)
+            log.exception("tool job start failed for %s", pack.tool)
+            return jsonify({"error": "could not start the install"}), 503
+        return jsonify({"job_id": job_id}), 202
+
+    @app.route("/api/crack/install-tool/async", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_crack_install_tool_async():
+        """Async download is not implemented yet (install_tool has no staged transaction / commit boundary),
+        so it is honestly refused rather than faking a cancellable job. Use the bundled pack for now."""
+        if _tool_job_owner() is None:
+            return jsonify({"error": "authentication required"}), 401
+        return jsonify({"error": "async download is not available yet; use the bundled pack"}), 422
+
+    @app.route("/api/crack/job/<job_id>", methods=["GET"])
+    @requires_auth
+    def api_crack_job_status(job_id):
+        """Owner-scoped job snapshot. 200 the snapshot (log trimmed to the client's 200-line window); 404
+        for an unknown or foreign job (indistinguishable)."""
+        owner = _tool_job_owner()
+        if owner is None:
+            return jsonify({"error": "authentication required"}), 401
+        snap = _tool_job_registry.get(job_id, owner)
+        if snap is None:
+            return jsonify({"error": "no such job"}), 404
+        snap["log"] = snap["log"][-200:]
+        return jsonify(snap), 200
+
+    @app.route("/api/crack/job/<job_id>/result", methods=["GET"])
+    @requires_auth
+    def api_crack_job_result(job_id):
+        """Owner-scoped result via one atomic status+result snapshot (so a prune can't split them). 404
+        unknown/foreign; 409 owned-but-not-succeeded (finite state in body); 200 the typed envelope, or the
+        explicit metadata-unavailable fallback when a completed op's metadata couldn't be retained."""
+        owner = _tool_job_owner()
+        if owner is None:
+            return jsonify({"error": "authentication required"}), 401
+        bundle = _tool_job_registry.status_and_result(job_id, owner)
+        if bundle is None:
+            return jsonify({"error": "no such job"}), 404
+        if not bundle["is_success"]:
+            return jsonify({"state": bundle["snapshot"]["state"]}), 409
+        result = bundle["result"]
+        if isinstance(result, dict) and result.get("schema_version") == 1:
+            return jsonify(result), 200
+        # succeeded, but the envelope was dropped by the registry's bounding — preserve the success honestly
+        return jsonify({"state": "succeeded", "result_status": "unavailable",
+                        "error_code": "result_metadata_unavailable"}), 200
+
+    @app.route("/api/crack/job/<job_id>/cancel", methods=["POST"])
+    @requires_auth
+    @requires_csrf
+    def api_crack_job_cancel(job_id):
+        """Request cooperative cancellation. 200 {cancel_requested}: true = the flag was set on a still-
+        cancellable job (NOT proof it stopped — status must reach cancelled); false = too late. 404 unknown/
+        foreign."""
+        owner = _tool_job_owner()
+        if owner is None:
+            return jsonify({"error": "authentication required"}), 401
+        outcome = _tool_job_registry.cancel(job_id, owner)
+        if outcome is None:
+            return jsonify({"error": "no such job"}), 404
+        _audit("crack_job_cancel", user=session.get("user"), job=job_id, requested=bool(outcome))
+        return jsonify({"cancel_requested": bool(outcome)}), 200
 
     @app.route("/api/crack/defender-exclusion", methods=["POST"])
     @requires_auth
@@ -2245,6 +2427,14 @@ def create_app(
     def api_targets():
         return jsonify([t.to_dict() for t in target_pool.all()])
 
+    @app.route("/api/ble-observations")
+    @requires_auth
+    def api_ble_observations():
+        hub = app.config.get("cc_hub")
+        if hub is None:
+            return jsonify({"available": False, "observations": []})
+        return jsonify({"available": True, "observations": hub.ingestor.ble_observations()})
+
     @app.route("/api/targets/clear", methods=["POST"])
     @requires_auth
     @requires_csrf
@@ -2865,7 +3055,7 @@ def launch_web(
     host: str = "127.0.0.1",
     port: int = 5000,
     audit: Any = None,
-    desktop_token: str | None = None,
+    desktop_token: str | DesktopBootstrap | None = None,
 ) -> int:
     """Create and run the hardened Flask web remote UI.
 
@@ -2874,6 +3064,9 @@ def launch_web(
     strongly recommended for LAN exposure).
     """
     is_local = host in ("127.0.0.1", "localhost", "::1")
+    if desktop_token is not None and not is_local:
+        log.error("Desktop bootstrap credentials require a loopback-only bind.")
+        return 2
     if not is_local and os.environ.get("CC_WEB_ALLOW_LAN") != "1":
         log.error(
             "Refusing to bind the web remote to %s (non-local). The web UI controls "

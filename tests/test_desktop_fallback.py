@@ -26,7 +26,7 @@ def test_desktop_falls_back_to_browser_when_webview_backend_fails(monkeypatch):
 
     opened: list[str] = []
     import webbrowser
-    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url))
+    monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url) or True)
 
     # Break the keep-alive loop on the first tick so the test returns.
     def _stop(_):
@@ -46,3 +46,28 @@ def test_desktop_shell_module_still_importable():
     from src.ui.web import desktop as d
 
     assert callable(d.launch_desktop)
+
+
+def test_desktop_does_not_wait_when_browser_fallback_cannot_open(monkeypatch, caplog):
+    fake_webview = types.ModuleType("webview")
+    fake_webview.create_window = lambda *a, **k: None
+
+    def fail_native():
+        raise RuntimeError("native backend unavailable")
+
+    fake_webview.start = fail_native
+    monkeypatch.setitem(sys.modules, "webview", fake_webview)
+    monkeypatch.setattr(desktop.threading, "Thread", lambda *a, **k: types.SimpleNamespace(start=lambda: None))
+    monkeypatch.setattr(desktop, "_free_loopback_port", lambda: 12345)
+    monkeypatch.setattr(desktop, "_wait_until_serving", lambda *a, **k: True)
+    monkeypatch.setenv("CC_WEB_PASS", "synthetic-test-credential")
+
+    import webbrowser
+    monkeypatch.setattr(webbrowser, "open", lambda _url: False)
+
+    def must_not_wait(_seconds):
+        raise AssertionError("No window or browser opened; keep-alive would leave the user stranded")
+
+    monkeypatch.setattr(desktop.time, "sleep", must_not_wait)
+    assert desktop.launch_desktop(object(), object(), object(), object()) == 1
+    assert "browser fallback could not open" in caplog.text

@@ -262,9 +262,9 @@ def test_extract_pack_rejects_incomplete_archive(tmp_path, monkeypatch):
     assert "aircrack-ng" not in tool_installer.installed_tools(str(tools_dir))
 
 
-def test_extract_pack_serializes_concurrent_jobs(tmp_path, monkeypatch):
-    # Two concurrent publishes to the same dest must serialize (one writer per destination) and
-    # single valid install with no leftover staging.
+def test_extract_pack_concurrent_same_dest_admits_one(tmp_path, monkeypatch):
+    # The shared admission gate makes ONE writer win; an overlapping writer gets DestinationBusy (reject,
+    # not a torn interleave). The end state is a single valid install with no leftover staging/backup.
     good = b"MZ aircrack"
     packs = tmp_path / "packs"
     _write_ac_pack(packs, good, planted=False)
@@ -285,9 +285,11 @@ def test_extract_pack_serializes_concurrent_jobs(tmp_path, monkeypatch):
         t.start()
     for t in ts:
         t.join()
-    assert errors == []
+    # any failure is specifically a rejected reservation — never a torn/corrupt state — and at most one loser
+    assert all(isinstance(e, tb.DestinationBusy) for e in errors)
+    assert len(errors) <= 1
     assert (tools_dir / "aircrack-ng" / "aircrack-ng.exe").read_bytes() == good
-    assert not any(p.name.startswith(".cc-stage-") for p in tools_dir.iterdir())
+    assert not any(p.name.startswith((".cc-stage-", ".cc-backup-")) for p in tools_dir.iterdir())
 
 
 def test_extract_pack_cancellation_before_publish_leaves_prior(tmp_path, monkeypatch):
@@ -560,3 +562,143 @@ def test_post_publish_keyboardinterrupt_still_propagates(tmp_path, monkeypatch):
 
     with pytest.raises(KeyboardInterrupt):     # control-interruption is never swallowed
         tb.enable_bundled_result(pack, on_line=ki_after_publish)
+
+
+# ── shared destination admission (sync/async/Qt arbitration) ──
+
+def test_admission_acquire_conflict_and_independent(tmp_path):
+    d = str(tmp_path / "tools" / "x")
+    lease = tb.acquire_destination(d)
+    with pytest.raises(tb.DestinationBusy):
+        tb.acquire_destination(d)                      # same dest is reserved
+    other = tb.acquire_destination(str(tmp_path / "tools" / "y"))   # a different dest is independent
+    assert tb.release_destination(lease) is True
+    lease2 = tb.acquire_destination(d)                 # reacquire after release
+    tb.release_destination(lease2)
+    tb.release_destination(other)
+
+
+def test_admission_canonical_alias_conflicts(tmp_path):
+    base = tmp_path / "tools" / "x"
+    base.mkdir(parents=True)
+    lease = tb.acquire_destination(str(base))
+    alias = str(base / "sub" / "..")                   # realpath-equal to base -> same reservation
+    with pytest.raises(tb.DestinationBusy):
+        tb.acquire_destination(alias)
+    tb.release_destination(lease)
+
+
+def test_admission_foreign_and_stale_release_are_noops(tmp_path):
+    d = str(tmp_path / "tools" / "x")
+    lease = tb.acquire_destination(d)
+    foreign = tb._Lease(tb.canonical_dest(d), d, "deadbeef", 10 ** 9)
+    assert tb.release_destination(foreign) is False      # a foreign lease can't clear the holder (A4 identity)
+    assert tb.release_destination(lease) is True          # the real owner clears it
+    lease2 = tb.acquire_destination(d)                    # reacquired with a fresh epoch
+    assert tb.release_destination(lease) is False         # the STALE lease can't clear the new holder
+    tb.release_destination(lease2)
+
+
+def test_enable_bundled_result_conflicts_with_a_held_reservation(tmp_path, monkeypatch):
+    pack = _enable_ready(tmp_path, monkeypatch)
+    dest = os.path.join(str(tmp_path / "tools"), pack.tool)
+    held = tb.acquire_destination(dest)                 # simulate an async job holding the destination
+    with pytest.raises(tb.DestinationBusy):
+        tb.enable_bundled_result(pack)                  # a sync enable can't proceed while it's reserved
+    assert tb.release_destination(held) is True
+    assert tb.enable_bundled_result(pack).status == "succeeded"   # freed -> the sync path works
+
+
+def test_enable_bundled_result_borrows_without_double_acquire_or_releasing_owner(tmp_path, monkeypatch):
+    pack = _enable_ready(tmp_path, monkeypatch)
+    dest = os.path.join(str(tmp_path / "tools"), pack.tool)
+    lease = tb.acquire_destination(dest)                # the outer owner (async job) holds it
+    out = tb.enable_bundled_result(pack, lease=lease)   # borrows through enable -> extract, nested
+    assert out.status == "succeeded"                    # no double-acquire deadlock/conflict
+    # the borrow never released the owner's reservation, so the owner can still release it exactly once
+    assert tb.release_destination(lease) is True
+    assert tb.release_destination(lease) is False
+
+
+# ── A4: only a genuinely minted lease (exact field types) can release/borrow ──
+
+def test_admission_forged_lease_with_evil_equality_cannot_release(tmp_path):
+    d = str(tmp_path / "tools" / "x")
+    lease = tb.acquire_destination(d)
+
+    class EvilStr(str):
+        def __eq__(self, other): return True
+        def __hash__(self): return hash(str(self))
+
+    class EvilInt(int):
+        def __eq__(self, other): return True
+        def __hash__(self): return hash(int(self))
+
+    forged = tb._Lease(EvilStr(tb.canonical_dest(d)), EvilStr(d), EvilStr("x"), EvilInt(lease.epoch))
+    assert tb.release_destination(forged) is False       # rejected on exact-type check, real reservation held
+    with pytest.raises(tb.DestinationBusy):
+        with tb.borrow_destination(forged):
+            pass
+    assert tb.release_destination(lease) is True          # the genuine lease still owns + clears it
+
+
+# ── A3: a live borrow defers the owner's release; a borrow exit can't clear a newer holder ──
+
+def test_admission_release_is_deferred_while_a_borrow_is_active(tmp_path):
+    d = str(tmp_path / "tools" / "x")
+    owner = tb.acquire_destination(d)
+    with tb.borrow_destination(owner):
+        # owner releases mid-borrow: deferred, so the reservation is NOT cleared yet
+        assert tb.release_destination(owner) is False
+        with pytest.raises(tb.DestinationBusy):
+            tb.acquire_destination(d)                    # still reserved: no concurrent op can enter
+    # borrow exited -> the deferred release took effect, so the destination is now free
+    freed = tb.acquire_destination(d)
+    tb.release_destination(freed)
+
+
+def test_admission_borrow_exit_does_not_clear_a_newer_holder(tmp_path):
+    d = str(tmp_path / "tools" / "x")
+    first = tb.acquire_destination(d)
+    with tb.borrow_destination(first):
+        pass                                             # a normal borrow with no pending release
+    assert tb.release_destination(first) is True
+    second = tb.acquire_destination(d)                   # a brand-new holder of the same dest
+    # re-releasing/borrowing the OLD lease must never disturb the new holder
+    assert tb.release_destination(first) is False
+    with pytest.raises(tb.DestinationBusy):
+        with tb.borrow_destination(first):
+            pass
+    assert tb.release_destination(second) is True
+
+
+# ── A5: a genuine lease is bound to its destination — it can't be used to mutate a different one ──
+
+def test_admission_lease_is_bound_to_requested_destination(tmp_path, monkeypatch):
+    pack = _enable_ready(tmp_path, monkeypatch)                  # enable dest resolves to tmp/tools/<tool>
+    other = str(tmp_path / "tools" / "somewhere-else")
+    lease_for_other = tb.acquire_destination(other)             # a genuine lease, but for a DIFFERENT dest
+    with pytest.raises(tb.DestinationBusy):
+        tb.enable_bundled_result(pack, lease=lease_for_other)   # must reject, never redirect into 'other'
+    assert tb.release_destination(lease_for_other) is True
+    # the pack's real destination was never mutated by the rejected call
+    assert not (tmp_path / "tools" / pack.tool).exists()
+
+
+# ── A2: a junction and its target are ONE reservation; the op pins the resolved path ──
+
+@pytest.mark.skipif(os.name != "nt", reason="junctions are Windows-specific")
+def test_admission_junction_and_target_share_one_reservation(tmp_path):
+    import subprocess
+    target = tmp_path / "target"
+    target.mkdir()
+    link = tmp_path / "link"
+    subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(target)],
+                   check=True, capture_output=True)
+    lease = tb.acquire_destination(str(link))
+    assert os.path.normcase(lease.path) == os.path.normcase(os.path.realpath(str(target)))  # pinned to target
+    with pytest.raises(tb.DestinationBusy):
+        tb.acquire_destination(str(link))       # the junction spelling is reserved...
+    with pytest.raises(tb.DestinationBusy):
+        tb.acquire_destination(str(target))     # ...and so is the real target — one reservation, no overlap
+    assert tb.release_destination(lease) is True

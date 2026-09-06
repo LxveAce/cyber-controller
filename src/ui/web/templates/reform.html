@@ -132,13 +132,13 @@
           </div>
 
           <details class="card collapsible" id="flipper-card">
-            <summary><h3 style="display:inline"><span class="t">Flipper Zero</span><span class="r" id="flipper-status">qFlipper &#8230;</span></h3></summary>
+            <summary><span class="t">Flipper Zero</span><span class="r" id="flipper-status">qFlipper &#8230;</span></summary>
             <div id="flipper-body"><div class="card2">checking qFlipper&#8230;</div></div>
             <pre class="mono" id="flipper-log" style="display:none;max-height:180px;overflow:auto;margin-top:8px"></pre>
           </details>
 
           <details class="card collapsible" id="orbic-card">
-            <summary><h3 style="display:inline"><span class="t">Orbic / rayhunter</span><span class="r" id="orbic-status">IMSI-catcher detector</span></h3></summary>
+            <summary><span class="t">Orbic / rayhunter</span><span class="r" id="orbic-status">IMSI-catcher detector</span></summary>
             <div id="orbic-body"><div class="card2">checking&#8230;</div></div>
             <pre class="mono" id="orbic-log" style="display:none;max-height:180px;overflow:auto;margin-top:8px"></pre>
           </details>
@@ -319,7 +319,15 @@
       </div>
     </div>
     <div class="sub on" data-sub="ble">
-      <div class="card"><h3><span class="t">BLE Analyzer</span><span class="r" id="hunt-ble-sub">from the shared target pool</span></h3>
+      <div class="card"><h3><span class="t">BLE scan reports</span><span class="r"><span id="ble-observation-count">0</span> reports</span></h3>
+        <p class="footnote">Recent scan output from connected devices. Some firmware reports a name or address in the same field, so these labels cannot identify a device. The latest 200 reports stay here until CC closes.</p>
+        <p class="footnote" id="ble-observation-status" role="status">Open this tab to load scan reports.</p>
+        <div class="ble-observation-scroll" tabindex="0" role="region" aria-label="Recent BLE scan reports">
+          <table><thead><tr><th>Reported label</th><th class="r">RSSI</th><th>Source</th><th>Report</th><th class="r">Age</th></tr></thead>
+            <tbody id="ble-observation-rows"><tr><td class="off" colspan="5">No reports loaded.</td></tr></tbody></table>
+        </div>
+      </div>
+      <div class="card"><h3><span class="t">BLE Analyzer</span><span class="r" id="hunt-ble-sub">addresses reported by firmware</span></h3>
         <div class="tiles" id="hunt-ble-tiles" style="margin-bottom:12px"></div>
         <div class="graphbox" id="hunt-ble-spark" style="margin-bottom:12px"><div class="bars"></div></div>
         <table><thead><tr><th>Name</th><th>Address</th><th>Vendor</th><th class="r">RSSI</th><th class="r">Age</th></tr></thead>
@@ -383,7 +391,7 @@
           </div>
           <span class="dim" id="op-status" style="font-size:11px"></span>
         </div>
-        <div class="footnote" style="margin-top:8px">Commands come from the selected firmware&#8217;s own protocol registry. Flagged verbs warn + require a confirm (label-never-block); nothing is hard-blocked.</div>
+        <div class="footnote" style="margin-top:8px">Commands come from the selected firmware. Commands that require confirmation prompt before they are sent.</div>
       </div>
       <div class="split ops">
         <div class="card">
@@ -438,7 +446,7 @@
     <div class="split crack-layout">
       <div class="grid" style="align-content:start">
         <div class="card">
-          <h3><span class="t">Engine</span><span class="r">native always works</span></h3>
+          <h3><span class="t">Engine</span><span class="r">built in</span></h3>
           <select class="field" id="crack-engine" aria-label="Crack engine"><option>Built-in native cracker</option></select>
           <div class="row" style="margin-top:8px"><button class="btn sm" id="crack-get-tools">Get tools&#8230;</button><button class="btn sm" id="crack-recheck">Re-check</button></div>
           <div class="footnote" id="crack-tools">detecting engines&#8230;</div>
@@ -455,7 +463,7 @@
         <div class="card">
           <h3><span class="t">Run</span><span class="r">consent required per run</span></h3>
           <label class="chip warn" for="crack-consent" style="border-color:#8a6100;color:var(--amber);white-space:normal;text-align:left;line-height:1.4"><input type="checkbox" id="crack-consent" style="margin-right:6px;vertical-align:middle"> I own this network or am explicitly authorized to test it</label>
-          <div class="footnote" id="crack-sel" style="margin-top:8px">Select a captured handshake below to load it into the run.</div>
+          <div class="footnote" id="crack-sel" style="margin-top:8px">Choose a row in Captured Handshakes to load it into the run.</div>
           <div class="row" style="margin-top:10px"><button class="btn green" id="crack-run" disabled style="opacity:.6">Recover key&#8230;</button><button class="btn" id="crack-stop" disabled style="opacity:.5">Stop</button></div>
         </div>
       </div>

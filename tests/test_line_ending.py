@@ -18,20 +18,23 @@ class _FakeSerial:
 
     def write(self, b):
         self.buf += b
+        return len(b)
 
     def flush(self):
         pass
 
 
 def test_serial_write_uses_line_ending():
-    from src.core.serial_handler import SerialConnection
+    from src.core.serial_handler import ConnectionState, SerialConnection
     cr = SerialConnection("COMX", line_ending="\r")
     cr._serial = _FakeSerial()
+    cr._state = ConnectionState.CONNECTED
     cr.write("device_info")
     assert cr._serial.buf == b"device_info\r"           # CR for Flipper-style
 
     lf = SerialConnection("COMY")                        # default
     lf._serial = _FakeSerial()
+    lf._state = ConnectionState.CONNECTED
     lf.write("scanap")
     assert lf._serial.buf == b"scanap\n"                 # LF by default
 

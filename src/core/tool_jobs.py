@@ -63,6 +63,10 @@ DEFAULT_MAX_TERMINAL = 200    #: retained terminal jobs (older ones pruned; acti
 #: Prebuilt (no allocation on the failure path) diagnostics for a result that can't be retained as-is.
 _RESULT_DROPPED_INVALID = '{"result_dropped": "worker result was not a valid tool-result envelope"}'
 _RESULT_DROPPED_TOO_LARGE = f'{{"result_dropped": "worker result exceeded {MAX_RESULT_BYTES} bytes"}}'
+#: Fixed, bounded, owner-visible note when a job's cleanup finalizer raised (F1). Never carries the callback's
+#: own exception text; the completed work is NOT relabelled.
+_FINALIZER_FAILED_NOTE = ("[cleanup] post-job cleanup failed; this install destination may remain reserved "
+                          "until the service restarts")
 
 
 def _as_result_envelope(result: object) -> "tuple[bool, Optional[dict]]":
@@ -214,8 +218,10 @@ class _Job:
     error: str = ""
     result_json: str = "null"   # the bounded, JSON-serialized worker result (see _bounded_result_json)
     log: Deque[str] = field(default_factory=lambda: deque(maxlen=DEFAULT_LOG_LINES))
+    on_finish: Optional[Callable[[], None]] = None   # cleanup run ONCE at the terminal transition
     _cancel: bool = False
     _committing: bool = False
+    _finalized: bool = False
 
     def snapshot(self) -> dict:
         """A JSON-serializable, owner-free view for the status endpoint / an event payload. Excludes
@@ -253,16 +259,24 @@ class JobRegistry:
 
     # -- lifecycle ----------------------------------------------------
 
-    def start(self, tool: str, dest_key: str, owner: str, worker: Worker) -> str:
+    def start(self, tool: str, dest_key: str, owner: str, worker: Worker,
+              on_finish: Optional[Callable[[], None]] = None) -> str:
         """Register + launch a job for *dest_key*; return its opaque job_id. Raises :class:`JobConflict` if
         that (canonical) destination already has an active job — one writer per destination. On a thread
         launch failure the queued record is marked failed and its reservation released, then
-        :class:`JobLaunchError` is raised (a subsequent start for the same destination then succeeds)."""
+        :class:`JobLaunchError` is raised (a subsequent start for the same destination then succeeds).
+
+        *on_finish* (if given) runs EXACTLY ONCE when the job reaches ANY terminal state — success, failure,
+        an explicit cancel, a cancel that landed before the worker ran, or a thread-launch failure — so a
+        caller that reserved a resource for the whole job (e.g. a destination admission held from queue time)
+        can release it on every terminal path. It must be fast and non-reentrant (never call back into this
+        registry); it is invoked under the registry lock and its exceptions are swallowed. A JobConflict
+        (raised before any job exists) does NOT run it — the caller still owns its pre-start cleanup then."""
         key = canonical_dest(dest_key)
         with self._lock:
             if key in self._active_dest:
                 raise JobConflict(f"an install for {tool!r} is already running")
-            job = _Job(job_id=uuid.uuid4().hex, tool=tool, dest_key=key, owner=owner)
+            job = _Job(job_id=uuid.uuid4().hex, tool=tool, dest_key=key, owner=owner, on_finish=on_finish)
             job.log = deque(maxlen=self._log_lines)
             self._jobs[job.job_id] = job
             self._active_dest[key] = job.job_id
@@ -372,6 +386,20 @@ class JobRegistry:
         terminal = [jid for jid, j in self._jobs.items() if j.state in _TERMINAL]
         for jid in terminal[:max(0, len(terminal) - self._max_terminal)]:
             self._jobs.pop(jid, None)
+        # Run the per-job finalizer EXACTLY ONCE (queue-lifetime cleanup, e.g. releasing a destination
+        # admission). It's a fast, non-reentrant callback (release only touches its own lock, never this
+        # registry), so running it under the lock introduces no inversion.
+        if job.on_finish is not None and not job._finalized:
+            job._finalized = True
+            cb = job.on_finish
+            job.on_finish = None   # F2: drop the spent callback so its object graph isn't retained until prune
+            try:
+                cb()               # a falsey return (e.g. a deferred release) is NOT an error
+            except Exception:  # noqa: BLE001 — a finalizer must never break the terminal transition
+                # F1: make a cleanup FAILURE owner-visible without relabelling the committed work — a fixed,
+                # bounded note in the log (never the callback's own exception text). The destination may
+                # remain reserved; the completed state/result are untouched.
+                job.log.append(_FINALIZER_FAILED_NOTE)
 
     # -- queries + control (owner-bound) ------------------------------
 
