@@ -28,6 +28,8 @@ REQUIRED_SUFFIXES = (
     "src/ui/tui/styles.tcss",
     "src/ui/web/static/reform.css",
     "src/ui/web/static/reform.js",
+    "src/ui/web/static/updates_card.js",
+    "src/ui/web/static/updates_transport.js",
     "src/ui/web/static/vendor/socket.io.min.js",
     "src/ui/web/templates/reform.html",
     "share/cyber-controller/assets/cc-logo.png",

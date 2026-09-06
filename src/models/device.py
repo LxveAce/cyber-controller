@@ -259,6 +259,9 @@ class Device:
             "connected": self.connected,
             "serial_number": self.serial_number,
             "board_type": self.board_type.value,
+            # Keep the non-destructive esptool result distinct from the USB-derived
+            # board_type guess. Consumers use this to reject incompatible artifacts.
+            "detected_chip": self.detected_chip,
             "baud_rate": self.baud_rate,
             "vid": self.vid,
             "pid": self.pid,
@@ -273,6 +276,10 @@ class Device:
             "last_alert": dict(self.last_alert),
             "alert_count": self.alert_count,
             "last_snapshot": dict(self.last_snapshot),
+            # Link state is live device truth consumed by every UI surface. Return a
+            # copy so callers cannot mutate the model through the serialized payload.
+            "link": dict(self.link),
+            "link_ts": self.link_ts,
         }
 
     @classmethod

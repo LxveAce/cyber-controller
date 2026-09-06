@@ -34,6 +34,12 @@ class TargetIngestor:
     :class:`~src.core.capture_store.CaptureStore`, the shared capture log too)."""
 
     def __init__(self, pool: Any, captures: Any = None, devices: Any = None) -> None:
+        from src.core.lifecycle import CallbackScope
+
+        self._callbacks = CallbackScope()
+        self._attachment_lock = threading.RLock()
+        self._pending_removals: list[tuple[Any, Callable]] = []
+        self._current_checks: dict[str, Callable[[], bool] | None] = {}
         self._pool = pool
         self._captures = captures     # optional CaptureStore; None on the Devices-tab ingestor
         # Optional device registry (has get_device(port) -> Device|None, e.g. DeviceManager).
@@ -60,27 +66,51 @@ class TargetIngestor:
         """Register an on_line handler on *conn* that parses each line with *protocol* and adds any
         discovered AP/client to the pool. *protocol* is any object with ``parse_line(line) -> ParsedEvent
         | None`` (e.g. ``src.protocols.marauder.MarauderProtocol``). Returns the callback (for detach)."""
+        with self._callbacks.activity():
+            with self._attachment_lock:
+                return self._attach(conn, protocol)
+
+    def reconcile(self, conn: Any, protocol: Any, *, is_current: Callable[[], bool]) -> Any:
+        """Keep a current parser's state, replacing it only when its connection/type changes."""
+        with self._callbacks.activity():
+            with self._attachment_lock:
+                if not is_current():
+                    return None
+                port = getattr(conn, "port", "?")
+                current = self._ble_sessions.get(port)
+                previous_check = self._current_checks.get(port)
+                if (current and current[2] is conn
+                        and type(self._parsers.get(port)) is type(protocol)
+                        and (previous_check is None or previous_check())):
+                    return self._attached[port]
+                return self._attach(conn, protocol, is_current=is_current)
+
+    def _remove_pending(self, entry: tuple[Any, Callable]) -> None:
+        conn, callback = entry
+        remove = getattr(conn, "remove_line_callback", None)
+        if callable(remove):
+            remove(callback)
+        self._pending_removals.remove(entry)
+
+    def _attach(self, conn: Any, protocol: Any, *, is_current=None) -> Callable[[str], None] | None:
         port = getattr(conn, "port", "?")
-        # Idempotent re-attach: a co-owned connection (the persistent terminal still holds it) survives
-        # a devices-tab disconnect, so open_connection returns the SAME object and a second attach would
-        # stack a duplicate on_line -> every serial line parsed and pooled twice. Drop any prior first.
         prev = self._attached.get(port)
         with self._ble_lock:
             previous_session = self._ble_sessions.get(port)
-        previous_conn = previous_session[2] if previous_session else conn
-        remover = getattr(previous_conn, "remove_line_callback", None)
-        if prev is not None and callable(remover):
-            try:
-                remover(prev)
-            except Exception:
-                pass
-
-        with self._ble_lock:
             self._ble_epoch += 1
             connection_epoch = self._ble_epoch
-            self._ble_sessions[port] = (connection_epoch, connection_epoch, conn)
+
+        def current_attachment() -> bool:
+            current = self._ble_sessions.get(port)
+            return (current is not None and current[0] == connection_epoch
+                    and current[2] is conn and (is_current is None or is_current()))
 
         def on_line(line: str) -> None:
+            # A publisher may have copied a callback before removal. Check before parsing,
+            # and again before routing if a replacement arrived while parsing was in flight.
+            with self._attachment_lock:
+                if not current_attachment():
+                    return
             try:
                 ev = protocol.parse_line(line)
             except Exception:
@@ -94,29 +124,66 @@ class TargetIngestor:
             # raising _event_to_target (bad numeric coercion), a pool/capture add, or a device-info
             # update is logged and swallowed instead of killing the callback (_apply_device_info
             # keeps its own inner guards too).
-            try:
-                if ev.event_type == "ble_observation":
-                    if not self._retain_ble_observation(ev, port, connection_epoch):
-                        return
-                self._route(ev, port)
-            except Exception:
-                log.exception("TargetIngestor: routing error on %s", port)
-            # Notify observers regardless of the routing outcome: a routing error above is logged
-            # and swallowed, observers still fire; an observer error is isolated too. Both run.
-            self._notify_observers(ev, port)
+            with self._attachment_lock:
+                if not current_attachment():
+                    return
+                try:
+                    if ev.event_type == "ble_observation":
+                        if not self._retain_ble_observation(ev, port, connection_epoch):
+                            return
+                    self._route(ev, port)
+                except Exception:
+                    log.exception("TargetIngestor: routing error on %s", port)
+                # Observer failures remain isolated from routing and from other observers.
+                self._notify_observers(ev, port)
 
+        on_line = self._callbacks.guard(on_line)
+        # Install before retiring the prior parser. Until the commit below, a new callback
+        # is inert; append-then-raise cannot publish an event or lose cleanup ownership.
+        pending = (conn, on_line)
+        self._pending_removals.append(pending)
         try:
             conn.on_line(on_line)
-        except BaseException:
-            with self._ble_lock:
-                current = self._ble_sessions.get(port)
-                if current and current[0] == connection_epoch:
-                    self._ble_sessions.pop(port, None)
+            if is_current is not None and not is_current():
+                self._remove_pending(pending)
+                return None
+        except BaseException as original:
+            try:
+                self._remove_pending(pending)
+            except BaseException as cleanup_error:
+                raise original from cleanup_error
             raise
+        self._pending_removals.remove(pending)
+        with self._ble_lock:
+            self._ble_sessions[port] = (connection_epoch, connection_epoch, conn)
         self._attached[port] = on_line
-        self._parsers[port] = protocol  # so send_to_port can reset scan ordinals on a list-clear
+        self._parsers[port] = protocol
+        self._current_checks[port] = is_current
+        self._recent_capture.pop(port, None)
+        if prev is not None and previous_session is not None:
+            retired = (previous_session[2], prev)
+            self._pending_removals.append(retired)
+            try:
+                self._remove_pending(retired)
+            except Exception:
+                log.exception("TargetIngestor: retired callback cleanup will be retried on close")
         log.info("TargetIngestor attached to %s via %s", port, type(protocol).__name__)
         return on_line
+
+    def fence(self) -> None:
+        self._callbacks.fence()
+
+    def close(self, timeout: float | None = 5.0) -> None:
+        """Fence pending line callbacks, then detach each connection owned by this ingestor."""
+        self._callbacks.close(timeout)
+        with self._ble_lock:
+            connections = [session[2] for session in self._ble_sessions.values()]
+        for conn in connections:
+            self.detach(conn, strict=True)
+        with self._attachment_lock:
+            for entry in list(self._pending_removals):
+                self._remove_pending(entry)
+        self._event_observers.clear()
 
     def ble_observations(self) -> list[dict]:
         """Detached oldest-to-newest snapshot of the latest 200 BLE observations.
@@ -185,25 +252,29 @@ class TargetIngestor:
             except Exception:
                 log.exception("TargetIngestor: event observer error on %s", port)
 
-    def detach(self, conn: Any) -> None:
+    def detach(self, conn: Any, *, strict: bool = False) -> None:
         """Best-effort removal of the on_line handler for *conn*."""
         port = getattr(conn, "port", "?")
-        with self._ble_lock:
-            current = self._ble_sessions.get(port)
-            if current is not None and current[2] is not conn:
-                return  # A delayed detach for an old connection must not detach its replacement.
-            self._ble_sessions.pop(port, None)
-        cb = self._attached.pop(port, None)
-        self._parsers.pop(port, None)  # drop the per-port parser handle alongside its callback
-        # Drop the port's pending pcap-attach target too, so a pcap written by the NEXT device to
-        # occupy this port can't be attached to the previous device's stale handshake record.
-        self._recent_capture.pop(port, None)
-        remover = getattr(conn, "remove_line_callback", None)  # optional API
-        if cb and callable(remover):
+        with self._attachment_lock:
+            with self._ble_lock:
+                current = self._ble_sessions.get(port)
+                if current is not None and current[2] is not conn:
+                    return
+                self._ble_sessions.pop(port, None)
+            cb = self._attached.pop(port, None)
+            self._parsers.pop(port, None)
+            self._current_checks.pop(port, None)
+            self._recent_capture.pop(port, None)
+            if cb is None:
+                return
+            pending = (conn, cb)
+            self._pending_removals.append(pending)
             try:
-                remover(cb)
+                self._remove_pending(pending)
             except Exception:
-                pass
+                if strict:
+                    raise
+                log.exception("TargetIngestor: detached callback cleanup will be retried on close")
 
     def parser_for(self, port: str) -> Any:
         """The protocol/parser instance the ingestor attached for *port* (or None). Lets the command
@@ -443,9 +514,15 @@ class TargetIngestor:
             mac = str(d.get("mac") or d.get("addr") or "").strip()
             if not mac:
                 return None
+            # LxveOS reports its address type as `type`. Keep only a bounded explicit value; the
+            # address bytes/name do not establish public/random identity, and omission remains unknown.
+            address_type = d.get("type")
+            extra = {}
+            if type(address_type) is str and 0 < len(address_type) <= 32 and address_type.isprintable():
+                extra["address_type"] = address_type
             return Target(
                 mac=mac, target_type=TargetType.BLE, ssid=str(d.get("name", "")),
-                rssi=int(d.get("rssi", 0) or 0), device_source=port,
+                rssi=int(d.get("rssi", 0) or 0), device_source=port, extra=extra,
             )
 
         if et == "subghz_found":

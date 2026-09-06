@@ -32,6 +32,11 @@ class DesktopBootstrap:
             self._token = token.encode("ascii")
         return token
 
+    def invalidate(self) -> None:
+        """Retire any unused credential when its local runtime closes."""
+        with self._lock:
+            self._token = None
+
     def consume(self, candidate: str) -> BootstrapResult:
         """Compare and consume under one lock, so concurrent requests cannot win twice."""
         with self._lock:

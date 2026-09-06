@@ -745,3 +745,298 @@ def test_terminal_job_clears_the_spent_finalizer_reference():
     _wait_terminal(reg, jid, "s")
     time.sleep(0.02)
     assert reg._jobs[jid].on_finish is None   # F2: the spent callback is dropped after its single invocation
+
+
+# ── R-DL2/R-DL3/R-DL4: control-exception + started-then-raised ownership are never stranded ──
+
+@pytest.mark.parametrize("exc", [KeyboardInterrupt, SystemExit])
+def test_start_control_exception_releases_destination(monkeypatch, exc):
+    reg = tj.JobRegistry()
+
+    def boom(self):
+        raise exc()   # a control exception from Thread.start BEFORE the worker enters
+
+    monkeypatch.setattr(tj.threading.Thread, "start", boom)
+    with pytest.raises(exc):
+        reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True})
+    monkeypatch.undo()
+    # R-DL2: the queued job was revoked+finalized before re-raising, so the destination is NOT stranded
+    jid = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True})
+    assert _wait_terminal(reg, jid, "s")["state"] == tj.SUCCEEDED
+
+
+@pytest.mark.parametrize("exc", [KeyboardInterrupt, SystemExit])
+def test_worker_control_exception_finalizes_job(exc):
+    reg = tj.JobRegistry()
+    finalized = []
+
+    def worker(emit, should_cancel, begin_commit):
+        raise exc()
+
+    jid = reg.start("t", "/tools/x", "s", worker, on_finish=lambda: finalized.append(1))
+    snap = _wait_terminal(reg, jid, "s")
+    assert snap["state"] == tj.FAILED   # R-DL3: terminal, not a stranded running job; not cancel/success
+    assert finalized == [1]             # ...and the finalizer ran
+    jid2 = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True})
+    assert _wait_terminal(reg, jid2, "s")["state"] == tj.SUCCEEDED   # destination reusable
+
+
+def test_started_then_raise_retains_entered_ownership(monkeypatch):
+    reg = tj.JobRegistry()
+    entered, release, finalized = threading.Event(), threading.Event(), []
+
+    def worker(emit, should_cancel, begin_commit):
+        entered.set()          # the worker has entered and now owns the job
+        release.wait(2.0)      # stay alive while start()'s reported error is handled
+        return {"ok": True}
+
+    real_start = tj.threading.Thread.start
+
+    def start_then_raise(self):
+        real_start(self)       # actually launch the thread (the worker enters)
+        entered.wait(2.0)
+        raise RuntimeError("start reported an error after the thread began")
+
+    monkeypatch.setattr(tj.threading.Thread, "start", start_then_raise)
+    jid = reg.start("t", "/tools/x", "s", worker, on_finish=lambda: finalized.append(1))
+    monkeypatch.undo()
+    # R-DL4: an entered worker OWNS the job — start returned its id (not JobLaunchError) and did NOT finalize
+    snap = reg.get(jid, "s")
+    assert snap is not None and snap["state"] == tj.RUNNING
+    assert finalized == []
+    release.set()
+    assert _wait_terminal(reg, jid, "s")["state"] == tj.SUCCEEDED   # completes normally at its real terminal
+    assert finalized == [1]
+
+
+# ── R-DL6/R-DL7/R-DL8/R-DL9: deeper control-boundary corrections (converge on dispatch_owned semantics) ──
+
+@pytest.mark.parametrize("exc", [KeyboardInterrupt, SystemExit])
+def test_started_control_is_preserved_without_releasing_entered_worker(monkeypatch, exc):
+    """R-DL6: a CONTROL signal reported by Thread.start AFTER the worker entered must PROPAGATE (not be
+    swallowed as a launched job), yet the entered worker keeps its ownership — the ownership token stays
+    registered so the caller does not double-free, and the live worker finalizes itself at its real terminal."""
+    reg = tj.JobRegistry()
+    entered, release, finalized = threading.Event(), threading.Event(), []
+
+    def worker(emit, should_cancel, begin_commit):
+        entered.set()
+        release.wait(2.0)
+        return {"ok": True}
+
+    real_start = tj.threading.Thread.start
+
+    def start_then_control(self):
+        real_start(self)
+        entered.wait(2.0)
+        raise exc()   # a control signal reported after the worker entered
+
+    monkeypatch.setattr(tj.threading.Thread, "start", start_then_control)
+    ownership = tj.DispatchOwnership()
+    with pytest.raises(exc):
+        reg.start("t", "/tools/x", "s", worker, on_finish=lambda: finalized.append(1), ownership=ownership)
+    monkeypatch.undo()
+    assert ownership.registered is True     # caller must NOT release — the entered worker's finalizer owns it
+    jid = next(iter(reg._jobs))
+    snap = reg.get(jid, "s")
+    assert snap is not None and snap["state"] == tj.RUNNING
+    assert finalized == []                  # the live worker's finalizer has not run yet
+    release.set()
+    assert _wait_terminal(reg, jid, "s")["state"] == tj.SUCCEEDED
+    assert finalized == [1]                 # exactly one finalize, at the worker's real terminal
+
+
+def test_result_normalizer_control_cannot_strand_finished_worker(monkeypatch):
+    """R-DL7: a control signal while serializing a SUCCEEDED worker's result must not leave the job running.
+    The worker already succeeded, so the job finalizes as SUCCEEDED with a fixed 'result unavailable' marker
+    (never relabelled failed), releasing the destination."""
+    reg = tj.JobRegistry()
+    finalized = []
+
+    def worker(emit, should_cancel, begin_commit):
+        return {"ok": True}
+
+    monkeypatch.setattr(tj, "_bounded_result_json", lambda _r: (_ for _ in ()).throw(KeyboardInterrupt()))
+    jid = reg.start("t", "/tools/x", "s", worker, on_finish=lambda: finalized.append(1))
+    snap = _wait_terminal(reg, jid, "s")
+    monkeypatch.undo()
+    assert snap["state"] == tj.SUCCEEDED
+    assert finalized == [1]
+    assert reg._jobs[jid].result_json == tj._RESULT_DROPPED_INTERRUPTED
+    jid2 = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True})   # destination reusable
+    assert _wait_terminal(reg, jid2, "s")["state"] == tj.SUCCEEDED
+
+
+def test_error_formatter_control_cannot_strand_worker():
+    """R-DL7: a worker error whose __str__ raises a control signal must still finalize the job (FAILED) and
+    release the destination — error formatting can never escape before the terminal bookkeeping."""
+    reg = tj.JobRegistry()
+    finalized = []
+
+    class _NastyError(Exception):
+        def __str__(self):
+            raise KeyboardInterrupt()
+
+    def worker(emit, should_cancel, begin_commit):
+        raise _NastyError()
+
+    jid = reg.start("t", "/tools/x", "s", worker, on_finish=lambda: finalized.append(1))
+    snap = _wait_terminal(reg, jid, "s")
+    assert snap["state"] == tj.FAILED
+    assert finalized == [1]
+    jid2 = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True})   # destination reusable
+    assert _wait_terminal(reg, jid2, "s")["state"] == tj.SUCCEEDED
+
+
+def test_completed_queued_cancel_not_relabelled_by_late_start_error(monkeypatch):
+    """R-DL8: a pre-entry cancellation that completed (CANCELLED) must not be relabelled FAILED by an ordinary
+    launch error reported afterwards. The completed terminal state is immutable; start() reports the job id."""
+    reg = tj.JobRegistry()
+    finalized = []
+
+    def worker(emit, should_cancel, begin_commit):
+        return {"ok": True}   # never runs — the cancel lands before entry
+
+    def start_cancel_then_error(self):
+        jid = next(iter(reg._jobs))
+        reg._jobs[jid]._cancel = True
+        self.run()            # runs _run inline: pre-entry cancel -> CANCELLED + finalize
+        raise RuntimeError("late startup error reported after the target already finished")
+
+    monkeypatch.setattr(tj.threading.Thread, "start", start_cancel_then_error)
+    jid = reg.start("t", "/tools/x", "s", worker, on_finish=lambda: finalized.append(1))
+    monkeypatch.undo()
+    snap = reg.get(jid, "s")
+    assert snap is not None and snap["state"] == tj.CANCELLED   # NOT relabelled FAILED
+    assert finalized == [1]                                     # finalized exactly once (by the cancel path)
+
+
+@pytest.mark.parametrize("exc", [KeyboardInterrupt, SystemExit])
+def test_secondary_finalizer_control_preserves_original_worker_control(exc):
+    """R-DL9: if the finalizer ALSO raises a control signal while a worker control is being handled, the
+    ORIGINAL worker control is preserved (the finalizer failure is chained as its cause), never replaced."""
+    reg = tj.JobRegistry()
+    captured: list = []
+
+    class _FinalizerExit(SystemExit):
+        pass
+
+    def hook(args):
+        captured.append(args.exc_value)
+
+    def worker(emit, should_cancel, begin_commit):
+        raise exc()   # primary worker control
+
+    def bad_finalizer():
+        raise _FinalizerExit("secondary control from the finalizer")
+
+    old_hook = threading.excepthook
+    threading.excepthook = hook
+    try:
+        jid = reg.start("t", "/tools/x", "s", worker, on_finish=bad_finalizer)
+        snap = _wait_terminal(reg, jid, "s")
+        time.sleep(0.05)   # let the worker thread's re-raise reach the excepthook
+    finally:
+        threading.excepthook = old_hook
+    assert snap["state"] == tj.FAILED
+    assert captured, "the worker thread propagated an exception"
+    assert isinstance(captured[0], exc)                          # the ORIGINAL worker control survived
+    assert isinstance(captured[0].__cause__, _FinalizerExit)     # the finalizer failure is chained as its cause
+    jid2 = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True})   # destination reusable
+    assert _wait_terminal(reg, jid2, "s")["state"] == tj.SUCCEEDED
+
+
+class _FinalizerExit(SystemExit):
+    """A distinct control type a finalizer raises, to prove it never replaces the primary control (R-DL9)."""
+
+
+def _bad_finalizer():
+    raise _FinalizerExit("secondary control from the finalizer")
+
+
+@pytest.mark.parametrize("exc", [KeyboardInterrupt, SystemExit])
+def test_pre_entry_start_control_preserved_over_finalizer_control(monkeypatch, exc):
+    """R-DL9 parity: a control from Thread.start BEFORE entry, whose finalizer ALSO raises a control, propagates
+    the ORIGINAL start control with the finalizer failure chained — the secondary never replaces it."""
+    reg = tj.JobRegistry()
+
+    def boom(self):
+        raise exc()   # control before the worker enters
+
+    monkeypatch.setattr(tj.threading.Thread, "start", boom)
+    with pytest.raises(exc) as ei:
+        reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True}, on_finish=_bad_finalizer)
+    monkeypatch.undo()
+    assert isinstance(ei.value.__cause__, _FinalizerExit)
+    jid = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True})   # destination reusable
+    assert _wait_terminal(reg, jid, "s")["state"] == tj.SUCCEEDED
+
+
+def test_start_error_formatter_control_preserved_over_finalizer_control(monkeypatch):
+    """R-DL9 parity: a control raised while FORMATTING a launch error, whose finalizer also raises a control,
+    propagates the formatting control with the finalizer failure as its cause."""
+    reg = tj.JobRegistry()
+
+    class _NastyStart(Exception):
+        def __str__(self):
+            raise KeyboardInterrupt()
+
+    def boom(self):
+        raise _NastyStart()   # ordinary launch error whose formatting raises a control
+
+    monkeypatch.setattr(tj.threading.Thread, "start", boom)
+    with pytest.raises(KeyboardInterrupt) as ei:
+        reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True}, on_finish=_bad_finalizer)
+    monkeypatch.undo()
+    assert isinstance(ei.value.__cause__, _FinalizerExit)
+    jid = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True})   # destination reusable
+    assert _wait_terminal(reg, jid, "s")["state"] == tj.SUCCEEDED
+
+
+def test_worker_error_formatter_control_preserved_over_finalizer_control():
+    """R-DL9 parity (worker thread): a control raised while formatting an ordinary worker error, whose finalizer
+    also raises a control, propagates the formatting control with the finalizer failure chained."""
+    reg = tj.JobRegistry()
+    captured: list = []
+
+    class _NastyError(Exception):
+        def __str__(self):
+            raise KeyboardInterrupt()
+
+    def worker(emit, should_cancel, begin_commit):
+        raise _NastyError()
+
+    old_hook = threading.excepthook
+    threading.excepthook = lambda args: captured.append(args.exc_value)
+    try:
+        jid = reg.start("t", "/tools/x", "s", worker, on_finish=_bad_finalizer)
+        snap = _wait_terminal(reg, jid, "s")
+        time.sleep(0.05)
+    finally:
+        threading.excepthook = old_hook
+    assert snap["state"] == tj.FAILED
+    assert captured and isinstance(captured[0], KeyboardInterrupt)
+    assert isinstance(captured[0].__cause__, _FinalizerExit)
+
+
+def test_result_normalizer_control_preserved_over_finalizer_control(monkeypatch):
+    """R-DL9 parity (worker thread): a control raised while normalizing a SUCCEEDED worker's result, whose
+    finalizer also raises a control, propagates the normalizer control with the finalizer failure chained — and
+    the job stays SUCCEEDED with the fixed dropped-result marker (never relabelled failed)."""
+    reg = tj.JobRegistry()
+    captured: list = []
+    monkeypatch.setattr(tj, "_bounded_result_json", lambda _r: (_ for _ in ()).throw(KeyboardInterrupt()))
+
+    old_hook = threading.excepthook
+    threading.excepthook = lambda args: captured.append(args.exc_value)
+    try:
+        jid = reg.start("t", "/tools/x", "s", lambda e, s, b: {"ok": True}, on_finish=_bad_finalizer)
+        snap = _wait_terminal(reg, jid, "s")
+        time.sleep(0.05)
+    finally:
+        threading.excepthook = old_hook
+        monkeypatch.undo()
+    assert snap["state"] == tj.SUCCEEDED                          # do NOT flip to failed when preserving
+    assert reg._jobs[jid].result_json == tj._RESULT_DROPPED_INTERRUPTED
+    assert captured and isinstance(captured[0], KeyboardInterrupt)
+    assert isinstance(captured[0].__cause__, _FinalizerExit)

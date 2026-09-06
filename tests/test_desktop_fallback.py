@@ -8,7 +8,13 @@ import types
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FlashEngine
+from src.ui.web import app as webapp
 from src.ui.web import desktop
+
+
+def _server_stub(*_args, **_kwargs):
+    return types.SimpleNamespace(port=12345, start=lambda: None,
+                                 wait_ready=lambda: True, close=lambda: None)
 
 
 def test_desktop_falls_back_to_browser_when_webview_backend_fails(monkeypatch):
@@ -21,8 +27,7 @@ def test_desktop_falls_back_to_browser_when_webview_backend_fails(monkeypatch):
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
 
     # Don't stand up a real server or thread; pretend it's serving so we reach the window step.
-    monkeypatch.setattr(desktop.threading, "Thread", lambda *a, **k: types.SimpleNamespace(start=lambda: None))
-    monkeypatch.setattr(desktop, "_wait_until_serving", lambda *a, **k: True)
+    monkeypatch.setattr(webapp, "create_desktop_server", _server_stub)
 
     opened: list[str] = []
     import webbrowser
@@ -31,7 +36,7 @@ def test_desktop_falls_back_to_browser_when_webview_backend_fails(monkeypatch):
     # Break the keep-alive loop on the first tick so the test returns.
     def _stop(_):
         raise KeyboardInterrupt
-    monkeypatch.setattr(desktop.time, "sleep", _stop)
+    monkeypatch.setattr(desktop, "time", types.SimpleNamespace(sleep=_stop))
 
     rc = desktop.launch_desktop(DeviceManager(), FlashEngine(), EventBus(), TargetPool())
 
@@ -57,9 +62,7 @@ def test_desktop_does_not_wait_when_browser_fallback_cannot_open(monkeypatch, ca
 
     fake_webview.start = fail_native
     monkeypatch.setitem(sys.modules, "webview", fake_webview)
-    monkeypatch.setattr(desktop.threading, "Thread", lambda *a, **k: types.SimpleNamespace(start=lambda: None))
-    monkeypatch.setattr(desktop, "_free_loopback_port", lambda: 12345)
-    monkeypatch.setattr(desktop, "_wait_until_serving", lambda *a, **k: True)
+    monkeypatch.setattr(webapp, "create_desktop_server", _server_stub)
     monkeypatch.setenv("CC_WEB_PASS", "synthetic-test-credential")
 
     import webbrowser
@@ -68,6 +71,6 @@ def test_desktop_does_not_wait_when_browser_fallback_cannot_open(monkeypatch, ca
     def must_not_wait(_seconds):
         raise AssertionError("No window or browser opened; keep-alive would leave the user stranded")
 
-    monkeypatch.setattr(desktop.time, "sleep", must_not_wait)
+    monkeypatch.setattr(desktop, "time", types.SimpleNamespace(sleep=must_not_wait))
     assert desktop.launch_desktop(object(), object(), object(), object()) == 1
     assert "browser fallback could not open" in caplog.text

@@ -18,6 +18,7 @@ class _FakeConn:
 
     def __init__(self, port: str) -> None:
         self.port = port
+        self.is_connected = True
         self._cbs = []
 
     def on_line(self, cb):
@@ -112,7 +113,7 @@ def test_halehound_ble_into_pool():
                    ["[BLE] Name: Watch | ADDR: AA:BB:CC:DD:EE:FF | RSSI: -60 | Type: Random"])
     bles = [t for t in pool.all() if t.target_type == TargetType.BLE]
     assert len(bles) == 1
-    assert bles[0].mac == "AA:BB:CC:DD:EE:FF" and bles[0].ssid == "Watch"
+    assert bles[0].mac == "aa:bb:cc:dd:ee:ff" and bles[0].ssid == "Watch"
 
 
 def test_lxveos_ble_addr_reaches_pool():

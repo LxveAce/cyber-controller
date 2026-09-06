@@ -63,6 +63,10 @@ DEFAULT_MAX_TERMINAL = 200    #: retained terminal jobs (older ones pruned; acti
 #: Prebuilt (no allocation on the failure path) diagnostics for a result that can't be retained as-is.
 _RESULT_DROPPED_INVALID = '{"result_dropped": "worker result was not a valid tool-result envelope"}'
 _RESULT_DROPPED_TOO_LARGE = f'{{"result_dropped": "worker result exceeded {MAX_RESULT_BYTES} bytes"}}'
+# R-DL7: the worker DID return successfully, but formatting its result was interrupted by a control signal
+# (KeyboardInterrupt/SystemExit). The job is still SUCCEEDED — the install completed — only the result payload
+# is unavailable; this fixed marker preserves that honest distinction instead of implying the work failed.
+_RESULT_DROPPED_INTERRUPTED = '{"result_dropped": "worker succeeded; result formatting was interrupted"}'
 #: Fixed, bounded, owner-visible note when a job's cleanup finalizer raised (F1). Never carries the callback's
 #: own exception text; the completed work is NOT relabelled.
 _FINALIZER_FAILED_NOTE = ("[cleanup] post-job cleanup failed; this install destination may remain reserved "
@@ -205,6 +209,30 @@ BeginCommit = Callable[[], None]
 Worker = Callable[[Emit, ShouldCancel, BeginCommit], object]
 
 
+class DispatchOwnership:
+    """Explicit registration/dispatch ownership signal (R-DL6).
+
+    A caller that pre-reserves resources (a destination admission, a runtime-work reservation) and hands their
+    release to :meth:`JobRegistry.start` as its ``on_finish`` needs to know, on EVERY exit path, whether the
+    registry took ownership of that finalizer — because the caller cannot infer it from ``start()``'s return
+    alone. ``start()`` re-raises a control exception (:class:`KeyboardInterrupt`/:class:`SystemExit`) even when
+    the worker already entered and OWNS the job; a caller gating its own release on 'did start return normally'
+    would then double-free an entered worker's resources.
+
+    ``start()`` sets :attr:`registered` to ``True`` the instant the job (carrying its ``on_finish``) is entered
+    into the registry — before the launch thread is created. From that point the job's finalizer runs exactly
+    once on some terminal path (entered worker's terminal transition, or a not-entered launch failure that
+    ``start()`` finalizes itself), so the caller MUST NOT run its own release. ``registered`` stays ``False``
+    only when no job was ever registered (a :class:`JobConflict`, or a failure before registration) — the one
+    case where the caller still owns the pre-start cleanup.
+    """
+
+    __slots__ = ("registered",)
+
+    def __init__(self) -> None:
+        self.registered = False
+
+
 @dataclass
 class _Job:
     job_id: str
@@ -222,6 +250,8 @@ class _Job:
     _cancel: bool = False
     _committing: bool = False
     _finalized: bool = False
+    _entered: bool = False    # the worker atomically claims this the instant it starts running (R-DL4)
+    _revoked: bool = False    # start() finalized this job before the worker entered — the worker must abort
 
     def snapshot(self) -> dict:
         """A JSON-serializable, owner-free view for the status endpoint / an event payload. Excludes
@@ -260,7 +290,8 @@ class JobRegistry:
     # -- lifecycle ----------------------------------------------------
 
     def start(self, tool: str, dest_key: str, owner: str, worker: Worker,
-              on_finish: Optional[Callable[[], None]] = None) -> str:
+              on_finish: Optional[Callable[[], None]] = None,
+              ownership: Optional["DispatchOwnership"] = None) -> str:
         """Register + launch a job for *dest_key*; return its opaque job_id. Raises :class:`JobConflict` if
         that (canonical) destination already has an active job — one writer per destination. On a thread
         launch failure the queued record is marked failed and its reservation released, then
@@ -270,8 +301,14 @@ class JobRegistry:
         an explicit cancel, a cancel that landed before the worker ran, or a thread-launch failure — so a
         caller that reserved a resource for the whole job (e.g. a destination admission held from queue time)
         can release it on every terminal path. It must be fast and non-reentrant (never call back into this
-        registry); it is invoked under the registry lock and its exceptions are swallowed. A JobConflict
-        (raised before any job exists) does NOT run it — the caller still owns its pre-start cleanup then."""
+        registry); it is invoked under the registry lock and its ordinary exceptions are swallowed (a control
+        exception it raises is noted and re-raised — R-DL9). A JobConflict (raised before any job exists) does
+        NOT run it — the caller still owns its pre-start cleanup then.
+
+        *ownership* (if given) is stamped ``registered=True`` the instant the job is entered into the registry
+        (before the launch thread starts). Once stamped, the job's finalizer owns cleanup on every exit path,
+        so the caller must not run its own release — even when this method re-raises a control exception from an
+        already-entered worker (R-DL6). See :class:`DispatchOwnership`."""
         key = canonical_dest(dest_key)
         with self._lock:
             if key in self._active_dest:
@@ -280,22 +317,57 @@ class JobRegistry:
             job.log = deque(maxlen=self._log_lines)
             self._jobs[job.job_id] = job
             self._active_dest[key] = job.job_id
+            if ownership is not None:
+                # The registry now owns on_finish on every exit path below (return, JobLaunchError, or a
+                # re-raised control exception). The caller reads this to know NOT to double-free.
+                ownership.registered = True
         try:
             threading.Thread(target=self._run, args=(job.job_id, worker),
                              name=f"tool-job-{tool}", daemon=True).start()
-        except Exception as exc:  # noqa: BLE001 — J3: a launch failure must not strand the reservation
-            error = _safe_error_text(exc, "could not start the install thread")
+        except BaseException as exc:  # noqa: BLE001 — control exceptions too (R-DL2): must not strand
             with self._lock:
-                job.state = FAILED
-                job.error = error
-                # J4a: a launch failure is a terminal transition like any other — route it through the same
-                # bookkeeping so its reservation is released AND the record is counted against the terminal
-                # cap. Popping only _active_dest (the J3 fix) freed the destination but left the failed
-                # record unpruned, so repeated launch failures grew _jobs without bound.
-                self._finish_locked(job)
-            # Use the already-safe text (never re-render str(exc)) so the caller always gets the advertised
-            # JobLaunchError — a directly unprintable launch exception can't turn this into a raw ValueError.
-            raise JobLaunchError(error) from exc
+                already_terminal = job.state in _TERMINAL
+                entered = job._entered
+                if not already_terminal and not entered:
+                    # The worker never entered AND the job isn't already terminal: revoke it (so a delayed
+                    # target aborts at entry) and finalize — release the reservation + run the finalizer +
+                    # count it against the terminal cap (J4a) — so neither an ordinary launch error nor a
+                    # control interruption strands the queued job or its destination (R-DL2).
+                    job._revoked = True
+                    job.state = FAILED
+                    try:
+                        job.error = _safe_error_text(exc, "could not start the install thread")
+                    except BaseException as fmt_control:  # noqa: BLE001 — R-DL7: format itself interrupted by a
+                        # control signal. Finalize with a fixed fallback, preserving THAT control (R-DL9: a
+                        # secondary finalizer control chains under it), then re-raise it as the primary.
+                        job.error = _UNRENDERABLE_ERROR
+                        self._finish_preserving(job, fmt_control)
+                        raise
+                    if isinstance(exc, Exception):
+                        self._finish_locked(job)   # ordinary launch error -> JobLaunchError below
+                    else:
+                        # A control launch error is the primary: R-DL9 — a secondary finalizer control must not
+                        # replace it. _finish_preserving chains the cleanup failure as its cause; the `raise` at
+                        # the tail then propagates this control.
+                        self._finish_preserving(job, exc)
+                # else: the worker ALREADY entered and OWNS the job (R-DL4), or the job is ALREADY terminal —
+                # e.g. a pre-entry cancel that completed in _run (R-DL8). Either way this handler must NOT
+                # finalize or relabel: an entered worker finalizes itself, and a completed cancellation is
+                # immutable. A late start-thread report cannot overwrite either.
+            if isinstance(exc, Exception):
+                if entered or already_terminal:
+                    # A genuinely admitted (or already-finished) job: report its id. R-DL8: an ordinary late
+                    # start error must NOT relabel a completed cancellation as failed.
+                    return job.job_id
+                # Never entered, freshly finalized above: advertised JobLaunchError, built from the already-safe
+                # text (never re-render str(exc), so a directly-unprintable launch exception can't turn this
+                # into a raw ValueError).
+                raise JobLaunchError(job.error or "could not start the install") from exc
+            # R-DL6: a control exception (KeyboardInterrupt/SystemExit) ALWAYS propagates — even from an entered
+            # worker (which keeps its ownership; the caller's `ownership.registered` is already True so it will
+            # not double-free) and from an already-terminal job (whose state is untouched). Cleanup, if any was
+            # owed, already ran above.
+            raise
         return job.job_id
 
     def _run(self, job_id: str, worker: Worker) -> None:
@@ -341,10 +413,13 @@ class JobRegistry:
                 job._committing = True
 
         with self._lock:
+            if job._revoked or job.state in _TERMINAL:
+                return   # R-DL2: start() already failed+finalized this job before we entered — do not run
             if job._cancel:
                 job.state = CANCELLED          # a cancel that landed before we started still wins
                 self._finish_locked(job)
                 return
+            job._entered = True                # atomic "entered" claim: from here start() must not finalize us
             job.state = RUNNING
         try:
             result = worker(emit, should_cancel, begin_commit)
@@ -354,23 +429,72 @@ class JobRegistry:
                 self._finish_locked(job)
             return
         except Exception as exc:  # noqa: BLE001 — J2: any other error is a FAILURE, even if cancel was set
-            # _safe_error_text can't raise even if the exception's __str__ does, so error formatting can never
-            # escape before _finish_locked and strand the reservation (the inherited failure-path variant of J7).
-            error = _safe_error_text(exc)
+            # _safe_error_text swallows an ORDINARY broken __str__, but a __str__ that raises a CONTROL signal
+            # (KeyboardInterrupt/SystemExit) escapes it (R-DL7). Guard it: finalize FAILED with a fixed fallback
+            # and re-raise the control, so error formatting can never leave the worker stranded RUNNING.
+            try:
+                error = _safe_error_text(exc)
+            except BaseException as fmt_control:  # noqa: BLE001 — control from a pathological __str__ during
+                # formatting. Finalize FAILED with a fixed fallback, preserving THAT control as primary (R-DL9:
+                # a secondary finalizer control chains under it), then re-raise it.
+                with self._lock:
+                    if job.state not in _TERMINAL:
+                        job.state = FAILED
+                        job.error = _UNRENDERABLE_ERROR
+                        self._finish_preserving(job, fmt_control)
+                raise
             with self._lock:
-                job.state = FAILED
-                job.error = error
-                self._finish_locked(job)
+                if job.state not in _TERMINAL:
+                    job.state = FAILED
+                    job.error = error
+                    self._finish_locked(job)
             return
-        # J7: normalize the result OUTSIDE the lock. _bounded_result_json is exception-proof (a deep, cyclic,
-        # non-finite or oversized result all resolve to a bounded diagnostic), so a normalization failure can
-        # never escape between "state = SUCCEEDED" and _finish_locked and strand the destination reservation.
-        # It also keeps json.dumps off the registry-wide lock.
-        result_json = _bounded_result_json(result)
+        except BaseException as exc:  # noqa: BLE001 — R-DL3: a control interruption (KeyboardInterrupt/
+            # SystemExit) from the worker must still leave a terminal transition + finalizer, not a stranded
+            # running job, then re-raise the ORIGINAL control object. R-DL9: if the finalizer ALSO raises a
+            # control signal, keep the worker's original control as primary and chain the cleanup failure as
+            # its cause — a cleanup signal must never silently replace the worker's original signal.
+            try:
+                error = _safe_error_text(exc)
+            except BaseException:  # noqa: BLE001 — even formatting the control exc was interrupted
+                error = _UNRENDERABLE_ERROR
+            with self._lock:
+                if job.state not in _TERMINAL:
+                    job.state = FAILED
+                    job.error = error
+                    self._finish_preserving(job, exc)
+            raise
+        # J7: normalize the result OUTSIDE the lock. _bounded_result_json is exception-proof for ORDINARY errors
+        # (a deep, cyclic, non-finite or oversized result all resolve to a bounded diagnostic). A CONTROL signal
+        # during normalization still escapes it — R-DL7: the worker already SUCCEEDED (the install completed), so
+        # finalize as SUCCEEDED with a fixed "result unavailable" marker rather than implying failure, then
+        # re-raise the control (R-DL9: a secondary finalizer control chains under it, never replaces it). It also
+        # keeps json.dumps off the registry-wide lock.
+        try:
+            result_json = _bounded_result_json(result)
+        except BaseException as norm_control:  # noqa: BLE001 — control during result formatting; worker succeeded
+            with self._lock:
+                if job.state not in _TERMINAL:
+                    job.state = SUCCEEDED
+                    job.result_json = _RESULT_DROPPED_INTERRUPTED
+                    self._finish_preserving(job, norm_control)
+            raise
         with self._lock:
-            job.state = SUCCEEDED              # J1: a successful return is SUCCEEDED regardless of the flag
-            job.result_json = result_json
+            if job.state not in _TERMINAL:
+                job.state = SUCCEEDED          # J1: a successful return is SUCCEEDED regardless of the flag
+                job.result_json = result_json
+                self._finish_locked(job)
+
+    def _finish_preserving(self, job: _Job, primary: BaseException) -> None:
+        """Run terminal bookkeeping (:meth:`_finish_locked`) while *primary* — a control exception already
+        being handled — is in flight, preserving it (R-DL9). If the finalizer ALSO raises a control signal, the
+        original *primary* propagates with the cleanup failure chained as its ``__cause__``; a secondary signal
+        never replaces the primary. On the ordinary path this returns and the caller re-raises *primary* itself.
+        Caller holds ``self._lock``. Keeps _finish_locked's exactly-once behavior + fixed cleanup note intact."""
+        try:
             self._finish_locked(job)
+        except BaseException as cleanup_error:  # noqa: BLE001 — R-DL9: keep the primary; chain cleanup as cause
+            raise primary from cleanup_error
 
     def _finish_locked(self, job: _Job) -> None:
         """On a terminal transition: release the destination reservation and prune old terminal jobs.
@@ -395,11 +519,18 @@ class JobRegistry:
             job.on_finish = None   # F2: drop the spent callback so its object graph isn't retained until prune
             try:
                 cb()               # a falsey return (e.g. a deferred release) is NOT an error
-            except Exception:  # noqa: BLE001 — a finalizer must never break the terminal transition
+            except Exception:  # noqa: BLE001 — an ORDINARY finalizer failure must never break the transition
                 # F1: make a cleanup FAILURE owner-visible without relabelling the committed work — a fixed,
                 # bounded note in the log (never the callback's own exception text). The destination may
                 # remain reserved; the completed state/result are untouched.
                 job.log.append(_FINALIZER_FAILED_NOTE)
+            except BaseException:  # noqa: BLE001 — R-DL9: a CONTROL signal (KeyboardInterrupt/SystemExit) from
+                # the finalizer is noted, then PROPAGATED so the caller can preserve it — chaining it under a
+                # primary worker/start control rather than letting it silently replace that primary. Cleanup is
+                # already past the point that could strand the registry: _active_dest was cleared and _finalized
+                # set above, so the completed state/result stand regardless.
+                job.log.append(_FINALIZER_FAILED_NOTE)
+                raise
 
     # -- queries + control (owner-bound) ------------------------------
 

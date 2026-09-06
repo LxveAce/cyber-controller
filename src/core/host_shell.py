@@ -150,17 +150,22 @@ class HostShellSession:
         return
 
     def kill(self) -> None:
-        """Terminate the shell (idempotent). SIGTERM first, then a hard kill if it lingers."""
+        """Terminate the shell and retain ownership if stopping it fails.
+
+        Serialized with start; success means this session's process has exited. A caller can retry
+        after a termination error instead of losing the only reference to a live process.
+        """
         with self._lock:
             proc = self._proc
+            if proc is None:
+                return
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait(timeout=3)
+            if proc.poll() is None:
+                raise RuntimeError("host shell process did not exit")
             self._proc = None
-        if proc is None:
-            return
-        try:
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-        except Exception:  # noqa: BLE001 — teardown is best-effort
-            pass

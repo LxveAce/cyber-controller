@@ -18,6 +18,8 @@ import threading
 import time
 from collections.abc import Callable
 
+from src.core.lifecycle import CallbackScope
+
 # A send that failed or was declined must not arm a window. The Targets-tab action.executed payload
 # carries a status; these are the "the command actually went out" values (others -> don't arm).
 _SENT_STATUSES = ("success", "sent", "ok")
@@ -36,9 +38,31 @@ class CaptureCorrelator:
         # (bssid_lower, port) -> {"deadline", "action", "armed_at", "bssid"}
         self._pending: dict[tuple[str, str], dict] = {}
         self._lock = threading.Lock()
-        bus.subscribe("action.executed", self._on_action)
-        bus.subscribe("capture.added", self._on_capture)
-        bus.subscribe("capture.updated", self._on_capture)
+        self._subscriptions = CallbackScope()
+        try:
+            for topic, callback in (("action.executed", self._on_action),
+                                    ("capture.added", self._on_capture),
+                                    ("capture.updated", self._on_capture)):
+                self._subscriptions.register(
+                    lambda cb, topic=topic: bus.subscribe(topic, cb),
+                    lambda cb, topic=topic: bus.unsubscribe(topic, cb),
+                    callback,
+                )
+        except BaseException as original:
+            try:
+                self._subscriptions.close()
+            except BaseException as cleanup_error:
+                raise original from cleanup_error
+            raise
+
+    def fence(self) -> None:
+        self._subscriptions.fence()
+
+    def close(self, timeout: float | None = 5.0) -> None:
+        """Detach shared event subscriptions without changing the shared bus."""
+        self._subscriptions.close(timeout)
+        with self._lock:
+            self._pending.clear()
 
     # ── arming ───────────────────────────────────────────────────────
     def _on_action(self, _topic: str, payload: dict) -> None:

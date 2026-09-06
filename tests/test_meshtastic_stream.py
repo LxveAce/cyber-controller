@@ -9,12 +9,19 @@ from __future__ import annotations
 
 import struct
 
+import pytest
+
 from src.protocols import meshtastic_proto as mp
 from src.protocols.meshtastic_stream import MeshtasticBackend
 from src.protocols.stream_framer import StreamFramer
 
 # ── frame builders (fake data) ────────────────────────────────────────────────
 
+
+
+def _float_field(number, value):
+    """Official protobuf float: fixed32 wire tag followed by four IEEE bytes."""
+    return bytes([(number << 3) | 5]) + struct.pack("<f", value)
 
 def _framed_my_info(num: int) -> bytes:
     return StreamFramer.frame(mp.field_bytes(3, mp.field_varint(1, num)))
@@ -27,7 +34,7 @@ def _framed_node_info(num: int, long_name: str, short_name: str, hw: int, snr: f
         + mp.field_bytes(3, short_name.encode())
         + mp.field_varint(5, hw)
     )
-    node_info = mp.field_varint(1, num) + mp.field_bytes(2, user) + mp.field_bytes(4, struct.pack("<f", snr))
+    node_info = mp.field_varint(1, num) + mp.field_bytes(2, user) + _float_field(4, snr)
     return StreamFramer.frame(mp.field_bytes(4, node_info))
 
 
@@ -76,9 +83,9 @@ def test_start_sends_want_config():
     assert mp.parse(payload)[3][0] == 0x12345678  # ToRadio.want_config_id
 
 
-def test_nodeless_config_id_is_bumped():
-    backend, _, _, _ = _make_backend(config_id=mp.NODELESS_WANT_CONFIG_ID)
-    assert backend.config_id == mp.NODELESS_WANT_CONFIG_ID + 1
+def test_reserved_config_seed_is_rejected_for_full_sync():
+    with pytest.raises(ValueError):
+        _make_backend(config_id=mp.NODELESS_WANT_CONFIG_ID)
 
 
 def test_send_text_frames_and_writes():
@@ -103,14 +110,16 @@ def test_send_heartbeat():
 
 
 def test_full_config_stream_populates_state_and_events():
-    backend, _, events, _ = _make_backend()
+    backend, frames, events, _ = _make_backend()
+    backend.start()
+    requested_id = mp.parse(StreamFramer().feed(frames[-1])[0])[3][0]
     stream = (
         _framed_my_info(0x043AE298)
         + _framed_node_info(0x043AE298, "Local", "LCL", 43, 0.0)
         + _framed_node_info(0x1BA746AC, "V4 Neighbor", "46ac", 110, 6.75)
         + _framed_channel(0, "LongFast", 1)
         + _framed_channel(1, "", 0)
-        + _framed_config_complete(0x12345678)
+        + _framed_config_complete(requested_id)
     )
     backend.feed_bytes(stream)
 
@@ -123,9 +132,10 @@ def test_full_config_stream_populates_state_and_events():
     assert backend.config_complete is True
 
     kinds = [t for t, _ in events]
-    assert kinds.count("mesh_node") == 2
-    assert "mesh_my_info" in kinds
-    assert "mesh_channel" in kinds
+    # Pending rows become one atomic inventory; ordinary incremental events resume after commit.
+    assert kinds.count("mesh_node") == 0
+    assert "mesh_my_info" not in kinds
+    assert "mesh_channel" not in kinds
     assert "mesh_config_complete" in kinds
     cc = next(d for t, d in events if t == "mesh_config_complete")
     assert cc["node_count"] == 2
@@ -183,8 +193,10 @@ def test_on_event_error_does_not_break_decoding():
         raise RuntimeError("sink boom")
 
     backend = MeshtasticBackend(frames.append, on_event=bad_sink)
+    backend.start()
+    requested_id = mp.parse(StreamFramer().feed(frames[-1])[0])[3][0]
     # Must not raise despite the sink throwing on every event.
-    backend.feed_bytes(_framed_my_info(0x3) + _framed_config_complete(1))
+    backend.feed_bytes(_framed_my_info(0x3) + _framed_config_complete(requested_id))
     assert backend.my_node_num == 0x3
     assert backend.config_complete is True
 
@@ -219,7 +231,7 @@ def test_concurrent_feed_and_read_no_crash():
     try:
         for i in range(300):
             backend.feed_bytes(
-                _framed_channel(i % 40, f"ch{i}", 1)
+                _framed_channel(i % 8, f"ch{i}", 1)
                 + _framed_node_info(0x1000 + (i % 60), "n", "n", 43, 1.0)
             )
     finally:

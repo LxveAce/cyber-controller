@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from src.core.cross_comm_hub import CrossCommHub
 from src.core.device_manager import DeviceManager
+from src.models.device import Device
 from src.protocols import meshtastic_proto as mp
 from src.protocols.stream_framer import StreamFramer
 
 
 class _FakeConn:
     def __init__(self) -> None:
+        self.port = "COM-TEST"
         self.raw = False
         self.is_connected = True
         self._byte_cbs: list = []
@@ -39,6 +41,10 @@ class _FakeConn:
     def on_state_change(self, cb):
         self._state_cbs.append(cb)
 
+    def remove_state_callback(self, cb):
+        if cb in self._state_cbs:
+            self._state_cbs.remove(cb)
+
     def fire_state(self, state):  # test helper: simulate a connection state transition
         for cb in list(self._state_cbs):
             cb(state)
@@ -46,28 +52,25 @@ class _FakeConn:
     def write_bytes(self, data):
         self.written.append(bytes(data))
 
+    def disconnect(self):
+        self.is_connected = False
+
     def feed(self, data):  # test helper: drive the byte callbacks like the reader thread would
         for cb in list(self._byte_cbs):
             cb(data)
 
 
-class _FakeDevice:
-    def __init__(self, firmware: str, port: str = "COM-TEST") -> None:
-        self.firmware = firmware
-        self.name = firmware
-        self.port = port
-
-
-def _hub_with_fw(firmware, monkeypatch):
+def _hub_with_fw(firmware, request):
     dm = DeviceManager()
     hub = CrossCommHub(dm)
-    monkeypatch.setattr(dm, "get_device", lambda port, _fw=firmware: _FakeDevice(_fw))
-    return hub
-
-
-def test_meshtastic_device_gets_stream_backend(monkeypatch):
-    hub = _hub_with_fw("meshtastic", monkeypatch)
+    request.addfinalizer(hub.close)
     conn = _FakeConn()
+    dm.attach_connection(Device(conn.port, firmware=firmware), conn, owner="inert-test")
+    return hub, conn
+
+
+def test_meshtastic_device_gets_stream_backend(request):
+    hub, conn = _hub_with_fw("meshtastic", request)
     hub._attach_ingestor("COM-TEST", conn)
     assert conn.raw is True
     backend = hub.mesh_backend("COM-TEST")
@@ -77,21 +80,23 @@ def test_meshtastic_device_gets_stream_backend(monkeypatch):
     assert 3 in mp.parse(payload)  # ToRadio.want_config_id
 
 
-def test_text_cli_device_gets_no_stream_backend(monkeypatch):
-    hub = _hub_with_fw("marauder", monkeypatch)
-    conn = _FakeConn()
+def test_text_cli_device_gets_no_stream_backend(request):
+    hub, conn = _hub_with_fw("marauder", request)
     hub._attach_ingestor("COM-TEST", conn)
     assert conn.raw is False
     assert hub.mesh_backend("COM-TEST") is None
     assert conn.written == []
 
 
-def test_decoded_node_events_publish_on_bus(monkeypatch):
-    hub = _hub_with_fw("meshtastic", monkeypatch)
+def test_decoded_node_events_publish_on_bus(request):
+    hub, conn = _hub_with_fw("meshtastic", request)
     got: list[dict] = []
     hub.bus.subscribe("mesh.node", lambda _t, d: got.append(d))
-    conn = _FakeConn()
     hub._attach_ingestor("COM-TEST", conn)
+    # Complete the actual inert handshake before testing normal incremental node publication.
+    requested_id = mp.parse(StreamFramer().feed(conn.written[-1])[0])[3][0]
+    conn.feed(StreamFramer.frame(mp.field_bytes(3, mp.field_varint(1, 100)))
+              + StreamFramer.frame(mp.field_varint(7, requested_id)))
 
     user = mp.field_bytes(1, b"!deadbeef") + mp.field_bytes(2, b"Node") + mp.field_varint(5, 43)
     node_info = mp.field_varint(1, 0xDEADBEEF) + mp.field_bytes(2, user)
@@ -103,11 +108,10 @@ def test_decoded_node_events_publish_on_bus(monkeypatch):
     assert got[0]["hw_model_name"] == "HELTEC_V3"
 
 
-def test_incoming_text_publishes_on_bus(monkeypatch):
-    hub = _hub_with_fw("meshtastic", monkeypatch)
+def test_incoming_text_publishes_on_bus(request):
+    hub, conn = _hub_with_fw("meshtastic", request)
     got: list[dict] = []
     hub.bus.subscribe("mesh.text", lambda _t, d: got.append(d))
-    conn = _FakeConn()
     hub._attach_ingestor("COM-TEST", conn)
 
     data = mp.field_varint(1, mp.TEXT_MESSAGE_APP) + mp.field_bytes(2, b"ping")
@@ -119,9 +123,8 @@ def test_incoming_text_publishes_on_bus(monkeypatch):
     assert got[0]["port"] == "COM-TEST"
 
 
-def test_reattach_same_conn_is_idempotent(monkeypatch):
-    hub = _hub_with_fw("meshtastic", monkeypatch)
-    conn = _FakeConn()
+def test_reattach_same_conn_is_idempotent(request):
+    hub, conn = _hub_with_fw("meshtastic", request)
     hub._attach_ingestor("COM-TEST", conn)
     first = hub.mesh_backend("COM-TEST")
     hub._attach_ingestor("COM-TEST", conn)  # same live conn again
@@ -129,16 +132,12 @@ def test_reattach_same_conn_is_idempotent(monkeypatch):
     assert len(conn._byte_cbs) == 1  # not double-wired -> no double-feed
 
 
-def test_stream_backend_attaches_on_firmware_change(monkeypatch):
+def test_stream_backend_attaches_on_firmware_change(request):
     # First Connect resolves firmware AFTER open (the Devices tab persists it post-open, or auto-detect
     # finds it later). The hub must attach the backend when the firmware becomes a stream device, not only
     # at open time — otherwise the panel is inert on first Connect.
-    dm = DeviceManager()
-    hub = CrossCommHub(dm)
-    conn = _FakeConn()
-    dev = _FakeDevice("marauder")
-    monkeypatch.setattr(dm, "get_device", lambda port: dev)
-    monkeypatch.setattr(dm, "get_connection", lambda port: conn)
+    hub, conn = _hub_with_fw("marauder", request)
+    dev = hub.dm.get_device(conn.port)
 
     hub._attach_ingestor("COM-TEST", conn)  # opened as a text-CLI device
     assert hub.mesh_backend("COM-TEST") is None
@@ -150,11 +149,10 @@ def test_stream_backend_attaches_on_firmware_change(monkeypatch):
     assert hub.mesh_backend("COM-TEST") is not None
 
 
-def test_stream_backend_detaches_on_disconnect(monkeypatch):
+def test_stream_backend_detaches_on_disconnect(request):
     from src.core.serial_handler import ConnectionState
 
-    hub = _hub_with_fw("meshtastic", monkeypatch)
-    conn = _FakeConn()
+    hub, conn = _hub_with_fw("meshtastic", request)
     hub._attach_ingestor("COM-TEST", conn)
     backend = hub.mesh_backend("COM-TEST")
     assert backend is not None and conn.raw is True
@@ -164,3 +162,22 @@ def test_stream_backend_detaches_on_disconnect(monkeypatch):
     assert conn.raw is False  # line mode restored for the next firmware
     assert getattr(conn, "mesh_backend", None) is None
     assert conn._byte_cbs == []  # byte callback unhooked (no leak / double-feed on reconnect)
+
+
+def test_config_transaction_uses_existing_managed_callback_and_request(request):
+    # C33 adapts the preserved managed-read witness to an actual complete inert handshake.
+    # This clean-start control does not certify same-connection replacement/drain handover.
+    hub, conn = _hub_with_fw("meshtastic", request)
+    backend = hub.mesh_backend(conn.port)
+    events = []
+    hub.bus.subscribe("mesh.config_complete", lambda topic, data: events.append(data))
+    assert conn.raw and len(conn._byte_cbs) == len(conn.written) == 1
+    requested_id = mp.parse(StreamFramer().feed(conn.written[-1])[0])[3][0]
+    conn.feed(StreamFramer.frame(mp.field_bytes(3, mp.field_varint(1, 100)))
+              + StreamFramer.frame(mp.field_bytes(4, mp.field_varint(1, 100))))
+    assert backend.node_list() == [] and not backend.config_complete
+    conn.feed(StreamFramer.frame(mp.field_varint(7, requested_id)))
+    assert backend.node_list()[0].num == 100 and backend.config_complete
+    assert len(events) == 1 and events[0]["session_id"] == backend.session_id
+    hub._attach_ingestor(conn.port, conn)
+    assert hub.mesh_backend(conn.port) is backend and len(conn._byte_cbs) == len(conn.written) == 1

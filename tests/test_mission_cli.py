@@ -7,8 +7,29 @@ to `src.core.mission_runner`), so the built+tested runner is actually reachable.
 from __future__ import annotations
 
 import json
+import logging
+
+import pytest
 
 from src.app import _parse_args, _run_mission_cli, main
+
+
+@pytest.fixture
+def _cli_logging(capsys):
+    """Remove this CLI invocation's handlers before its captured streams close."""
+    from src.core import diagnostics
+
+    root = logging.getLogger()
+    handlers, level, ring = tuple(root.handlers), root.level, diagnostics._RING
+    try:
+        yield
+    finally:
+        for handler in tuple(root.handlers):
+            if handler not in handlers:
+                root.removeHandler(handler)
+                handler.close()
+        root.setLevel(level)
+        diagnostics._RING = ring
 
 
 def _write_mission(tmp_path, name="recon"):
@@ -39,7 +60,7 @@ def test_run_mission_cli_bad_path_returns_nonzero(tmp_path):
     assert _run_mission_cli(str(tmp_path / "does-not-exist.json")) == 1
 
 
-def test_main_dispatches_mission_and_never_launches_a_ui(tmp_path, capsys):
+def test_main_dispatches_mission_and_never_launches_a_ui(tmp_path, capsys, _cli_logging):
     # The whole point of #9: `main(["--mission", FILE])` must reach the runner (early-exit, no GUI).
     rc = main(["--mission", _write_mission(tmp_path, name="chain")])
     out = capsys.readouterr().out

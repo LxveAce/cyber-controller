@@ -42,6 +42,7 @@ class StreamFramer:
     def __init__(self, on_skipped: Callable[[bytes], None] | None = None) -> None:
         self._buf = bytearray()
         self._on_skipped = on_skipped
+        self._invalid_lengths = 0
 
     def _skip(self, data: bytes | bytearray) -> None:
         """Route discarded non-frame bytes (radio debug/boot text) to the optional sink."""
@@ -67,6 +68,12 @@ class StreamFramer:
     def reset(self) -> None:
         """Drop any buffered partial frame (e.g. on reconnect)."""
         self._buf.clear()
+        self._invalid_lengths = 0
+
+    @property
+    def invalid_lengths(self) -> int:
+        """Saturating invalid-length count, read/reset only by the caller owning this framer."""
+        return self._invalid_lengths
 
     @property
     def buffered(self) -> int:
@@ -96,6 +103,7 @@ class StreamFramer:
                 return None  # have the magic, need the length bytes
             length = (buf[2] << 8) | buf[3]  # big-endian
             if length > self.MAX_PAYLOAD:
+                self._invalid_lengths = min(self._invalid_lengths + 1, 0xFFFFFFFF)
                 self._skip(buf[:1])  # bogus length -> this 0x94 wasn't a real header
                 del buf[:1]  # treat as corrupt, skip this START1 and resync
                 continue

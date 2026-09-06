@@ -424,6 +424,7 @@ class MacroRecorder:
         armed: bool = False,
         read_response: Callable[[float], str] | None = None,
         async_: bool = True,
+        on_exit: Callable[[], None] | None = None,
     ) -> None:
         """Replay a macro's commands.
 
@@ -442,54 +443,87 @@ class MacroRecorder:
                    FAILS the playback; without it, such checks are reported as not verified (never
                    silently claimed as matched).
             async_: If True (default), run playback in a background thread.
+            on_exit: Optional cleanup called after playback exits or is declined, independently of
+                   outcome reporting. A dispatched worker retains it even if thread startup raises.
         """
-        # Resolve variables into a DETACHED snapshot BEFORE the arm gate so classification and
-        # transmission act on the exact expanded strings. Classifying the raw template let a benign-
-        # looking ``{{ACTION}}`` pass the gate then expand to ``attack -d -t all`` at send time; the
-        # snapshot closes that. Substitution happens exactly once here (not again per step), and the
-        # snapshot is independent of the caller's dict, so no later mutation can change what is sent
-        # vs. what was gated.
-        resolved = resolve_macro(macro, variables)
+        from src.core.lifecycle import dispatch_owned
 
-        # Play-time arm gate, ENFORCED IN THE ENGINE (not just one UI): a transmitting/offensive
-        # macro must be explicitly armed by the caller — else refuse. Previously only the Qt tab
-        # gated this, so `--ui tk` (or any other caller) replayed attack templates with NO
-        # confirmation. This is a confirm gate, never a hard block: the caller's arm IS the
-        # always-available "Yes, proceed".
-        if is_offensive_macro(resolved) and not armed:
-            log.warning("Refusing to play offensive macro %r: not armed", resolved.name)
-            if complete_callback:
-                complete_callback(
-                    False,
-                    "Macro not armed — a transmitting/offensive macro needs arm "
-                    "confirmation before playback.",
-                )
-            return
+        transferred = False
 
-        with self._lock:
-            if self._playing:
+        def prepare_and_play():
+            nonlocal transferred
+            # Resolve variables into a DETACHED snapshot BEFORE the arm gate so classification and
+            # transmission act on the exact expanded strings. Classifying the raw template let a benign-
+            # looking ``{{ACTION}}`` pass the gate then expand to ``attack -d -t all`` at send time; the
+            # snapshot closes that. Substitution happens exactly once here (not again per step), and the
+            # snapshot is independent of the caller's dict, so no later mutation can change what is sent
+            # vs. what was gated.
+            resolved = resolve_macro(macro, variables)
+
+            # Play-time arm gate, ENFORCED IN THE ENGINE (not just one UI): a transmitting/offensive
+            # macro must be explicitly armed by the caller — else refuse. Previously only the Qt tab
+            # gated this, so `--ui tk` (or any other caller) replayed attack templates with NO
+            # confirmation. This is a confirm gate, never a hard block: the caller's arm IS the
+            # always-available "Yes, proceed".
+            if is_offensive_macro(resolved) and not armed:
+                log.warning("Refusing to play offensive macro %r: not armed", resolved.name)
                 if complete_callback:
-                    complete_callback(False, "Playback already in progress")
+                    complete_callback(
+                        False,
+                        "Macro not armed — a transmitting/offensive macro needs arm "
+                        "confirmation before playback.",
+                    )
                 return
-            self._playing = True
-            self._stop_playback.clear()
 
-        # The playback loop transmits the already-resolved snapshot; variables were applied once
-        # above, so no per-step re-substitution happens (no double expansion).
-        if async_:
-            t = threading.Thread(
-                target=self._playback_loop,
-                args=(resolved, send_command, speed_multiplier,
-                      progress_callback, complete_callback, read_response),
-                name="macro-playback",
-                daemon=True,
-            )
-            t.start()
+            with self._lock:
+                if self._playing:
+                    if complete_callback:
+                        complete_callback(False, "Playback already in progress")
+                    return
+                self._playing = True
+                self._stop_playback.clear()
+
+            # The playback loop transmits the already-resolved snapshot; variables were applied once
+            # above, so no per-step re-substitution happens (no double expansion).
+            if async_:
+                transferred = True
+                entered = False
+
+                def run():
+                    nonlocal entered
+                    entered = True
+                    self._playback_loop(resolved, send_command, speed_multiplier,
+                                        progress_callback, complete_callback, read_response)
+
+                def finalize():
+                    if not entered:
+                        with self._lock:
+                            self._playing = False
+                    if on_exit is not None:
+                        on_exit()
+
+                dispatch_owned(
+                    lambda target: threading.Thread(target=target, name="macro-playback", daemon=True).start(),
+                    run, finalize,
+                )
+            else:
+                self._playback_loop(
+                    resolved, send_command, speed_multiplier,
+                    progress_callback, complete_callback, read_response,
+                )
+
+        try:
+            prepare_and_play()
+        except BaseException as original:
+            if not transferred and on_exit is not None:
+                try:
+                    on_exit()
+                except BaseException as cleanup_error:
+                    raise original from cleanup_error
+            raise
         else:
-            self._playback_loop(
-                resolved, send_command, speed_multiplier,
-                progress_callback, complete_callback, read_response,
-            )
+            if not transferred and on_exit is not None:
+                on_exit()
 
     def stop_playback(self) -> None:
         """Request playback to stop after the current step."""

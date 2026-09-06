@@ -28,6 +28,7 @@ import logging
 import os
 import secrets
 import socket
+import sys
 import tempfile
 import threading
 import time
@@ -55,6 +56,7 @@ from src.core.channel_survey import survey_channels
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FirmwareProfile, FlashEngine
+from src.core.lifecycle import CallbackScope, ScopeClosedError
 from src.core.nodes_controller import NodesController
 from src.core.resources import resource_path
 from src.core.target_freshness import summarize_freshness
@@ -170,8 +172,14 @@ def create_app(
     auto_router: Any = None,
     tail_tracker: Any = None,
     sensing_model: Any = None,
+    lifecycle: CallbackScope | None = None,
+    availability=None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
+
+    ``availability`` is an explicitly owned manual update service. Embeddings must inject and close
+    their own service; an absent service leaves version reads usable and check requests unavailable.
+    This factory never creates or starts a checker on behalf of a request.
 
     ``capture_store`` (optional): the shared CaptureStore from the cross-comm spine. Threaded so
     the CRACK captures surface can read it once wired; ``None`` keeps every existing caller (and
@@ -189,6 +197,25 @@ def create_app(
         template_folder=str(_TEMPLATE_DIR),
         static_folder=str(_STATIC_DIR),
     )
+    callbacks = lifecycle if lifecycle is not None else CallbackScope()
+    from src.ui.web.server_lifecycle import WorkTracker
+
+    work = WorkTracker()
+
+    @app.before_request
+    def _enter_runtime_request():
+        lease = callbacks.activity()
+        try:
+            lease.__enter__()
+        except ScopeClosedError:
+            return jsonify({"error": "application is closing"}), 503
+        g._cc_runtime_lease = lease
+
+    @app.teardown_request
+    def _leave_runtime_request(_error):
+        lease = g.pop("_cc_runtime_lease", None)
+        if lease is not None:
+            lease.__exit__(None, None, None)
     # Stable, persisted secret key (0600) so signed sessions survive restarts.
     app.secret_key = load_or_create_secret_key()
     tls_enabled = bool(os.environ.get("CC_WEB_CERT") and os.environ.get("CC_WEB_KEY"))
@@ -464,6 +491,41 @@ def create_app(
 
         return worker
 
+    def _make_install_worker(spec, lease):
+        """Build the job worker for an async tool DOWNLOAD over the accepted staged transaction: BORROWS the
+        queue-time lease, streams log lines + byte progress (phase 'download', completed/total bytes), bridges
+        JobCancelled -> ToolCancelled at the commit boundary (B1), and maps the outcome — ToolCancelled ->
+        JobCancelled (cancelled), RuntimeError -> FAILED, success -> the download envelope. install_tool
+        verifies with the spec's integrity anchor (sha256 > sha1 > size), so verification_method names what
+        ACTUALLY ran — never 'sha256' for a size-only check."""
+        from src.core import tool_bundle
+        from src.core.tool_installer import install_tool
+
+        method = "sha256" if spec.sha256 else ("sha1" if spec.sha1 else "size")
+
+        def worker(emit, should_cancel, begin_commit):
+            def on_line(line):
+                emit("", None, None, str(line))
+
+            def on_progress(done, total):
+                emit("download", done, (total or None), None)
+
+            def bridged_begin_commit():
+                try:
+                    begin_commit()
+                except _tool_jobs.JobCancelled:
+                    raise tool_bundle.ToolCancelled("cancelled before commit")
+
+            try:
+                exe = install_tool(spec, on_line=on_line, should_cancel=should_cancel,
+                                   begin_commit=bridged_begin_commit, on_progress=on_progress, lease=lease)
+            except tool_bundle.ToolCancelled as exc:
+                raise _tool_jobs.JobCancelled(str(exc))
+            return {"schema_version": 1, "tool": spec.tool, "path": exe, "version": spec.version,
+                    "source": "download", "verification_method": method, "state": "succeeded"}
+
+        return worker
+
     def _known_port(port: str) -> bool:
         """True if *port* is a registered device port OR a live, currently-present serial port.
 
@@ -557,10 +619,14 @@ def create_app(
     def _on_device_disconnected(device) -> None:
         socketio.emit("device_disconnected", device.to_dict())
 
-    event_bus.subscribe("target.added", _on_target_added)
-    event_bus.subscribe("target.updated", _on_target_updated)
-    device_manager.on_device_connected(_on_device_connected)
-    device_manager.on_device_disconnected(_on_device_disconnected)
+    callbacks.register(lambda cb: event_bus.subscribe("target.added", cb),
+                       lambda cb: event_bus.unsubscribe("target.added", cb), _on_target_added)
+    callbacks.register(lambda cb: event_bus.subscribe("target.updated", cb),
+                       lambda cb: event_bus.unsubscribe("target.updated", cb), _on_target_updated)
+    callbacks.register(device_manager.on_device_connected,
+                       device_manager.remove_device_connected_callback, _on_device_connected)
+    callbacks.register(device_manager.on_device_disconnected,
+                       device_manager.remove_device_disconnected_callback, _on_device_disconnected)
 
     # ── Page routes ─────────────────────────────────────────────────
 
@@ -1101,35 +1167,106 @@ def create_app(
             lease = tool_bundle.acquire_destination(dest)     # admission held from queue time
         except tool_bundle.DestinationBusy:
             return jsonify({"error": "an install for this tool is already running"}), 409
-        _audit("crack_enable_bundled_async", user=session.get("user"), tool=pack.tool)
-        worker = _make_enable_worker(pack, lease)
+        # R-DL5-P: parity with the install route — every fallible post-acquisition step (_audit, worker
+        # construction, the runtime reservation, and registry dispatch) runs under cleanup ownership, and the
+        # finally gates on the registry's explicit ownership token rather than on 'did start() return'. Once
+        # start() registers the job (carrying finish_job), the finalizer owns cleanup on EVERY exit — including
+        # a re-raised control exception from an already-entered worker (R-DL6) — so releasing here would
+        # double-free. Only a JobConflict / a failure before registration leaves the lease for us to release.
+        ownership = _tool_jobs.DispatchOwnership()
+        release_work = None
         try:
-            job_id = _tool_job_registry.start(
-                pack.tool, dest, owner, worker,
-                on_finish=lambda: tool_bundle.release_destination(lease))
+            _audit("crack_enable_bundled_async", user=session.get("user"), tool=pack.tool)
+            worker = _make_enable_worker(pack, lease)
+            release_work = work.reserve()
+
+            def finish_job():
+                try:
+                    tool_bundle.release_destination(lease)
+                finally:
+                    release_work()
+
+            job_id = _tool_job_registry.start(pack.tool, dest, owner, worker,
+                                              on_finish=finish_job, ownership=ownership)
         except _tool_jobs.JobConflict:
-            tool_bundle.release_destination(lease)
             return jsonify({"error": "an install for this tool is already running"}), 409
         except _tool_jobs.JobLaunchError:
-            tool_bundle.release_destination(lease)            # idempotent — no-op if the finalizer ran
             return jsonify({"error": "could not start the install"}), 503
-        except Exception:  # noqa: BLE001 — R1: any pre-registration failure (e.g. dest resolution) leaves no
-            # job/finalizer to own the lease we already acquired; release it here so the destination doesn't
-            # stay stranded, and return a finite 503 (never the raw exception).
-            tool_bundle.release_destination(lease)
+        except Exception:  # noqa: BLE001 — a pre-registration failure -> finite 503 (never the raw exception)
             log.exception("tool job start failed for %s", pack.tool)
             return jsonify({"error": "could not start the install"}), 503
+        finally:
+            if not ownership.registered:
+                if release_work is not None:
+                    release_work()
+                tool_bundle.release_destination(lease)
         return jsonify({"job_id": job_id}), 202
 
     @app.route("/api/crack/install-tool/async", methods=["POST"])
     @requires_auth
     @requires_csrf
     def api_crack_install_tool_async():
-        """Async download is not implemented yet (install_tool has no staged transaction / commit boundary),
-        so it is honestly refused rather than faking a cancellable job. Use the bundled pack for now."""
-        if _tool_job_owner() is None:
+        """Start an async tool DOWNLOAD+install job over the staged transaction. 202 {job_id}; 400 unknown or
+        non-auto-installable tool; 422 unsupported archive shape (e.g. .7z); 409 destination busy; 503 launch
+        failure. Reserves runtime work at queue time; one idempotent finalizer releases BOTH the destination
+        admission and the runtime reservation on every terminal outcome — same ownership as bundled enable."""
+        from src.core import tool_bundle
+        from src.core.tool_installer import default_tools_dir, installable_tools, spec_for
+        owner = _tool_job_owner()
+        if owner is None:
             return jsonify({"error": "authentication required"}), 401
-        return jsonify({"error": "async download is not available yet; use the bundled pack"}), 422
+        tool = str(_json_body().get("tool", "")).strip()
+        if tool not in installable_tools():
+            return jsonify({"error": f"{tool or 'that tool'} can't be auto-installed on this system"}), 400
+        spec = spec_for(tool)
+        if spec is None:
+            return jsonify({"error": f"no install spec for {tool}"}), 400
+        if spec.archive != "zip":
+            return jsonify({"error": f"{spec.archive} auto-install isn't supported (needs a 7-Zip extractor); "
+                            "install it another way"}), 422
+        dest = os.path.join(default_tools_dir(), spec.tool)
+        try:
+            lease = tool_bundle.acquire_destination(dest)
+        except tool_bundle.DestinationBusy:
+            return jsonify({"error": "an install for this tool is already running"}), 409
+        # R-DL5/R-DL6: EVERY fallible step after acquiring the destination — _audit, worker construction and
+        # the runtime reservation — is inside cleanup ownership, so a control exception from any of them (not
+        # just registry dispatch) releases the not-yet-transferred admission + reservation. The finally gates
+        # on the registry's explicit ownership token, NOT on 'did start() return': once start() has registered
+        # the job (carrying finish_job), the job's finalizer owns cleanup on EVERY exit — including a re-raised
+        # control exception from an already-ENTERED worker (R-DL6) and a not-entered launch failure start()
+        # finalized itself. Releasing here in those cases would double-free an entered worker's resources.
+        ownership = _tool_jobs.DispatchOwnership()
+        release_work = None
+        try:
+            _audit("crack_install_tool_async", user=session.get("user"), tool=tool)
+            worker = _make_install_worker(spec, lease)
+            release_work = work.reserve()
+
+            def finish_job():
+                try:
+                    tool_bundle.release_destination(lease)
+                finally:
+                    release_work()
+
+            job_id = _tool_job_registry.start(spec.tool, dest, owner, worker,
+                                              on_finish=finish_job, ownership=ownership)
+        except _tool_jobs.JobConflict:
+            return jsonify({"error": "an install for this tool is already running"}), 409
+        except _tool_jobs.JobLaunchError:
+            return jsonify({"error": "could not start the install"}), 503
+        except Exception:  # noqa: BLE001 — a pre-registration failure -> finite 503 (never the raw exception)
+            log.exception("tool install job start failed for %s", tool)
+            return jsonify({"error": "could not start the install"}), 503
+        finally:
+            if not ownership.registered:
+                # The registry never took ownership of finish_job (a JobConflict, or a failure before the job
+                # was registered). Release what we acquired here — a control exception re-raises through this
+                # finally after the release, so it can't strand the destination or the runtime work.
+                if release_work is not None:
+                    release_work()
+                tool_bundle.release_destination(lease)
+        return jsonify({"job_id": job_id}), 202
 
     @app.route("/api/crack/job/<job_id>", methods=["GET"])
     @requires_auth
@@ -1507,7 +1644,7 @@ def create_app(
                     _crack_run["busy"] = False
                     _crack_run["proc"] = None
 
-        socketio.start_background_task(_worker)
+        work.dispatch(socketio.start_background_task, _worker)
         return jsonify({"started": True}), 202
 
     @app.route("/api/crack/stop", methods=["POST"])
@@ -1595,13 +1732,20 @@ def create_app(
         weaken safety.py's command classification (which stays label/warn-only, never blocked)."""
         data = _json_body()
         if data.get("reset") is True:
-            app_settings.save_settings(dict(app_settings.DEFAULTS))
+            try:
+                committed = app_settings.patch_settings({}, reset=True)
+            except Exception:
+                log.exception("settings reset failed")
+                return jsonify({"ok": False, "errors": ["write_failed"]}), 500
             _audit("web_settings_reset")
             return jsonify({"ok": True, "reset": True,
-                            "settings": _settings_public(app_settings.load_settings())})
+                            "settings": _settings_public(committed)})
 
-        s = app_settings.load_settings()
+        changes: dict[str, dict] = {}
         errors: list[str] = []
+
+        def _put(section: str, key: str, value) -> None:
+            changes.setdefault(section, {})[key] = value
 
         def _sec(name: str) -> dict:
             v = data.get(name)
@@ -1619,7 +1763,7 @@ def create_app(
             if iv not in allowed:
                 errors.append(f"{section}.{key}")
                 return
-            s[section][key] = iv
+            _put(section, key, iv)
 
         def _apply_choice(section: str, key: str, allowed) -> None:
             v = _sec(section).get(key)
@@ -1628,12 +1772,12 @@ def create_app(
             if v not in allowed:
                 errors.append(f"{section}.{key}")
                 return
-            s[section][key] = v
+            _put(section, key, v)
 
         def _apply_bool(section: str, key: str) -> None:
             v = _sec(section).get(key)
             if v is not None:
-                s[section][key] = bool(v)
+                _put(section, key, bool(v))
 
         def _apply_flash_baud() -> None:
             # flash_baud is tri-state: absent (leave stored), explicit Auto (null / "auto"  -> None, use
@@ -1644,7 +1788,7 @@ def create_app(
                 return
             v = flash["flash_baud"]
             if v is None or v == "auto" or v == "":
-                s["flash"]["flash_baud"] = None
+                _put("flash", "flash_baud", None)
                 return
             try:
                 iv = int(v)
@@ -1654,7 +1798,7 @@ def create_app(
             if iv not in _SETTINGS_BAUDS:
                 errors.append("flash.flash_baud")
                 return
-            s["flash"]["flash_baud"] = iv
+            _put("flash", "flash_baud", iv)
 
         _apply_int("serial", "default_baud", _SETTINGS_BAUDS)
         _apply_flash_baud()
@@ -1670,7 +1814,7 @@ def create_app(
         vdir = _sec("vault").get("dir")
         if vdir is not None:
             if isinstance(vdir, str) and vdir.strip():
-                s["vault"]["dir"] = vdir.strip()
+                _put("vault", "dir", vdir.strip())
             else:
                 errors.append("vault.dir")
 
@@ -1681,18 +1825,18 @@ def create_app(
             if stripped and set(stripped) <= {"•", "*", "·"}:
                 pass
             else:
-                s["uploads"]["wigle_token"] = stripped
+                _put("uploads", "wigle_token", stripped)
 
         if errors:
             return jsonify({"ok": False, "errors": errors}), 400
 
         try:
-            app_settings.save_settings(s)
+            committed = app_settings.patch_settings(changes)
         except Exception:
             log.exception("settings write failed")
             return jsonify({"ok": False, "errors": ["write_failed"]}), 500
         _audit("web_settings_saved")
-        return jsonify({"ok": True, "settings": _settings_public(app_settings.load_settings())})
+        return jsonify({"ok": True, "settings": _settings_public(committed)})
 
     @app.route("/api/version")
     @requires_auth
@@ -1701,37 +1845,77 @@ def create_app(
         from src.version import __version__
         return jsonify({"version": __version__})
 
+    def _update_error(code, status, retry=None):
+        body = {"schema_version": 2, "error": code}
+        if retry is not None:
+            body["retry_after_seconds"] = retry
+        response = jsonify(body)
+        if retry is not None:
+            response.headers["Retry-After"] = str(retry)
+        return response, status
+
     @app.route("/api/updates/check", methods=["POST"])
     @requires_auth
     @requires_csrf
     def api_updates_check():
-        """Manual 'Check now' for the Updates card — runs the same network check the desktop app
-        uses (updater.check, SSRF-guarded to GitHub). Deep-link only: returns the latest tag + URL,
-        never self-downloads. Records last_check_iso/last_seen_latest so the state stays honest."""
-        from src.core import updater
-        from src.version import __version__
-        s = app_settings.load_settings()
+        """Admit one exact operation; legacy callers wait boundedly on that same owner."""
+        body = request.get_json(silent=True)
+        if type(body) is not dict or set(body) - {"schema_version"}:
+            return _update_error("invalid_request", 400)
+        versioned = "schema_version" in body
+        if versioned and (type(body["schema_version"]) is not int or body["schema_version"] != 2):
+            return _update_error("invalid_schema", 400)
+        if availability is None:
+            return _update_error("availability_unavailable", 503)
+        admitted = availability.checker.request_operation()
+        if not admitted.outcome.accepted:
+            if admitted.outcome.reason == "cooldown":
+                return _update_error("cooldown", 429, admitted.outcome.retry_after_seconds)
+            return _update_error("availability_closed", 503)
+        view = admitted.view
+        if versioned:
+            wire = availability.wire_view(view)
+            wire.update(accepted=True, reason=admitted.outcome.reason)
+            return jsonify(wire), 202
+        view = availability.checker.wait_operation(
+            view.runtime_id, view.operation_id, availability.legacy_wait_seconds)
+        if view is None:
+            return _update_error("operation_unavailable", 503)
+        if view.phase == "retired":
+            return _update_error("retired", 503)
+        if view.phase != "completed":
+            return _update_error("check_timeout", 503)
+        terminal = availability.terminal(view)
+        if terminal is None:
+            return _update_error("classification_error", 503)
+        # Only the compatibility request retains the established sparse bookkeeping side effect.
+        upd = {"last_check_iso": view.result.checked_at}
+        if view.result.latest_tag:
+            upd["last_seen_latest"] = view.result.latest_tag
         try:
-            res = updater.check(__version__, s.get("updates"))
-        except Exception:
-            log.exception("update check failed")
-            return jsonify({"ok": False, "status": "OFFLINE"}), 200
-        upd = s.setdefault("updates", {})
-        upd["last_check_iso"] = updater.now_iso()
-        if res.latest_tag:
-            upd["last_seen_latest"] = res.latest_tag
-        try:
-            app_settings.save_settings(s)
+            app_settings.patch_settings({"updates": upd})
         except Exception:
             log.debug("could not persist update-check bookkeeping", exc_info=True)
-        return jsonify({
-            "ok": True,
-            "status": res.status,           # UP_TO_DATE | NEWER | OFFLINE
-            "current": __version__,
-            "latest_tag": res.latest_tag,
-            "latest_url": updater.apply_update_url(res) if res.status == "NEWER" else "",
-            "behind": res.behind,
-        })
+        return jsonify(terminal)
+
+    @app.route("/api/updates/status")
+    @requires_auth
+    def api_updates_status():
+        from src.ui.web.update_runtime import valid_identity
+        if (set(request.args) != {"runtime_id", "operation_id"}
+                or any(len(request.args.getlist(key)) != 1 for key in request.args)):
+            return _update_error("invalid_identity", 400)
+        runtime_id, operation_id = request.args["runtime_id"], request.args["operation_id"]
+        if not valid_identity(runtime_id) or not valid_identity(operation_id):
+            return _update_error("invalid_identity", 400)
+        if availability is None:
+            return _update_error("availability_unavailable", 503)
+        if runtime_id != availability.checker.runtime_id:
+            return _update_error("runtime_mismatch", 409)
+        view = availability.checker.operation_view(runtime_id, operation_id)
+        if view is None:
+            return _update_error("operation_unavailable", 410)
+        return jsonify(availability.wire_view(view))
 
     @app.route("/api/sensing")
     @requires_auth
@@ -1967,7 +2151,7 @@ def create_app(
                 },
             )
 
-        threading.Thread(target=flash_thread, daemon=True).start()
+        work.dispatch(lambda run: threading.Thread(target=run, daemon=True).start(), flash_thread)
         return jsonify({"status": "flashing", "port": port, "profile": profile_name})
 
     @app.route("/api/variants")
@@ -2002,7 +2186,9 @@ def create_app(
     from src.core.gps_tracker import get_tracker
 
     _gps_tracker = get_tracker()
-    _gps_line_cb = _gps_tracker.update  # stable reference so remove/re-add on reconnect is idempotent
+    _gps_line_cb = callbacks.guard(_gps_tracker.update)
+    _gps_connections: dict[int, Any] = {}
+    _gps_connections_lock = threading.Lock()
 
     @app.route("/api/gps")
     @requires_auth
@@ -2047,8 +2233,10 @@ def create_app(
         # connected GPS-capable board updates the Flock follow map even with no terminal open. Idempotent.
         conn = device_manager.get_connection(port)
         if conn is not None and hasattr(conn, "on_line"):
-            conn.remove_line_callback(_gps_line_cb)  # idempotent; avoids a duplicate on reconnect
-            conn.on_line(_gps_line_cb)
+            with _gps_connections_lock:
+                _gps_connections[id(conn)] = conn
+                conn.remove_line_callback(_gps_line_cb)  # remove only this app's registration
+                conn.on_line(_gps_line_cb)
         # Run the connect-time handshake probe so the firmware is actually DETECTED on the web path (the Qt
         # device tab does this; without it a board flashed with, say, Marauder shows "no firmware" in the web
         # UI because dev.firmware was never populated). Best-effort: a probe write can fail on a quiet board.
@@ -2097,6 +2285,11 @@ def create_app(
             "source": getattr(creds, "source", "env"),
             "lan_ip": lan_ip,
             "port": port,
+            # AUD-1: the desktop default binds LOOPBACK. Expose that so the UI doesn't advertise the LAN
+            # address as reachable from another device when nothing is listening on it. This says only "this
+            # server is bound local-only" — NOT that a network bind is reachable through an interface/firewall
+            # (so it's local_only, not a connectivity claim).
+            "local_only": bool(host_shell_loopback),
         })
 
     @app.route("/api/web-password", methods=["POST"])
@@ -2541,6 +2734,8 @@ def create_app(
                 "macro_progress", {"macro": name, "step": idx, "total": total, "message": msg}
             )
 
+        release_work = work.reserve()
+
         def _complete(ok: bool, msg: str) -> None:
             socketio.emit("macro_done", {"macro": name, "success": bool(ok), "message": msg})
 
@@ -2551,6 +2746,7 @@ def create_app(
                 armed=(offensive and consent),
                 progress_callback=_progress,
                 complete_callback=_complete,
+                on_exit=release_work,
             )
         except Exception:
             log.exception("macro playback failed to start on %s", port)
@@ -2833,9 +3029,10 @@ def create_app(
                     if prev_conn is not None:
                         prev_conn.remove_line_callback(prev_cb)
                     conn.remove_line_callback(prev_cb)
-                cb = (lambda line, p=port: socketio.emit("serial_output", {"port": p, "line": line}))
-                conn.on_line(cb)
+                cb = callbacks.guard(
+                    lambda line, p=port: socketio.emit("serial_output", {"port": p, "line": line}))
                 _serial_subs[port] = (cb, conn)
+                conn.on_line(cb)
                 subscribed = True
         if subscribed:
             emit("serial_output", {"port": port, "line": f"[Subscribed to {port}]"})
@@ -2867,10 +3064,11 @@ def create_app(
             if prev_conn is not None:
                 prev_conn.remove_line_callback(cb)  # drop the binding on the replaced object
             current.remove_line_callback(cb)        # guard against a double-bind on the current object
-            current.on_line(cb)
             _serial_subs[port] = (cb, current)
+            current.on_line(cb)
 
-    device_manager.on_connection_opened(_reconcile_serial_on_open)
+    callbacks.register(device_manager.on_connection_opened,
+                       device_manager.remove_connection_opened_callback, _reconcile_serial_on_open)
 
     @socketio.on("send_command")
     def on_send_command(data: dict) -> None:
@@ -2928,29 +3126,62 @@ def create_app(
     if host_shell_enabled:
         _host_shells: dict = {}          # sid -> HostShellSession
         _host_shells_lock = threading.Lock()
+        _host_shell_starting: set[str] = set()
+        _host_shell_close_requested: set[str] = set()
 
-        def _close_host_shell(sid: str) -> None:
+        def _close_host_shell(sid: str, expected_session=None) -> None:
             with _host_shells_lock:
-                sess = _host_shells.pop(sid, None)
+                sess = _host_shells.get(sid)
+                if sess is None or (expected_session is not None and sess is not expected_session):
+                    return
+                _host_shell_close_requested.add(sid)
+                if sid in _host_shell_starting:
+                    return  # start's completion owns the pending close; never forget an in-flight start
             if sess is not None:
                 sess.kill()
+                with _host_shells_lock:
+                    if _host_shells.get(sid) is sess:
+                        del _host_shells[sid]
+                        _host_shell_close_requested.discard(sid)
 
         @socketio.on("host_shell_open")
         def on_host_shell_open(_data=None) -> None:
             if not _socket_authed():
                 return
             sid = request.sid
-            with _host_shells_lock:
-                if sid in _host_shells:
-                    emit("host_shell_status", {"open": True})
+            with _sids_lock:
+                if sid not in _connected_sids:
                     return
-                # bind the sid so the reader thread (no request context) can target this exact socket
-                sess = host_shell.HostShellSession(
-                    lambda text, s=sid: socketio.emit("host_shell_output", {"text": text}, to=s))
-                _host_shells[sid] = sess
-            _audit("host_shell_open", user=session.get("user"))
-            sess.start()
-            emit("host_shell_status", {"open": True})
+                with _host_shells_lock:
+                    if sid in _host_shells:
+                        emit("host_shell_status", {"open": sid not in _host_shell_close_requested})
+                        return
+                    # Register before starting, and retain ownership if disconnect arrives during start.
+                    sess = host_shell.HostShellSession(
+                        lambda text, s=sid: socketio.emit("host_shell_output", {"text": text}, to=s))
+                    _host_shells[sid] = sess
+                    _host_shell_starting.add(sid)
+            try:
+                _audit("host_shell_open", user=session.get("user"))
+                with _host_shells_lock:
+                    should_start = sid not in _host_shell_close_requested
+                if should_start:
+                    sess.start()
+            except BaseException as original:
+                with _host_shells_lock:
+                    _host_shell_starting.discard(sid)
+                try:
+                    _close_host_shell(sid, expected_session=sess)
+                except BaseException as cleanup_error:
+                    raise original from cleanup_error
+                raise
+            else:
+                with _host_shells_lock:
+                    _host_shell_starting.discard(sid)
+                    should_close = sid in _host_shell_close_requested
+                if should_close:
+                    _close_host_shell(sid, expected_session=sess)
+                emit("host_shell_status", {"open": not should_close})
 
         @socketio.on("host_shell_input")
         def on_host_shell_input(data=None) -> None:
@@ -3005,6 +3236,51 @@ def create_app(
             # Never leak a live shell process when the socket goes away.
             _close_host_shell(sid)
 
+    # Socket.IO handlers run outside Flask's request callbacks. Fence those callbacks too;
+    # a closing connect handler must explicitly refuse, because None would accept a connection.
+    for event, handler in tuple(socketio.server.handlers.get("/", {}).items()):
+        if event != "disconnect":
+            socketio.server.handlers["/"][event] = callbacks.guard(
+                handler, closed_result=False if event == "connect" else None)
+    engine_connect = socketio.server.eio.handlers.get("connect")
+    if engine_connect is not None:
+        socketio.server.eio.handlers["connect"] = callbacks.guard(engine_connect, closed_result=False)
+
+    def _begin_close() -> None:
+        callbacks.fence()
+        _desktop_bootstrap.invalidate()
+
+    def _finish_close() -> None:
+        # The owned listener is already closed. Allow admitted actions to finish before disconnecting
+        # their clients and removing observers; no request or socket callback can start new work.
+        callbacks.close(timeout=None)
+        # Engine.IO disconnect() waits for queue.join(). A polling client may leave a close
+        # sentinel queued, so desktop teardown must not depend on another client request.
+        engine = socketio.server.eio
+        for client in tuple(engine.sockets.values()):
+            client.close(wait=False, reason=engine.reason.SERVER_DISCONNECT)
+        engine.sockets.clear()
+        socketio.server.shutdown()
+
+        # Admitted requests/Socket.IO handlers have finished, so no new background job can appear.
+        # Let existing flashes and tool commits complete instead of tearing down their connections.
+        work.close()
+        if host_shell_enabled:
+            with _host_shells_lock:
+                sessions = tuple(_host_shells)
+            for sid in sessions:
+                _close_host_shell(sid)
+        with _serial_subs_lock:
+            for port, (callback, conn) in tuple(_serial_subs.items()):
+                conn.remove_line_callback(callback)
+                del _serial_subs[port]
+        with _gps_connections_lock:
+            for ident, conn in tuple(_gps_connections.items()):
+                conn.remove_line_callback(_gps_line_cb)
+                del _gps_connections[ident]
+
+    app.extensions["cc_begin_close"] = _begin_close
+    app.extensions["cc_finish_close"] = _finish_close
     return app, socketio
 
 
@@ -3046,6 +3322,54 @@ def _compute_allowed_origins(host: str, port: int) -> list[str]:
     return sorted(origins)
 
 
+def _build_web_runtime(device_manager, flash_engine, event_bus, target_pool, *,
+                       host, port, audit, desktop_token):
+    """Construct owned app/hub resources and roll back incomplete assembly."""
+    from src.core.cross_comm_hub import CrossCommHub
+    from src.core.update_checker import UpdateChecker
+    from src.ui.web.server_lifecycle import close_preserving_primary
+    from src.ui.web.update_runtime import UpdateAvailability, WebRuntimeCleanup
+    from src.version import __version__
+
+    callbacks = CallbackScope()
+    hub = CrossCommHub(device_manager, event_bus, target_pool)
+    owner = WebRuntimeCleanup(callbacks, hub)
+    try:
+        owner.checker = UpdateChecker(__version__, enabled=False)
+        app, socketio = create_app(
+            device_manager, flash_engine, event_bus, target_pool,
+            audit=audit, allowed_origins=_compute_allowed_origins(host, port),
+            trusted_proxies=[p for p in os.environ.get("CC_WEB_TRUSTED_PROXIES", "").split(",") if p.strip()],
+            desktop_token=desktop_token, capture_store=hub.captures,
+            host_shell_loopback=host in ("127.0.0.1", "localhost", "::1"),
+            auto_router=hub.router, sensing_model=hub.sensing, lifecycle=callbacks,
+            availability=UpdateAvailability(owner.checker),
+        )
+        app.config["cc_hub"] = hub
+        owner.attach_app(app)
+        if not owner.checker.start():
+            raise RuntimeError("update availability worker did not start")
+    except BaseException as original:
+        close_preserving_primary(owner, original)
+        raise
+    return app, socketio, owner.begin_close, owner.close
+
+
+def create_desktop_server(device_manager, flash_engine, event_bus, target_pool, *,
+                          audit=None, desktop_token=None):
+    """Build an owned local server; its assigned port is used for the exact origin allowlist."""
+    from src.ui.web.server_lifecycle import OwnedWebServer
+
+    def build(port):
+        app, _socketio, begin_close, finish_close = _build_web_runtime(
+            device_manager, flash_engine, event_bus, target_pool,
+            host="127.0.0.1", port=port, audit=audit, desktop_token=desktop_token,
+        )
+        return app, begin_close, finish_close
+
+    return OwnedWebServer(build)
+
+
 def launch_web(
     device_manager: DeviceManager,
     flash_engine: FlashEngine,
@@ -3076,36 +3400,18 @@ def launch_web(
         )
         return 2
 
-    origins = _compute_allowed_origins(host, port)
-    # Behind a reverse proxy, remote_addr is the proxy — collapsing every client to one
-    # rate-limit bucket + one audit identity. Let the operator name the trusted proxy IPs (comma-
-    # separated) so the real client is recovered from X-Forwarded-For; empty/unset = trust nothing
-    # (remote_addr verbatim). Never trusted implicitly — a spoofable header must be opted into.
-    trusted_proxies = [
-        p for p in os.environ.get("CC_WEB_TRUSTED_PROXIES", "").split(",") if p.strip()
-    ]
-    # Composition-root unlock: build the cross-comm spine so the shared TargetPool + CaptureStore
-    # actually populate under the web/desktop UIs. CrossCommHub auto-attaches a TargetIngestor to every
-    # opened connection (a scan on any device -> target.added -> the shared pool), builds the CaptureStore,
-    # and owns the AutoRouter / Broadcast / Meshtastic backends — the same spine the Qt window assembles.
-    # Without it the web pool stayed empty forever, starving Dashboard cross-comm, all of HUNT, and CRACK
-    # captures. It reuses the SAME dm/bus/pool create_app gets, so this is behavior-additive: a device that
-    # scans now feeds the existing target.added subscriber. Held for the process lifetime (launch_web blocks
-    # on socketio.run below); also stashed on app.config so it can't be GC'd and future code can reach it.
-    from src.core.cross_comm_hub import CrossCommHub
-    hub = CrossCommHub(device_manager, event_bus, target_pool)
-
-    app, socketio = create_app(
+    app, socketio, begin_close, finish_close = _build_web_runtime(
         device_manager, flash_engine, event_bus, target_pool,
-        audit=audit, allowed_origins=origins, trusted_proxies=trusted_proxies,
-        desktop_token=desktop_token, capture_store=hub.captures,
-        # Only a loopback bind is even a candidate for the host shell; the env opt-ins are checked inside.
-        host_shell_loopback=is_local,
-        auto_router=hub.router,  # Cross-Comm rules surface — offensive rules are consent+arm gated
-        sensing_model=hub.sensing,  # CSI sensing-node rollup, read by /api/sensing
+        host=host, port=port, audit=audit, desktop_token=desktop_token,
     )
-    app.config["cc_hub"] = hub
+    try:
+        return _serve_web_runtime(app, socketio, host, port, is_local)
+    finally:
+        from src.ui.web.server_lifecycle import close_preserving_primary
+        close_preserving_primary(app.config["cc_runtime_cleanup"], sys.exc_info()[1])
 
+
+def _serve_web_runtime(app, socketio, host, port, is_local):
     ssl_args: dict[str, Any] = {}
     certfile = os.environ.get("CC_WEB_CERT")
     keyfile = os.environ.get("CC_WEB_KEY")
@@ -3143,7 +3449,7 @@ def launch_web(
     server_kind = "Werkzeug dev server" if using_dev_server else getattr(socketio, "async_mode", "?")
     log.info(
         "Starting web UI on %s://%s:%d (origins=%s, server=%s)",
-        scheme, host, port, origins, server_kind,
+        scheme, host, port, _compute_allowed_origins(host, port), server_kind,
     )
     socketio.run(app, host=host, port=port, debug=False, **run_kwargs)
     return 0

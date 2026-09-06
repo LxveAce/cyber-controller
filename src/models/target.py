@@ -2,9 +2,25 @@
 
 from __future__ import annotations
 
+import copy
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+
+_BLE_MAC = re.compile(r"(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}\Z")
+
+
+def normalize_ble_address(mac: str) -> str:
+    """Canonicalize an explicit six-octet address without interpreting names or opaque IDs."""
+    return mac.lower() if type(mac) is str and _BLE_MAC.fullmatch(mac) else mac
+
+
+def normalize_target_key(key: str) -> str:
+    """Allow BLE address spelling variants to find the same typed pool identity."""
+    if type(key) is str and key.startswith("ble:"):
+        return "ble:" + normalize_ble_address(key[4:])
+    return key
 
 
 class TargetType(Enum):
@@ -29,7 +45,7 @@ class Target:
         ssid: SSID for AP/client targets, name for BLE.
         rssi: Signal strength in dBm.
         channel: Wi-Fi/BLE channel.
-        device_source: Port of the device that discovered this target.
+        device_source: Discovery port; for BLE, the latest ingested report's source.
         timestamp: When the target was first seen (UTC).
         last_seen: When the target was last observed (UTC).
         encryption: Encryption type string (e.g. WPA2, OPEN).
@@ -49,10 +65,15 @@ class Target:
     vendor: str = ""
     extra: dict = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        if self.target_type is TargetType.BLE:
+            self.mac = normalize_ble_address(self.mac)
+
     @property
     def key(self) -> str:
         """Unique identity key for deduplication."""
-        return f"{self.target_type.value}:{self.mac}"
+        mac = normalize_ble_address(self.mac) if self.target_type is TargetType.BLE else self.mac
+        return f"{self.target_type.value}:{mac}"
 
     @property
     def age_seconds(self) -> float:
@@ -70,7 +91,7 @@ class Target:
     def to_dict(self) -> dict:
         """Serialize to a plain dict."""
         return {
-            "mac": self.mac,
+            "mac": normalize_ble_address(self.mac) if self.target_type is TargetType.BLE else self.mac,
             "target_type": self.target_type.value,
             "ssid": self.ssid,
             "rssi": self.rssi,
@@ -80,7 +101,7 @@ class Target:
             "last_seen": self.last_seen.isoformat(),
             "encryption": self.encryption,
             "vendor": self.vendor,
-            "extra": self.extra,
+            "extra": copy.deepcopy(self.extra) if self.target_type is TargetType.BLE else self.extra,
         }
 
     @classmethod

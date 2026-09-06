@@ -38,6 +38,13 @@ WT_I32 = 5
 BROADCAST_NUM = 0xFFFFFFFF
 TEXT_MESSAGE_APP = 1  # portnums.proto PortNum.TEXT_MESSAGE_APP
 NODELESS_WANT_CONFIG_ID = 69420  # sending this id tells the node to skip other nodes' NodeInfos
+NODES_ONLY_WANT_CONFIG_ID = 69421  # skips MyNodeInfo/channels/config; never an ordinary full-sync nonce
+# protobufs 3808a392 mesh.options: Data.payload max_size=233. Firmware 868604514 Channels.cpp /
+# NodeDB.cpp: MAX_NUM_CHANNELS=8, NUM_RESERVED=4. Destination 1 is the separate no-LoRa broadcast mode;
+# this ordinary text API supports assigned node numbers or BROADCAST_NUM, not reserved transport modes.
+MAX_TEXT_BYTES = 233
+MAX_NUM_CHANNELS = 8
+MIN_NODE_NUM = 4
 
 # HardwareModel + PortNum names come from meshtastic_ref (the full, snapshot-verified enums) — imported above
 # as hw_model_name / portnum_name. (An earlier hand-typed 8-entry model map had 6 wrong values.)
@@ -89,13 +96,14 @@ class _Reader:
         return self.read_bytes(8)
 
 
-def iter_fields(data: bytes):
+def iter_fields(data: bytes, *, strict: bool = False):
     """Yield ``(field_number, wire_type, value)`` for each field in *data*.
 
     ``value`` is an ``int`` for varint fields, and raw ``bytes`` for I32/I64/length-delimited fields
     (the caller interprets those by the field's declared type). Stops cleanly at the first truncation
     (a partial trailing field is ignored rather than raising) so a slightly-short frame still yields its
-    good fields.
+    good fields. ``strict=True`` instead rejects incomplete/invalid field boundaries; semantic decoding
+    uses that mode so a partial prefix cannot establish a displayed identity.
     """
     r = _Reader(data)
     while not r.eof():
@@ -103,8 +111,13 @@ def iter_fields(data: bytes):
             key = r.read_varint()
             field_no = key >> 3
             wt = key & 0x07
+            if strict and not 1 <= field_no < (1 << 29):
+                raise EOFError("invalid protobuf field number")
             if wt == WT_VARINT:
-                yield field_no, wt, r.read_varint()
+                value = r.read_varint()
+                if strict and value > 0xFFFFFFFFFFFFFFFF:
+                    raise EOFError("protobuf varint exceeds uint64")
+                yield field_no, wt, value
             elif wt == WT_LEN:
                 length = r.read_varint()
                 yield field_no, wt, r.read_bytes(length)
@@ -113,8 +126,12 @@ def iter_fields(data: bytes):
             elif wt == WT_I64:
                 yield field_no, wt, r.read_i64()
             else:  # unknown/deprecated group wire types (3,4) — cannot skip safely, stop.
+                if strict:
+                    raise EOFError("unsupported protobuf wire type")
                 return
         except EOFError:
+            if strict:
+                raise
             return
 
 
@@ -125,6 +142,32 @@ def parse(data: bytes) -> dict[int, list]:
     for field_no, _, value in iter_fields(data):
         out.setdefault(field_no, []).append(value)
     return out
+
+
+def _message(data: bytes, wire_types: dict[int, int], *, required=()) -> dict[int, list]:
+    """Decode a complete message and validate the identity fields that this client uses.
+
+    Unknown fields with supported wire types remain skippable. A truncated known or unknown field
+    invalidates the message; a valid prefix is not enough evidence for a node or packet identity.
+    The public diagnostic ``parse`` helper retains its tolerant behavior.
+    """
+    if not isinstance(data, bytes):
+        raise ValueError("protobuf submessage must be bytes")
+    fields: dict[int, list] = {}
+    for number, wire_type, value in iter_fields(data, strict=True):
+        expected = wire_types.get(number)
+        if expected is not None and wire_type != expected:
+            raise ValueError("wrong wire type for a decoded protobuf field")
+        fields.setdefault(number, []).append(value)
+    if any(number not in fields for number in required):
+        raise ValueError("missing protobuf identity field")
+    return fields
+
+
+def _uint32(value: int | None, *, nonzero: bool = False) -> int:
+    if type(value) is not int or not (int(nonzero) <= value <= 0xFFFFFFFF):
+        raise ValueError("invalid protobuf uint32 identity")
+    return value
 
 
 def _first(fields: dict[int, list], field_no: int, default=None):
@@ -308,6 +351,7 @@ class FromRadioResult:
     config_complete_id: int | None = None
     portnum: int | None = None
     raw_fields: dict = field(default_factory=dict)
+    malformed: bool = False
 
     @property
     def portnum_label(self) -> str:
@@ -327,16 +371,26 @@ def node_id_str(num: int) -> str:
 
 
 def decode_fromradio(payload: bytes) -> FromRadioResult:
-    f = parse(payload)
+    """Decode the supported subset, returning ``other`` for malformed complete frames."""
+    try:
+        return _decode_fromradio(payload)
+    except (EOFError, ValueError, TypeError):
+        return FromRadioResult("other", malformed=True)
+
+
+def _decode_fromradio(payload: bytes) -> FromRadioResult:
+    f = _message(payload, {2: WT_LEN, 3: WT_LEN, 4: WT_LEN, 5: WT_LEN,
+                           7: WT_VARINT, 10: WT_LEN})
     if 2 in f:  # packet (MeshPacket) — the common case once running
         return _decode_packet(_first(f, 2))
     if 4 in f:  # node_info (NodeInfo)
         return FromRadioResult("node_info", node=_decode_nodeinfo(_first(f, 4)))
     if 3 in f:  # my_info (MyNodeInfo)
         raw = _first(f, 3)
-        my = parse(raw) if isinstance(raw, bytes) else {}
-        num = as_u32(_first(my, 1))
-        return FromRadioResult("my_info", my_node_num=num)
+        my = _message(raw, {1: WT_VARINT}, required=(1,))
+        num = _uint32(_first(my, 1), nonzero=True)
+        # Upstream uses uint32(-1) when local identity is not available yet, not as a usable node.
+        return FromRadioResult("my_info", my_node_num=None if num == BROADCAST_NUM else num)
     if 10 in f:  # channel (Channel)
         return FromRadioResult("channel", channel=_decode_channel(_first(f, 10)))
     if 5 in f:  # config (Config) — carries the node's LoRaConfig on the want_config burst
@@ -344,7 +398,7 @@ def decode_fromradio(payload: bytes) -> FromRadioResult:
         if cfg is not None:
             return FromRadioResult("config", config=cfg)
     if 7 in f:  # config_complete_id (uint32)
-        return FromRadioResult("config_complete", config_complete_id=as_u32(_first(f, 7)))
+        return FromRadioResult("config_complete", config_complete_id=_uint32(_first(f, 7)))
     return FromRadioResult("other", raw_fields=f)
 
 
@@ -355,10 +409,10 @@ def _decode_config(data) -> MeshConfig | None:
     config.proto, not memory — this is the read-path label, never a write."""
     if not isinstance(data, bytes):
         return None
-    lora = _first(parse(data), 6)  # Config.lora (LoRaConfig)
+    lora = _first(_message(data, {6: WT_LEN}), 6)  # Config.lora (LoRaConfig)
     if not isinstance(lora, bytes):
         return None
-    lf = parse(lora)
+    lf = _message(lora, {1: WT_VARINT, 2: WT_VARINT, 7: WT_VARINT})
     use_preset = _first(lf, 1)
     return MeshConfig(
         region=as_u32(_first(lf, 7)),
@@ -368,16 +422,17 @@ def _decode_config(data) -> MeshConfig | None:
 
 
 def _decode_nodeinfo(data) -> MeshNode:
-    # NodeInfo: num=1(uint32), user=2(User), position=3, snr=4(float), last_heard=5(uint32),
+    # NodeInfo: num=1(uint32), user=2(User), position=3, snr=4(float), last_heard=5(fixed32),
     # device_metrics=6(DeviceMetrics), channel=7, ...
-    if not isinstance(data, bytes):
-        return MeshNode(num=0)
-    f = parse(data)
-    num = as_u32(_first(f, 1)) or 0
+    f = _message(data, {1: WT_VARINT, 2: WT_LEN, 3: WT_LEN, 4: WT_I32, 5: WT_I32,
+                        6: WT_LEN, 7: WT_VARINT, 8: WT_VARINT, 9: WT_VARINT}, required=(1,))
+    num = _uint32(_first(f, 1), nonzero=True)
+    if num == BROADCAST_NUM:
+        raise ValueError("broadcast is not a node identity")
     node = MeshNode(num=num, node_id=node_id_str(num))
     user = _first(f, 2)
     if isinstance(user, bytes):
-        uf = parse(user)
+        uf = _message(user, {1: WT_LEN, 2: WT_LEN, 3: WT_LEN, 5: WT_VARINT, 7: WT_VARINT})
         # User: id=1(string), long_name=2(string), short_name=3(string), macaddr=4(bytes),
         # hw_model=5(enum), ...
         node.node_id = as_str(_first(uf, 1)) or node.node_id
@@ -387,7 +442,7 @@ def _decode_nodeinfo(data) -> MeshNode:
         node.role = _first(uf, 7)  # User.role enum: CLIENT / ROUTER / REPEATER / TRACKER / ...
     position = _first(f, 3)
     if isinstance(position, bytes):
-        pf = parse(position)
+        pf = _message(position, {1: WT_I32, 2: WT_I32, 3: WT_VARINT})
         # Position: latitude_i=1(sfixed32, deg*1e7), longitude_i=2(sfixed32), altitude=3(int32, m).
         # Absent lat/lon (a node with no GPS fix) leaves latitude/longitude None, not a fake (0, 0).
         lat_i = as_sfixed32(_first(pf, 1))
@@ -403,7 +458,7 @@ def _decode_nodeinfo(data) -> MeshNode:
     node.hops_away = as_u32(_first(f, 9))  # NodeInfo.hops_away=9: 0 = direct, N = relayed over N hops
     metrics = _first(f, 6)
     if isinstance(metrics, bytes):
-        mf = parse(metrics)
+        mf = _message(metrics, {1: WT_VARINT, 2: WT_I32, 3: WT_I32, 4: WT_I32, 5: WT_VARINT})
         # DeviceMetrics: battery_level=1(uint32), voltage=2(float), channel_utilization=3(float),
         # air_util_tx=4(float), uptime_seconds=5(uint32).
         node.battery = as_u32(_first(mf, 1))
@@ -416,15 +471,13 @@ def _decode_nodeinfo(data) -> MeshNode:
 
 def _decode_channel(data) -> MeshChannel:
     # Channel: index=1(int32), settings=2(ChannelSettings), role=3(enum)
-    if not isinstance(data, bytes):
-        return MeshChannel(index=-1)
-    f = parse(data)
-    index = _first(f, 1) or 0
+    f = _message(data, {1: WT_VARINT, 2: WT_LEN, 3: WT_VARINT})
+    index = as_i32(_first(f, 1, 0))
     role = _first(f, 3) or 0
     name = ""
     settings = _first(f, 2)
     if isinstance(settings, bytes):
-        sf = parse(settings)
+        sf = _message(settings, {3: WT_LEN})
         # ChannelSettings: psk=2(bytes), name=3(string), id=4(fixed32), ...
         name = as_str(_first(sf, 3))
     return MeshChannel(index=int(index), name=name, role=int(role))
@@ -434,18 +487,17 @@ def _decode_packet(data) -> FromRadioResult:
     # MeshPacket: from=1(fixed32), to=2(fixed32), channel=3(uint32), decoded=4(Data), encrypted=5(bytes),
     # id=6(fixed32), rx_time=7(fixed32), rx_snr=8(float), hop_limit=9, want_ack=10, priority=11,
     # rx_rssi=12(int32), ...
-    if not isinstance(data, bytes):
-        return FromRadioResult("other")
-    f = parse(data)
+    f = _message(data, {1: WT_I32, 2: WT_I32, 3: WT_VARINT, 4: WT_LEN,
+                        6: WT_I32, 8: WT_I32, 12: WT_VARINT})
     from_num = as_u32(_first(f, 1)) or 0
     to_num = as_u32(_first(f, 2)) or 0
-    channel = _first(f, 3) or 0
+    channel = _uint32(_first(f, 3, 0))
     packet_id = as_u32(_first(f, 6))
     rx_snr = as_float(_first(f, 8))
     rx_rssi = as_i32(_first(f, 12))  # int32 dBm — sign-corrected (negative on the wire is 64-bit extended)
     decoded = _first(f, 4)
     if isinstance(decoded, bytes):
-        df = parse(decoded)
+        df = _message(decoded, {1: WT_VARINT, 2: WT_LEN})
         # Data: portnum=1(enum), payload=2(bytes), ...
         portnum = _first(df, 1) or 0
         payload = _first(df, 2)
@@ -493,8 +545,19 @@ def encode_text_message(text: str, channel: int = 0, dest: int = BROADCAST_NUM) 
 
     ``dest`` defaults to the broadcast address (0xFFFFFFFF). ``channel`` is the channel *index*. The local
     node fills in ``from`` and encrypts on-air, so CC supplies neither a source nor a key (it is inside the
-    node's trust boundary over USB/serial)."""
+    node's trust boundary over USB/serial). This validates wire values, not whether a particular radio has
+    that channel enabled or currently knows the destination. No trimming, splitting or retry occurs."""
+    if type(text) is not str:
+        raise TypeError("message text must be a string")
+    if not 0 < len(text) <= MAX_TEXT_BYTES:
+        raise ValueError("message must contain text and fit in 233 UTF-8 bytes")
     payload = text.encode("utf-8")
+    if not text.strip() or len(payload) > MAX_TEXT_BYTES:
+        raise ValueError("message must contain text and fit in 233 UTF-8 bytes")
+    if type(channel) is not int or not 0 <= channel < MAX_NUM_CHANNELS:
+        raise ValueError("channel must be an integer from 0 to 7")
+    if type(dest) is not int or not MIN_NODE_NUM <= dest <= BROADCAST_NUM:
+        raise ValueError("destination must be an assigned uint32 node number or broadcast")
     # Data { portnum=1 (varint), payload=2 (bytes) }
     data = field_varint(1, TEXT_MESSAGE_APP) + field_bytes(2, payload)
     # MeshPacket { to=2 (fixed32), channel=3 (varint), decoded=4 (Data) }

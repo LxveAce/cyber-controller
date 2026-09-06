@@ -377,10 +377,10 @@
   });
 
   // Cross-Comm pool Refresh + Clear (clears the operator's own scan results; re-scan repopulates).
-  wireBtn("pool-refresh", function () { refreshTargets(); });
+  wireBtn("pool-refresh", function () { refreshTargets(true); });
   wireBtn("pool-clear", function () {
     if (!window.confirm("Clear the shared target pool?\n\nThis removes the current scan results (re-scanning repopulates them).")) return;
-    postJSON("/api/targets/clear", {}).then(function () { refreshTargets(); }).catch(function () {});
+    postJSON("/api/targets/clear", {}).then(function () { refreshTargets(true); }).catch(function () {});
   });
 
   function setGauge(metric, v, num, det, invert) {
@@ -463,6 +463,7 @@
       // the SELECTED (else first) connected device drives Selected Device + the serial subscription
       lastDevices = devs;
       applySelectedDevice();
+      if (huntSelection) huntSelection.control.setDevices(devs);
       if (window.__opSyncDevices) window.__opSyncDevices(devs);
       if (window.__fwSyncPorts) window.__fwSyncPorts(devs);
       if (window.__termSyncDevices) window.__termSyncDevices(devs);
@@ -472,55 +473,104 @@
     }).catch(function () {});
   }
 
-  function refreshTargets() {
-    getJSON("/api/targets").then(function (ts) {
+  var huntSelection = window.CCTargetSelection.mount({
+    host: document.querySelector('.view[data-view="hunt"]'),
+    onDraftChange: function (state) { if (window.__opSyncDraft) window.__opSyncDraft(state); },
+    openOperate: function (draft) {
+      if (!draft || !window.__opOpenDraft) return;
+      window.__opOpenDraft(draft);
+      activateNav(document.querySelector('.navitem[data-view="operate"]'), false);
+      document.querySelector('.view[data-view="operate"] .subtabs [data-sub="console"]').click();
+      document.getElementById("op-device").focus();
+    },
+  });
+  var targetSnapshots = window.CCTargetSnapshots.create({
+    onStatus: function (state) {
+      var message = state === "error" ? "Targets could not refresh. Any rows shown are from the last successful refresh." :
+        state === "unauthorized" ? "Sign in again to load targets." :
+        state === "loading" ? "Refreshing targets…" : "";
+      document.querySelectorAll("[data-target-status]").forEach(function (el) {
+        el.textContent = message;
+        el.hidden = !message;
+      });
+      huntSelection.checkGeometry();
+    },
+    onSnapshot: function (ts, event) {
+      huntSelection.beforeRender();
+      if (event && event.kind === "auth-loss") huntSelection.authLoss();
+      else huntSelection.control.snapshot(ts);
       var body = document.getElementById("dash-pool");
       if (body) {
         var TLABELS = { ap: "AP", client: "Client", ble: "BLE", subghz: "SubGHz", nfc: "NFC", rfid: "RFID", alpr: "ALPR" };
         body.innerHTML = ts.length ? ts.map(function (t) {
           return "<tr><td>" + esc(TLABELS[t.target_type] || t.target_type || "—") + "</td><td>" + esc(t.ssid || t.mac || "—") +
-            '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") + '</td><td class="r">' +
+            '</td><td class="r">' + targetSignalText(t) + '</td><td class="r">' +
             (t.channel != null ? esc(t.channel) : "—") + "</td></tr>";
         }).join("") : '<tr><td class="off" colspan="4">pool empty — targets appear as devices discover them</td></tr>';
       }
       var xc = document.getElementById("xc-count");
       if (xc) xc.textContent = ts.length;
       renderHunt(ts);
+      huntSelection.afterRender();
       if (window.__ccRefreshTails) window.__ccRefreshTails();
-    }).catch(function () {});
+    },
+  });
+  function refreshTargets(replace) {
+    return targetSnapshots.refresh(replace);
   }
+  window.addEventListener("pagehide", function () { targetSnapshots.suspend(); });
+  window.addEventListener("pageshow", function (event) {
+    if (event.persisted) targetSnapshots.resume();
+  });
 
-  var bleObservationLoading = false;
-  function refreshBleObservations() {
-    if (bleObservationLoading) return;
-    var body = document.getElementById("ble-observation-rows");
-    var status = document.getElementById("ble-observation-status");
-    if (!body || !status) return;
-    bleObservationLoading = true;
-    getJSON("/api/ble-observations").then(function (data) {
-      if (!data.available) {
-        status.textContent = "Scan report collection is unavailable in this session.";
-        return;
-      }
-      var reports = data.observations.slice(-200).reverse();
-      document.getElementById("ble-observation-count").textContent = reports.length;
-      status.textContent = "Newest first. Repeated reports are kept separately; address not reported separately by this firmware.";
-      body.innerHTML = reports.length ? reports.map(function (r) {
+  var bleReportCount = 0;
+  var bleReports = window.CCBLEReports.create({
+    onReports: function (data, event) {
+      var reports = data.observations.slice().reverse();
+      var placeholder = event.kind === "auth-loss" ? "Sign in again to load scan reports." :
+        !data.available ? "Scan report collection is unavailable in this session." :
+        "No scan reports yet. Start a BLE scan from a connected device.";
+      var html = reports.length ? reports.map(function (r) {
         var provenance = r.format === "list" ? "List entry " + r.reported_index : "Live scan";
         var detail = "Connection " + r.connection_epoch + "; scan " + r.scan_epoch + "; " + r.observed_at;
-        return '<tr><td>' + esc(r.label || "(empty label)") + (r.label_truncated ? " … (truncated)" : "") +
+        return '<tr><td>' + esc(r.label) + (r.label_truncated ? " … (truncated)" : "") +
           '</td><td class="r mono">' + esc(r.rssi) + ' dBm</td><td class="mono">' + esc(r.device_source) +
           '</td><td title="' + esc(detail) + '">' + esc(provenance) + '</td><td class="r" title="' +
           esc(r.observed_at) + '">' + esc(ageOf(r.observed_at)) + "</td></tr>";
-      }).join("") : '<tr><td class="off" colspan="5">No scan reports yet. Start a BLE scan from a connected device.</td></tr>';
-    }).catch(function () {
-      status.textContent = "Scan reports could not refresh. Any rows shown are from the last successful refresh.";
-    }).then(function () { bleObservationLoading = false; });
+      }).join("") : '<tr><td class="off" colspan="5">' + esc(placeholder) + '</td></tr>';
+      document.getElementById("ble-observation-rows").innerHTML = html;
+      bleReportCount = reports.length;
+      document.getElementById("ble-observation-count").textContent = bleReportCount;
+    },
+    onStatus: function (state) {
+      document.getElementById("ble-observation-status").textContent =
+        state === "loading" ? "Refreshing scan reports. Any rows shown are from the previous successful read." :
+        state === "unavailable" ? "Scan report collection is unavailable in this session." :
+        state === "unauthorized" ? "Sign in again to load scan reports." :
+        state === "error" ? "Scan reports could not refresh. Any rows shown are from the last successful read. Use Refresh reports to retry." :
+        bleReportCount ? "Newest first. Repeated reports are kept separately; address not reported separately by this firmware." :
+        "No scan reports in the current session window.";
+    },
+  });
+  function refreshBleObservations(replace) {
+    return bleReports.refresh(replace);
   }
+  document.getElementById("ble-observation-refresh").addEventListener("click", function () { refreshBleObservations(true); });
+  window.addEventListener("pagehide", function () { bleReports.suspend(); });
+  window.addEventListener("pageshow", function (event) { if (event.persisted) bleReports.resume(); });
 
   // Address-bearing targets keep their existing shared-pool identity.
   function tile(cls, n, label) {
     return '<div class="tile ' + cls + '"><div class="n">' + esc(n) + '</div><div class="l">' + esc(label) + "</div></div>";
+  }
+  function targetSignalText(target) {
+    var signal = target.target_type === "ble" ? window.CCTargetSnapshots.bleSignal(target.rssi) : target.rssi;
+    return signal != null ? esc(signal) : "—";
+  }
+  function targetRowStart(target) {
+    var key = window.CCTargetSelection.key(target);
+    return '<tr' + (key ? ' data-target-key="' + esc(key) + '" data-target-label="' +
+      esc((target.ssid || target.mac) + ' (' + target.target_type + ')') + '"' : '') + '>' + (key ? '' : '<td></td>') + '<td>';
   }
   function renderHunt(ts) {
     var wifi = ts.filter(function (t) { return t.target_type === "ap" || t.target_type === "client"; });
@@ -534,41 +584,46 @@
       tile("orange", open.length, "Open");
     var wr = document.getElementById("hunt-wifi-rows");
     if (wr) wr.innerHTML = wifi.length ? wifi.map(function (t) {
-      return "<tr><td>" + esc(t.ssid || "(hidden)") + '</td><td class="mono dim">' + esc(t.mac || "—") +
+      return targetRowStart(t) + esc(t.ssid || "(hidden)") + '</td><td class="mono dim">' + esc(t.mac || "—") +
         '</td><td class="dim">' + esc(t.vendor || "—") + '</td><td class="r">' + (t.channel != null ? esc(t.channel) : "—") + '</td><td class="r">' +
         (t.rssi != null ? esc(t.rssi) : "—") + "</td><td>" + esc(t.encryption || "—") + "</td></tr>";
-    }).join("") : '<tr><td class="off" colspan="6">no Wi-Fi targets yet — scan from a connected device</td></tr>';
+    }).join("") : '<tr><td class="off" colspan="7">no Wi-Fi targets yet — scan from a connected device</td></tr>';
 
-    var strongest = ble.reduce(function (m, t) { return (t.rssi != null && t.rssi > m) ? t.rssi : m; }, -999);
+    var strongest = ble.reduce(function (m, t) {
+      var signal = window.CCTargetSnapshots.bleSignal(t.rssi);
+      return signal !== null && (m === null || signal > m) ? signal : m;
+    }, null);
     var named = ble.filter(function (t) { return t.ssid; });
     var bt = document.getElementById("hunt-ble-tiles");
     if (bt) bt.innerHTML = tile("green", ble.length, "Addresses") + tile("", named.length, "Named") +
-      tile("green", strongest > -999 ? strongest : "—", "Strongest");
+      tile("green", strongest !== null ? strongest : "—", "Strongest");
     // signal sparkline: one bar per BLE device, height scaled from RSSI (~-100..-30 dBm → 0..100%)
     var spark = document.querySelector("#hunt-ble-spark .bars");
     if (spark) {
       spark.parentElement.hidden = !ble.length;
       spark.innerHTML = ble.length ? ble.map(function (t) {
-        var h = t.rssi == null ? 5 : Math.max(5, Math.min(100, Math.round((t.rssi + 100) / 70 * 100)));
-        return '<i style="height:' + h + '%"></i>';
+        var signal = window.CCTargetSnapshots.bleSignal(t.rssi);
+        var h = signal === null ? 0 : Math.max(5, Math.min(100, Math.round((signal + 100) / 70 * 100)));
+        var label = (t.ssid || t.mac || "BLE device") + ": " + (signal === null ? "signal unknown" : signal + " dBm");
+        return '<i role="img" aria-label="' + esc(label) + '" title="' + esc(label) + '" style="height:' + h + '%"></i>';
       }).join("") : "";
     }
     var br = document.getElementById("hunt-ble-rows");
     if (br) br.innerHTML = ble.length ? ble.map(function (t) {
-      return "<tr><td>" + esc(t.ssid || "(unnamed)") + '</td><td class="mono dim">' + esc(t.mac || "—") +
-        "</td><td>" + esc(t.vendor || "—") + '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") +
+      return targetRowStart(t) + esc(t.ssid || "(unnamed)") + '</td><td class="mono dim">' + esc(t.mac || "—") +
+        "</td><td>" + esc(t.vendor || "—") + '</td><td class="r">' + targetSignalText(t) +
         '</td><td class="r dim">' + esc(ageOf(t.last_seen)) + "</td></tr>";
-    }).join("") : '<tr><td class="off" colspan="5">no BLE targets yet — scan BLE from a connected device</td></tr>';
+    }).join("") : '<tr><td class="off" colspan="6">no BLE targets yet — scan BLE from a connected device</td></tr>';
 
     var TL = { ap: "AP", client: "Client", ble: "BLE", subghz: "SubGHz", nfc: "NFC", rfid: "RFID", alpr: "ALPR" };
     var tc = document.getElementById("hunt-tgt-count");
     if (tc) tc.textContent = ts.length;
     var tr = document.getElementById("hunt-targets-rows");
     if (tr) tr.innerHTML = ts.length ? ts.map(function (t) {
-      return "<tr><td>" + esc(TL[t.target_type] || t.target_type || "—") + "</td><td>" + esc(t.ssid || "—") +
-        '</td><td class="mono dim">' + esc(t.mac || "—") + '</td><td class="dim">' + esc(t.vendor || "—") + '</td><td class="r">' + (t.rssi != null ? esc(t.rssi) : "—") +
+      return targetRowStart(t) + esc(TL[t.target_type] || t.target_type || "—") + "</td><td>" + esc(t.ssid || "—") +
+        '</td><td class="mono dim">' + esc(t.mac || "—") + '</td><td class="dim">' + esc(t.vendor || "—") + '</td><td class="r">' + targetSignalText(t) +
         '</td><td class="r">' + (t.channel != null ? esc(t.channel) : "—") + "</td><td class=\"mono\">" + esc(t.device_source || "—") + "</td></tr>";
-    }).join("") : '<tr><td class="off" colspan="7">pool empty</td></tr>';
+    }).join("") : '<tr><td class="off" colspan="8">pool empty</td></tr>';
   }
 
   // ── live serial (Socket.IO), shared by every terminal sink ─────────
@@ -752,19 +807,48 @@
     var sendBtn = document.getElementById("op-send");
     if (!sel || !grid) return;
 
+    var localDraft = null, draftBlocked = false;
+    var draftEl = document.getElementById("op-target-draft");
+    function showDraft() {
+      draftEl.hidden = !localDraft;
+      if (!localDraft) return;
+      var stale = localDraft.targets.filter(function (entry) { return entry.stale; }).length;
+      document.getElementById("op-target-draft-text").textContent = "Local draft for " + localDraft.port + ": " +
+        localDraft.targets.length + " records" + (stale ? " · " + stale + " unavailable" : "") + ". " +
+        (localDraft.available ? "Nothing sent to the device. Commands do not use this draft." : localDraft.reason);
+      var records = document.getElementById("op-target-draft-records"); records.textContent = "";
+      localDraft.targets.forEach(function (entry) {
+        var row = document.createElement("li");
+        row.textContent = (entry.record.ssid || entry.record.mac) + " · " + entry.record.target_type + " · " + entry.record.mac +
+          (entry.stale ? " — unavailable: " + entry.reason : "");
+        records.appendChild(row);
+      });
+    }
+    var commandGeneration = 0;
     function loadFor(port) {
+      var generation = ++commandGeneration;
       unbindTerminalEl(termEl);   // release the previously-selected device so its output can't leak here (F02)
+      // Old buttons hold command closures for the previous port. Retire them immediately.
+      grid.innerHTML = '<div class="dim" style="font-size:12px">Loading commands…</div>';
+      if (fwEl) fwEl.textContent = "—";
       if (!port) { grid.innerHTML = '<div class="dim" style="font-size:12px">Connect a device (DEVICE ▸ Dashboard) to load its command set.</div>'; if (fwEl) fwEl.textContent = "—"; return; }
       bindTerminal(port, termEl, "[Activity — " + port + "]");
       getJSON("/api/quick-commands?port=" + encodeURIComponent(port)).then(function (data) {
+        if (generation !== commandGeneration || sel.value !== port) return;
         if (fwEl) fwEl.textContent = data.firmware || "device";
         renderCmdGrid(data.groups, port, grid, termEl, statusEl);
-      }).catch(function () { grid.innerHTML = '<div class="er" style="font-size:12px">Could not load commands.</div>'; });
+      }).catch(function () {
+        if (generation !== commandGeneration || sel.value !== port) return;
+        grid.innerHTML = '<div class="er" style="font-size:12px">Could not load commands.</div>';
+      });
     }
-    sel.addEventListener("change", function () { loadFor(sel.value); });
+    sel.addEventListener("change", function () {
+      // A manual choice is explicit; it never transfers an existing draft to that port.
+      localDraft = null; draftBlocked = false; if (sendBtn) sendBtn.disabled = false; showDraft(); loadFor(sel.value);
+    });
     if (sendBtn) sendBtn.addEventListener("click", function () {
       var cmd = (input.value || "").trim();
-      if (!cmd || !sel.value) { if (statusEl) statusEl.textContent = "select a device + type a command"; return; }
+      if (!cmd || !sel.value || draftBlocked) { if (statusEl) statusEl.textContent = "select a device + type a command"; return; }
       if (!confirmIfDangerous(cmd)) return;
       sendCommand(sel.value, cmd, termEl, statusEl);
       input.value = "";
@@ -778,10 +862,29 @@
       sel.innerHTML = connected.length
         ? connected.map(function (d) { return '<option value="' + esc(d.port) + '">' + esc(d.port) + " — " + esc(d.firmware || d.name || "device") + "</option>"; }).join("")
         : '<option value="">no connected device</option>';
-      var want = connected.some(function (d) { return d.port === prev; }) ? prev : (connected[0] ? connected[0].port : "");
+      var want = localDraft ? localDraft.port : connected.some(function (d) { return d.port === prev; }) ? prev : (connected[0] ? connected[0].port : "");
+      var blocked = !!localDraft && (!localDraft.available || !connected.some(function (d) { return d.port === localDraft.port; }));
+      if (localDraft && !connected.some(function (d) { return d.port === localDraft.port; })) {
+        var missing = document.createElement("option"); missing.value = localDraft.port;
+        missing.textContent = localDraft.port + " — local draft unavailable"; sel.appendChild(missing);
+      }
       sel.value = want;
-      if (want !== prev || !grid.dataset.loaded) { grid.dataset.loaded = "1"; loadFor(want); }
+      if (want !== prev || !grid.dataset.loaded || blocked !== draftBlocked) { grid.dataset.loaded = "1"; loadFor(blocked ? "" : want); }
+      draftBlocked = blocked;
+      if (sendBtn) sendBtn.disabled = blocked;
+      showDraft();
     };
+    window.__opOpenDraft = function (draft) {
+      localDraft = draft; grid.dataset.loaded = ""; window.__opSyncDevices(lastDevices);
+    };
+    window.__opSyncDraft = function (state) {
+      if (!localDraft) return;
+      var current = state.drafts.find(function (draft) { return draft.port === localDraft.port; });
+      if (current) localDraft = current;
+      else { localDraft = null; draftBlocked = false; if (sendBtn) sendBtn.disabled = false; loadFor(""); sel.value = ""; }
+      showDraft();
+    };
+    document.getElementById("op-target-draft-clear").addEventListener("click", function () { huntSelection.control.clearDrafts(); });
   }
   initOperate();
 
@@ -1155,22 +1258,38 @@
         (g.locked ? " · LOCKED (" + g.remaining_secs + "s)" : "");
     }).catch(function () { gate.textContent = "gate status unavailable"; });
 
-    // Remote access — reveal the web credentials + LAN URL to this already-authenticated operator so they
-    // can open the UI from a phone / another PC. Only a generated one-time password comes back; a user-set
-    // CC_WEB_PASS is never echoed (the server returns password:null, generated:false).
+    // Report listening scope separately from a suggested network address. A local desktop listener
+    // cannot be reached from another device, and a network bind alone does not prove connectivity.
     var remote = document.getElementById("set-remote");
+    var remoteScope = document.getElementById("set-remote-scope");
+    var remoteNote = document.getElementById("set-remote-source");
     function loadRemote() {
       if (!remote) return;
       getJSON("/api/remote-access").then(function (r) {
-        var url = (r.lan_ip && r.port) ? ("http://" + r.lan_ip + ":" + r.port + "/reform")
-                                       : "http://<this-PC's-LAN-IP>:<port>/reform";
+        var url, addressLabel;
+        if (r.local_only === true) {
+          url = location.origin + "/reform";
+          addressLabel = "Local URL";
+          if (remoteScope) remoteScope.textContent = "this computer only";
+          if (remoteNote) remoteNote.textContent = "This desktop server is available on this computer only. A network server must be started separately to use another device.";
+        } else if (r.local_only === false) {
+          url = (r.lan_ip && r.port) ? (location.protocol + "//" + r.lan_ip + ":" + r.port + "/reform") : "unavailable";
+          addressLabel = "Suggested address";
+          if (remoteScope) remoteScope.textContent = "network listening enabled";
+          if (remoteNote) remoteNote.textContent = "Availability from another device depends on the server interface and firewall. This address has not been tested for connectivity.";
+        } else {
+          url = "server listening mode unavailable";
+          addressLabel = "Address";
+          if (remoteScope) remoteScope.textContent = "mode unavailable";
+          if (remoteNote) remoteNote.textContent = "The server did not report its listening mode. Network access has not been verified.";
+        }
         var pw;
         if (r.source === "saved") pw = "(the password you set below)";
         else if (r.source === "env") pw = "(set via the CC_WEB_PASS environment variable)";
         else if (r.revealed) pw = r.password;
         else pw = "(one-time — shown only on the host PC's console; set your own below)";
         remote.innerHTML =
-          "URL&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<b>" + esc(url) + "</b><br>" +
+          esc(addressLabel) + "&nbsp;<b>" + esc(url) + "</b><br>" +
           "user&nbsp;&nbsp;&nbsp;&nbsp;" + esc(r.username || "admin") + "<br>" +
           "password&nbsp;" + esc(pw);
         var chip = document.getElementById("pw-source-chip");
@@ -1181,7 +1300,11 @@
         }
         var uf = document.getElementById("pw-user");
         if (uf && !uf.value) uf.value = r.username || "admin";
-      }).catch(function () { remote.textContent = "remote-access info unavailable"; });
+      }).catch(function () {
+        remote.textContent = "remote-access info unavailable";
+        if (remoteScope) remoteScope.textContent = "mode unavailable";
+        if (remoteNote) remoteNote.textContent = "Could not read the current server mode.";
+      });
     }
     loadRemote();
     (function wirePassword() {
@@ -1224,7 +1347,10 @@
       el.setAttribute("role", "switch");
       el.setAttribute("tabindex", "0");
       el.setAttribute("aria-checked", chipOn(el) ? "true" : "false");
-      function toggleChip() { setChip(el, !chipOn(el)); }
+      function toggleChip() {
+        if (el.getAttribute("aria-disabled") === "true") return;
+        setChip(el, !chipOn(el));
+      }
       el.addEventListener("click", toggleChip);
       el.addEventListener("keydown", function (e) {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleChip(); }
@@ -1232,10 +1358,48 @@
     });
 
     var statusEl = document.getElementById("set-status");
+    var settingsReady = false, settingsWriting = false, settingsLoading = false;
+    var settingIds = ["set-serial-baud", "set-flash-baud", "set-touch-mode", "set-wigle-token",
+      "set-vault-dir", "set-updates-enabled", "set-confirm-dangerous", "set-suppress-warnings",
+      "set-secure-container", "set-save", "set-reset"];
+    function updateSettingControls() {
+      var locked = !settingsReady || settingsWriting || settingsLoading;
+      settingIds.forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        if (el.matches("input, select, button")) el.disabled = locked;
+        if (el.getAttribute("role") === "switch") {
+          el.setAttribute("aria-disabled", String(locked));
+          el.setAttribute("tabindex", locked ? "-1" : "0");
+        }
+      });
+    }
+    updateSettingControls();
     function setStatus(t, err) {
       if (!statusEl) return;
       statusEl.textContent = t || "";
       statusEl.style.color = err ? "var(--red)" : "var(--dim)";
+    }
+
+    // Validate the entire form response before touching any controls. A partial response must not
+    // replace part of a user's draft or leave HTML defaults looking like loaded settings.
+    function confirmedSettings(response) {
+      function record(value) { return value && typeof value === "object" && !Array.isArray(value); }
+      var s = response && response.settings;
+      if (!record(response) || response.ok !== true || !record(s)) return null;
+      var sections = ["serial", "flash", "interface", "updates", "safety", "security", "vault", "uploads"];
+      if (!sections.every(function (name) { return record(s[name]); })) return null;
+      var bauds = [9600, 115200, 230400, 460800, 921600];
+      if (bauds.indexOf(s.serial.default_baud) < 0 ||
+          (s.flash.flash_baud !== null && bauds.indexOf(s.flash.flash_baud) < 0) ||
+          ["auto", "on", "off"].indexOf(s.interface.touch_mode) < 0 ||
+          typeof s.updates.enabled !== "boolean" ||
+          typeof s.safety.confirm_dangerous !== "boolean" ||
+          typeof s.safety.suppress_all_warnings !== "boolean" ||
+          typeof s.security.secure_container !== "boolean" ||
+          typeof s.uploads.wigle_token_set !== "boolean" ||
+          typeof s.vault.dir !== "string" || !s.vault.dir.trim()) return null;
+      return s;
     }
 
     // Hydrate from the real store.
@@ -1256,8 +1420,30 @@
       var wi = document.getElementById("set-wigle-token");
       if (wi) wi.value = "";   // never echo the token back; blank = "leave unchanged"
     }
-    getJSON("/api/settings").then(function (r) { hydrate(r.settings); })
-      .catch(function () { setStatus("could not load settings", true); });
+    var retryBtn = document.getElementById("set-retry");
+    function loadGeneralSettings() {
+      if (settingsLoading || settingsWriting) return;
+      settingsLoading = true;
+      if (retryBtn) retryBtn.hidden = true;
+      updateSettingControls();
+      setStatus("loading settings…");
+      getJSON("/api/settings").then(function (r) {
+        var confirmed = confirmedSettings(r);
+        if (!confirmed) throw new Error("settings unavailable");
+        hydrate(confirmed);
+        settingsReady = true;
+        setStatus("");
+      }).catch(function () {
+        settingsReady = false;
+        setStatus("could not load settings — retry before saving", true);
+        if (retryBtn) retryBtn.hidden = false;
+      }).then(function () {
+        settingsLoading = false;
+        updateSettingControls();
+      });
+    }
+    if (retryBtn) retryBtn.addEventListener("click", loadGeneralSettings);
+    loadGeneralSettings();
 
     // Gather the form into the /api/settings shape.
     function gather() {
@@ -1285,45 +1471,86 @@
 
     var saveBtn = document.getElementById("set-save");
     if (saveBtn) saveBtn.addEventListener("click", function () {
+      if (!settingsReady || settingsWriting || settingsLoading) return;
+      settingsWriting = true;
+      updateSettingControls();
       setStatus("saving…");
       postJSON("/api/settings", gather()).then(function (r) {
-        hydrate(r.settings);
+        var confirmed = confirmedSettings(r);
+        if (!confirmed) {
+          setStatus("could not confirm saved settings — your edits are unchanged; reload to check", true);
+          if (retryBtn) { retryBtn.textContent = "Reload saved settings"; retryBtn.hidden = false; }
+          return;
+        }
+        hydrate(confirmed);
         setStatus("saved ✓");
-      }).catch(function () { setStatus("save failed — check the values", true); });
+      }).catch(function () { setStatus("save failed — your edits are still here; check the values and retry", true); })
+        .then(function () { settingsWriting = false; updateSettingControls(); });
     });
 
     var resetBtn = document.getElementById("set-reset");
     if (resetBtn) resetBtn.addEventListener("click", function () {
+      if (!settingsReady || settingsWriting || settingsLoading) return;
       if (!window.confirm("Reset all settings to defaults?")) return;
+      settingsWriting = true;
+      updateSettingControls();
       setStatus("resetting…");
       postJSON("/api/settings", { reset: true }).then(function (r) {
-        hydrate(r.settings);
-        setStatus("reset to defaults ✓");
-      }).catch(function () { setStatus("reset failed", true); });
-    });
-
-    // Updates card — real current version + a live "Check now".
-    var updStatus = document.getElementById("set-update-status");
-    getJSON("/api/version").then(function (v) {
-      if (updStatus) updStatus.textContent = "Current v" + v.version;
-    }).catch(function () { if (updStatus) updStatus.textContent = "version unavailable"; });
-
-    var checkBtn = document.getElementById("set-check-now");
-    if (checkBtn) checkBtn.addEventListener("click", function () {
-      if (updStatus) updStatus.textContent = "checking…";
-      postJSON("/api/updates/check", {}).then(function (r) {
-        if (!updStatus) return;
-        if (r.status === "NEWER") {
-          updStatus.innerHTML = "v" + esc(r.current) + " · update available: " +
-            '<a href="' + esc(r.latest_url) + '" target="_blank" rel="noopener">' +
-            esc(r.latest_tag) + "</a>";
-        } else if (r.status === "OFFLINE") {
-          updStatus.textContent = "v" + r.current + " · offline (couldn’t reach GitHub)";
-        } else {
-          updStatus.textContent = "v" + r.current + " · up to date";
+        var confirmed = confirmedSettings(r);
+        if (!confirmed) {
+          setStatus("could not confirm reset — your edits are unchanged; reload to check", true);
+          if (retryBtn) { retryBtn.textContent = "Reload saved settings"; retryBtn.hidden = false; }
+          return;
         }
-      }).catch(function () { if (updStatus) updStatus.textContent = "check failed"; });
+        hydrate(confirmed);
+        setStatus("reset to defaults ✓");
+      }).catch(function () { setStatus("reset failed", true); })
+        .then(function () { settingsWriting = false; updateSettingControls(); });
     });
+
+    // Updates card — one current client request; aborting it does not stop server work.
+    var updStatus = document.getElementById("set-update-status");
+    var checkBtn = document.getElementById("set-check-now");
+    function updateRequest(url, method, signal) {
+      var options = { method: method, signal: signal, credentials: "same-origin", cache: "no-store",
+        redirect: "error", headers: { "X-CSRF-Token": window.CSRF_TOKEN || "" } };
+      if (method === "POST") { options.headers["Content-Type"] = "application/json"; options.body = "{}"; }
+      return fetch(url, options).then(function (response) {
+        if (!response.ok) throw new Error("Update request failed");
+        return response.json();
+      });
+    }
+    if (updStatus && checkBtn) {
+      var updatesTransport = window.CCUpdatesTransport.create({
+        fetch: window.fetch.bind(window),
+        csrfToken: function () { return window.CSRF_TOKEN || ""; }
+      });
+      var updatesCard = window.CCUpdatesCard.create({
+        getVersion: function (signal) { return updateRequest("/api/version", "GET", signal); },
+        check: function (signal) { return updatesTransport.check(signal); },
+        onState: function (state) {
+          checkBtn.disabled = state.busy;
+          checkBtn.setAttribute("aria-busy", String(state.busy));
+          var prefix = state.current ? "v" + state.current.replace(/^[vV]/, "") + " · " : "";
+          var message = { checking: "checking…", error: "check failed", cancelled: "check interrupted — retry",
+            version_unavailable: "version unavailable", offline: prefix + "offline (couldn’t reach GitHub)",
+            up_to_date: prefix + "up to date", version: "Current " + prefix.slice(0, -3) };
+          updStatus.textContent = state.kind === "newer" ? prefix + "update available: " : message[state.kind] || "version unavailable";
+          if (state.kind === "newer") {
+            var link = document.createElement("a");
+            link.href = state.latestURL;
+            link.textContent = state.latestTag;
+            link.target = "_blank";
+            link.rel = "noopener";
+            updStatus.appendChild(link);
+          }
+        }
+      });
+      checkBtn.addEventListener("click", function () { updatesCard.check(); });
+      window.addEventListener("pagehide", function () { updatesCard.suspend(); });
+      window.addEventListener("pageshow", function () { updatesCard.resume(); });
+      updatesCard.start();
+    }
 
     // "Set up access gate…" — the gate is configured from the desktop app/console by design.
     var gateBtn = document.getElementById("set-gate-setup");
@@ -1666,6 +1893,7 @@
   refreshTails();
 
   // ── CRACK: live engine detection + optional-tool fetch (the RUN stays consent-gated) ─
+  var crackJobPanel = null;
   function crackToolRow(a) {
     var mark = a.present ? "✓" : "✗";
     var col = a.present ? "var(--green)" : "var(--dim)";
@@ -1709,21 +1937,11 @@
     var msg = panel.querySelector("#crack-panel-msg");
     function setMsg(color, text) { if (msg) { msg.style.color = color; msg.textContent = text; } }
 
-    // Enable a bundled pack (offline, no network).
+    // One controller survives inventory refresh, collapse and tab changes.
     panel.querySelectorAll("button[data-enable]").forEach(function (b) {
       b.addEventListener("click", function () {
-        var name = b.getAttribute("data-enable");
-        b.disabled = true; b.textContent = "Enabling...";
-        setMsg("var(--dim)", "Unpacking " + name + "...");
-        postJSON("/api/crack/enable-bundled", { pack: name }).then(function (res) {
-          b.textContent = res.ok ? "Enabled" : "Enable";
-          b.disabled = !!res.ok;
-          setMsg(res.ok ? "var(--green)" : "var(--amber)", (res.ok ? "✓ " : "✗ ") + (res.message || (res.ok ? "enabled" : "enable failed")));
-          if (res.ok) initCrack();
-        }).catch(function (err) {
-          b.disabled = false; b.textContent = "Enable";
-          setMsg("var(--amber)", "✗ " + ((err && err.message) || (typeof err === "string" ? err : "enable failed")));
-        });
+        if (crackJobPanel) void crackJobPanel.start(b.getAttribute("data-enable"));
+        else setMsg("var(--amber)", "Tool progress controls could not load. Reload the page before installing.");
       });
     });
 
@@ -1744,21 +1962,15 @@
       }).catch(function () { addBtn.disabled = false; setMsg("var(--amber)", "exclusion request failed - run the command manually"); });
     });
 
-    // Fallback: network install only for a tool with no bundled pack that CC can still auto-fetch.
+    // Network downloads share the owned progress/cancel/recovery controller with bundled tools.
     panel.querySelectorAll("button[data-install]").forEach(function (b) {
       b.addEventListener("click", function () {
         var tool = b.getAttribute("data-install");
-        b.disabled = true; b.textContent = "Installing...";
-        setMsg("var(--dim)", "Fetching " + tool + "...");
-        postJSON("/api/crack/install-tool", { tool: tool }).then(function (res) {
-          setMsg("var(--green)", "✓ " + tool + " installed → " + (res.path || "tools dir"));
-          initCrack();
-        }).catch(function (err) {
-          b.disabled = false; b.textContent = "Install";
-          setMsg("var(--amber)", "✗ " + ((err && err.message) || (typeof err === "string" ? err : "install failed")));
-        });
+        if (crackJobPanel) void crackJobPanel.startDownload(tool);
+        else setMsg("var(--amber)", "Tool progress controls could not load. Reload the page before installing.");
       });
     });
+    if (crackJobPanel) crackJobPanel.refreshControls();
   }
   function initCrack() {
     var eng = document.getElementById("crack-engine");
@@ -1781,6 +1993,9 @@
     var getBtn = document.getElementById("crack-get-tools");
     var reBtn = document.getElementById("crack-recheck");
     var panel = document.getElementById("crack-tools-panel");
+    if (window.CCToolJobPanel) crackJobPanel = window.CCToolJobPanel.mount({
+      element: document.getElementById("crack-tool-job"), inventory: panel, onComplete: initCrack,
+    });
     if (getBtn && panel) getBtn.addEventListener("click", function () {
       panel.hidden = !panel.hidden;
       if (!panel.hidden) renderCrackPanel(panel);

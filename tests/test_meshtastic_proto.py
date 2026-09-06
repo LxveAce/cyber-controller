@@ -17,6 +17,11 @@ from src.protocols.stream_framer import StreamFramer
 # ── varint ────────────────────────────────────────────────────────────────────
 
 
+
+def _float_field(number, value):
+    """Official protobuf float: fixed32 wire tag followed by four IEEE bytes."""
+    return bytes([(number << 3) | 5]) + struct.pack("<f", value)
+
 def _decode_single_varint(data: bytes) -> int:
     r = mp._Reader(data)
     return r.read_varint()
@@ -94,7 +99,7 @@ def _fake_nodeinfo(num: int, user: bytes, snr: float, battery: int) -> bytes:
     return (
         mp.field_varint(1, num)
         + mp.field_bytes(2, user)
-        + mp.field_bytes(4, struct.pack("<f", snr))  # snr = float (I32 wire)
+        + _float_field(4, snr)  # snr = float (I32 wire)
         + mp.field_bytes(6, mp.field_varint(1, battery))  # DeviceMetrics{battery_level=1}
     )
 
@@ -142,7 +147,7 @@ def _fake_nodeinfo_pos(num: int, user: bytes, position: "bytes | None") -> bytes
     out = mp.field_varint(1, num) + mp.field_bytes(2, user)
     if position is not None:
         out += mp.field_bytes(3, position)  # NodeInfo.position = field 3
-    out += mp.field_bytes(4, struct.pack("<f", 6.75)) + mp.field_bytes(6, mp.field_varint(1, 88))
+    out += _float_field(4, 6.75) + mp.field_bytes(6, mp.field_varint(1, 88))
     return out
 
 
@@ -201,8 +206,8 @@ def test_decode_node_info_hops_and_mqtt_are_honest_defaults_when_absent():
 def test_decode_node_info_device_metrics_full():
     # DeviceMetrics carries more than battery: voltage/channel_utilization/air_util_tx (floats) +
     # uptime_seconds (uint32) — all were dropped before.
-    dm = (mp.field_varint(1, 85) + mp.field_bytes(2, struct.pack("<f", 4.1))
-          + mp.field_bytes(3, struct.pack("<f", 12.5)) + mp.field_bytes(4, struct.pack("<f", 3.2))
+    dm = (mp.field_varint(1, 85) + _float_field(2, 4.1)
+          + _float_field(3, 12.5) + _float_field(4, 3.2)
           + mp.field_varint(5, 86400))
     n = mp.decode_fromradio(mp.field_bytes(4, mp.field_varint(1, 0xAAAA) + mp.field_bytes(6, dm))).node
     assert n.battery == 85
@@ -251,7 +256,7 @@ def test_decode_text_packet():
         + mp.field_fixed32(2, mp.BROADCAST_NUM)  # to
         + mp.field_varint(3, 0)  # channel
         + mp.field_bytes(4, data)  # decoded
-        + mp.field_bytes(8, struct.pack("<f", 6.75))  # rx_snr (float)
+        + _float_field(8, 6.75)  # rx_snr (float)
         + mp.field_varint(12, (-42) & 0xFFFFFFFF)  # rx_rssi int32 as raw varint
     )
     frame = mp.field_bytes(2, packet)  # FromRadio.packet = field 2
@@ -297,14 +302,14 @@ def test_decode_non_text_packet_is_not_text():
 
 
 def test_decode_truncated_frame_is_graceful():
-    # A NodeInfo whose sub-message length runs off the end must not raise — the good fields survive,
-    # the truncated one is dropped.
+    # A complete serial frame with an incomplete nested protobuf is malformed. It must not raise or
+    # promote a valid prefix into a partial identity snapshot. The diagnostic parse helper stays tolerant.
     good = mp.field_varint(1, 0xABCD)
     truncated = mp.field_bytes(2, b"") [:-1] + bytes([0x7F])  # claims 127 bytes, has none
     frame = mp.field_bytes(4, good + truncated)
     res = mp.decode_fromradio(frame)  # must not raise
-    assert res.kind == "node_info"
-    assert res.node.num == 0xABCD
+    assert res.kind == "other"
+    assert res.node is None
 
 
 def test_unknown_fields_are_skipped():

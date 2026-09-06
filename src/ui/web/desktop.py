@@ -21,8 +21,7 @@ from __future__ import annotations
 import logging
 import os
 import secrets
-import socket
-import threading
+import sys
 import time
 from typing import Any
 from urllib.parse import quote
@@ -33,28 +32,6 @@ from src.core.flash_engine import FlashEngine
 from src.security.desktop_bootstrap import DesktopBootstrap
 
 log = logging.getLogger(__name__)
-
-
-def _free_loopback_port() -> int:
-    """Grab an ephemeral port the OS just handed us, then release it for the server to re-bind.
-
-    Small TOCTOU window (another process could steal it before the server binds), but on loopback
-    for a desktop launch that is acceptable and self-corrects on the next launch."""
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-def _wait_until_serving(port: int, timeout: float = 15.0) -> bool:
-    """Block until the loopback server accepts a TCP connection (or timeout)."""
-    deadline = time.monotonic() + timeout
-    while time.monotonic() < deadline:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.settimeout(0.5)
-            if s.connect_ex(("127.0.0.1", port)) == 0:
-                return True
-        time.sleep(0.15)
-    return False
 
 
 def launch_desktop(
@@ -86,26 +63,24 @@ def launch_desktop(
 
     bootstrap = DesktopBootstrap()
     token = bootstrap.rotate()
-    port = _free_loopback_port()
+    from src.ui.web.app import create_desktop_server
 
-    # launch_web() blocks on socketio.run(), so run it on a daemon thread; the window owns the main
-    # thread (a pywebview requirement). The daemon dies with the process when the window closes.
-    from src.ui.web.app import launch_web
+    server = create_desktop_server(
+        device_manager, flash_engine, event_bus, target_pool,
+        audit=audit, desktop_token=bootstrap,
+    )
+    try:
+        server.start()
+        if not server.wait_ready():
+            log.error("Web server did not come up on 127.0.0.1:%d in time", server.port)
+            return 1
+        return _run_desktop_window(webview, server.port, bootstrap, token)
+    finally:
+        from src.ui.web.server_lifecycle import close_preserving_primary
+        close_preserving_primary(server, sys.exc_info()[1])
 
-    def _serve() -> None:
-        try:
-            launch_web(
-                device_manager, flash_engine, event_bus, target_pool,
-                host="127.0.0.1", port=port, audit=audit, desktop_token=bootstrap,
-            )
-        except Exception:
-            log.exception("Desktop web server thread crashed")
 
-    threading.Thread(target=_serve, name="cc-desktop-web", daemon=True).start()
-
-    if not _wait_until_serving(port):
-        log.error("Web server did not come up on 127.0.0.1:%d in time", port)
-        return 1
+def _run_desktop_window(webview, port: int, bootstrap: DesktopBootstrap, token: str) -> int:
 
     # /desktop-auth consumes the one-time token, sets the session cookie, and 302s to /reform (clean
     # URL). No credentials ever ride in the address, so fetch()/WebSocket work in the window.

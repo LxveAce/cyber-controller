@@ -1,6 +1,7 @@
 /* Polling state for one tool job. Rendering and authenticated transport are supplied by the caller.
  *
- * create({ request, onChange?, pollMs?, timeoutMs?, maxFailures?, setTimeout?, clearTimeout? })
+ * create({ request, source?, onChange?, pollMs?, timeoutMs?, maxFailures?, setTimeout?, clearTimeout? })
+ * source is fixed for this observer: bundled (default) or download. It controls request and result shape.
  * request(method, path, body, signal) resolves { status, body } with parsed JSON and real HTTP status.
  * The transport supplies same-origin credentials and the current CSRF header, honors AbortSignal,
  * bounds response bodies, and never retries a mutation. Render strings through textContent.
@@ -30,6 +31,18 @@
   const counter = value => value === null || (Number.isSafeInteger(value) && value >= 0);
   const detached = value => JSON.parse(JSON.stringify(value));
 
+  function sourceSpec(source) {
+    if (source === "bundled") return { path: "/api/crack/enable-bundled/async", field: "pack" };
+    if (source === "download") return { path: "/api/crack/install-tool/async", field: "tool" };
+    throw new TypeError("invalid tool source");
+  }
+
+  function startRequest(source, name) {
+    const spec = sourceSpec(source);
+    if (!text(name, 256) || !name || name.includes("\0")) throw new TypeError("invalid tool name");
+    return { path: spec.path, body: { [spec.field]: name } };
+  }
+
   function snapshot(body, id) {
     if (!record(body) || body.job_id !== id || !text(body.tool, 200) || !states.has(body.state) ||
         !text(body.phase, 200) || !counter(body.completed) || !counter(body.total) ||
@@ -41,22 +54,25 @@
       completed: body.completed, total: body.total, error: body.error, log, active: body.active };
   }
 
-  function result(body, tool) {
+  function result(body, tool, source) {
     if (!record(body) || body.state !== "succeeded") return null;
     if (body.result_status === "unavailable" && body.error_code === "result_metadata_unavailable") {
       return { state: "succeeded", result_status: "unavailable",
         error_code: "result_metadata_unavailable" };
     }
-    if (body.schema_version !== 1 || body.tool !== tool || body.source !== "bundled" ||
-        body.verification_method !== "sha256" || !text(body.path, 2048) || !body.path ||
+    const methods = source === "bundled" ? ["sha256"] : ["sha256", "sha1", "size"];
+    if (body.schema_version !== 1 || body.tool !== tool || body.source !== source ||
+        !methods.includes(body.verification_method) || !text(body.path, 2048) || !body.path ||
         !text(body.version, 2048)) return null;
-    return { schema_version: 1, tool, path: body.path, version: body.version, source: "bundled",
-      verification_method: "sha256", state: "succeeded" };
+    return { schema_version: 1, tool, path: body.path, version: body.version, source,
+      verification_method: body.verification_method, state: "succeeded" };
   }
 
   function create(options) {
     if (!options || typeof options.request !== "function") throw new TypeError("request is required");
     const request = options.request;
+    const source = options.source === undefined ? "bundled" : options.source;
+    sourceSpec(source);
     const onChange = options.onChange || function () {};
     const later = options.setTimeout || setTimeout;
     const cancelTimer = options.clearTimeout || clearTimeout;
@@ -158,7 +174,7 @@
       try { response = await send(token, "GET", "/api/crack/job/" + data.jobId + "/result"); }
       catch (_) { response = null; }
       if (!current(token)) return;
-      const parsed = response && response.status === 200 ? result(response.body, data.snapshot.tool) : null;
+      const parsed = response && response.status === 200 ? result(response.body, data.snapshot.tool, source) : null;
       data.result = parsed;
       data.resultStatus = parsed && !parsed.result_status ? "available" : "unavailable";
       data.notice = data.resultStatus === "unavailable" ? "result_metadata_unavailable" : null;
@@ -210,14 +226,14 @@
     }
 
     async function start(pack) {
-      if (!text(pack, 256) || !pack || pack.includes("\0")) throw new TypeError("invalid pack name");
+      const operation = startRequest(source, pack);
       if (!view().canStart) return false;
       const token = replace();
       data.observation = "starting";
       publish();
       if (!current(token)) return false;
       let response;
-      try { response = await send(token, "POST", "/api/crack/enable-bundled/async", { pack }); }
+      try { response = await send(token, "POST", operation.path, operation.body); }
       catch (_) { response = null; }
       if (!current(token)) return false;
       if (response && response.status === 202 && record(response.body) && jobId(response.body.job_id)) {
@@ -288,5 +304,5 @@
       }, dispose });
   }
 
-  return Object.freeze({ create });
+  return Object.freeze({ create, startRequest });
 });

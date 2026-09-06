@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import threading
 from typing import Any, Callable
@@ -63,8 +64,10 @@ class DeviceManager:
         # concurrent opens can't both create a SerialConnection (the second would overwrite/leak the
         # first). Created lazily under _lock; different ports never block each other.
         self._build_locks: dict[str, threading.Lock] = {}
+        self._probe_tokens: dict[str, object] = {}
 
         # Callbacks
+        self._callback_lock = threading.Lock()
         self._on_connected: list[DeviceCallback] = []
         self._on_disconnected: list[DeviceCallback] = []
         # Fired with (port, conn) when a live connection becomes available for a port — a fresh
@@ -82,34 +85,65 @@ class DeviceManager:
 
     def on_device_connected(self, cb: DeviceCallback) -> None:
         """Register a callback fired when a new device is detected."""
-        self._on_connected.append(cb)
+        with self._callback_lock:
+            self._on_connected.append(cb)
+
+    def remove_device_connected_callback(self, cb: DeviceCallback) -> None:
+        self._remove_callback(self._on_connected, cb)
 
     def on_device_disconnected(self, cb: DeviceCallback) -> None:
         """Register a callback fired when a device is removed."""
-        self._on_disconnected.append(cb)
+        with self._callback_lock:
+            self._on_disconnected.append(cb)
+
+    def remove_device_disconnected_callback(self, cb: DeviceCallback) -> None:
+        self._remove_callback(self._on_disconnected, cb)
 
     def on_connection_opened(self, cb) -> None:
         """Register ``cb(port, conn)`` fired when a live connection becomes available for a port — a fresh
         :meth:`open_connection` or an injected link via :meth:`attach_connection`. The cross-comm hub uses
         this to auto-attach the TargetIngestor so any opened device feeds the shared pool."""
-        self._on_conn_opened.append(cb)
+        with self._callback_lock:
+            self._on_conn_opened.append(cb)
+
+    def remove_connection_opened_callback(self, cb) -> None:
+        self._remove_callback(self._on_conn_opened, cb)
 
     def on_device_changed(self, cb: DeviceCallback) -> None:
         """Register ``cb(device)`` fired when a device's firmware / forced state changes (via
         :meth:`set_firmware`). Lets the Broadcast panel repopulate reactively instead of polling."""
-        self._on_changed.append(cb)
+        with self._callback_lock:
+            self._on_changed.append(cb)
+
+    def remove_device_changed_callback(self, cb: DeviceCallback) -> None:
+        self._remove_callback(self._on_changed, cb)
+
+    def _remove_callback(self, callbacks: list, cb) -> None:
+        """Remove one exact registration without disturbing another consumer."""
+        with self._callback_lock:
+            for index, current in enumerate(callbacks):
+                if current is cb:
+                    del callbacks[index]
+                    break
+
+    def _callback_snapshot(self, callbacks: list) -> tuple:
+        with self._callback_lock:
+            return tuple(callbacks)
 
     # ── Device registry ──────────────────────────────────────────────
 
     def add_device(self, device: Device) -> None:
         """Add or update a device in the registry."""
         with self._lock:
+            if self._devices.get(device.port) is not device:
+                self._probe_tokens.pop(device.port, None)
             self._devices[device.port] = device
         log.info("Device added: %s", device.display_name)
 
     def remove_device(self, port: str) -> Device | None:
         """Remove a device by port, closing its connection if open."""
         with self._lock:
+            self._probe_tokens.pop(port, None)
             device = self._devices.pop(port, None)
             conn = self._connections.pop(port, None)
             self._conn_owners.pop(port, None)  # a physical removal drops all owners
@@ -145,6 +179,8 @@ class DeviceManager:
             if dev is None:
                 return False
             changed = dev.firmware != firmware or dev.firmware_forced != forced
+            if changed:
+                self._probe_tokens.pop(port, None)
             dev.firmware = firmware
             dev.firmware_forced = forced
         if changed:
@@ -251,7 +287,11 @@ class DeviceManager:
                 # remove_device finds no device and no-ops.
                 with self._lock:
                     d = self._devices.get(_port)
-                    if d is not None:
+                    if d is not None and self._connections.get(_port) is _conn:
+                        # A reused connection object can represent a new link incarnation.
+                        # A lifecycle event fences an earlier probe even if the live state
+                        # has already advanced back to connected before this callback runs.
+                        self._probe_tokens.pop(_port, None)
                         d.connected = _conn.is_connected
 
             conn.on_state_change(_reconcile)
@@ -267,6 +307,7 @@ class DeviceManager:
                     to_close = conn
                     removed = True
                 else:
+                    self._probe_tokens.pop(port, None)
                     self._connections[port] = conn
                     dev.connected = True
                     if owner:
@@ -292,6 +333,7 @@ class DeviceManager:
                 if owners:
                     return  # other owners still using it -> keep it alive
             conn = self._connections.pop(port, None)
+            self._probe_tokens.pop(port, None)
             self._conn_owners.pop(port, None)
             dev = self._devices.get(port)
         if conn:
@@ -343,13 +385,15 @@ class DeviceManager:
             # Mirror the link's own connected-state back onto the Device (same guard as a wired conn).
             with self._lock:
                 d = self._devices.get(_port)
-                if d is not None:
+                if d is device and self._connections.get(_port) is _conn:
+                    self._probe_tokens.pop(_port, None)
                     d.connected = bool(getattr(_conn, "is_connected", False))
 
         on_state = getattr(conn, "on_state_change", None)
         if callable(on_state):
             on_state(_reconcile)
         with self._lock:
+            self._probe_tokens.pop(port, None)
             self._devices[port] = device
             self._connections[port] = conn
             device.connected = bool(getattr(conn, "is_connected", False))
@@ -368,12 +412,38 @@ class DeviceManager:
         :meth:`open_connection` — a probe writes to the port and blocks briefly, so the caller runs it when it
         makes sense (e.g. a UI connect flow, in a background thread), rather than on every open.
         """
-        dev = self.get_device(port)
-        conn = self.get_connection(port)
-        if dev is None or conn is None or not conn.is_connected:
-            return None
+        with self._lock:
+            dev = self._devices.get(port)
+            conn = self._connections.get(port)
+            if dev is None or conn is None or not conn.is_connected:
+                return None
+            # The helper mutates firmware/protocol/health/banner. Keep even nested metadata
+            # detached while it waits, so a stale probe cannot write into a replacement.
+            candidate = copy.deepcopy(dev)
+            selection = (dev.firmware, dev.firmware_forced)
+            token = object()
+            self._probe_tokens[port] = token
         from src.core.handshake import probe_device
-        return probe_device(conn, dev, timeout=timeout)
+        try:
+            result = probe_device(conn, candidate, timeout=timeout)
+            with self._lock:
+                if (self._probe_tokens.get(port) is not token
+                        or self._devices.get(port) is not dev
+                        or self._connections.get(port) is not conn
+                        or not conn.is_connected
+                        or (dev.firmware, dev.firmware_forced) != selection):
+                    return None  # Superseded result: neither publish it nor notify consumers.
+                fields = ("firmware", "protocol", "health", "fw_banner")
+                changed = any(getattr(dev, name) != getattr(candidate, name) for name in fields)
+                for name in fields:
+                    setattr(dev, name, getattr(candidate, name))
+            if changed:
+                self._fire_changed(dev)
+            return result
+        finally:
+            with self._lock:
+                if self._probe_tokens.get(port) is token:
+                    self._probe_tokens.pop(port, None)
 
     # ── Hot-plug monitor ─────────────────────────────────────────────
 
@@ -449,28 +519,28 @@ class DeviceManager:
     # ── Internal callbacks ───────────────────────────────────────────
 
     def _fire_connected(self, device: Device) -> None:
-        for cb in self._on_connected:
+        for cb in self._callback_snapshot(self._on_connected):
             try:
                 cb(device)
             except Exception:
                 log.exception("on_connected callback error")
 
     def _fire_disconnected(self, device: Device) -> None:
-        for cb in self._on_disconnected:
+        for cb in self._callback_snapshot(self._on_disconnected):
             try:
                 cb(device)
             except Exception:
                 log.exception("on_disconnected callback error")
 
     def _fire_conn_opened(self, port: str, conn: Any) -> None:
-        for cb in self._on_conn_opened:
+        for cb in self._callback_snapshot(self._on_conn_opened):
             try:
                 cb(port, conn)
             except Exception:
                 log.exception("on_connection_opened callback error")
 
     def _fire_changed(self, device: Device) -> None:
-        for cb in self._on_changed:
+        for cb in self._callback_snapshot(self._on_changed):
             try:
                 cb(device)
             except Exception:

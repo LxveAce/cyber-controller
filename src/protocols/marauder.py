@@ -54,9 +54,15 @@ _RE_SCAN_COMPLETE = re.compile(r"Scan\s+(?:complete|finished)", re.IGNORECASE)
 _RE_DEAUTH = re.compile(r"Deauth(?:entication)?\s+(?:sent|frame)", re.IGNORECASE)
 _RE_BEACON = re.compile(r"Beacon\s+(?:spam|flood)", re.IGNORECASE)
 _RE_PROBE = re.compile(r"Probe\s+(?:request|response)", re.IGNORECASE)
-_RE_BLE = re.compile(
-    r"BLE:\s*([\da-fA-F:]{17})\s+Name:\s*(.+?)\s+RSSI:\s*(-?\d+)",
+# Compatibility envelope: explicit address, name (empty or up to 256 characters), final RSSI.
+# Split the fixed header from the final RSSI field. Overlapping whitespace/name matches can
+# backtrack heavily even within the envelope cap when a malformed suffix follows many spaces.
+_RE_BLE_HEADER = re.compile(
+    r"^BLE:[ \t]*((?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})[ \t]+"
+    r"Name:",
 )
+_RE_BLE_RSSI = re.compile(r"-?[0-9]{1,3}")
+_MAX_BLE_ENVELOPE_CHARS = 1024  # Bounds separator whitespace as well as the name before regex work.
 # Marauder v1.15.1 (91724fd), WiFiScan.cpp and CommandLine.cpp: general BLE
 # scan/list output reports a name OR address in one field, never both. Even a
 # MAC-shaped label may be an advertised name, so it cannot identify a target.
@@ -156,16 +162,33 @@ class MarauderProtocol(BaseProtocol):
                 raw=line,
             )
 
+        # A clear explicit BLE envelope owns the whole line, including malformed records. Never
+        # search its name for Client/Handshake/AP events, or promote BLE text inside a real AP name.
+        if line.startswith("BLE:"):
+            if len(line) > _MAX_BLE_ENVELOPE_CHARS or "\r" in line or "\n" in line:
+                return None
+            header = _RE_BLE_HEADER.match(line)
+            suffix = line.rfind("RSSI:")
+            if header is None or suffix <= header.end() or line[suffix - 1] not in " \t":
+                return None
+            name = line[header.end():suffix].strip(" \t")
+            signal = line[suffix + 5:].lstrip(" \t")
+            if len(name) > 256 or _RE_BLE_RSSI.fullmatch(signal) is None:
+                return None
+            rssi = int(signal)
+            if not -128 <= rssi <= 127:
+                return None
+            return ParsedEvent(
+                event_type="ble_found",
+                data={"mac": header.group(1), "name": name.strip(), "rssi": rssi},
+                raw=line,
+            )
+
         # AP discovered — legacy single-line form (kept for back-compat / other tools).
-        # _RE_AP.search() scans mid-line, and a BLE device's advertised Name (printed verbatim
-        # after "Name:") is attacker-controlled, so a crafted name embedding
-        # "SSID: x BSSID: <mac> Ch: <n> RSSI: <n>" would satisfy _RE_AP on a real BLE line and be
-        # misrouted to ap_found with an attacker-chosen BSSID (phantom-target injection into the
-        # shared TargetPool). Exclude genuine BLE/client lines here, exactly as the scanall branch
-        # below does, so those lines fall through to their own branches. A real legacy AP line
-        # carries neither "BLE:" nor "Client:", so this never suppresses a true AP.
+        # Explicit BLE envelopes are already handled above. Preserve the existing client exclusion;
+        # BLE-shaped text occurring inside an AP's own name must not suppress that AP.
         m = _RE_AP.search(line)
-        if m and not _RE_BLE.search(line) and not _RE_CLIENT.search(line):
+        if m and not _RE_CLIENT.search(line):
             bssid = m.group(2)
             return ParsedEvent(
                 event_type="ap_found",
@@ -215,7 +238,7 @@ class MarauderProtocol(BaseProtocol):
         # reach the TargetPool. Guarded to require a BSSID plus either an SSID or the unambiguous bare-leading-RSSI
         # signature, so Client/BLE/status lines (which also carry a MAC) never misfire as APs. Isolated multi-line
         # ESSID:/BSSID: lines are handled by the branches above and never reach here.
-        if (not _RE_BLE.search(line) and not _RE_CLIENT.search(line)
+        if (not _RE_CLIENT.search(line)
                 and (_RSSI_LEAD_RE.search(line) or "ESSID" in line.upper())):
             fields = _extract_ap_fields(line)
             bssid = fields.get("bssid")
@@ -254,19 +277,6 @@ class MarauderProtocol(BaseProtocol):
             return ParsedEvent(
                 event_type="handshake_captured",
                 data={"bssid": m.group(1)},
-                raw=line,
-            )
-
-        # BLE device
-        m = _RE_BLE.search(line)
-        if m:
-            return ParsedEvent(
-                event_type="ble_found",
-                data={
-                    "mac": m.group(1),
-                    "name": m.group(2).strip(),
-                    "rssi": int(m.group(3)),
-                },
                 raw=line,
             )
 

@@ -4,6 +4,8 @@ like the rest of the web UI. Guards the route + endpoint + the pywebview desktop
 can't silently regress."""
 from __future__ import annotations
 
+from contextlib import ExitStack
+
 import pytest
 
 pytest.importorskip("flask")
@@ -22,6 +24,29 @@ def _creds(monkeypatch, tmp_path):
     monkeypatch.setenv("CC_GATE_CONFIG", str(tmp_path / "gate.json"))
     monkeypatch.setenv("CC_WEB_USER", "admin")
     monkeypatch.setenv("CC_WEB_PASS", "test-pass-123")
+
+
+@pytest.fixture(autouse=True)
+def _close_apps(monkeypatch, _creds):
+    """Drain each test's admitted work before its credentials and capture are torn down."""
+    apps = []
+    factory = create_app
+
+    def tracked(*args, **kwargs):
+        app, socketio = factory(*args, **kwargs)
+        apps.append(app)
+        return app, socketio
+
+    monkeypatch.setitem(globals(), "create_app", tracked)
+    try:
+        yield
+    finally:
+        # Fence every app first. ExitStack still closes the others if one cleanup raises.
+        with ExitStack() as cleanup:
+            for app in apps:
+                cleanup.callback(app.extensions["cc_finish_close"])
+            for app in apps:
+                app.extensions["cc_begin_close"]()
 
 
 def _client(dm, authed=True):

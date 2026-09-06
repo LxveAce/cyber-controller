@@ -4,6 +4,9 @@
  * revision (owner-approved 2026-09-02): purple is the action color, the neutrals carry a purple bias,
  * and green is reserved for the live/SAFE/ok signal. All colors flow from the :root tokens below.
  */
+/* Keep routine target refreshes from moving table controls. Errors can still wrap. */
+[data-target-status]{min-height:1.45em}
+[data-target-status][hidden]{display:block!important;visibility:hidden}
 :root{
   /* Ace Purple — purple is the action color; the neutrals carry a purple bias, green stays semantic (live/SAFE/ok). */
   --bg:#0e0b14; --rail:#080510; --card:#171221; --card2:#120d1c;
@@ -287,3 +290,38 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .terminput .field{flex:1;min-width:0;width:auto}
 .terminput .btn{flex:none}
 .termrow .nm{min-width:0;overflow-wrap:anywhere}
+#crack-tool-job{margin-top:10px;padding:10px;min-width:0;overflow-wrap:anywhere;text-align:left}
+#crack-tool-job h3{margin-bottom:8px;font-size:11px;line-height:1.4}
+#crack-tool-job button:disabled{opacity:.5;cursor:default}
+.tool-job-progress{width:100%;margin-top:8px;accent-color:var(--acc)}
+.tool-job-log{max-height:140px;min-height:0;height:auto;margin-top:8px;white-space:pre-wrap;overflow-wrap:anywhere;overflow:auto}
+.tool-job-actions{margin-top:8px;flex-wrap:wrap;gap:6px}
+.tool-job-forget{margin-top:8px;font-size:11px}
+.tool-job-forget summary{cursor:pointer}
+.hunt-selection-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:8px 0}
+.hunt-selection-toolbar [data-hunt-count]{margin-right:auto;color:var(--muted);font-size:12px}
+.hunt-target-scroll{overflow:auto;max-width:100%;max-height:60vh}
+.hunt-target-scroll table{min-width:620px;table-layout:fixed}
+.hunt-target-scroll th:first-child{width:64px}
+.hunt-target-scroll td{overflow-wrap:anywhere;white-space:normal}
+.target-checkbox input{width:18px;height:18px;accent-color:var(--acc);cursor:pointer}
+.hunt-target-scroll tr.target-selected{background:rgba(140,90,240,.13)}
+.hunt-target-scroll tr.target-stale{outline:1px dashed var(--amber);outline-offset:-1px}
+.hunt-selection-summary{margin-bottom:12px;overflow-wrap:anywhere}
+.hunt-selection-summary summary{cursor:pointer}
+#hunt-selected-list{max-height:180px;overflow:auto;padding-left:20px}
+#hunt-selected-list li{margin:6px 0;line-height:1.6}
+#hunt-selected-list button{margin-left:10px}
+.hunt-target-menu{position:fixed;z-index:1000;width:280px;max-width:calc(100vw - 16px);max-height:calc(100vh - 16px);overflow:auto;padding:6px;background:var(--panel,#171323);border:1px solid var(--acc);border-radius:8px;box-shadow:0 6px 24px #0009}
+.hunt-target-menu button{display:block;width:100%;padding:9px;text-align:left;color:var(--text,#eee);background:transparent;border:0;border-radius:4px;white-space:normal;overflow-wrap:anywhere;cursor:pointer}
+.hunt-target-menu button:disabled{opacity:.45;cursor:default}
+.hunt-target-menu button:focus{outline:2px solid var(--acc);outline-offset:-2px;background:#8260d82b}
+.hunt-draft-overlay{position:fixed;inset:0;z-index:1001;background:#0009;display:flex;align-items:center;justify-content:center;padding:12px}
+.hunt-draft-dialog{width:480px;max-width:100%;max-height:calc(100vh - 24px);overflow:auto;overflow-wrap:anywhere}
+.hunt-draft-dialog h2{font-size:16px;margin-bottom:10px}
+#hunt-draft-devices{border:0;padding:8px 0;max-height:40vh;overflow:auto}
+#hunt-draft-devices label{display:block;margin:8px 0;overflow-wrap:anywhere}
+.hunt-local-draft{border-top:1px solid var(--bd);margin-top:10px;padding-top:8px;font-size:12px;overflow-wrap:anywhere}
+.hunt-local-draft p{margin-bottom:8px}
+.hunt-local-draft ul{max-height:180px;overflow:auto;padding-left:20px;margin:8px 0}
+.hunt-target-scroll:focus-visible,.target-checkbox input:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}

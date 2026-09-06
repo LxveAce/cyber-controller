@@ -13,6 +13,7 @@ import json
 import logging
 import os
 import stat
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -119,6 +120,10 @@ DEFAULTS: dict[str, Any] = {
 SETTINGS_DIR = Path.home() / ".cyber-controller"
 SETTINGS_PATH = SETTINGS_DIR / "settings.json"
 
+# Coordinates writes inside this process. Independent processes and callers
+# holding an old full snapshot still need their own conflict handling.
+_WRITE_LOCK = threading.RLock()
+
 
 # ── Internal helpers ─────────────────────────────────────────────────
 
@@ -180,8 +185,30 @@ def save_settings(settings: dict[str, Any]) -> None:
 
     The settings are deep-merged onto :data:`DEFAULTS` before writing so the
     on-disk file is always complete.  The containing directory is created if
-    needed.  Written atomically via a temp file + replace.
+    needed. Written atomically via a temp file + replace, with in-process
+    writers serialized. For read-modify-write updates, use patch_settings.
     """
+    with _WRITE_LOCK:
+        _save_settings_unlocked(settings)
+
+
+def patch_settings(changes: dict[str, Any], *, reset: bool = False) -> dict[str, Any]:
+    """Persist a section-key patch against the current settings and return it.
+
+    Loading, merging and writing share the process-local write lock. Missing
+    keys are preserved; explicit values, including null, replace their keys.
+    With reset=True the patch starts from defaults, dropping saved extras.
+    This does not make separate load_settings/save_settings calls transactional
+    or coordinate other OS processes. Callers validate inputs before this call.
+    """
+    with _WRITE_LOCK:
+        current = _defaults_copy() if reset else load_settings()
+        committed = _deep_merge(current, changes)
+        save_settings(committed)
+        return committed
+
+
+def _save_settings_unlocked(settings: dict[str, Any]) -> None:
     merged = _deep_merge(DEFAULTS, settings)
     # L-1: owner-only NTFS ACL on Windows (the chmod below is a no-op there).
     secure_dir(SETTINGS_DIR)

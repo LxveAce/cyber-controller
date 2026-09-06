@@ -171,11 +171,12 @@ def test_launch_web_passes_shared_holder_to_factory_unchanged(monkeypatch):
     received = {}
     import src.core.cross_comm_hub as hub_module
     monkeypatch.setattr(hub_module, "CrossCommHub", lambda *_: types.SimpleNamespace(
-        captures=object(), router=object(), sensing=object()))
+        captures=object(), router=object(), sensing=object(), fence=lambda: None, close=lambda: None))
 
     def create(*_args, **kwargs):
         received.update(kwargs)
-        return types.SimpleNamespace(config={}), types.SimpleNamespace(
+        return types.SimpleNamespace(config={}, extensions={
+            "cc_begin_close": lambda: None, "cc_finish_close": lambda: None}), types.SimpleNamespace(
             async_mode="threading", run=lambda *_a, **_k: None)
 
     monkeypatch.setattr(webapp, "create_app", create)
@@ -192,12 +193,12 @@ def test_native_failure_rotates_token_for_fresh_browser_session(monkeypatch, nat
     def serve(*_a, desktop_token=None, **_kw):
         state["holder"] = desktop_token
         state["app"] = make_app(desktop_token)
+        def close():
+            state["app"].extensions["cc_begin_close"]()
+            state["app"].extensions["cc_finish_close"]()
+        return types.SimpleNamespace(port=12345, start=lambda: None, wait_ready=lambda: True, close=close)
 
-    monkeypatch.setattr(webapp, "launch_web", serve)
-    monkeypatch.setattr(desktop, "threading", types.SimpleNamespace(
-        Thread=lambda *, target, **_kw: types.SimpleNamespace(start=target)))
-    monkeypatch.setattr(desktop, "_free_loopback_port", lambda: 12345)
-    monkeypatch.setattr(desktop, "_wait_until_serving", lambda *_a, **_kw: True)
+    monkeypatch.setattr(webapp, "create_desktop_server", serve)
 
     def request_path(url):
         parts = urlsplit(url)

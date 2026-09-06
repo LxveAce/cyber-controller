@@ -111,11 +111,13 @@ def test_enable_async_requires_csrf():
     assert r.status_code == 403
 
 
-def test_install_tool_async_is_422_unsupported():
+def test_install_tool_async_non_installable_is_400():
+    # hashcat ships only as a .7z (not auto-installable here), so it's not in installable_tools() -> 400.
+    # (test_tool_routes_install.py covers the wired route: 202, .7z-spec -> 422, runtime-work release, etc.)
     app = _app()
     c, tok = _authed(app)
     r = c.post("/api/crack/install-tool/async", json={"tool": "hashcat"}, headers={"X-CSRF-Token": tok})
-    assert r.status_code == 422
+    assert r.status_code == 400
 
 
 def test_enable_async_conflict_is_409_when_destination_reserved():
@@ -207,6 +209,30 @@ def test_pre_registration_failure_releases_queue_admission(monkeypatch):
     # the destination is NOT stranded — it can be acquired again
     dest = os.path.join(tool_bundle.enable_dir(), "aircrack-ng")
     lease = tool_bundle.acquire_destination(dest)      # raises DestinationBusy if the lease leaked
+    assert tool_bundle.release_destination(lease) is True
+
+
+def test_enable_async_control_after_admission_releases_destination():
+    # R-DL5-P: a control exception from the bundled route's post-admission setup (here _audit) must release the
+    # already-acquired destination — parity with the install route. Before the fix _audit ran outside cleanup
+    # ownership, so the lease leaked and a fresh acquisition raised DestinationBusy.
+    class _ControlAudit:
+        def record(self, action, details):
+            if action == "crack_enable_bundled_async":
+                raise KeyboardInterrupt()
+
+    app, _sio = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(), audit=_ControlAudit())
+    c = app.test_client()
+    with c.session_transaction() as sess:
+        sess["authenticated"] = True
+        sess["cred_gen"] = app.extensions["cc_web_credentials"].generation
+        sess["csrf"] = new_csrf_token()
+    with c.session_transaction() as sess:
+        tok = sess["csrf"]
+    with pytest.raises(KeyboardInterrupt):
+        c.post("/api/crack/enable-bundled/async", json={"pack": "ac"}, headers={"X-CSRF-Token": tok})
+    dest = os.path.join(tool_bundle.enable_dir(), "aircrack-ng")
+    lease = tool_bundle.acquire_destination(dest)      # succeeds only if the admission was released
     assert tool_bundle.release_destination(lease) is True
 
 

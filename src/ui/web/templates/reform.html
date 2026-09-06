@@ -155,6 +155,7 @@
               <button data-sub="stream" class="pro-tab">Stream</button>
             </div>
             <div class="sub on" data-sub="pool">
+              <p class="footnote" data-target-status role="status" hidden></p>
               <details class="card collapsible pool-disclosure" id="cross-comm-pool" open>
                 <summary><span class="t">Discovered targets</span><span class="r">Expand / collapse</span></summary>
                 <div class="pool-scroll" role="region" aria-label="Discovered targets" tabindex="0">
@@ -163,7 +164,7 @@
                 <tbody id="dash-pool">
                   {% set tlabels = {'ap':'AP','client':'Client','ble':'BLE','subghz':'SubGHz','nfc':'NFC','rfid':'RFID','alpr':'ALPR'} %}
                   {% for t in targets %}
-                  <tr><td>{{ tlabels.get(t.target_type, t.target_type) or '&#8212;'|safe }}</td><td>{{ t.ssid or t.mac or '&#8212;'|safe }}</td><td class="r">{{ t.rssi if t.rssi is not none else '&#8212;'|safe }}</td><td class="r">{{ t.channel if t.channel is not none else '&#8212;'|safe }}</td></tr>
+                  <tr><td>{{ tlabels.get(t.target_type, t.target_type) or '&#8212;'|safe }}</td><td>{{ t.ssid or t.mac or '&#8212;'|safe }}</td><td class="r">{{ t.rssi if t.rssi is not none and not (t.target_type == 'ble' and t.rssi == 0) else '&#8212;'|safe }}</td><td class="r">{{ t.channel if t.channel is not none else '&#8212;'|safe }}</td></tr>
                   {% else %}
                   <tr><td class="off" colspan="4">pool empty &#8212; targets appear as devices discover them</td></tr>
                   {% endfor %}
@@ -311,17 +312,26 @@
       <button data-sub="sense" class="pro-tab">Sense</button>
       <button data-sub="graph">Node Graph</button>
     </div>
+    <p id="hunt-selection-status" class="footnote" role="status" aria-live="polite"></p>
+    <details id="hunt-selection-summary" class="card hunt-selection-summary" hidden>
+      <summary>Local selection and device drafts</summary>
+      <p class="footnote">Selection stays in this browser tab. No targets are sent to a device.</p>
+      <ul id="hunt-selected-list"></ul><p id="hunt-drafts-summary" class="footnote"></p>
+    </details>
     <div class="sub" data-sub="wifi">
       <div class="card"><h3><span class="t">Wi-Fi Analyzer</span><span class="r">from the shared target pool &#183; awareness</span></h3>
         <div class="tiles" id="hunt-wifi-tiles" style="margin-bottom:12px"></div>
-        <table><thead><tr><th>SSID</th><th>MAC</th><th>Vendor</th><th class="r">Ch</th><th class="r">RSSI</th><th>Enc</th></tr></thead>
-          <tbody id="hunt-wifi-rows"><tr><td class="off" colspan="6">no Wi-Fi targets yet &#8212; scan from OPERATE or a connected device</td></tr></tbody></table>
+        <p class="footnote" data-target-status role="status" hidden></p>
+        <div class="hunt-selection-toolbar"><span data-hunt-count>0 selected</span><button type="button" class="btn sm" data-hunt-visible="hunt-wifi-rows">Select visible</button><button type="button" class="btn sm" data-hunt-actions="hunt-wifi-rows" aria-label="Wi-Fi target actions" aria-haspopup="menu" aria-expanded="false" aria-controls="hunt-target-menu">Actions</button></div>
+        <div class="hunt-target-scroll" tabindex="0" role="region" aria-label="Wi-Fi targets"><table><thead><tr><th>Select</th><th>SSID</th><th>MAC</th><th>Vendor</th><th class="r">Ch</th><th class="r">RSSI</th><th>Enc</th></tr></thead>
+          <tbody id="hunt-wifi-rows"><tr><td class="off" colspan="7">no Wi-Fi targets yet &#8212; scan from OPERATE or a connected device</td></tr></tbody></table></div>
       </div>
     </div>
     <div class="sub on" data-sub="ble">
       <div class="card"><h3><span class="t">BLE scan reports</span><span class="r"><span id="ble-observation-count">0</span> reports</span></h3>
         <p class="footnote">Recent scan output from connected devices. Some firmware reports a name or address in the same field, so these labels cannot identify a device. The latest 200 reports stay here until CC closes.</p>
         <p class="footnote" id="ble-observation-status" role="status">Open this tab to load scan reports.</p>
+        <button type="button" class="btn sm" id="ble-observation-refresh">Refresh reports</button>
         <div class="ble-observation-scroll" tabindex="0" role="region" aria-label="Recent BLE scan reports">
           <table><thead><tr><th>Reported label</th><th class="r">RSSI</th><th>Source</th><th>Report</th><th class="r">Age</th></tr></thead>
             <tbody id="ble-observation-rows"><tr><td class="off" colspan="5">No reports loaded.</td></tr></tbody></table>
@@ -329,14 +339,18 @@
       </div>
       <div class="card"><h3><span class="t">BLE Analyzer</span><span class="r" id="hunt-ble-sub">addresses reported by firmware</span></h3>
         <div class="tiles" id="hunt-ble-tiles" style="margin-bottom:12px"></div>
+        <p class="footnote" data-target-status role="status" hidden></p>
         <div class="graphbox" id="hunt-ble-spark" style="margin-bottom:12px"><div class="bars"></div></div>
-        <table><thead><tr><th>Name</th><th>Address</th><th>Vendor</th><th class="r">RSSI</th><th class="r">Age</th></tr></thead>
-          <tbody id="hunt-ble-rows"><tr><td class="off" colspan="5">no BLE targets yet &#8212; scan BLE from a connected device</td></tr></tbody></table>
+        <div class="hunt-selection-toolbar"><span data-hunt-count>0 selected</span><button type="button" class="btn sm" data-hunt-visible="hunt-ble-rows">Select visible</button><button type="button" class="btn sm" data-hunt-actions="hunt-ble-rows" aria-label="BLE target actions" aria-haspopup="menu" aria-expanded="false" aria-controls="hunt-target-menu">Actions</button></div>
+        <div class="hunt-target-scroll" tabindex="0" role="region" aria-label="BLE addresses"><table><thead><tr><th>Select</th><th>Name</th><th>Address</th><th>Vendor</th><th class="r">RSSI</th><th class="r">Age</th></tr></thead>
+          <tbody id="hunt-ble-rows"><tr><td class="off" colspan="6">no BLE targets yet &#8212; scan BLE from a connected device</td></tr></tbody></table></div>
       </div>
     </div>
     <div class="sub" data-sub="targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span><span class="r"><span id="hunt-tgt-count">0</span> targets &#183; <a href="/api/targets/export" download="cc-targets.csv" style="color:var(--acc)">Export CSV</a></span></h3>
-      <table><thead><tr><th>Type</th><th>SSID / Name</th><th>MAC</th><th>Vendor</th><th class="r">RSSI</th><th class="r">Ch</th><th>Source</th></tr></thead>
-        <tbody id="hunt-targets-rows"><tr><td class="off" colspan="7">pool empty</td></tr></tbody></table></div></div>
+      <p class="footnote" data-target-status role="status" hidden></p>
+      <div class="hunt-selection-toolbar"><span data-hunt-count>0 selected</span><button type="button" class="btn sm" data-hunt-visible="hunt-targets-rows">Select visible</button><button type="button" class="btn sm" data-hunt-actions="hunt-targets-rows" aria-label="Shared target actions" aria-haspopup="menu" aria-expanded="false" aria-controls="hunt-target-menu">Actions</button></div>
+      <div class="hunt-target-scroll" tabindex="0" role="region" aria-label="Shared targets"><table><thead><tr><th>Select</th><th>Type</th><th>SSID / Name</th><th>MAC</th><th>Vendor</th><th class="r">RSSI</th><th class="r">Ch</th><th>Source</th></tr></thead>
+        <tbody id="hunt-targets-rows"><tr><td class="off" colspan="8">pool empty</td></tr></tbody></table></div></div></div>
     <div class="sub" data-sub="tail"><div class="card"><h3><span class="t">Follower / Tail Detection</span><span class="r">counter-surveillance</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Flags a device that keeps reappearing near you across time. Awareness-first &#8212; it never confirms a follower and never acts. Method: ArgeliusLabs/Chasing-Your-Tail-NG (MIT).</div>
       <div class="between" style="margin-bottom:8px"><span>Min persistence <b class="mono">0.50</b></span><span id="tail-summary" class="dim">&#8212;</span></div>
@@ -392,6 +406,7 @@
           <span class="dim" id="op-status" style="font-size:11px"></span>
         </div>
         <div class="footnote" style="margin-top:8px">Commands come from the selected firmware. Commands that require confirmation prompt before they are sent.</div>
+        <div id="op-target-draft" class="hunt-local-draft" hidden><p id="op-target-draft-text"></p><details><summary>View draft records</summary><ul id="op-target-draft-records"></ul></details><button type="button" class="btn sm" id="op-target-draft-clear">Clear local device drafts</button></div>
       </div>
       <div class="split ops">
         <div class="card">
@@ -450,6 +465,7 @@
           <select class="field" id="crack-engine" aria-label="Crack engine"><option>Built-in native cracker</option></select>
           <div class="row" style="margin-top:8px"><button class="btn sm" id="crack-get-tools">Get tools&#8230;</button><button class="btn sm" id="crack-recheck">Re-check</button></div>
           <div class="footnote" id="crack-tools">detecting engines&#8230;</div>
+          <div class="card2" id="crack-tool-job" hidden></div>
           <div id="crack-tools-panel" hidden style="margin-top:8px;border-top:1px solid var(--bd);padding-top:9px"></div>
         </div>
         <div class="card">
@@ -592,9 +608,9 @@
         <div class="kv mono muted" id="set-gate">reading gate status&#8230;</div>
         <div class="footnote" style="margin:6px 0 0">Configured from the desktop app / console &#8212; this shows its live state (never a secret).</div>
         <button class="btn sm acc" id="set-gate-setup" style="margin-top:7px">Set up access gate&#8230;</button></div>
-      <div class="card pro"><h3><span class="t">Remote Access</span><span class="r">open from your phone / another PC</span></h3>
+      <div class="card pro"><h3><span class="t">Remote Access</span><span class="r" id="set-remote-scope">checking access mode</span></h3>
         <div class="kv mono" id="set-remote" style="line-height:1.7">reading&#8230;</div>
-        <div class="footnote" id="set-remote-source" style="margin:6px 0 0">Use these on another device on the same network.</div>
+        <div class="footnote" id="set-remote-source" style="margin:6px 0 0">Checking where this server is available.</div>
         <div style="margin-top:10px;border-top:1px solid var(--bd);padding-top:10px">
           <div class="between" style="margin-bottom:6px"><span class="muted">Login password</span><span class="chip" id="pw-source-chip">&#8212;</span></div>
           <div class="row" style="gap:6px;flex-wrap:wrap;align-items:center">
@@ -605,15 +621,31 @@
           </div>
           <div class="footnote" id="pw-status" style="margin-top:6px;min-height:14px">Pick your own password here &#8212; it&#8217;s saved on this machine and used every time. No environment variables needed.</div>
         </div></div>
-      <div class="card pro"><h3><span class="t">Secure Container</span></h3><label class="chip" id="set-secure-container" data-key="secure_container">&#9744;&#xFE0E; Encrypt saves at rest</label></div>
+      <div class="card pro"><h3><span class="t">Secure Container</span></h3><label class="chip" id="set-secure-container" data-key="secure_container">&#9744;&#xFE0E; Encrypt saved macros</label><div class="footnote">Requires an unlocked access gate. Logs, captures and shared exports are not encrypted by this setting.</div></div>
       <div class="card pro"><h3><span class="t">Firmware Vault</span></h3><input class="field mono" id="set-vault-dir" aria-label="Firmware vault path" value="~/.cyber-controller/firmware_vault"></div>
     </div>
-    <div class="row" style="margin-top:14px;justify-content:flex-end;align-items:center;gap:10px"><span class="muted" id="set-status" style="font-size:12px"></span><button class="btn" id="set-reset">Reset to Defaults</button><button class="btn acc" id="set-save">Save Settings</button></div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end;align-items:center;gap:10px;flex-wrap:wrap"><span class="muted" id="set-status" role="status" style="font-size:12px"></span><button class="btn" id="set-retry" hidden>Retry loading</button><button class="btn" id="set-reset" disabled>Reset to Defaults</button><button class="btn acc" id="set-save" disabled>Save Settings</button></div>
   </section>
 
   </main>
 </div>
 
+<div id="hunt-target-menu" class="hunt-target-menu" role="menu" aria-label="Local target actions" hidden></div>
+<div id="hunt-draft-picker" class="hunt-draft-overlay" role="dialog" aria-modal="true" aria-labelledby="hunt-draft-title" hidden>
+  <div class="card hunt-draft-dialog"><h2 id="hunt-draft-title">Create local device drafts</h2>
+    <p class="footnote">Choose devices to remember with these records. No compatibility check or device selection is performed. New connections are not added automatically.</p>
+    <fieldset id="hunt-draft-devices"><legend>Connected devices</legend></fieldset>
+    <p id="hunt-draft-status" class="footnote" role="status"></p>
+    <div class="hunt-selection-toolbar"><button type="button" class="btn" id="hunt-draft-cancel">Cancel</button><button type="button" class="btn acc" id="hunt-draft-save">Save local drafts</button></div>
+  </div>
+</div>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='tool_jobs_client.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='tool_jobs_panel.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='target_snapshots.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='ble_reports.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='target_selection.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_card.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_transport.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='reform.js') }}"></script>
 </body>
 </html>

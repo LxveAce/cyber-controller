@@ -4,6 +4,62 @@ const { create } = require('../src/ui/web/static/tool_jobs_client.js');
 
 const ID = 'a'.repeat(32), OTHER = 'b'.repeat(32);
 const flush = () => new Promise(resolve => setImmediate(resolve));
+
+for (const source of [null, '', 'legacy', 'https://example.invalid/install', {}, ['download']]) {
+  test(`unsupported source is rejected before requesting: ${JSON.stringify(source)}`, () => {
+    assert.throws(() => create({ source, request() { throw Error('must not request'); } }), TypeError);
+  });
+}
+
+for (const method of ['sha256', 'sha1', 'size']) {
+  test(`download uses one exact request and retains actual ${method} verification`, async () => {
+    const h = harness({ source: 'download' });
+    const starting = h.client.start('aircrack-ng');
+    await flush();
+    assert.equal(h.calls[0].path, '/api/crack/install-tool/async');
+    assert.deepEqual(h.calls[0].body, { tool: 'aircrack-ng' });
+    await h.reply(0, 202, { job_id: ID });
+    await h.reply(1, 200, status(ID, 'succeeded'));
+    await h.reply(2, 200, success({ source: 'download', verification_method: method }));
+    await starting;
+    assert.equal(h.client.getState().resultStatus, 'available');
+    assert.equal(h.client.getState().result.source, 'download');
+    assert.equal(h.client.getState().result.verification_method, method);
+    assert.equal(h.calls.filter(call => call.method === 'POST').length, 1);
+    assert.equal(h.timers.size, 0);
+  });
+}
+
+test('observer source stays fixed after the supplied options object is changed', async () => {
+  const calls = [];
+  const options = { source: 'download', request: async (method, path, body) => {
+    calls.push({ method, path, body });
+    return { status: 422, body: { error: 'inert unsupported tool' } };
+  }};
+  const observer = create(options);
+  options.source = 'bundled';
+  await observer.start('aircrack-ng');
+  assert.deepEqual(calls, [{ method: 'POST', path: '/api/crack/install-tool/async', body: { tool: 'aircrack-ng' } }]);
+  observer.dispose();
+});
+
+for (const [source, resultSource, method] of [
+  ['download', 'bundled', 'sha256'], ['bundled', 'download', 'sha256'],
+  ['bundled', 'bundled', 'sha1'], ['bundled', 'bundled', 'size'],
+  ['download', 'download', 'signed'], ['download', 'download', ''],
+]) {
+  test(`mismatched ${source}/${resultSource}/${method} metadata cannot change observed success`, async () => {
+    const h = harness({ source });
+    const watching = h.client.watch(ID);
+    await flush();
+    await h.reply(0, 200, status(ID, 'succeeded'));
+    await h.reply(1, 200, success({ source: resultSource, verification_method: method }));
+    await watching;
+    assert.equal(h.client.getState().snapshot.state, 'succeeded');
+    assert.equal(h.client.getState().resultStatus, 'unavailable');
+    assert.equal(h.calls.filter(call => call.method !== 'GET').length, 0);
+  });
+}
 function deferred() {
   let resolve, reject;
   const promise = new Promise((yes, no) => { resolve = yes; reject = no; });

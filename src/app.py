@@ -230,6 +230,7 @@ def _launch_desktop(dm, fe, bus, pool, vault=None, health=None, macro=None, audi
     one path with CC_DESKTOP_SHELL=pywebview|qtweb."""
     import importlib.util
     import os
+    from src.ui.web.server_lifecycle import DesktopCleanupError
     shell = os.environ.get("CC_DESKTOP_SHELL", "").strip().lower()
     if shell == "qtweb":
         return _launch_desktop_qt(dm, fe, bus, pool, vault, health, macro, audit)
@@ -245,6 +246,9 @@ def _launch_desktop(dm, fe, bus, pool, vault=None, health=None, macro=None, audi
             if rc == 0:
                 return rc
             log.warning("The system-webview shell did not start (rc=%s)", rc)
+        except DesktopCleanupError:
+            # A second backend would duplicate the old listener or callback owners.
+            raise
         except Exception as exc:  # noqa: BLE001 — any backend failure should fall back, not crash
             log.warning("The system-webview shell failed (%s): %s",
                         type(exc).__name__, exc, exc_info=True)

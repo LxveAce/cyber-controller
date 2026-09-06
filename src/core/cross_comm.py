@@ -2,16 +2,17 @@
 
 from __future__ import annotations
 
+import copy
 import logging
 import re
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timezone
 from typing import Any, Callable
 
-from src.models.target import Target, TargetType
+from src.models.target import Target, TargetType, normalize_target_key
 
 log = logging.getLogger(__name__)
 
@@ -109,7 +110,7 @@ class TargetPool:
 
     def get(self, key: str) -> Target | None:
         with self._lock:
-            return self._targets.get(key)
+            return self._targets.get(normalize_target_key(key))
 
     # ── Mutation ─────────────────────────────────────────────────────
 
@@ -121,9 +122,21 @@ class TargetPool:
         """
         updated_payload: dict | None = None
         evicted: Target | None = None
+        if target.target_type is TargetType.BLE:
+            # Keep pool storage independent of the parser/caller's mutable metadata. Later BLE reports
+            # replace this record, so a reader holding an earlier row keeps its coherent source/signal/time.
+            target = replace(target, extra=copy.deepcopy(target.extra))
         with self._lock:
             existing = self._targets.get(target.key)
-            if existing:
+            if existing and target.target_type is TargetType.BLE:
+                # BLE has no AP/client index ownership pair to preserve. Adopt this incoming report as a
+                # whole, including unknown RSSI (0) and any omitted latest-only metadata. Never attribute an
+                # old signal/address type/index to a new reporting source. First-seen and a known name remain.
+                latest = replace(target, timestamp=existing.timestamp, ssid=target.ssid or existing.ssid)
+                self._targets[target.key] = latest
+                updated_payload = latest.to_dict()
+                self._targets.move_to_end(target.key)
+            elif existing:
                 # Don't let a re-observation that omits a field clobber a known value: channel/rssi 0 is
                 # the unknown-sentinel everywhere, so pass None (a no-op in update_seen) when it's 0.
                 existing.update_seen(
@@ -167,7 +180,7 @@ class TargetPool:
 
     def remove(self, key: str) -> Target | None:
         with self._lock:
-            t = self._targets.pop(key, None)
+            t = self._targets.pop(normalize_target_key(key), None)
         if t:
             self.bus.publish("target.removed", t.to_dict())
         return t
@@ -302,7 +315,21 @@ class AutoRouter:
         self._cooldowns: dict[tuple[str, str], float] = {}  # (rule.name, target_key) -> last_fire
         self._lock = threading.Lock()
 
-        self._bus.subscribe("target.added", self._on_target)
+        from src.core.lifecycle import CallbackScope
+
+        self._subscriptions = CallbackScope()
+        self._subscriptions.register(
+            lambda cb: self._bus.subscribe("target.added", cb),
+            lambda cb: self._bus.unsubscribe("target.added", cb),
+            self._on_target,
+        )
+
+    def close(self, timeout: float | None = 5.0) -> None:
+        """Stop receiving shared target events and drain an in-flight route."""
+        self._subscriptions.close(timeout)
+
+    def fence(self) -> None:
+        self._subscriptions.fence()
 
     # ── Rules ────────────────────────────────────────────────────────
 

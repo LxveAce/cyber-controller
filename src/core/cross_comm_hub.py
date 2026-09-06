@@ -19,6 +19,7 @@ cross-comm rework notes (stage S2).
 from __future__ import annotations
 
 import logging
+import threading
 import time
 
 from src.core.capture_correlate import CaptureCorrelator
@@ -26,6 +27,7 @@ from src.core.capture_store import CaptureStore
 from src.core.cross_comm import AutoRouter, EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.drivers import driver_for
+from src.core.lifecycle import CallbackScope
 from src.core.sensing_model import SensingModel
 from src.core.target_ingest import TargetIngestor
 
@@ -58,6 +60,24 @@ class CrossCommHub:
         self.dm = device_manager
         self.bus = bus or EventBus()
         self.pool = pool if pool is not None else TargetPool(self.bus)
+        self._callbacks = CallbackScope()
+        self.correlator = self.ingestor = self.router = None
+        self.mesh_backends: dict = {}
+        self._mesh_conns: dict = {}
+        self._mesh_devices: dict = {}
+        self._mesh_callbacks: dict = {}
+        self._mesh_attach_lock = threading.RLock()
+        self._mesh_state_lock = threading.Lock()
+        try:
+            self._initialize(captures_persist_path)
+        except BaseException as original:
+            try:
+                self.close()
+            except BaseException as cleanup_error:
+                raise original from cleanup_error
+            raise
+
+    def _initialize(self, captures_persist_path: str | None) -> None:
 
         # The shared capture log — captured WPA handshakes / PMKIDs, keyed like the pool and on
         # the same bus (capture.* mirroring target.*). The ingestor auto-registers a capture
@@ -87,20 +107,23 @@ class CrossCommHub:
         # the line ingestor it gets a MeshtasticBackend on the raw byte path (protobuf decode + typed send).
         # Decoded node/channel/text state fans onto the bus under ``mesh.*`` topics; the UI reads it via
         # :meth:`mesh_backend`. Keyed by port; the parallel ``_mesh_conns`` map makes re-attach idempotent.
-        self.mesh_backends: dict = {}
-        self._mesh_conns: dict = {}
-
         # Attach the ingestor to EVERY connection the DeviceManager opens — Devices-tab Connect, Wardrive,
         # Broadcast, or an injected NodeLink — so a scan on ANY opened device feeds the pool, not only a
         # Devices-tab Connect (which was the sole attach site before, leaving the Targets tab empty during
         # wardriving/broadcasting). Re-attach is idempotent (TargetIngestor dedups per port).
-        self.dm.on_connection_opened(self._attach_ingestor)
+        self._callbacks.register(
+            self.dm.on_connection_opened, self.dm.remove_connection_opened_callback,
+            self._attach_ingestor,
+        )
 
         # Track firmware changes too: a device's firmware is often set AFTER open_connection fires the attach
         # (the Devices tab persists it post-connect, or auto-detect resolves it later), so gating the stream
         # backend only on open-time firmware would leave a Meshtastic panel inert on first Connect. Attach the
         # backend the moment the firmware resolves to a stream device (and detach if it changes away).
-        self.dm.on_device_changed(self._on_device_changed)
+        self._callbacks.register(
+            self.dm.on_device_changed, self.dm.remove_device_changed_callback,
+            self._on_device_changed,
+        )
 
         # Routing rules engine — subscribes to target.added and dispatches via our own send sink.
         self.router = AutoRouter(self.bus, self.send_to_port)
@@ -120,6 +143,23 @@ class CrossCommHub:
         except Exception:  # noqa: BLE001 — optional layer; app runs without it
             log.warning("ActionResolver unavailable — actions disabled", exc_info=True)
 
+    def fence(self) -> None:
+        """Stop admitting new callbacks before runtime teardown waits for committed work."""
+        self._callbacks.fence()
+        for service in (self.ingestor, self.router, self.correlator):
+            if service is not None:
+                service.fence()
+
+    def close(self, timeout: float | None = 5.0) -> None:
+        """Remove this hub's subscriptions without closing shared devices or connections."""
+        self.fence()
+        self._callbacks.close(timeout)
+        for service in (self.ingestor, self.router, self.correlator):
+            if service is not None:
+                service.close(timeout)
+        for port in tuple(self._mesh_conns):
+            self._detach_stream_backend(port)
+
     def _on_parsed_event(self, ev, port: str) -> None:
         """Fold a CSI ``sensing_verdict`` into the sensing model (RX-only). Fires on the serial
         reader thread for every parsed event; a cheap event-type gate keeps other firmware clear."""
@@ -129,14 +169,26 @@ class CrossCommHub:
     def _attach_ingestor(self, port: str, conn) -> None:
         """Attach the shared TargetIngestor to a newly-opened *conn*, parsing with the device's own
         firmware protocol (default 'marauder', matching the Devices tab) so its scans feed the pool."""
-        from src.protocols import get_protocol
+        from src.protocols import get_protocol, resolve_protocol_name
 
         dev = self.dm.get_device(port)
         fw = (getattr(dev, "firmware", "") if dev else "") or "marauder"
+        canonical = resolve_protocol_name(fw)
+
+        def is_current() -> bool:
+            return (self.dm.get_device(port) is dev and self.dm.get_connection(port) is conn
+                    and getattr(conn, "is_connected", False)
+                    and resolve_protocol_name(getattr(dev, "firmware", "") or "marauder")
+                    == canonical)
+
         try:
-            self.ingestor.attach(conn, get_protocol(fw))
+            if not is_current():
+                return
+            if self.ingestor.reconcile(conn, get_protocol(canonical or fw), is_current=is_current) is None:
+                return
         except Exception:
             log.exception("cross-comm: ingestor auto-attach failed for %s", port)
+            return
 
         # A stream device (Meshtastic protobuf StreamAPI) has no text line channel — the line ingestor above
         # will never see a line from it. Attach a structured backend on the raw byte path instead so its
@@ -145,8 +197,12 @@ class CrossCommHub:
         try:
             from src.protocols import driver_type_for
 
+            if not is_current():
+                return
             if driver_type_for(fw) == "stream":
                 self._attach_stream_backend(port, conn)
+            elif self._mesh_conns.get(port) is conn:
+                self._detach_stream_backend(port, expected_connection=conn)
         except Exception:
             log.exception("cross-comm: stream backend attach failed for %s", port)
 
@@ -157,74 +213,128 @@ class CrossCommHub:
         onto the bus under ``mesh.*`` topics + debug lines under ``mesh.log``, and kicks off the want_config
         handshake so the node streams its nodes/channels/config. Re-attaching to the SAME live connection is
         a no-op (guarded by ``_mesh_conns``); a fresh reconnect builds a new backend."""
-        if self._mesh_conns.get(port) is conn:
+        with self._mesh_attach_lock:
+            self._replace_stream_backend(port, conn)
+
+    def _replace_stream_backend(self, port: str, conn) -> None:
+        if (self._mesh_conns.get(port) is conn
+                and self._mesh_devices.get(port) is self.dm.get_device(port)):
             return  # already wired to this exact connection
+        if port in self._mesh_conns:
+            self._detach_stream_backend(port)
+        try:
+            self._install_stream_backend(port, conn)
+        except BaseException:
+            self._detach_stream_backend(port, expected_connection=conn)
+            raise
+
+    def _install_stream_backend(self, port: str, conn) -> None:
+        from src.protocols import resolve_protocol_name
         from src.protocols.meshtastic_stream import MeshtasticBackend
 
+        device = self.dm.get_device(port)
+
+        def _is_current() -> bool:
+            if self._callbacks.closed:
+                return False
+            with self._mesh_state_lock:
+                current = (self._mesh_conns.get(port) is conn
+                           and self.mesh_backends.get(port) is backend)
+            return (current and self.dm.get_device(port) is device
+                    and self.dm.get_connection(port) is conn
+                    and getattr(conn, "mesh_backend", None) is backend
+                    and getattr(conn, "is_connected", False)
+                    and resolve_protocol_name(getattr(device, "firmware", "")) == "meshtastic")
+
         def _on_event(event_type: str, data: dict, _port: str = port) -> None:
-            # "mesh_node" -> bus topic "mesh.node"; carry the source port so a multi-node UI can key on it.
+            if not _is_current():
+                return
+            # A source may retire after this check. Never relabel its event with a replacement's ID;
+            # consumers must match the session token. Publish outside locks that subscribers reenter.
             topic = "mesh." + (event_type[5:] if event_type.startswith("mesh_") else event_type)
-            self.bus.publish(topic, {"port": _port, **data})
+            self.bus.publish(topic, {**data, "port": _port, "session_id": backend.session_id})
 
         def _on_text(line: str, _port: str = port) -> None:
-            self.bus.publish("mesh.log", {"port": _port, "line": line})
+            if _is_current():
+                self.bus.publish("mesh.log", {"port": _port, "session_id": backend.session_id, "line": line})
 
-        conn.raw = True
         backend = MeshtasticBackend(conn.write_bytes, on_event=_on_event, on_text=_on_text)
-        conn.on_bytes(backend.feed_bytes)
-        self.mesh_backends[port] = backend
-        self._mesh_conns[port] = conn
+
+        def _feed_current(data: bytes) -> None:
+            if _is_current():
+                backend.feed_bytes(data)
+
+        byte_callback = self._callbacks.guard(_feed_current)
+        conn.raw = True
+        with self._mesh_state_lock:
+            self.mesh_backends[port] = backend
+            self._mesh_conns[port] = conn
+            self._mesh_devices[port] = device
+            self._mesh_callbacks[port] = (byte_callback, None)
         # Expose the backend on the connection so a UI holding only the connection (the Devices-tab
         # Meshtastic panel) can drive send_text without a hub reference.
         conn.mesh_backend = backend
+        conn.on_bytes(byte_callback)
 
         # Clean up when this connection drops (there's no on_connection_closed hook) so the backend + the
         # dict entries + conn.mesh_backend don't linger stale after a disconnect/unplug.
-        def _on_conn_state(state, _port=port, _conn=conn):
+        def _on_conn_state(state, _port=port, _conn=conn, _backend=backend):
             from src.core.serial_handler import ConnectionState
             if state in (ConnectionState.DISCONNECTED, ConnectionState.ERROR):
                 if self._mesh_conns.get(_port) is _conn:
-                    self._detach_stream_backend(_port)
+                    self._detach_stream_backend(
+                        _port, expected_connection=_conn, expected_backend=_backend,
+                    )
 
-        conn.on_state_change(_on_conn_state)
+        state_callback = self._callbacks.guard(_on_conn_state)
+        with self._mesh_state_lock:
+            self._mesh_callbacks[port] = (byte_callback, state_callback)
+        conn.on_state_change(state_callback)
         backend.start()  # want_config — a read request; safe/non-destructive
         log.info("cross-comm: Meshtastic stream backend attached on %s", port)
 
-    def _detach_stream_backend(self, port: str) -> None:
+    def _detach_stream_backend(
+        self, port: str, *, expected_connection=None, expected_backend=None,
+    ) -> None:
         """Drop the stream backend for *port*: remove it from tracking, unhook its byte callback, restore the
         connection to line mode, and clear ``conn.mesh_backend``. Safe if none is attached."""
-        backend = self.mesh_backends.pop(port, None)
-        conn = self._mesh_conns.pop(port, None)
+        with self._mesh_state_lock:
+            backend = self.mesh_backends.get(port)
+            conn = self._mesh_conns.get(port)
+            callbacks = self._mesh_callbacks.get(port)
+            if expected_connection is not None and conn is not expected_connection:
+                return
+            if expected_backend is not None and backend is not expected_backend:
+                return
         if conn is not None:
-            conn.raw = False  # restore text-line mode for the next (text-CLI) firmware on this port
             if backend is not None:
-                try:
-                    conn.remove_byte_callback(backend.feed_bytes)
-                except Exception:  # noqa: BLE001
-                    pass
+                retire = getattr(backend, "retire", None)
+                if retire is not None:
+                    retire()  # local data fence only; shared serial ownership and writes are unchanged
+                conn.remove_byte_callback(callbacks[0] if callbacks else backend.feed_bytes)
+                if callbacks and callbacks[1] is not None:
+                    conn.remove_state_callback(callbacks[1])
             if getattr(conn, "mesh_backend", None) is backend:
+                conn.raw = False  # only restore a stream still owned by this hub
                 conn.mesh_backend = None
+        with self._mesh_state_lock:
+            if (self._mesh_conns.get(port) is conn and self.mesh_backends.get(port) is backend
+                    and self._mesh_callbacks.get(port) is callbacks):
+                self.mesh_backends.pop(port, None)
+                self._mesh_conns.pop(port, None)
+                self._mesh_devices.pop(port, None)
+                self._mesh_callbacks.pop(port, None)
 
     def _on_device_changed(self, dev) -> None:
-        """A device's firmware changed: attach the stream backend if it is now a stream device with a live
-        connection, or detach it if it changed away from one. Covers the first-Connect timing (firmware set
-        after open) and a mid-session firmware switch / auto-detect result."""
+        """Reconcile the current text parser or stream backend after firmware identification."""
         port = getattr(dev, "port", "") or ""
-        if not port:
+        if not port or self.dm.get_device(port) is not dev:
             return
         conn = self.dm.get_connection(port)
         if conn is None or not getattr(conn, "is_connected", False):
             return  # a backend only matters for a live connection
-        from src.protocols import driver_type_for
-
-        fw = getattr(dev, "firmware", "") or ""
-        try:
-            if driver_type_for(fw) == "stream":
-                self._attach_stream_backend(port, conn)  # idempotent per conn
-            elif self._mesh_conns.get(port) is conn:
-                self._detach_stream_backend(port)  # firmware changed off a stream device
-        except Exception:
-            log.exception("cross-comm: stream backend (re)attach on device-change failed for %s", port)
+        # Same-protocol notifications preserve the parser and its scan ordinals.
+        self._attach_ingestor(port, conn)
 
     def mesh_backend(self, port: str):
         """The :class:`MeshtasticBackend` for a connected stream device on *port*, or ``None``. The UI's

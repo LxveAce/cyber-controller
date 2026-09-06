@@ -34,11 +34,11 @@ import platform
 import shutil
 import stat
 import subprocess
-import tempfile
 import urllib.request
+import uuid
 import zipfile
 from dataclasses import dataclass, field
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from .crack_pipeline import AIRCRACK, CONVERTER, HASHCAT
 
@@ -46,6 +46,10 @@ Line = Callable[[str], None]
 
 #: Absolute pre-verification byte ceiling for a tool download (backstop when a spec has no size).
 _DOWNLOAD_HARD_CAP_BYTES = 512 * 1024**2  # 512 MiB
+#: Extraction (expanded-output) ceilings — the download cap only bounds COMPRESSED bytes, so a small
+#: hash-pinned archive can still expand into a decompression bomb. Generous for a real tool, bounded overall.
+_MAX_EXPANDED_BYTES = 512 * 1024**2  # 512 MiB of actually-copied bytes across all members
+_MAX_MEMBERS = 20000                 # a tool payload is dozens of files, never tens of thousands
 
 
 def platform_key() -> str:
@@ -231,7 +235,11 @@ def verify_archive(path: str, spec: ToolInstallSpec) -> tuple[bool, str]:
 
 
 def install_tool(spec: ToolInstallSpec, directory: Optional[str] = None,
-                 on_line: Optional[Line] = None, *, timeout: float = 180.0) -> str:
+                 on_line: Optional[Line] = None, *, timeout: float = 180.0,
+                 should_cancel: "Optional[Callable[[], bool]]" = None,
+                 begin_commit: "Optional[Callable[[], None]]" = None,
+                 on_progress: "Optional[Callable[[int, int], None]]" = None,
+                 lease: Any = None) -> str:
     """Download + verify + extract *spec* into ``tools/<tool>/`` and return the resolved exe path.
 
     Self-verifying + fail-closed: download to a temp file, verify the integrity anchor, extract only the
@@ -240,79 +248,143 @@ def install_tool(spec: ToolInstallSpec, directory: Optional[str] = None,
     (stdlib); a ``.7z`` spec raises a clear 'needs a 7-Zip extractor' error rather than pretending.
 
     Holds the shared destination admission (see :mod:`tool_bundle`) for the whole download+extract+probe, so
-    a sync install can't race a bundled enable / async job on the same tool dir. Raises
-    :class:`tool_bundle.DestinationBusy` if the destination is already reserved."""
+    a sync install can't race a bundled enable / async job on the same tool dir. When *lease* is given (an
+    async job that already owns the destination), it is BORROWED — validated against this destination, held
+    for the whole operation, and never released here (the owner's finalizer does that). Raises
+    :class:`tool_bundle.DestinationBusy` if the destination is reserved by another operation, or the borrowed
+    lease is not for it. *should_cancel*/*begin_commit*/*on_progress* let an async worker drive it."""
     directory = directory or default_tools_dir()
     if spec.archive != "zip":
         raise RuntimeError(
             f"{spec.tool}: only .zip auto-install is supported; {spec.archive} needs a 7-Zip extractor "
             "CC doesn't bundle — see the install guidance instead.")
     tool_dir = os.path.join(directory, spec.tool)
-    from .tool_bundle import acquire_destination, release_destination
-    active = acquire_destination(tool_dir)
-    try:
+    from .tool_bundle import _admission
+    with _admission(tool_dir, lease) as active:
         # operate on the lease's pinned resolved path (A2), not the caller's visible spelling
-        return _install_tool_download(spec, directory, active.path, on_line, timeout)
-    finally:
-        release_destination(active)
+        return _install_tool_download(spec, directory, active.path, on_line, timeout,
+                                      should_cancel=should_cancel, begin_commit=begin_commit,
+                                      on_progress=on_progress)
 
 
 def _install_tool_download(spec: ToolInstallSpec, directory: str, tool_dir: str,
-                           on_line: Optional[Line], timeout: float) -> str:
-    """The download+verify+extract+probe transaction WITHOUT admission (the caller holds the reservation)."""
+                           on_line: Optional[Line], timeout: float, *,
+                           should_cancel: "Optional[Callable[[], bool]]" = None,
+                           begin_commit: "Optional[Callable[[], None]]" = None,
+                           on_progress: "Optional[Callable[[int, int], None]]" = None) -> str:
+    """Staged, cancellable download+verify+extract+probe → ATOMIC publish (no admission; caller holds it).
+
+    The whole download/extract/probe happens in a UNIQUE staging dir (a sibling of *tool_dir*, not a resolver
+    search path), so a partial/failed/cancelled install is never discoverable and never touches a prior
+    install. Only after the staged tree verifies AND its exe launches is the destination swapped atomically:
+    ``begin_commit()`` at the point of no return, move any prior install aside, promote the staging tree, and
+    RESTORE the prior install if promotion fails. ``should_cancel`` is honoured up to that boundary; a cancel
+    raises :class:`tool_bundle.ToolCancelled` and leaves the prior install intact. Mirrors the bundled
+    transaction's guarantees for the download path."""
+    from .tool_bundle import ToolCancelled
     log: Line = on_line or (lambda *_a: None)
-    os.makedirs(tool_dir, exist_ok=True)
-    log(f"[install] downloading {spec.tool} {spec.version} from {spec.url}")
-
-    tmp = tempfile.NamedTemporaryFile(prefix="cc-tool-", suffix=".zip", dir=directory, delete=False)
-    tmp.close()
-    req = urllib.request.Request(spec.url, headers={"User-Agent": "cyber-controller-tool-installer"})
+    tool_dir = os.path.abspath(tool_dir)
+    parent = os.path.dirname(tool_dir) or "."
+    os.makedirs(parent, exist_ok=True)
+    staging_root = os.path.join(parent, ".cc-dl-stage-" + uuid.uuid4().hex)
+    pkg = os.path.join(staging_root, "pkg")
+    backup_root = os.path.join(parent, ".cc-dl-backup-" + uuid.uuid4().hex)
+    backup = os.path.join(backup_root, "old")
+    had_prev = False
+    published = False
+    restored = False
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp.name, "wb") as out:
-            _stream_capped(resp, out, spec.size_bytes)
-    except Exception as exc:  # noqa: BLE001 — surface any network error honestly
-        _rm(tmp.name)
-        raise RuntimeError(f"download failed: {exc}") from exc
-
-    ok, msg = verify_archive(tmp.name, spec)
-    if not ok:
-        _rm(tmp.name)
-        raise RuntimeError(f"integrity check failed, not installing: {msg}")
-    log(f"[install] {msg}")
-
-    try:
+        os.makedirs(pkg, exist_ok=True)
+        tmp_path = os.path.join(staging_root, "download.zip")
+        if should_cancel and should_cancel():
+            raise ToolCancelled("cancelled before install completed")   # D1: a pending cancel opens no network
+        log(f"[install] downloading {spec.tool} {spec.version} from {spec.url}")
+        req = urllib.request.Request(spec.url, headers={"User-Agent": "cyber-controller-tool-installer"})
         try:
-            exe_path = _extract_zip_subtree(tmp.name, spec, tool_dir, log)
-        finally:
-            _rm(tmp.name)
+            with urllib.request.urlopen(req, timeout=timeout) as resp, open(tmp_path, "wb") as out:
+                _stream_capped(resp, out, spec.size_bytes, on_progress=on_progress, should_cancel=should_cancel)
+        except ToolCancelled:
+            raise   # D1: a cooperative cancel is NOT a download failure — re-raise before the generic wrap
+        except Exception as exc:  # noqa: BLE001 — surface any network error honestly
+            raise RuntimeError(f"download failed: {exc}") from exc
 
-        if not os.path.isfile(exe_path):
+        ok, msg = verify_archive(tmp_path, spec)
+        if not ok:
+            raise RuntimeError(f"integrity check failed, not installing: {msg}")
+        log(f"[install] {msg}")
+
+        staged_exe = _extract_zip_subtree(tmp_path, spec, pkg, log, should_cancel=should_cancel)
+        if not os.path.isfile(staged_exe):
             raise RuntimeError(f"expected {spec.exe_name} not found after extract (archive layout changed?)")
         if os.name != "nt":
-            os.chmod(exe_path, os.stat(exe_path).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-
-        if not _launches(exe_path):
+            os.chmod(staged_exe, os.stat(staged_exe).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+        if should_cancel and should_cancel():
+            raise ToolCancelled("cancelled before install completed")   # don't enter the probe if cancelled
+        launched = _launches(staged_exe)
+        if not launched:
+            # D2: the synchronous probe's false result is the REAL launch failure — surface it BEFORE any
+            # cancellation check, since a false return is not evidence the cancel flag caused it.
             raise RuntimeError(
-                f"{spec.tool} installed to {exe_path} but the binary would not launch (it may need system "
-                "libraries). Install it another way — nothing was left on PATH.")
-    except Exception:
-        # Fail clean: an extract that raised, wrote the wrong layout, or produced a non-launching binary must
-        # not leave a partial tree behind for installed_tools()/detect_tools() to later resolve as usable.
-        shutil.rmtree(tool_dir, ignore_errors=True)
-        raise
-    log(f"[install] {spec.tool} ready: {exe_path}")
-    return exe_path
+                f"{spec.tool} would not launch after extract (it may need system libraries). Nothing was "
+                "installed or left on PATH.")
+        if should_cancel and should_cancel():
+            raise ToolCancelled("cancelled before install completed")   # gate only a SUCCESSFUL probe pre-commit
+
+        # Point of no return: staging is verified + launchable and this is the last cancel-safe moment.
+        if begin_commit is not None:
+            begin_commit()
+        had_prev = os.path.exists(tool_dir)
+        if had_prev:
+            os.makedirs(backup_root, exist_ok=True)
+            os.replace(tool_dir, backup)
+        try:
+            os.replace(pkg, tool_dir)
+            published = True   # set IMMEDIATELY after the successful rename
+        except OSError as promote_err:
+            if had_prev:
+                try:
+                    os.replace(backup, tool_dir)   # restore the previous install
+                    restored = True
+                except OSError as restore_err:
+                    raise RuntimeError(
+                        f"install failed and the previous {spec.tool} install could not be restored "
+                        f"automatically; a recovered copy is preserved at {backup} "
+                        f"(promote: {promote_err}; restore: {restore_err})") from restore_err
+            raise
+        exe_path = os.path.join(tool_dir, spec.exe_name)
+        try:
+            log(f"[install] {spec.tool} ready: {exe_path}")
+        except Exception:  # noqa: BLE001 — a post-publish notification failure can't undo the publish
+            pass
+        return exe_path
+    finally:
+        shutil.rmtree(staging_root, ignore_errors=True)   # clean ONLY this job's owned staging (+ the temp)
+        # Retain the backup unless the replacement published or the prior tree was restored (same T5 policy
+        # as the bundled transaction): any other unwind keeps the only prior copy at backup_root/old.
+        if had_prev and (published or restored):
+            shutil.rmtree(backup_root, ignore_errors=True)
 
 
-def _extract_zip_subtree(zip_path: str, spec: ToolInstallSpec, tool_dir: str, log: Line) -> str:
+def _extract_zip_subtree(zip_path: str, spec: ToolInstallSpec, tool_dir: str, log: Line,
+                         should_cancel: "Optional[Callable[[], bool]]" = None) -> str:
     """Extract every member under ``spec.member_prefix`` into *tool_dir* (flattened), guarding against
-    zip-slip. Returns the resolved exe path."""
+    zip-slip AND decompression bombs, and cooperatively cancellable. Returns the resolved exe path.
+
+    The response cap bounds only COMPRESSED bytes, so extraction bounds the EXPANDED output too: at most
+    ``_MAX_MEMBERS`` members and ``_MAX_EXPANDED_BYTES`` total actually-copied bytes (a small hash-pinned
+    archive can still expand hugely). *should_cancel* is checked before each member and between copy chunks."""
+    from .tool_bundle import ToolCancelled
     prefix = spec.member_prefix
     with zipfile.ZipFile(zip_path) as zf:
         members = [n for n in zf.namelist() if n.startswith(prefix) and not n.endswith("/")]
         if not members:
             raise RuntimeError(f"archive has no members under {prefix!r} (layout changed?)")
+        if len(members) > _MAX_MEMBERS:
+            raise RuntimeError(f"archive has too many members ({len(members)} > {_MAX_MEMBERS}) — aborting")
+        expanded = 0
         for name in members:
+            if should_cancel is not None and should_cancel():
+                raise ToolCancelled("cancelled before install completed")
             rel = name[len(prefix):]
             dest = os.path.join(tool_dir, rel)
             # zip-slip guard: the resolved path must stay inside tool_dir.
@@ -320,7 +392,17 @@ def _extract_zip_subtree(zip_path: str, spec: ToolInstallSpec, tool_dir: str, lo
                 raise RuntimeError(f"unsafe archive member path: {name!r}")
             os.makedirs(os.path.dirname(dest) or tool_dir, exist_ok=True)
             with zf.open(name) as src, open(dest, "wb") as out:
-                shutil.copyfileobj(src, out)
+                while True:
+                    if should_cancel is not None and should_cancel():
+                        raise ToolCancelled("cancelled before install completed")
+                    buf = src.read(65536)
+                    if not buf:
+                        break
+                    expanded += len(buf)
+                    if expanded > _MAX_EXPANDED_BYTES:
+                        raise RuntimeError(
+                            f"archive expands beyond the size ceiling ({_MAX_EXPANDED_BYTES} bytes) — aborting")
+                    out.write(buf)
     log(f"[install] extracted {len(members)} file(s) into {tool_dir}")
     return os.path.join(tool_dir, spec.exe_name)
 
@@ -335,11 +417,33 @@ def _launches(exe_path: str) -> bool:
         return False
 
 
-def _stream_capped(resp, out, size_bytes: int) -> None:
-    """Copy the response body in chunks, aborting before an oversized upstream can fill the disk."""
+def _stream_capped(resp, out, size_bytes: int,
+                   on_progress: "Optional[Callable[[int, int], None]]" = None,
+                   should_cancel: "Optional[Callable[[], bool]]" = None) -> None:
+    """Copy the response body in chunks, aborting before an oversized upstream can fill the disk.
+
+    *on_progress*, if given, is called after each chunk (and once at the end) with
+    ``(bytes_written, expected_total)`` — ``expected_total`` is ``size_bytes`` or 0 when unknown — so an async
+    job can drive a real progress bar. Its exceptions are contained (swallowed) so a raising callback can't
+    break the download; it is called SYNCHRONOUSLY, though, so the callback must be bounded — a blocking one
+    would delay the transfer. *should_cancel* is checked BEFORE each read, so a cancel that lands mid-download
+    stops without consuming the rest of the body (raising :class:`tool_bundle.ToolCancelled`). A read already
+    in flight can't be interrupted; the socket timeout bounds that."""
+    from .tool_bundle import ToolCancelled
     limit = int(size_bytes * 1.25) if size_bytes else _DOWNLOAD_HARD_CAP_BYTES
+    total = size_bytes or 0
     written = 0
+
+    def _report():
+        if on_progress is not None:
+            try:
+                on_progress(written, total)
+            except Exception:  # noqa: BLE001 — progress reporting must never break the download
+                pass
+
     while True:
+        if should_cancel is not None and should_cancel():
+            raise ToolCancelled("cancelled during download")
         chunk = resp.read(65536)
         if not chunk:
             break
@@ -347,13 +451,8 @@ def _stream_capped(resp, out, size_bytes: int) -> None:
         if written > limit:
             raise RuntimeError("response exceeded the size ceiling — aborting to protect disk")
         out.write(chunk)
-
-
-def _rm(path: str) -> None:
-    try:
-        os.remove(path)
-    except OSError:
-        pass
+        _report()
+    _report()
 
 
 # -- status summary (pure-ish: reads PATH + the tools dir) ------------
