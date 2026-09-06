@@ -6,6 +6,7 @@ import codecs
 import dis
 import functools
 import logging
+import math
 import re
 import threading
 import types
@@ -122,6 +123,30 @@ class IncompleteSerialWrite(serial.SerialException):
         super().__init__(f"Serial write did not complete ({safe_code})")
 
 
+class ManagedSerialUnavailable(RuntimeError):
+    """An exclusive protocol write was refused before transport entry."""
+
+
+@dataclass(frozen=True, slots=True, eq=False)
+class ManagedSerialLease:
+    """Opaque identity; possession alone does not bypass current provider admission."""
+
+    incarnation: object
+
+
+@dataclass(slots=True, repr=False)
+class _ManagedStream:
+    lease: ManagedSerialLease
+    session: object
+    reader_done: threading.Event
+    serial_handle: object | None = None
+    serial_incarnation: int | None = None
+    reader_start_attempted: bool = False
+    reader_thread: threading.Thread | None = None
+    retired: bool = False
+    lost: bool = False
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class _WriteAttempt:
     """Internal bridge between receipt and legacy APIs; never logged or exposed."""
@@ -143,6 +168,9 @@ class _WriteTransaction:
     completion_published: bool = False
     attempt: _WriteAttempt | None = None
     lock_depths: tuple[int, int, int] = (0, 0, 0)
+    managed_lease: ManagedSerialLease | None = None
+    expected_incarnation: object | None = None
+    adapter_write: object | None = None
 
 
 @dataclass(slots=True, repr=False)
@@ -194,6 +222,7 @@ class _ConnectAttempt:
     aborted_state_generation: int | None = None
     connected_notification: tuple[object, int, int] | None = None
     lock_depths: tuple[int, int, int] = (0, 0, 0)
+    managed: _ManagedStream | None = None
 
 
 @dataclass(slots=True, repr=False)
@@ -230,6 +259,7 @@ class _ReaderLoopAttempt:
     failure: Exception | None = None
     log_message: str = "Serial reader interrupted during transport I/O"
     escaped: bool = False
+    managed: _ManagedStream | None = None
 
 
 class _ConnectFailure(Exception):
@@ -320,6 +350,8 @@ class SerialConnection:
         self._write_transaction: _WriteTransaction | None = None
         self._connect_attempt: _ConnectAttempt | None = None
         self._state_generation = 0
+        self._managed_stream: _ManagedStream | None = None
+        self._managed_preparation: object | None = None
 
         # Callback lists
         self._line_callbacks: list[Callable[[str], None]] = []
@@ -328,6 +360,96 @@ class SerialConnection:
         self._error_callbacks: list[Callable[[Exception], None]] = []
 
     # ── Properties ───────────────────────────────────────────────────
+
+    def prepare_mesh_session(self, **owner_options):
+        """Reserve one ordered exclusive Mesh owner before this object's first physical open.
+
+        Construction is inert. Only the existing reader starts bootstrap after publication.
+        A retired session remains retained; reconnect handoff requires a new prepared connection
+        with its explicitly exported history, never a fresh random epoch on this object.
+        """
+        from src.core.meshtastic_owner import MeshConnectionSession
+
+        with self._io_lock:
+            self._check_mesh_preparation_locked()
+            preparation = object()
+            self._managed_preparation = preparation
+        # No caller callback runs under the I/O lock. A construction/control failure deliberately
+        # retains this inert reservation: connect must never fall back to an unprepared writer.
+        self._check_managed_timeout(self.timeout)
+        lease = ManagedSerialLease(object())
+        session = MeshConnectionSession(self, lease, **owner_options)
+        stream = _ManagedStream(lease, session, threading.Event())
+        with self._io_lock:
+            self._check_mesh_preparation_locked(preparation)
+            self._managed_stream = stream
+            self.mesh_backend = session.backend
+            self.raw = True
+            self._managed_preparation = None
+        return session
+
+    @staticmethod
+    def _check_managed_timeout(timeout) -> None:
+        if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 1:
+            raise ValueError("Managed serial requires a finite timeout in (0, 1] seconds")
+
+    def _check_mesh_preparation_locked(self, preparation=None) -> None:
+        if (self._managed_preparation is not preparation
+                or self._managed_stream is not None or self._serial is not None
+                or self._serial_incarnation != 0 or self._read_thread is not None
+                or self._connect_attempt is not None or self._state is not ConnectionState.DISCONNECTED):
+            raise RuntimeError("Managed preparation requires a fresh unopened connection")
+
+    def _retire_managed_stream(self, stream: _ManagedStream, *, lost: bool = False) -> None:
+        # State/I/O fences precede the core call; this helper releases its lock before retirement.
+        # A reentrant low-level adapter still owns the existing write/flush I/O barrier.
+        with self._io_lock:
+            if self._managed_stream is not stream:
+                return
+            stream.retired = True
+            stream.lost = stream.lost or lost
+        stream.session._transport_retired(lost=stream.lost)
+
+    def _managed_export_ready(self, lease: ManagedSerialLease) -> bool:
+        with self._io_lock:
+            stream = self._managed_stream
+            return bool(stream is not None and stream.lease is lease and stream.retired
+                        and self._serial is None and self._connect_attempt is None
+                        and self._write_transaction is None
+                        and (not stream.reader_start_attempted or (stream.reader_done.is_set()
+                             and stream.reader_thread is not None and not stream.reader_thread.is_alive())))
+
+    def _managed_status(self, lease: ManagedSerialLease) -> dict:
+        """Bounded write-free provider facts; never an admission permit or reset proof."""
+        with self._io_lock:
+            stream = self._managed_stream
+            if stream is None or stream.lease is not lease:
+                raise RuntimeError("Managed serial session is not current")
+            return {"bound": stream.serial_handle is not None, "retired": stream.retired,
+                    "cleanup_pending": stream.retired and not self._managed_export_ready(lease),
+                    "input_lost": stream.lost}
+
+    def _managed_write_current_locked(self, lease, expected_incarnation) -> bool:
+        stream = self._managed_stream
+        return bool(stream is not None and stream.lease is lease and not stream.retired
+                    and stream.lease.incarnation is expected_incarnation
+                    and stream.serial_handle is not None and self._serial is stream.serial_handle
+                    and self._serial_incarnation == stream.serial_incarnation)
+
+    def _managed_reader_current(self, stream, serial_handle, incarnation) -> bool:
+        with self._io_lock:
+            return bool(self._managed_stream is stream and not stream.retired
+                        and stream.serial_handle is serial_handle
+                        and stream.serial_incarnation == incarnation
+                        and self._serial is serial_handle and self._serial_incarnation == incarnation)
+
+    def write_bound_bytes_receipt(self, lease: ManagedSerialLease, expected_incarnation: object,
+                                  payload: bytes) -> WriteReceipt:
+        """Use the same receipt transaction with an exact exclusive incarnation admission."""
+        if type(lease) is not ManagedSerialLease:
+            raise ManagedSerialUnavailable("Invalid managed serial lease")
+        return self._write_payload_attempt(bytes(payload), managed_lease=lease,
+                                           expected_incarnation=expected_incarnation).receipt
 
     @property
     def state(self) -> ConnectionState:
@@ -551,6 +673,12 @@ class SerialConnection:
                 baseline_depths=attempt.lock_depths,
             )
             self._settle_interrupted_connect(attempt)
+            if attempt.startup_started and attempt.connected_notification is None and attempt.managed is not None:
+                try:
+                    self._retire_managed_stream(attempt.managed,
+                                                lost=attempt.managed.serial_handle is not None)
+                except BaseException:
+                    pass  # The original startup control owns this boundary.
             self._release_locks_owned_by_current_thread(
                 *operation_locks,
                 baseline_depths=attempt.lock_depths,
@@ -571,6 +699,14 @@ class SerialConnection:
             with self._io_lock:
                 if self._connect_attempt is not None:
                     raise RuntimeError("Serial connection attempt already in progress")
+                if self._managed_preparation is not None:
+                    raise RuntimeError("Managed serial preparation is pending or failed")
+                stream = self._managed_stream
+                if (stream is not None and self._state is not ConnectionState.CONNECTED
+                        and (stream.retired or stream.serial_handle is not None
+                             or stream.reader_start_attempted)):
+                    raise RuntimeError("Managed reconnect requires an explicit session handoff")
+                attempt.managed = stream
                 self._connect_attempt = attempt
 
             # Revalidate under lifecycle serialization. A disconnect may have owned the lock when
@@ -808,6 +944,8 @@ class SerialConnection:
         reader_gate: threading.Event | None = None
         candidate_serial: serial.Serial | None = None
         try:
+            if attempt.managed is not None:
+                self._check_managed_timeout(self.timeout)
             # Open WITHOUT letting the adapter's DTR/RTS lines pulse the ESP32's EN/GPIO0 on connect.
             # pyserial asserts both by default; on CYD panels (esp. the CH340K 2-USB / Guition boards)
             # that lack the auto-reset transistor pair, an asserted DTR+RTS at open yanks GPIO0/EN low
@@ -846,7 +984,8 @@ class SerialConnection:
                         ConnectionState.CONNECTING,
                         self._state_generation,
                     )
-                )
+                ),
+                managed=attempt.managed,
             )
             self._read_thread = threading.Thread(
                 target=self._reader_loop_after_connect,
@@ -855,6 +994,9 @@ class SerialConnection:
                 daemon=True,
             )
             attempt.reader_thread = self._read_thread
+            if attempt.managed is not None:
+                attempt.managed.reader_thread = self._read_thread
+                attempt.managed.reader_start_attempted = True
             self._read_thread.start()
             with self._io_lock:
                 opened_serial = self._serial
@@ -885,6 +1027,11 @@ class SerialConnection:
                 )
                 if attempt.reader_loop_attempt.escaped:
                     raise serial.SerialException("Serial reader exited during startup")
+                if attempt.managed is not None:
+                    if self._managed_stream is not attempt.managed or attempt.managed.retired:
+                        raise serial.SerialException("Managed serial preparation was retired")
+                    attempt.managed.serial_handle = opened_serial
+                    attempt.managed.serial_incarnation = incarnation
             # Start the reader before external CONNECTED callbacks. Public connect() emits those
             # only after releasing the lifecycle lock, so a reply callback can safely disconnect
             # while the CONNECTED callback waits. Its state/incarnation token prevents stale
@@ -971,6 +1118,12 @@ class SerialConnection:
             lock_depths=self._capture_owned_lock_depths(*operation_locks)
         )
         try:
+            stream = self._managed_stream
+            if stream is not None:
+                with self._io_lock:
+                    attempt.identity = (self._serial, self._serial_incarnation, self._state,
+                                        self._state_generation, self._read_thread)
+                self._retire_managed_stream(stream)
             self._run_disconnect_attempt(attempt)
         except BaseException:
             # As with connect/write, a trace exception can interrupt ``with`` exit bytecode after
@@ -1064,7 +1217,7 @@ class SerialConnection:
         if identity is None:
             return None
         serial_handle, incarnation, starting_state, starting_generation, reader = identity
-        if starting_state is ConnectionState.DISCONNECTED:
+        if starting_state is ConnectionState.DISCONNECTED and self._managed_stream is None:
             return None
 
         detached_handle: object | None = None
@@ -1155,7 +1308,7 @@ class SerialConnection:
     def _disconnect_locked(self, attempt: _DisconnectAttempt) -> int | None:
         """Implement one disconnect while ``_lifecycle_lock`` is held by the caller."""
         identity = attempt.identity
-        if identity is None or identity[2] is ConnectionState.DISCONNECTED:
+        if identity is None or (identity[2] is ConnectionState.DISCONNECTED and self._managed_stream is None):
             return None
         self._stop_event.set()
         # Join the reader thread OUTSIDE the I/O lock (the join can take up to 3s; holding the lock
@@ -1311,7 +1464,8 @@ class SerialConnection:
         """
         self._raise_legacy_failure(self._write_payload_attempt(bytes(payload)))
 
-    def _write_payload_attempt(self, payload: bytes) -> _WriteAttempt:
+    def _write_payload_attempt(self, payload: bytes, *, managed_lease=None,
+                               expected_incarnation=None) -> _WriteAttempt:
         """Perform one write behind a cross-frame control-flow settlement boundary."""
         operation_locks = (
             self._io_lock,
@@ -1321,6 +1475,8 @@ class SerialConnection:
         transaction = _WriteTransaction(
             requested=len(payload),
             lock_depths=self._capture_owned_lock_depths(*operation_locks),
+            managed_lease=managed_lease,
+            expected_incarnation=expected_incarnation,
         )
         try:
             return self._run_write_payload_attempt(payload, transaction)
@@ -1353,6 +1509,10 @@ class SerialConnection:
         # this attempt may still be performing I/O. State/error callbacks are deliberately deferred
         # until after the lock is released because callbacks may synchronously call disconnect().
         with self._io_lock:
+            if self._managed_stream is not None or transaction.managed_lease is not None:
+                if not self._managed_write_current_locked(transaction.managed_lease,
+                                                           transaction.expected_incarnation):
+                    raise ManagedSerialUnavailable("Exclusive managed serial admission refused")
             serial_handle = self._serial
             incarnation = self._serial_incarnation
             starting_state_generation = self._state_generation
@@ -1390,6 +1550,13 @@ class SerialConnection:
                 raise RuntimeError("Serial connection changed before write")
             if serial_is_open is not True:
                 raise RuntimeError(f"Not connected to {self.port}")
+            if transaction.managed_lease is not None:
+                # Resolve descriptors before actual transport entry, then recheck both authorities.
+                transaction.adapter_write = serial_handle.write
+                if (not self._managed_write_current_locked(transaction.managed_lease,
+                                                            transaction.expected_incarnation)
+                        or not self._write_incarnation_is_current_locked(transaction)):
+                    raise ManagedSerialUnavailable("Managed serial changed before write")
 
             # The marker precedes the helper call. A control exception before actual adapter entry
             # is conservatively uncertain; the call opcode remains protected by this ``with`` so an
@@ -1457,7 +1624,10 @@ class SerialConnection:
     ) -> _WriteAttempt:
         """Call write/flush exactly once; the caller's ``with`` owns lock cleanup on BaseException."""
         try:
-            transaction.reported_value = serial_handle.write(payload)
+            if transaction.managed_lease is None:
+                transaction.reported_value = serial_handle.write(payload)
+            else:
+                transaction.reported_value = transaction.adapter_write(payload)
         except Exception as exc:
             return _WriteAttempt(
                 WriteReceipt(
@@ -1504,6 +1674,8 @@ class SerialConnection:
             or self._state is not ConnectionState.CONNECTED
             or self._state_generation != transaction.starting_state_generation
             or self._write_quarantined
+            or (transaction.managed_lease is not None and not self._managed_write_current_locked(
+                transaction.managed_lease, transaction.expected_incarnation))
         ):
             # The adapter returned the full count, but a reentrant lifecycle hook replaced or
             # invalidated the assigned incarnation before flush. Do not touch the new transport;
@@ -1671,6 +1843,8 @@ class SerialConnection:
             and self._state is ConnectionState.CONNECTED
             and self._state_generation == transaction.starting_state_generation
             and not self._write_quarantined
+            and (transaction.managed_lease is None or self._managed_write_current_locked(
+                transaction.managed_lease, transaction.expected_incarnation))
         )
 
     def _release_write_transaction_locked(
@@ -1924,6 +2098,9 @@ class SerialConnection:
             attempt.escaped = True
             self._settle_escaped_reader_loop_interruption(attempt)
             raise
+        finally:
+            if attempt.managed is not None:
+                attempt.managed.reader_done.set()
 
     def _reader_loop(self) -> None:
         """Background thread: read lines until stopped or error."""
@@ -1961,6 +2138,11 @@ class SerialConnection:
             *operation_locks,
             baseline_depths=failure_attempt.lock_depths,
         )
+        if loop_attempt.managed is not None:
+            try:
+                self._retire_managed_stream(loop_attempt.managed, lost=True)
+            except BaseException:
+                pass  # Reader's original BaseException remains primary.
         failure = (
             loop_attempt.failure
             if loop_attempt.failure is not None
@@ -1988,14 +2170,22 @@ class SerialConnection:
             return
         # One incremental decoder for the whole loop, so a multi-byte UTF-8 sequence split across two
         # reads reconstructs into a single code point (a per-read decode() would emit two U+FFFD).
-        decoder = codecs.getincrementaldecoder(self.encoding)(errors="replace")
+        managed = loop_attempt.managed
+        decoder = None if managed is not None else codecs.getincrementaldecoder(self.encoding)(errors="replace")
         if not self._reader_incarnation_is_current(
             pinned_serial,
             pinned_incarnation,
         ):
             return
+        if managed is not None:
+            if not self._managed_reader_current(managed, pinned_serial, pinned_incarnation):
+                return
+            managed.session._reader_start(managed.lease.incarnation)
         while not self._stop_event.is_set():
             try:
+                if managed is not None and not self._managed_reader_current(
+                        managed, pinned_serial, pinned_incarnation):
+                    return
                 next_failure = self._new_reader_failure_attempt_for_incarnation(
                     pinned_serial,
                     pinned_incarnation,
@@ -2018,13 +2208,34 @@ class SerialConnection:
                     break
                 if type(waiting) is not int or waiting < 0:
                     raise serial.SerialException("Serial reader returned invalid byte availability")
-                chunk = serial_handle.read(waiting if waiting > 0 else 1)
+                read_size = waiting if waiting > 0 else 1
+                if managed is not None:
+                    self._check_managed_timeout(serial_handle.timeout)
+                    if not self._managed_reader_current(managed, serial_handle, incarnation):
+                        return
+                    read_size = min(read_size, 65536)
+                chunk = serial_handle.read(read_size)
                 if not self._reader_incarnation_is_current(serial_handle, incarnation):
                     # The chunk belongs to an old incarnation. Do not dispatch it or let this old
                     # reader continue alongside the replacement's reader thread.
+                    if managed is not None and type(chunk) is bytes and chunk:
+                        self._retire_managed_stream(managed, lost=True)
                     break
                 if type(chunk) is not bytes:
                     raise serial.SerialException("Serial reader returned invalid byte data")
+                if managed is not None:
+                    if not self._managed_reader_current(managed, serial_handle, incarnation):
+                        if chunk:
+                            self._retire_managed_stream(managed, lost=True)
+                        return
+                    # Deliver a physical read as one complete admitted batch. Never split an
+                    # oversized adapter result to evade the core's own retained-input budget.
+                    if chunk:
+                        managed.session._receive(managed.lease.incarnation, chunk)
+                    managed.session._maintain(managed.lease.incarnation)
+                    if chunk and self._managed_reader_current(managed, serial_handle, incarnation):
+                        self._emit_bytes(chunk)  # optional diagnostics, never parser ownership
+                    continue
                 if chunk == b"":
                     continue
                 if self.raw:
@@ -2065,6 +2276,8 @@ class SerialConnection:
                         return
                     buf = ""
             except serial.SerialException as exc:
+                if managed is not None:
+                    self._retire_managed_stream(managed, lost=True)
                 loop_attempt.failure = exc
                 loop_attempt.log_message = "Serial reader stopped after a transport error"
                 self._run_reader_failure(
@@ -2077,6 +2290,8 @@ class SerialConnection:
             except Exception as exc:
                 # A non-SerialException (e.g. a bare OSError on device removal) must STILL move us
                 # out of CONNECTED — otherwise is_connected lies and connect() refuses to reopen.
+                if managed is not None:
+                    self._retire_managed_stream(managed, lost=True)
                 loop_attempt.failure = exc
                 loop_attempt.log_message = "Serial reader stopped after an unexpected error"
                 self._run_reader_failure(

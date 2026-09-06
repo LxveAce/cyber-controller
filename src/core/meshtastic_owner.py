@@ -7,7 +7,9 @@ Profile selection is a compatibility assumption before inventory, not firmware a
 
 from __future__ import annotations
 
+import copy
 import secrets
+import threading
 import uuid
 from dataclasses import dataclass
 from typing import Callable
@@ -177,3 +179,123 @@ class MeshWireOwner:
                 "publication_admitted": False,
             },
         }
+
+
+class MeshConnectionSession:
+    """Connection-lifetime adapter, prepared by SerialConnection before any port is opened.
+
+    The provider alone delivers captured RX and maintenance on its existing reader. Consumers
+    subscribe or inspect snapshots; they do not own a second parser, bootstrap or transport writer.
+    This source-only provider does not yet enable managed chat or select a DeviceManager profile.
+    """
+
+    def __init__(self, connection, lease, *, state=None, monotonic=None, limits=None,
+                 randbelow=secrets.randbelow):
+        from src.core.serial_handler import ManagedSerialLease, SerialConnection
+
+        if type(connection) is not SerialConnection or type(lease) is not ManagedSerialLease:
+            raise ValueError("profile_unavailable")
+        self._connection = connection
+        self._lease = lease
+        self._lock = threading.Lock()
+        self._subscribers = {}
+        self._started = False
+        self._retired = False
+        self._owner = MeshWireOwner(
+            OrderedSerialBinding(lease.incarnation, self._write_receipt, True, True),
+            on_event=self._publish, on_text=self._publish_debug, state=state,
+            monotonic=monotonic, limits=limits, randbelow=randbelow,
+        )
+        if self._owner.backend is None:
+            raise ValueError("Managed Mesh owner preparation failed")
+        self.backend = self._owner.backend
+        if state is not None:
+            # Import never makes historical readiness current on a new physical handle. Known
+            # drain/loss records refuse this transition and remain blocked by the existing core.
+            self._owner.mark_observation_gap()
+
+    def _write_receipt(self, incarnation, frame):
+        from src.core.serial_handler import ManagedSerialUnavailable
+
+        try:
+            return self._connection.write_bound_bytes_receipt(self._lease, incarnation, frame)
+        except ManagedSerialUnavailable:
+            raise ms.ManagedWriteError(definitely_not_written=True) from None
+
+    def subscribe(self, callback):
+        """Return an exact removal closure. Subscriptions do not start or retire this session."""
+        if not callable(callback):
+            raise TypeError("Mesh session subscriber must be callable")
+        token = object()
+        with self._lock:
+            if len(self._subscribers) >= 16:
+                raise RuntimeError("Mesh session subscriber capacity reached")
+            self._subscribers[token] = callback
+
+        def remove():
+            with self._lock:
+                self._subscribers.pop(token, None)
+
+        return remove
+
+    def _publish(self, kind, payload):
+        with self._lock:
+            if self._retired:
+                return
+            subscribers = tuple(self._subscribers.items())
+        for token, callback in subscribers:
+            with self._lock:
+                if self._retired or self._subscribers.get(token) is not callback:
+                    continue
+            try:
+                callback(kind, copy.deepcopy(payload))
+            except Exception:
+                pass  # Ordinary subscribers isolate; BaseException reaches the core's owner fence.
+
+    def _publish_debug(self, line):
+        self._publish("mesh_log", {"session_id": self.backend.session_id, "line": line})
+
+    def _reader_start(self, incarnation):
+        with self._lock:
+            if incarnation is not self._lease.incarnation or self._retired or self._started:
+                return
+            self._started = True
+        try:
+            self._owner.begin_bootstrap()
+        except ms.ManagedWriteError:
+            # The core already recorded this receipt outcome (including definite zero-entry).
+            # It is not evidence of lost RX or an unexpected reader failure.
+            pass
+
+    def _receive(self, incarnation, batch):
+        if incarnation is self._lease.incarnation:
+            try:
+                self._owner.feed_bytes(incarnation, batch)
+            except ms.ManagedWriteError:
+                pass
+
+    def _maintain(self, incarnation):
+        if incarnation is self._lease.incarnation:
+            try:
+                self._owner.tick()
+            except ms.ManagedWriteError:
+                pass
+
+    def _transport_retired(self, *, lost):
+        with self._lock:
+            self._retired = True
+        if lost:
+            self._owner.transport_lost()
+        else:
+            self._owner.retire()
+
+    def snapshot(self):
+        result = self._owner.snapshot()
+        result["transport_status"] = self._connection._managed_status(self._lease)
+        return result
+
+    def export_state(self):
+        """Retain the same session until both provider resources and core ownership settle."""
+        if not self._connection._managed_export_ready(self._lease):
+            raise RuntimeError("Managed transport has not quiesced")
+        return self._owner.export_state()

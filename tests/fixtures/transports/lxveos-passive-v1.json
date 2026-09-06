@@ -1,0 +1,48 @@
+{
+  "schema": "CyberControllerTransportTranscript@1",
+  "scenario_id": "lxveos-passive-ap",
+  "device": {
+    "port": "sim://lxveos/passive-001",
+    "firmware": "lxveos",
+    "name": "Synthetic LxveOS",
+    "simulated": true
+  },
+  "connection": {
+    "mode": "text",
+    "baud": 115200,
+    "encoding": "utf-8",
+    "line_ending": "\n"
+  },
+  "basis": null,
+  "events": [
+    {
+      "seq": 1,
+      "at_ms": 0,
+      "kind": "connect"
+    },
+    {
+      "seq": 2,
+      "at_ms": 0,
+      "kind": "expect_text_write",
+      "text": "status"
+    },
+    {
+      "seq": 3,
+      "at_ms": 1,
+      "kind": "rx_line",
+      "text": "LXVEOS/1 status caps=0x003 arm=safe tx=0 synthetic=1"
+    },
+    {
+      "seq": 4,
+      "at_ms": 2,
+      "kind": "rx_line",
+      "text": "LXVEOS/1 ap bssid=02:00:00:00:00:01 ssid=666978747572652d6170 ch=1 rssi=-60 auth=wpa2 synthetic=1"
+    },
+    {
+      "seq": 5,
+      "at_ms": 3,
+      "kind": "disconnect",
+      "reason": "scripted_end"
+    }
+  ]
+}

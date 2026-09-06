@@ -1,7 +1,11 @@
 # Development status
 
-The default branch contains changes made after the published 2.0.1 build. Existing release downloads have not been replaced.
+This branch checkpoints unfinished work on top of the default branch. It is not a release candidate. Published 2.0.1 downloads are unchanged.
 
-Recent source changes improve device and callback cleanup, BLE report parsing and refresh, target selection and menu behavior, tool-download jobs, settings updates, and device identity snapshots. Manual update checks now use one owned background operation with bounded status polling and cleanup. The durable BLE journal and managed Mesh configuration core remain foundations awaiting application adoption.
+- Manual update checks use an owned backend operation and a browser client that polls that operation. Independent frontend and backend reviews are complete, and four browser-to-Flask fixture cases pass; this update-check path is also on the default branch. Download, installation, restart and rollback are separate work.
+- Managed Mesh serial transport is a source-only provider. It is not yet connected to the current Mesh interface. Review found a disconnect race where an already-read byte can be omitted from loss accounting; correction is pending.
+- Firmware artifact validation and the ESP image parser provide host-side validation foundations. Enforcement against fresh board-build evidence remains a separate held candidate.
+- Transcript replay provides simulated, unauthenticated fixture input for repeatable testing. It does not establish device identity or physical radio behavior.
+- The durable BLE journal core is included; application ingestion, persistent storage selection and exports still need integration.
 
-Additional work is on the development/current branch. Complete update installation and rollback, Mesh chat and configuration in the current interface, firmware availability, and platform/device validation remain in progress. Source and fixture tests do not replace testing installed builds on supported hardware.
+Hardware, full desktop packages, Linux distribution startup, and complete user flows remain under validation. Do not interpret fixture counts as whole-application coverage.

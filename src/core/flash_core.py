@@ -2115,12 +2115,14 @@ def _resolve_github(cfg: Dict) -> Tuple[str, List[Dict]]:
             f"resolver_params.asset_match must be an object "
             f"(include_regex/include_suffixes), got {type(am).__name__}: {am!r}"
         )
-    try:
-        tag, raw = _github_latest(p["api_url"])
-    except Exception:
-        if p.get("on_error") == "source_only_empty":
-            return ("source-only", [])
-        raise
+    # A profile's ``source_only_empty`` marker describes a SUCCESSFUL release lookup that
+    # contains no usable prebuilt assets.  It must never launder a transport/API failure into
+    # the factual claim "upstream is source-only": a timeout, rate limit, authentication error,
+    # captive portal, or 404 all require different remediation and may have an already-cached
+    # last-known-good artifact.  Let those failures propagate to the engine's network-error path;
+    # the engine applies the source-only wording only after this function returns an empty asset
+    # list from a successful lookup.
+    tag, raw = _github_latest(p["api_url"])
     if am.get("expand") == "chip_zip_boards":
         assets = _expand_chip_zip_boards(p, raw)
         # A profile can carry a SIBLING uf2 board family (Meshtastic nRF52840/RP2040/RP2350 flash
