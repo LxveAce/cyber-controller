@@ -7,11 +7,13 @@ import hashlib
 import json
 import os
 import shutil
+import struct
 from pathlib import Path
 
 import pytest
 
 from src.core import firmware_artifact as fa
+from tests.esp_image_vectors import merged_image_bytes
 
 _MIB = 1024 * 1024
 _BOARD_SPECS = {
@@ -85,28 +87,29 @@ def _make_bundle(
         record = _write(root, f"metadata/{filename}", f"{kind}\n".encode())
         notices.append({"kind": kind, **record})
 
+    vectors = {}
     partition_records = {}
-    for _chip, _flash, _psram, source in _BOARD_SPECS.values():
+    for chip, flash_size, _psram, source in _BOARD_SPECS.values():
+        vector_key = (chip, flash_size)
+        if vector_key not in vectors:
+            vectors[vector_key] = merged_image_bytes(
+                chip=chip,
+                flash_size_bytes=flash_size,
+                seed=seed,
+            )
         packaged = f"metadata/{source}"
         if packaged not in partition_records:
-            partition_records[packaged] = _write(
-                root,
-                packaged,
-                f"# {source}\nnvs,data,nvs,0x9000,0x6000\n".encode(),
-            )
+            partition_records[packaged] = _write(root, packaged, vectors[vector_key][1])
 
     boards = []
     for board_id in fa.REQUIRED_BOARDS:
         chip, flash_size, psram_size, partition_source = _BOARD_SPECS[board_id]
-        segment = _write(
-            root,
-            f"boards/{board_id}/{board_id}-merged.bin",
-            b"\xe9" + seed + board_id.encode(),
-        )
+        merged, _partition_csv, flasher_bytes = vectors[(chip, flash_size)]
+        segment = _write(root, f"boards/{board_id}/{board_id}-merged.bin", merged)
         flasher = _write(
             root,
             f"boards/{board_id}/flasher_args.json",
-            _canonical_json({"flash_files": {"0x0": f"{board_id}-merged.bin"}}),
+            flasher_bytes,
         )
         dependencies = _write(
             root,
@@ -427,7 +430,9 @@ def test_rejects_partition_outside_partition_tree_and_false_psram_size(tmp_path)
         fa.load_artifact(stray)
 
 
-def test_complete_verification_streams_firmware_without_retaining_it(tmp_path, monkeypatch):
+def test_complete_verification_retains_exact_firmware_only_for_semantic_validation(
+    tmp_path, monkeypatch
+):
     bundle = _make_bundle(tmp_path / "bundle")
     original_read = fa._read_regular_file
     calls = []
@@ -440,7 +445,9 @@ def test_complete_verification_streams_firmware_without_retaining_it(tmp_path, m
     fa.load_artifact(bundle)
 
     assert ("metadata/cyd_boards.json", True) in calls
-    assert all(not retain for path, retain in calls if path.endswith("-merged.bin"))
+    assert all(retain for path, retain in calls if path.endswith("-merged.bin"))
+    assert all(retain for path, retain in calls if path.endswith("flasher_args.json"))
+    assert all(retain for path, retain in calls if path.endswith(".csv"))
 
 
 @pytest.mark.parametrize("retain", [False, True])
@@ -624,6 +631,66 @@ def test_corrupt_newer_set_falls_back_to_last_known_good(tmp_path):
     assert resolved.artifact_identity == old_stored.identity
     assert resolved.version == "old"
     assert b"old" in resolved.data
+
+
+def test_semantically_invalid_newer_entry_cannot_suppress_last_known_good(tmp_path):
+    old = _make_bundle(
+        tmp_path / "old", version="old", built_at="2026-09-05T12:00:00Z", seed=b"old"
+    )
+    invalid = _make_bundle(
+        tmp_path / "invalid", version="new", built_at="2026-09-06T12:00:00Z", seed=b"new"
+    )
+    invalid_manifest = _manifest(invalid)
+    invalid_record = invalid_manifest["boards"][0]["segments"][0]
+    invalid_image = invalid.joinpath(*invalid_record["path"].split("/"))
+    changed = bytearray(invalid_image.read_bytes())
+    changed[0] = 0
+    invalid_image.write_bytes(changed)
+    _refresh_record(invalid, invalid_record)
+    _rewrite_manifest(invalid, invalid_manifest)
+
+    store = fa.ArtifactStore(tmp_path / "store")
+    old_stored = store.import_set(old)
+    invalid_identity = hashlib.sha256((invalid / fa.MANIFEST_FILENAME).read_bytes()).hexdigest()
+    shutil.copytree(invalid, store.root / invalid_identity)
+
+    assert tuple(item.identity for item in store.scan()) == (old_stored.identity,)
+    resolved = store.resolve_bytes("bare_esp32_headless", "esp32", 4 * _MIB, 0)
+    assert resolved.artifact_identity == old_stored.identity
+
+
+@pytest.mark.parametrize(
+    "board_id,app_offset",
+    [
+        ("m5stickc_plus2", 0x20000),
+        ("m5cardputer_v1", 0x20000),
+    ],
+)
+def test_rejects_mapped_load_shift_after_inner_and_outer_hashes_are_recomputed(
+    tmp_path, board_id, app_offset
+):
+    bundle = _make_bundle(tmp_path / "bundle")
+    manifest = _manifest(bundle)
+    board = next(row for row in manifest["boards"] if row["board_id"] == board_id)
+    segment_record = board["segments"][0]
+    image_path = bundle.joinpath(*segment_record["path"].split("/"))
+    merged = bytearray(image_path.read_bytes())
+
+    load_address = struct.unpack_from("<I", merged, app_offset + 24)[0]
+    struct.pack_into("<I", merged, app_offset + 24, load_address + 4)
+    # The independent fixture has a 256-byte descriptor segment and a four-byte entry segment.
+    # Their checksum is at +303 and the appended digest covers through it, so repair the inner
+    # digest as an adversary could before also repairing the outer artifact record.
+    digest_start = app_offset + 304
+    merged[digest_start : digest_start + 32] = hashlib.sha256(
+        merged[app_offset:digest_start]
+    ).digest()
+    image_path.write_bytes(merged)
+    _refresh_record(bundle, segment_record)
+    _rewrite_manifest(bundle, manifest)
+
+    with pytest.raises(fa.ArtifactIntegrityError, match="MMU alignment"):
+        fa.load_artifact_set(bundle)
 
 
 def test_deeply_nested_store_entry_cannot_suppress_last_known_good(tmp_path):

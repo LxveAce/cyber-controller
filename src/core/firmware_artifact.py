@@ -28,6 +28,11 @@ from decimal import Decimal
 from pathlib import Path, PurePosixPath
 from typing import Any, Iterable
 
+from .esp_image_semantics import (
+    SemanticValidationError,
+    validate_lxveos_idf602_merged,
+)
+
 SCHEMA = "FirmwareArtifact@1"
 MANIFEST_FILENAME = "manifest.json"
 PRODUCT_ID = "lxveos"
@@ -1050,8 +1055,52 @@ def load_artifact_set(path: str | os.PathLike[str]) -> FirmwareArtifact:
     if snapshot_raw is None:  # pragma: no cover - retain=True guarantees bytes.
         raise ArtifactIntegrityError("packaged board snapshot was not retained")
     _validate_board_snapshot(snapshot_raw, board_manifest_version, boards)
+
+    partition_bytes: dict[str, bytes] = {}
+    semantically_read = {board_manifest.path}
+    for board in boards:
+        if board.partition.path in partition_bytes:
+            continue
+        retained_partition = _read_regular_file(
+            root,
+            board.partition,
+            retain=True,
+            max_bytes=_MAX_PARTITION_BYTES,
+        )
+        if retained_partition is None:  # pragma: no cover - retain=True guarantees bytes.
+            raise ArtifactIntegrityError(f"{board.board_id}: partition CSV was not retained")
+        partition_bytes[board.partition.path] = retained_partition
+        semantically_read.add(board.partition.path)
+
+    for board in boards:
+        segment = board.segments[0]
+        merged = _read_regular_file(root, segment.file, retain=True)
+        flasher_args = _read_regular_file(
+            root,
+            board.flasher_args,
+            retain=True,
+            max_bytes=_MAX_BUILD_METADATA_BYTES,
+        )
+        if (
+            merged is None or flasher_args is None
+        ):  # pragma: no cover - retain=True guarantees bytes.
+            raise ArtifactIntegrityError(f"{board.board_id}: semantic inputs were not retained")
+        try:
+            validate_lxveos_idf602_merged(
+                merged,
+                chip=board.chip,
+                flash_size_bytes=board.flash_size_bytes,
+                partition_csv=partition_bytes[board.partition.path],
+                flasher_args=flasher_args,
+            )
+        except SemanticValidationError as exc:
+            raise ArtifactIntegrityError(
+                f"{board.board_id}: merged firmware semantic validation failed: {exc}"
+            ) from exc
+        semantically_read.update((segment.file.path, board.flasher_args.path))
+
     for relative, record in records.items():
-        if relative != board_manifest.path:
+        if relative not in semantically_read:
             _read_regular_file(root, record, retain=False)
     return FirmwareArtifact(
         root=root,
