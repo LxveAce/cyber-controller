@@ -81,7 +81,7 @@ def test_tracker_resolves_end_to_end_to_a_ble_target() -> None:
     ev = _parse_all(_FLIPPER)[0]
     t = TargetIngestor._event_to_target(ev, "COM4")
     assert t is not None
-    assert t.mac == "AA:BB:CC:DD:EE:F0"
+    assert t.mac == "aa:bb:cc:dd:ee:f0"   # typed BLE Target canonicalizes MAC to lowercase; the raw parser (above) keeps source case
     assert t.ssid == "Flipper Zynq"      # the advertised name carries onto the target
     assert t.rssi == -60
 

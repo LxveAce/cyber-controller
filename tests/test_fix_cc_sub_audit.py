@@ -141,7 +141,7 @@ def test_pool_evicts_oldest_when_over_cap(monkeypatch) -> None:
     assert pool.count == 3  # stayed at the cap
     assert pool.get("ble:AA:BB:CC:00:00:00") is None      # least-recently-seen evicted
     assert pool.get("ble:AA:BB:CC:00:00:99") is not None  # new target admitted
-    assert any(p.get("mac") == "AA:BB:CC:00:00:00" for p in removed)  # removal was broadcast
+    assert any(p.get("mac") == "aa:bb:cc:00:00:00" for p in removed)  # removal broadcast carries the canonical (lowercase) MAC
 
 
 def test_pool_update_of_existing_never_evicts(monkeypatch) -> None:

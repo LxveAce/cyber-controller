@@ -4,11 +4,11 @@
 
 # Cyber Controller
 
-### One dashboard to flash, drive, and coordinate every radio in your cyberdeck.
+### Firmware flashing and device tools for your workbench.
 
-**Flash. Control. Coordinate.** 52 firmware profiles, 5 flash backends, one screen.
+**52 firmware profiles** across 5 flash backends, in a desktop and web interface.
 
-🚧 **Under heavy development** — moving fast; pin a release if you need stability.
+🚧 **Under active development.** Release builds and development source can differ. Check the known limits for your hardware.
 
 [![Latest](https://img.shields.io/github/v/release/LxveAce/cyber-controller?style=for-the-badge&label=release&color=39FF14)](https://github.com/LxveAce/cyber-controller/releases)
 [![Firmwares](https://img.shields.io/badge/firmware%20profiles-52-success?style=for-the-badge)](#-supported-firmware)
@@ -16,7 +16,7 @@
 [![License](https://img.shields.io/github/license/LxveAce/cyber-controller?style=for-the-badge)](LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/LxveAce/cyber-controller?style=for-the-badge&logo=github)](https://github.com/LxveAce/cyber-controller/stargazers)
 
-[**Download**](https://github.com/LxveAce/cyber-controller/releases/latest) · [**Website + live demo**](https://cybercontroller.org) · [**Hardware guides**](https://github.com/LxveAce/cyber-controller-guides) · [**Changelog**](CHANGELOG.md) · [**Discord**](https://discord.gg/lxvelabs)
+[**Download**](https://github.com/LxveAce/cyber-controller/releases/latest) · [**Website**](https://cybercontroller.org) · [**Hardware guides**](https://github.com/LxveAce/cyber-controller-guides) · [**Changelog**](CHANGELOG.md) · [**Discord**](https://discord.gg/lxvelabs)
 
 <img src="assets/cc-dashboard.png" alt="Cyber Controller single-window dashboard" width="900">
 
@@ -26,9 +26,9 @@
 
 ---
 
-Flashing an ESP32 and then *driving* it usually means five different tools, a pile of `esptool` flags, and a fresh way to brick a board every time. **Cyber Controller is the one app that does both.** Pick a firmware, flash it (chip auto-detected, correct offsets, anti-brick guard), then control it live in the same window. Connect a whole bench of boards and fire **one command at all of them at once**: one board finds an AP, another deauths it, a third grabs the handshake, all from a single screen.
+Cyber Controller brings firmware selection, flashing, serial tools, and supported device controls into one application. I built it to make a bench full of small boards easier to manage without switching tools for every step.
 
-Built to run a multi-device cyberdeck on a 7″ touchscreen, headless over SSH, or from your phone, but just as happy flashing a single $12 board on your desk. Self-taught hobby project, hardened as it grows. **Authorized security testing, education, and CTF use only.**
+The desktop window and browser interface share the same dashboard. Support depends on the board, firmware, and operation; chip detection alone cannot identify every display or pinout variant. This is a self-taught hobby project for authorized security research, education, and working with your own hardware.
 
 > ⚠️ **Lawful, authorized use only.** Use it only on hardware and networks you own or have explicit permission to test. Provided as-is, no warranty; you assume all risk. See [DISCLAIMER.md](DISCLAIMER.md).
 
@@ -39,20 +39,22 @@ Built to run a multi-device cyberdeck on a 7″ touchscreen, headless over SSH, 
 
 **[v2.0.1](https://github.com/LxveAce/cyber-controller/releases/latest)** keeps flash output visible beside the firmware workflow, adds a collapsible target list, and improves connection recovery, Flipper controls, Rayhunter reports, web-session handling and installation reliability. Linux builds now include the native renderer and check the packaged interface before upload. See the platform requirements below before downloading.
 
-The full version-by-version history, down to every fix, hardening pass, and added firmware, is in the **[Changelog](CHANGELOG.md)** and the **[Releases](https://github.com/LxveAce/cyber-controller/releases)**. Where it's headed next is on the **[roadmap at cybercontroller.org](https://cybercontroller.org/#firmware)**.
+See the [Changelog](CHANGELOG.md) and [Releases](https://github.com/LxveAce/cyber-controller/releases) for version history. [Development status](docs/DEVELOPMENT-STATUS.md) covers the current source snapshot and remaining work.
+
+Development source may contain changes that are not in the downloaded release. [Development status](docs/DEVELOPMENT-STATUS.md) separates published source from pending integration and qualification. A source update does not replace existing release binaries.
 <!-- STATUS-ROADMAP:END -->
 
 ## ✨ Highlights
 
-**🔥 Flash.** **52 firmware profiles** across 5 flash backends (esptool for ESP32, qFlipper for Flipper Zero, ADB for Android, SD-image for Pi/SBC boards, and the Realtek RTL8720 loader) — a few more (TI CC2652/Sniffle, HackRF/PortaPack, nRF52 DFU, RP2040 UF2) have their flow unit-tested but aren't validated on real silicon yet, so they don't count toward that 5. A flash core (connect/detect/read hardware-validated on real silicon; write+verify validation is in progress, see the beta caveats) auto-detects the chip (`esptool chip_id` first, never hardcoded), applies the critical `--flash_size detect` anti-brick patch and the correct per-chip bootloader offsets (including the **ESP32-C5 `0x2000`** gotcha), and kills the child process on error so a failed flash never holds the port. Batch flash, backup & restore, and handling for the awkward formats (GhostESP `.zip`, Meshtastic per-chip archives, AmebaD multi-image).
+Firmware profiles describe download sources, board variants, and flashing backends. Support includes esptool, qFlipper, ADB, SD-image writing, and the Realtek RTL8720 loader. Other backend paths have source/test coverage without complete physical qualification. Check the [hardware test matrix](docs/HARDWARE-FIRMWARE-MATRIX.md) for the particular device and operation you need.
 
 Offline Vault controls are still being connected to the single-window interface. The existing cache supports selected merged images; it cannot store firmware that needs separate bootloader, partition and application files.
 
-**🎮 Control.** A protocol-aware serial monitor with per-device firmware selection and per-firmware command palettes. **14 native parsers** ship. Dangerous transmit commands are **labeled and confirmed, never blocked** (full capability retained). Macro playback with variable substitution (recording is in the desktop Qt UI; the current single-window UI plays saved macros), and a tamper-evident SHA-256 audit trail over every flash and command.
+Device tools include a protocol-aware serial monitor, per-device firmware selection, and firmware-specific controls. Parser support does not mean every control has been qualified on every board. Older Qt screens and the current dashboard also differ in coverage; use the current interface and documentation when checking a feature.
 
-**🛰 Coordinate.** The **Unified Action Broadcast**: one intent (*Find APs, Deauth All, BLE Scan, Capture Handshakes, STOP ALL*) fans out to **every connected radio at once**, each translated into that firmware's own native command. A **shared target pool** means one board's discovery is instantly actionable by another.
+Connected devices can share observations in the dashboard. Work is continuing on durable BLE history, Mesh integration, and clearer connection and capability state. Selecting an observation should not be confused with a completed device operation or a remote acknowledgement.
 
-**♻️ In-app update checks** · **🔒 optional physical-key access gate** · **🧨 Dead Man's Switch anti-forensic provisioning** · **🗺 Flock/ALPR awareness map** · **📡 WiGLE CSV upload**. Recognized standalone binaries support in-place updates; Windows installer builds use the latest installer. Live survey capture and track rendering in the single-window Map view remain in development. Details below and in the [docs](#-learn-more--get-help).
+Other areas include update checks, optional access controls, maps and supported report/import/export tools. Update availability checks are distinct from a complete download/apply/restart/rollback workflow. Windows installer upgrades still use the installer, and live survey capture and track rendering in the current Map view remain in development.
 
 ## 🧩 Supported firmware
 
@@ -60,7 +62,7 @@ Offline Vault controls are still being connected to the single-window interface.
 
 Check the exact board variant before flashing, especially for display, pinout and flash-size differences. Automatic selection starts from the chip family; it cannot identify every board that uses that chip.
 
-> 📚 **[Hardware Guides →](https://github.com/LxveAce/cyber-controller-guides)**: a per-firmware walkthrough for every entry below (what to buy, how to build it, how to flash & run it, how to wire it into Cyber Controller, and troubleshooting), each with a downloadable PDF.
+> [Hardware Guides](https://github.com/LxveAce/cyber-controller-guides) contains selected firmware, operating-system, and detector guides with PDF copies. Coverage is incomplete; check the guide repository for the hardware you need.
 
 <details>
 <summary><b>See all 52 firmware profiles</b> (click to expand)</summary>
@@ -134,7 +136,7 @@ Available profiles and backends cover these hardware classes. Flashing and live-
 - **ESP8266:** D1 mini, NodeMCU, DSTIKE (Deauther / WiFiDuck).
 - **Realtek RTL8720DN / BW16:** dual-band 2.4/5 GHz Wi-Fi + BLE, via the AmebaD ImageTool (`rtl8720` backend).
 - **Flipper Zero:** STM32WB55, via `qFlipper` (Momentum / Unleashed / RogueMaster).
-- **Raspberry Pi:** Pi 5, Pi Zero 2 W and friends, via verified SD-image writing (Pwnagotchi / RaspyJack / Kali).
+- **Raspberry Pi / SBC images:** supported paths depend on an available compatible image. Some catalog entries are source/install overlays or still lack an automatically resolved image; a profile listing does not guarantee a flashable download.
 - **Qualcomm LTE:** Orbic RC400L hotspot for RayHunter IMSI-catcher detection (installs over the network via the official rayhunter installer; needs a deactivated SIM to capture).
 
 **Board examples — compatibility and tested operations vary by firmware:** Lonely Binary ESP32 Gold · Cheap Yellow Display (2.4″/2.8″/3.2″/3.5″; use the resistive `2432S028R`) · M5Stack Cardputer / Cardputer ADV / StickC Plus2 / Stick-S3 · LilyGo T-Deck / T-Deck Plus / T-Embed CC1101 / T-Dongle-S3 · Seeed XIAO ESP32-S3 · Heltec LoRa V3 (915 MHz US) · Waveshare ESP32-C5 · Marauder Mini / Mini v3 · Flipper Zero Wi-Fi Dev Board (ESP32-S2) · Ai-Thinker BW16.
@@ -189,27 +191,29 @@ Use the `linux-arm64` filename for ARM64. If startup fails, keep the terminal er
 
 ## 🔒 Security
 
-Cyber Controller drives real RF and flashing hardware, so it's hardened to match: an optional **fail-closed physical-key access gate** (salted-scrypt, brute-force lockout, opt-in duress self-wipe), an **authenticated web remote** (per-session CSRF token, CSP nonce, CORS allowlist, no default creds), **supply-chain-hardened** firmware downloads (HTTPS host allowlist, SSRF-safe redirects, SHA-256 pinning), and **AES-256-GCM** session storage that fails closed. Full posture + honest limits in **[SECURITY.md](SECURITY.md)**. Report a vulnerability to the address there, not a public issue.
+The application includes authenticated web access, CSRF protection, restricted download handling, integrity checks where profiles provide hashes, and optional access controls. Their scope and remaining limits are described in [SECURITY.md](SECURITY.md). These controls are not a blanket security certification. Please use the reporting address there for sensitive findings instead of posting them in a public issue.
 
 ## 🧨 Dead Man's Switch
 
-[Dead Man's Switch](https://github.com/LxveAce/deadmans-switch) ships as a submodule for **owner-only** anti-forensic provisioning (boot-password gate, fail-count wipe, GPIO trigger, eFuse + flash encryption). Provision it from **`cyber-controller --deadman-setup`** or **Tools ▸ Dead Man's Switch Setup**; the password is hashed **host-side** (PBKDF2, never stored). Bundles flash with TOCTOU-safe per-file SHA-256 verification. Cyber Controller only *flashes* a bundle the provisioner already built; it never burns eFuses itself. Honest scope in the [DMS docs](https://github.com/LxveAce/deadmans-switch).
+[Dead Man's Switch](https://github.com/LxveAce/deadmans-switch) is included as a submodule for owner-controlled provisioning. It has irreversible operations and separate hardware limitations. Read the project's safety and compatibility documentation before considering it; its presence in the source does not establish that every setup path is available in the current dashboard.
 
 ## 🔭 What's next
 
-A few things in the works (no dates, but they're coming):
+Current development priorities include:
 
-- A **browser-based flasher** on [cybercontroller.org](https://cybercontroller.org) — flash any supported firmware from the site, no install.
-- **OUI vendor lookup** in the device/scan views, deeper per-firmware command coverage, and live Meshtastic reads.
-- A **big UI + website overhaul** — the current look is a work in progress, not the destination.
-- **LxveLabs hardware** — open-source PCBs and buildable kits, starting with a multi-node Xiao-C5 wardriver.
+- More complete device lifecycle and firmware-specific control paths in the current dashboard.
+- Durable BLE history and Mesh provider/UI integration.
+- Packaged update transactions and platform startup testing.
+- Firmware artifact validation, offline payload coverage, maps and terminal improvements.
+
+The browser flasher already exists on [cybercontroller.org](https://cybercontroller.org); firmware and browser compatibility still apply. Hardware and kit concepts are separate projects, not promised features of a future CC release. No delivery dates are set by this list.
 
 ## 📚 Learn more / get help
 
 | For… | Go to |
 |------|-------|
-| Interactive demo, firmware library, downloads | **[cybercontroller.org](https://cybercontroller.org)** |
-| Per-firmware buy → build → flash → run guides (PDF) | **[cyber-controller-guides](https://github.com/LxveAce/cyber-controller-guides)** |
+| Firmware library and downloads | **[cybercontroller.org](https://cybercontroller.org)** |
+| Selected hardware and firmware guides, with PDFs | **[cyber-controller-guides](https://github.com/LxveAce/cyber-controller-guides)** |
 | Full version history + what changed | **[CHANGELOG.md](CHANGELOG.md)** · [Releases](https://github.com/LxveAce/cyber-controller/releases) |
 | Security posture + reporting | **[SECURITY.md](SECURITY.md)** |
 | Windows download trust / verification | [`docs/WINDOWS-SECURITY.md`](docs/WINDOWS-SECURITY.md) |
@@ -220,10 +224,10 @@ A few things in the works (no dates, but they're coming):
 
 | Project | What |
 |---------|------|
-| [headless-marauder-gui](https://github.com/LxveAce/headless-marauder-gui) | Standalone Marauder controller + flasher (4 UIs) |
-| [LxveFlasher](https://github.com/LxveAce/universal-flasher) | Multi-firmware flasher + device manager |
+| [headless-marauder-gui](https://github.com/LxveAce/headless-marauder-gui) | Retired standalone predecessor; archived for reference |
+| [Universal Flasher](https://github.com/LxveAce/universal-flasher) | Retained firmware/catalog and web-flasher supporting work |
 | [deadmans-switch](https://github.com/LxveAce/deadmans-switch) | Anti-forensic firmware provisioner |
-| [cybercontroller.org](https://cybercontroller.org) | Flagship site — demo, firmware library, downloads |
+| [cybercontroller.org](https://cybercontroller.org) | Flagship site, firmware library and downloads |
 | [esp32marauder.com](https://esp32marauder.com) | ESP32 security-tools hub |
 
 ## 🤝 Contributing
@@ -256,6 +260,6 @@ MIT — Copyright © 2026 [LxveAce](https://github.com/LxveAce). See [LICENSE](L
 
 **Built by [LxveAce](https://github.com/LxveAce) · a LxveLabs project**
 
-Hardware supported by [PCBWay](https://www.pcbway.com). LxveLabs is developing a board in collaboration with PCBWay.
+Hardware supported by [PCBWay](https://www.pcbway.com).
 
 </div>

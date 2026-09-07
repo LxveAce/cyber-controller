@@ -1,7 +1,11 @@
 # Development status
 
-The default branch contains changes made after the published 2.0.1 build. Existing release downloads have not been replaced.
+The source includes changes made after the published 2.0.1 build. Existing release downloads have not been replaced.
 
-Recent source changes improve device and callback cleanup, BLE report parsing and refresh, target selection and menu behavior, tool-download jobs, settings updates, and device identity snapshots. Manual update checks now use one owned background operation with bounded status polling and cleanup. The durable BLE journal and managed Mesh configuration core remain foundations awaiting application adoption.
+Recent corrections make Dashboard, Firmware and Terminal device selectors keyboard accessible, retain focus during inventory refresh, and keep long labels inside their panels. Destination admission now uses one captured path identity for install coordination. Managed Mesh transport retains captured input during provider retirement. Tests were updated to exercise the current device, lifecycle and update-availability contracts. The README describes support and remaining limits more precisely.
 
-Additional work is on the development/current branch. Complete update installation and rollback, Mesh chat and configuration in the current interface, firmware availability, and platform/device validation remain in progress. Source and fixture tests do not replace testing installed builds on supported hardware.
+Focused source and inert browser/Flask tests cover these changes. They do not establish whole-application, native-package or physical-device coverage. The Selected Device details panel can still retain initial data after selection changes; its separate display correction is pending.
+
+Manual update availability checks are integrated. Complete download, installation, restart and rollback remain separate work. The durable BLE journal and managed Mesh provider are foundations; application persistence, Mesh chat/configuration and hardware validation remain incomplete. Firmware payload coverage, maps and terminal improvements remain in progress.
+
+Additional source foundations and a separate held proposal are preserved on the development branches.

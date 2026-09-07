@@ -3,16 +3,19 @@ from __future__ import annotations
 
 import json
 import threading
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import pytest
 
 from src.config import settings
-from src.core import updater
+from src.core import update_checker as uc
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
 from src.core.flash_engine import FlashEngine
+from src.core.lifecycle import CallbackScope
 from src.ui.web.app import create_app
+from src.ui.web.update_runtime import UpdateAvailability, WebRuntimeCleanup
 
 
 @pytest.fixture
@@ -64,30 +67,85 @@ def settle(thread, outcome):
     return outcome["value"]
 
 
+_STAMP = datetime(2026, 9, 6, 19, tzinfo=timezone.utc)
+
+
+def _release(tag):
+    return {"tag_name": tag, "html_url": uc.updater.RELEASES_PAGE + "/tag/" + tag}
+
+
+class _Fetch:
+    """Inert releases fetch: gates on entered/release so a manual check can be held in flight, and
+    returns one current-version release (UP_TO_DATE), unless an error is set (a raised fetch is
+    OFFLINE)."""
+
+    def __init__(self):
+        self.entered, self.release = threading.Event(), threading.Event()
+        self.rows = [_release("v2.0.1")]
+        self.error = None
+
+    def __call__(self):
+        self.entered.set()
+        assert self.release.wait(15), "inert fetch was not released"
+        if self.error is not None:
+            raise self.error
+        return self.rows
+
+
+class _Hub:
+    """Inert cross-comm hub stand-in for the runtime cleanup owner (records closes, no I/O)."""
+
+    captures = router = sensing = None
+
+    def __init__(self, *args):
+        self.closes = 0
+
+    def fence(self):
+        pass
+
+    def close(self):
+        self.closes += 1
+
+
+@pytest.fixture
+def updates_app(store):
+    """A settings app with a fixture-OWNED manual update availability service: a real UpdateChecker
+    over an inert fetch, wrapped by UpdateAvailability, whose runtime is closed and settled in
+    teardown (error paths included). The missing-owner 503 contract is covered in
+    test_update_availability_runtime."""
+    fetch = _Fetch()
+    checker = uc.UpdateChecker("2.0.1", enabled=False, manual_cooldown_seconds=0,
+                               fetch=fetch, wall_clock=lambda: _STAMP)
+    scope = CallbackScope()
+    owner = WebRuntimeCleanup(scope, _Hub())
+    owner.checker = checker
+    application, _ = create_app(DeviceManager(), FlashEngine(), EventBus(), TargetPool(),
+                                lifecycle=scope, availability=UpdateAvailability(checker))
+    owner.attach_app(application)
+    try:
+        yield SimpleNamespace(app=application, fetch=fetch, checker=checker, owner=owner)
+    finally:
+        fetch.release.set()   # never leave a held fetch, even on an error path
+        owner.close()         # closes + settles the fixture-owned checker/app runtime
+
+
 @pytest.mark.parametrize("reset", [False, True])
-def test_update_completion_preserves_concurrent_settings(app, store, monkeypatch, reset):
+def test_update_completion_preserves_concurrent_settings(updates_app, store, reset):
     settings.save_settings({"serial": {"default_baud": 230400},
                             "uploads": {"wigle_token": "old-fixture-token"}})
-    entered, release = threading.Event(), threading.Event()
-
-    def check(*args, **kwargs):
-        entered.set()
-        assert release.wait(5)
-        return SimpleNamespace(status="UP_TO_DATE", latest_tag="v2.0.1", latest_url="", behind=0)
-
-    monkeypatch.setattr(updater, "check", check)
-    monkeypatch.setattr(updater, "now_iso", lambda: "2026-09-06T19:00:00+00:00")
-    thread, outcome = start_call(lambda: post(app, "/api/updates/check", {}))
+    env = updates_app
+    env.checker.start()
+    thread, outcome = start_call(lambda: post(env.app, "/api/updates/check", {}))
     try:
-        assert entered.wait(5)
+        assert env.fetch.entered.wait(5)   # the manual check is in flight (held by the fetch)
         body = {"reset": True} if reset else {
             "serial": {"default_baud": 9600}, "interface": {"touch_mode": "on"},
             "updates": {"enabled": False}, "uploads": {"wigle_token": "new-fixture-token"}}
-        saved = post(app, "/api/settings", body)
+        saved = post(env.app, "/api/settings", body)
         assert saved.status_code == 200
         acknowledged = json.loads(store.read_text(encoding="utf8"))
     finally:
-        release.set()
+        env.fetch.release.set()
         result = settle(thread, outcome)
     assert result.status_code == 200
     after = settings.load_settings()
@@ -273,11 +331,13 @@ def test_failure_after_replace_reports_error_without_claiming_rollback(app, monk
     assert settle(thread, outcome).status_code == 200
 
 
-def test_offline_completion_retains_previous_tag_and_new_preferences(app, monkeypatch):
+def test_offline_completion_retains_previous_tag_and_new_preferences(updates_app):
+    env = updates_app
     settings.save_settings({"updates": {"last_seen_latest": "v2.0.1"}})
-    monkeypatch.setattr(updater, "check", lambda *a, **k: SimpleNamespace(
-        status="OFFLINE", latest_tag="", latest_url="", behind=0))
-    response = post(app, "/api/updates/check", {})
+    env.fetch.error = OSError("inert offline")   # a raised fetch is OFFLINE (no fallback)
+    env.fetch.release.set()
+    env.checker.start()
+    response = post(env.app, "/api/updates/check", {})
     assert response.status_code == 200
-    assert settings.load_settings()["updates"]["last_seen_latest"] == "v2.0.1"
+    assert settings.load_settings()["updates"]["last_seen_latest"] == "v2.0.1"  # retained
     assert settings.load_settings()["updates"]["last_check_iso"]

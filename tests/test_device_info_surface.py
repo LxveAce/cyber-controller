@@ -318,13 +318,17 @@ def test_cross_comm_hub_end_to_end_populates_device_runtime_caps():
     from src.core.device_manager import DeviceManager
 
     dm = DeviceManager()
-    CrossCommHub(dm)  # subscribes to on_connection_opened, wires the ingestor with devices=dm
-    dev = Device(port="COM23", name="LxveOS board", firmware="lxveos")
-    conn = _FakeConn("COM23")
-    dm.attach_connection(dev, conn)  # fires the hook -> hub attaches the lxveos-parsing ingestor
-    conn.feed(_STATUS)
-    assert dev.runtime_capabilities == frozenset({"wifi", "ble", "bt_classic"})
-    assert dev.capabilities == frozenset({"wifi", "ble", "bt_classic"})
+    hub = CrossCommHub(dm)  # subscribes to on_connection_opened, wires the ingestor with devices=dm
+    try:
+        dev = Device(port="COM23", name="LxveOS board", firmware="lxveos")
+        conn = _FakeConn("COM23")
+        conn.is_connected = True  # a real attached link is connected; the hub's attach guard requires it
+        dm.attach_connection(dev, conn)  # fires the hook -> hub attaches the lxveos-parsing ingestor
+        conn.feed(_STATUS)
+        assert dev.runtime_capabilities == frozenset({"wifi", "ble", "bt_classic"})
+        assert dev.capabilities == frozenset({"wifi", "ble", "bt_classic"})
+    finally:
+        hub.close()  # close the retained hub so its bus subscriptions don't leak into later tests
 
 
 class _NullPool:

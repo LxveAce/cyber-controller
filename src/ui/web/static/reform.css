@@ -159,6 +159,20 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .con{color:var(--green)} .off{color:var(--dim)}
 .dev-row{cursor:pointer} .dev-row:hover td{background:var(--bg)}
 .dev-row.sel td{background:var(--card);box-shadow:inset 3px 0 0 var(--acc)}
+.device-picker-table{table-layout:fixed}
+.device-picker-table td{padding:0}
+.device-pick{display:flex;align-items:flex-start;gap:5px;width:100%;min-width:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;padding:6px 8px;cursor:pointer}
+.device-pick>span:last-child{min-width:0;overflow-wrap:anywhere}
+.termrow{width:100%;background:transparent;color:inherit;font:inherit;text-align:left}
+.termrow .st{flex-shrink:0}
+.device-pick:focus-visible,.termrow:focus-visible,#dash-devices:focus-visible,#fw-ports:focus-visible,#reform-termlist:focus-visible,.tail-scroll:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.wrap-value{min-width:0;overflow-wrap:anywhere}
+.tail-scroll{max-width:100%;overflow:auto}
+.tail-table{table-layout:fixed;min-width:440px}
+.tail-table th:first-child{width:10rem}
+.tail-table th:nth-child(3){width:6.5rem}
+.tail-table th:nth-child(4){width:5rem}
+.tail-table td{overflow-wrap:anywhere}
 
 /* firmware picker — collapsible category groups + aligned rows */
 #fw-profiles{max-height:min(52vh,480px);overflow-y:auto;border:1px solid var(--bd2);border-radius:8px}
