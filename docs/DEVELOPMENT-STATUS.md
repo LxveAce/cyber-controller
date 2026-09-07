@@ -1,11 +1,13 @@
 # Development status
 
-This branch checkpoints unfinished work on top of the default branch. It is not a release candidate. Published 2.0.1 downloads are unchanged.
+This branch preserves additional development source alongside the default-branch corrections. It is not a release candidate.
 
-- Manual update checks use an owned backend operation and a browser client that polls that operation. Independent frontend and backend reviews are complete, and four browser-to-Flask fixture cases pass; this update-check path is also on the default branch. Download, installation, restart and rollback are separate work.
-- Managed Mesh serial transport is a source-only provider. It is not yet connected to the current Mesh interface. Review found a disconnect race where an already-read byte can be omitted from loss accounting; correction is pending.
-- Firmware artifact validation and the ESP image parser provide host-side validation foundations. Enforcement against fresh board-build evidence remains a separate held candidate.
-- Transcript replay provides simulated, unauthenticated fixture input for repeatable testing. It does not establish device identity or physical radio behavior.
-- The durable BLE journal core is included; application ingestion, persistent storage selection and exports still need integration.
+The source includes changes made after the published 2.0.1 build. Existing release downloads have not been replaced.
 
-Hardware, full desktop packages, Linux distribution startup, and complete user flows remain under validation. Do not interpret fixture counts as whole-application coverage.
+Recent corrections make Dashboard, Firmware and Terminal device selectors keyboard accessible, retain focus during inventory refresh, and keep long labels inside their panels. Destination admission now uses one captured path identity for install coordination. Managed Mesh transport retains captured input during provider retirement. Tests were updated to exercise the current device, lifecycle and update-availability contracts. The README describes support and remaining limits more precisely.
+
+Focused source and inert browser/Flask tests cover these changes. They do not establish whole-application, native-package or physical-device coverage. The Selected Device details panel can still retain initial data after selection changes; its separate display correction is pending.
+
+Manual update availability checks are integrated. Complete download, installation, restart and rollback remain separate work. The durable BLE journal and managed Mesh provider are foundations; application persistence, Mesh chat/configuration and hardware validation remain incomplete. Firmware payload coverage, maps and terminal improvements remain in progress.
+
+Additional source includes simulated transcript replay, firmware artifact validation and ESP image parsing. These do not establish physical behavior, complete offline payloads or full flashing integration. The older captured-input retirement defect is corrected in this source; Mesh interface adoption still remains.

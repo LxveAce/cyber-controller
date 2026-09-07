@@ -143,6 +143,7 @@ class _ManagedStream:
     serial_incarnation: int | None = None
     reader_start_attempted: bool = False
     reader_thread: threading.Thread | None = None
+    rx_batch: object | None = None
     retired: bool = False
     lost: bool = False
 
@@ -407,7 +408,7 @@ class SerialConnection:
             if self._managed_stream is not stream:
                 return
             stream.retired = True
-            stream.lost = stream.lost or lost
+            stream.lost = stream.lost or lost or stream.rx_batch is not None
         stream.session._transport_retired(lost=stream.lost)
 
     def _managed_export_ready(self, lease: ManagedSerialLease) -> bool:
@@ -415,7 +416,7 @@ class SerialConnection:
             stream = self._managed_stream
             return bool(stream is not None and stream.lease is lease and stream.retired
                         and self._serial is None and self._connect_attempt is None
-                        and self._write_transaction is None
+                        and self._write_transaction is None and stream.rx_batch is None
                         and (not stream.reader_start_attempted or (stream.reader_done.is_set()
                              and stream.reader_thread is not None and not stream.reader_thread.is_alive())))
 
@@ -442,6 +443,31 @@ class SerialConnection:
                         and stream.serial_handle is serial_handle
                         and stream.serial_incarnation == incarnation
                         and self._serial is serial_handle and self._serial_incarnation == incarnation)
+
+    def _deliver_managed_batch(self, stream, serial_handle, incarnation, chunk) -> bool:
+        """Own captured nonempty input until admission returns, without locking over core callbacks.
+
+        Retirement overlapping this interval conservatively records loss, even if the core already
+        consumed the bytes. A retired core can ignore input, so a successful feed return alone is not
+        an admission receipt. Empty reads never create this responsibility.
+        """
+        if not chunk:
+            return True
+        token = object()
+        try:
+            with self._io_lock:
+                if stream.rx_batch is not None:
+                    raise RuntimeError("Managed serial batch already owned")
+                stream.rx_batch = token
+            if not self._managed_reader_current(stream, serial_handle, incarnation):
+                self._retire_managed_stream(stream, lost=True)
+                return False
+            stream.session._receive(stream.lease.incarnation, chunk)
+            return True
+        finally:
+            with self._io_lock:
+                if stream.rx_batch is token:
+                    stream.rx_batch = None
 
     def write_bound_bytes_receipt(self, lease: ManagedSerialLease, expected_incarnation: object,
                                   payload: bytes) -> WriteReceipt:
@@ -2231,7 +2257,8 @@ class SerialConnection:
                     # Deliver a physical read as one complete admitted batch. Never split an
                     # oversized adapter result to evade the core's own retained-input budget.
                     if chunk:
-                        managed.session._receive(managed.lease.incarnation, chunk)
+                        if not self._deliver_managed_batch(managed, serial_handle, incarnation, chunk):
+                            return
                     managed.session._maintain(managed.lease.incarnation)
                     if chunk and self._managed_reader_current(managed, serial_handle, incarnation):
                         self._emit_bytes(chunk)  # optional diagnostics, never parser ownership

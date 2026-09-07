@@ -302,6 +302,31 @@
   // ── Dashboard device actions (Connect / Disconnect / Scan) ─────────
   var selectedPort = null;
   var lastDevices = [];
+  function replacePickerRows(container, html) {
+    if (container._ccPickerHtml === html) return;
+    var active = document.activeElement;
+    var key = container.contains(active) ? active.getAttribute("data-picker-port") : null;
+    var restore = key !== null && container.getClientRects().length > 0;
+    container.innerHTML = html;
+    container._ccPickerHtml = html;
+    if (restore) {
+      var buttons = container.querySelectorAll("button[data-picker-port]");
+      var next = null;
+      buttons.forEach(function (button) {
+        if (button.getAttribute("data-picker-port") === key) next = button;
+      });
+      // Moving focus after removal does not select another device or run an action.
+      (next || buttons[0] || container).focus({ preventScroll: true });
+    }
+  }
+  function devicePickerRow(d, port) {
+    var selected = d.port === port;
+    return '<tr data-port="' + esc(d.port) + '" class="dev-row' + (selected ? " sel" : "") +
+      '"><td class="' + (d.connected ? "con" : "off") + '"><button type="button" class="device-pick" data-picker-port="' +
+      esc(d.port) + '" aria-pressed="' + selected + '"><span aria-hidden="true">' +
+      (d.connected ? "●" : "○") + '</span><span>' + esc(d.port) + " — " +
+      esc(d.name || d.firmware || "device") + '</span></button></td></tr>';
+  }
   var devMsg = document.getElementById("dash-dev-msg");
   function setDevMsg(text, isErr) {
     if (!devMsg) return;
@@ -320,6 +345,8 @@
     }
     document.querySelectorAll("#dash-devices .dev-row").forEach(function (r) {
       r.classList.toggle("sel", r.dataset.port === selectedPort);
+      var button = r.querySelector(".device-pick");
+      if (button) button.setAttribute("aria-pressed", String(r.dataset.port === selectedPort));
     });
     var selDev = lastDevices.filter(function (d) { return d.port === selectedPort; })[0] || null;
     var streamDev = (selDev && selDev.connected)
@@ -353,7 +380,7 @@
     if (b) b.addEventListener("click", fn);
   }
   wireBtn("dash-connect", function () {
-    if (!selectedPort) { setDevMsg("click a device row first", true); return; }
+    if (!selectedPort) { setDevMsg("select a device first", true); return; }
     setDevMsg("connecting " + selectedPort + "…");
     postJSON("/api/connect", { port: selectedPort })
       .then(function (r) {
@@ -364,7 +391,7 @@
       .catch(function (err) { setDevMsg("connect failed: " + err, true); });
   });
   wireBtn("dash-disconnect", function () {
-    if (!selectedPort) { setDevMsg("click a device row first", true); return; }
+    if (!selectedPort) { setDevMsg("select a device first", true); return; }
     setDevMsg("disconnecting " + selectedPort + "…");
     postJSON("/api/disconnect", { port: selectedPort })
       .then(function () { setDevMsg("disconnected " + selectedPort); refreshDevices(); })
@@ -439,15 +466,11 @@
       Object.keys(wasConnected).forEach(function (p) {
         if (wasConnected[p] && !devs.some(function (d) { return d.port === p; })) invalidateSubscription(p);
       });
-      var dot = function (c) { return c ? "●" : "○"; };
       var listHtml = devs.length ? devs.map(function (d) {
-        var sel = d.port === selectedPort ? " sel" : "";
-        return '<tr data-port="' + esc(d.port) + '" class="dev-row' + sel + '"><td class="' +
-          (d.connected ? "con" : "off") + '">' + dot(d.connected) + " " +
-          esc(d.port) + " — " + esc(d.name || d.firmware || "device") + "</td></tr>";
+        return devicePickerRow(d, selectedPort);
       }).join("") : '<tr><td class="off">○ no devices — press Scan Ports</td></tr>';
       var list = document.getElementById("dash-devices");
-      if (list) list.innerHTML = listHtml;
+      if (list) replacePickerRows(list, listHtml);
 
       var rowsHtml = devs.length ? devs.map(function (d) {
         return '<tr><td class="mono ' + (d.connected ? "con" : "off") + '">' + esc(d.port) + "</td><td class=\"" +
@@ -937,19 +960,18 @@
     })();
 
     window.__fwSyncPorts = function (devs) {
-      if (!devs.length) { portsBody.innerHTML = '<tr><td class="off">no ports — plug in a device</td></tr>'; return; }
-      portsBody.innerHTML = devs.map(function (d) {
-        var sel = d.port === fwPort ? " sel" : "";
-        return '<tr data-port="' + esc(d.port) + '" class="dev-row' + sel + '"><td class="' +
-          (d.connected ? "con" : "off") + '">' + (d.connected ? "●" : "○") + " " + esc(d.port) +
-          " — " + esc(d.name || d.firmware || "device") + "</td></tr>";
-      }).join("");
+      replacePickerRows(portsBody, devs.length ? devs.map(function (d) {
+        return devicePickerRow(d, fwPort);
+      }).join("") : '<tr><td class="off">no ports — plug in a device</td></tr>');
     };
     portsBody.addEventListener("click", function (e) {
       var row = e.target.closest("tr.dev-row");
       if (!row || !row.dataset.port) return;
       fwPort = row.dataset.port;
-      portsBody.querySelectorAll(".dev-row").forEach(function (r) { r.classList.toggle("sel", r === row); });
+      portsBody.querySelectorAll(".dev-row").forEach(function (r) {
+        r.classList.toggle("sel", r === row);
+        r.querySelector(".device-pick").setAttribute("aria-pressed", String(r === row));
+      });
       if (portMsg) portMsg.textContent = "target: " + fwPort;
     });
 
@@ -1091,7 +1113,10 @@
       activePort = port;
       var empty = document.getElementById("reform-term-empty");
       if (empty) empty.hidden = port !== null;
-      listEl.querySelectorAll(".termrow").forEach(function (r) { r.classList.toggle("on", r.dataset.term === port); });
+      listEl.querySelectorAll(".termrow").forEach(function (r) {
+        r.classList.toggle("on", r.dataset.term === port);
+        r.setAttribute("aria-pressed", String(r.dataset.term === port));
+      });
       panesEl.querySelectorAll(".rterm-pane").forEach(function (p) { p.style.display = p.dataset.term === port ? "block" : "none"; });
       if (port === HOST) openHostShell();
     }
@@ -1133,21 +1158,23 @@
       panesEl.appendChild(pane);
     }
     function hostRowHtml() {
-      return '<div class="termrow' + (activePort === HOST ? " on" : "") + '" data-term="' + HOST +
-        '"><span class="sw" style="background:#c9d1d9"></span><span class="nm">Local (host shell)</span><span class="st">this machine</span></div>';
+      return '<button type="button" class="termrow' + (activePort === HOST ? " on" : "") + '" data-term="' + HOST +
+        '" data-picker-port="' + HOST + '" aria-pressed="' + (activePort === HOST) +
+        '"><span class="sw" style="background:#c9d1d9"></span><span class="nm">Local (host shell)</span><span class="st">this machine</span></button>';
     }
     function renderList(connected) {
       var rows = hostShellEnabled ? hostRowHtml() : "";
       if (connected && connected.length) {
         rows += connected.map(function (d) {
-          return '<div class="termrow' + (d.port === activePort ? " on" : "") + '" data-term="' + esc(d.port) +
+          return '<button type="button" class="termrow' + (d.port === activePort ? " on" : "") + '" data-term="' + esc(d.port) +
+            '" data-picker-port="' + esc(d.port) + '" aria-pressed="' + (d.port === activePort) +
             '"><span class="sw" style="background:var(--green)"></span><span class="nm">' + esc(d.port) +
-            " — " + esc(d.firmware || d.name || "device") + '</span><span class="st con">● live</span></div>';
+            " — " + esc(d.firmware || d.name || "device") + '</span><span class="st con">● live</span></button>';
         }).join("");
       } else if (!hostShellEnabled) {
         rows += '<div class="dim" style="font-size:12px;padding:6px">no connected ports — connect a device under DEVICE ▸ Dashboard.</div>';
       }
-      listEl.innerHTML = rows;
+      replacePickerRows(listEl, rows);
     }
     function buildPane(port, fw) {
       if (built[port]) return;
