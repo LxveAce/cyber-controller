@@ -287,7 +287,7 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .fw-help > div{margin-top:6px;max-height:64px;overflow:auto}
 /* Leave more room for the two panes on short displays. */
 @media(max-height:720px){
- .fw-workspace{gap:8px}
+ .fw-workspace{gap:8px;grid-template-rows:minmax(0,1fr) minmax(104px,25%)}
  .fw-workspace .card{padding:8px}
  .fw-workspace h3{margin-bottom:5px}
  .fw-output h3{display:none}

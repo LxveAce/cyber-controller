@@ -205,7 +205,6 @@ class HealthMonitor:
         """
         cpu, cpu_stale = _cpu_sample()
         mem = psutil.virtual_memory()
-        disk = psutil.disk_usage("/") if not hasattr(psutil.disk_usage, "__wrapped__") else psutil.disk_usage("C:\\")
 
         # Handle cross-platform disk usage
         try:
