@@ -82,8 +82,9 @@ def test_reform_lists_connected_device():
     dm.add_device(Device(port="COM9", name="Marauder", firmware="marauder", connected=True))
     body = _client(dm).get("/reform").get_data(as_text=True)
     assert "COM9" in body
-    # the Selected-Device armed lamp only renders when a device is selected (F2 hook)
     assert 'id="armlamp-sel"' in body
+    assert 'id="sel-title">none selected</span>' in body
+    assert '<div id="sel-body" hidden>' in body
 
 
 def test_reform_polish_batch_honesty_and_wiring():
@@ -123,17 +124,22 @@ def test_reform_a11y_and_inert_toggle_removal():
     assert 'href="#" id="os-rescan"' not in body
 
 
-def test_reform_selected_device_card_binds_live_fields():
-    # The Selected Device card mirrors the mockup: capability chips + a board/fw/ui/ops/heap detail
-    # line, bound to the connected device's live runtime_capabilities + telemetry (not invented).
+def test_reform_selected_device_card_waits_for_explicit_selection():
     dm = DeviceManager()
     dev = Device(port="COM9", name="Marauder", firmware="marauder", connected=True, health="alive")
     dev.runtime_capabilities = frozenset({"wifi", "ble"})
     dev.telemetry = {"board": "esp32-s3", "fw": "v1.5b", "heap": 214 * 1024}
     dm.add_device(dev)
-    body = _client(dm).get("/reform").get_data(as_text=True)
-    assert "WIFI" in body and "BLE" in body  # capability chips
-    assert "esp32-s3" in body and "fw v1.5b" in body and "heap 214 KB" in body  # detail line
+    client = _client(dm)
+    body = client.get("/reform").get_data(as_text=True)
+    assert 'id="sel-title">none selected</span>' in body
+    assert '<div id="sel-body" hidden>' in body
+    assert "Select a device to view its reported details." in body
+    assert "fw v1.5b" not in body and "heap 214 KB" not in body
+    assert 'id="sel-capabilities"></div>' in body
+    data = next(d for d in client.get("/api/devices").get_json() if d["port"] == "COM9")
+    assert data["runtime_capabilities"] == ["ble", "wifi"]
+    assert data["telemetry"] == {"board": "esp32-s3", "fw": "v1.5b", "heap": 214 * 1024}
 
 
 def test_system_health_endpoint_shape():
