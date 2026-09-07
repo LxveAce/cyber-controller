@@ -21,6 +21,17 @@
   const text = (value, max) => typeof value === "string" && value.length <= max * 2 &&
     Array.from(value).length <= max;
 
+  // Admission-rejection categories the journal counts (distinct from server eviction and client trim).
+  const REJECTION_KEYS = ["invalid", "queue_full", "degraded_rejected", "closing_rejected"];
+  // A BOUNDED, QUALITATIVE signal: which admission-rejection categories the journal counted as > 0.
+  // Absent or malformed counters return [] (UNKNOWN — never a zero-loss assurance, and never a throw
+  // that could turn a usable page into a hard failure); exact counts are deliberately NOT surfaced.
+  function rejectionKinds(status) {
+    if (!record(status) || !record(status.counters)) return [];
+    const counters = status.counters;
+    return REJECTION_KEYS.filter(k => Number.isInteger(counters[k]) && counters[k] > 0);
+  }
+
   // A finite, escaped, display-only view of one journal row. Unknown/optional fields are normalised;
   // an address is never carried forward (a row is a report, not a selectable device).
   function validate(value) {
@@ -42,8 +53,12 @@
         throw new Error("Invalid BLE history row");
       }
       // The render never surfaces an address (a row is not a device); do not carry it forward.
+      // source_firmware is carried leniently + BOUNDED (a display-only hint on the port cell): a
+      // valid <=512-char string, else "" — never a hard failure, never a device-selection handle.
+      const firmware = text(row.source.firmware, 512) ? row.source.firmware : "";
       return { seq: row.seq, label: row.label, rssi: row.rssi, kind: row.kind,
-        source_port: row.source.port, observed_at: row.observed_at, addressable: row.addressable };
+        source_port: row.source.port, source_firmware: firmware,
+        observed_at: row.observed_at, addressable: row.addressable };
     });
     return { status: status, rows: rows, cursor: value.cursor, has_more: value.has_more,
       earliest_seq: value.earliest_seq, run_id: typeof status.run_id === "string" ? status.run_id : null };
@@ -111,6 +126,7 @@
     let generation = 0, active = null, suspended = false;
     let cursor = null, runId = null, rows = [], hasMore = false, recovered = false, everTrimmed = false;
     let earliestSeq = null;   // the server's earliest RETAINED seq for the loaded run (memory eviction)
+    let rejectedKinds = [];   // admission-rejection categories seen (>0) on the last successful read
 
     function notify(state, token, extra) {
       if (token !== generation || suspended) return;
@@ -128,10 +144,14 @@
       // `trimmed` (this view dropped its own oldest loaded rows). retained_from is the earliest
       // retained seq itself — a window-start fact, never a lost-report count.
       const evicted = Number.isInteger(earliestSeq) && earliestSeq > 1;
+      // `rejected`/`rejected_kinds` surface ADMISSION rejections (the journal declined to record some
+      // reports: invalid / queue-full / degraded / closing) — a third, distinct signal from server
+      // eviction (`evicted`) and client trim (`trimmed`), no cross-gating. Kinds only, never a count.
       try {
         deliver(rows.slice(), { has_more: hasMore, trimmed: everTrimmed, count: rows.length,
                                 can_check_newer: cursor !== null,
-                                evicted: evicted, retained_from: evicted ? earliestSeq : null });
+                                evicted: evicted, retained_from: evicted ? earliestSeq : null,
+                                rejected: rejectedKinds.length > 0, rejected_kinds: rejectedKinds.slice() });
       }
       catch (_) { /* a render observer cannot strand the read */ }
     }
@@ -140,6 +160,7 @@
     // failed recovery can never leave stale rows or an obsolete cursor usable as a continuation.
     function clearView(token) {
       rows = []; cursor = null; hasMore = false; everTrimmed = false; earliestSeq = null;
+      rejectedKinds = [];
       present(token);
     }
 
@@ -150,6 +171,7 @@
       cursor = page.cursor;
       hasMore = page.has_more;
       earliestSeq = page.earliest_seq;   // server's earliest retained seq for this run (may advance)
+      rejectedKinds = rejectionKinds(page.status);   // refreshed from THIS read's counters
       for (const row of page.rows) rows.push(row);
       if (rows.length > domCap) { rows = rows.slice(rows.length - domCap); everTrimmed = true; }
       present(token);

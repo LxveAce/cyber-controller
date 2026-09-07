@@ -19,7 +19,8 @@ function page(rows, opts) {
   return { httpStatus: opts.httpStatus || 200, body: {
     status: { requested_mode: mode, effective_mode: mode, storage: mode === "memory" ? "memory" : "none",
       available: mode === "memory", reason: opts.reason || null, durable: false,
-      policy_lifetime: "restart", run_id: opts.run_id || "r1", counters: {} },
+      policy_lifetime: "restart", run_id: opts.run_id || "r1",
+      counters: "counters" in opts ? opts.counters : {} },
     rows: rows, cursor: "cursor" in opts ? opts.cursor : "c",
     has_more: !!opts.has_more, earliest_seq: "earliest_seq" in opts ? opts.earliest_seq : 1 } };
 }
@@ -509,4 +510,122 @@ test("server retention: a failed read (503) preserves the prior evicted view and
   assert.equal(f.deliveries.length, deliveriesBefore, "no new delivery on 503; the prior view is preserved");
   assert.equal(f.lastMeta().evicted, true, "the retention meta stays as last delivered (not cleared)");
   assert.equal(f.lastMeta().retained_from, 204);
+});
+
+test('admission rejection: positive counters surface the exact kinds (>0 only), no counts', async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1)], { cursor: 'c1', has_more: false,
+    counters: { admitted: 5, confirmed: 5, invalid: 2, queue_full: 0, degraded_rejected: 0, closing_rejected: 3 } }));
+  await flush();
+  assert.equal(f.lastMeta().rejected, true);
+  assert.deepEqual(f.lastMeta().rejected_kinds, ['invalid', 'closing_rejected'], 'only >0 kinds, in key order');
+});
+
+test('admission rejection: queue-full is surfaced as its own kind (not a blanket rate limit)', async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1)], { cursor: 'c1', has_more: false, counters: { queue_full: 7, degraded_rejected: 1 } }));
+  await flush();
+  assert.deepEqual(f.lastMeta().rejected_kinds, ['queue_full', 'degraded_rejected']);
+});
+
+test('admission rejection: all-zero counters mean no rejection notice', async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1)], { cursor: 'c1', has_more: false, counters: { admitted: 3, confirmed: 3, invalid: 0 } }));
+  await flush();
+  assert.equal(f.lastMeta().rejected, false);
+  assert.deepEqual(f.lastMeta().rejected_kinds, []);
+});
+
+test('admission rejection: malformed counters do not throw and surface nothing', async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1)], { cursor: 'c1', has_more: false,
+    counters: { invalid: 'x', queue_full: -1, degraded_rejected: 2.5, closing_rejected: null } }));
+  await flush();
+  assert.equal(f.lastMeta().rejected, false, 'non-positive-integer counts are ignored, no throw');
+  assert.deepEqual(f.lastMeta().rejected_kinds, []);
+  // counters not even an object -> still no throw, usable page
+  f.control.refresh(); await flush();
+  f.pageCalls[1].resolve(page([row(2)], { cursor: 'c2', has_more: false, counters: 'nope' }));
+  await flush();
+  assert.equal(f.lastMeta().rejected, false);
+  assert.deepEqual(f.lastRows(), [2], 'the page still renders (no hard failure)');
+});
+
+test('admission rejection: missing counters invent no zero-loss assurance and do not fail the page', async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  const p = page([row(1)], { cursor: 'c1', has_more: false });
+  delete p.body.status.counters;                 // counters absent entirely
+  f.pageCalls[0].resolve(p); await flush();
+  assert.equal(f.lastMeta().rejected, false, 'absent counters = unknown, shown as no notice (never a zero-loss claim)');
+  assert.deepEqual(f.lastMeta().rejected_kinds, []);
+  assert.deepEqual(f.lastRows(), [1], 'usable page, not a hard failure');
+});
+
+test('admission rejection clears on a disabled reload', async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1)], { cursor: 'c1', has_more: false, counters: { invalid: 4 } })); await flush();
+  assert.equal(f.lastMeta().rejected, true);
+  f.control.refresh(); await flush();
+  f.pageCalls[1].resolve(page([], { mode: 'disabled', cursor: null, has_more: false, earliest_seq: null, reason: 'disabled' }));
+  await flush();
+  assert.equal(f.lastMeta().rejected, false, 'disabled clears the rejection notice');
+  assert.deepEqual(f.lastMeta().rejected_kinds, []);
+});
+
+test('admission rejection: a failed refresh (503) preserves the prior rejection meta', async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1)], { cursor: 'c1', has_more: false, counters: { queue_full: 9 } })); await flush();
+  assert.equal(f.lastMeta().rejected, true);
+  const before = f.deliveries.length;
+  f.control.refresh(); await flush();
+  f.pageCalls[1].resolve({ httpStatus: 503, body: { reason: 'unavailable' } }); await flush();
+  assert.equal(f.deliveries.length, before, 'no new delivery on 503; prior view + notice preserved');
+  assert.deepEqual(f.lastMeta().rejected_kinds, ['queue_full']);
+});
+
+test('admission rejection is independent of server-eviction and client-trim notices', async () => {
+  const f = fixture({ domCap: 2 });
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(10), row(11)], { cursor: 'c11', has_more: true, earliest_seq: 10,
+    counters: { invalid: 1 } })); await flush();
+  assert.equal(f.lastMeta().evicted, true);        // server eviction (earliest_seq 10 > 1)
+  assert.equal(f.lastMeta().rejected, true);        // admission rejection (invalid > 0)
+  const m = f.control.loadMore(); await flush();
+  f.pageCalls[1].resolve(page([row(12)], { cursor: 'c12', has_more: false, earliest_seq: 10, counters: { invalid: 1 } }));
+  await m;
+  assert.equal(f.lastMeta().trimmed, true);         // client trim (domCap 2 exceeded)
+  assert.equal(f.lastMeta().evicted, true);
+  assert.equal(f.lastMeta().rejected, true);
+  assert.deepEqual(f.lastMeta().rejected_kinds, ['invalid']);
+});
+
+test('source firmware is carried (bounded) for a display-only port tooltip', async () => {
+  const f = fixture();
+  const lastRow = () => f.deliveries[f.deliveries.length - 1].rows[0];
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1, { source: { port: 'COM4', firmware: 'Marauder v7', connection_id: '2' } })],
+    { cursor: 'c1', has_more: false })); await flush();
+  assert.equal(lastRow().source_firmware, 'Marauder v7', 'firmware carried');
+  assert.equal(lastRow().source_port, 'COM4', 'port still carried');
+  // absent firmware -> "" (no hard failure, no tooltip)
+  f.control.refresh(); await flush();
+  f.pageCalls[1].resolve(page([row(2, { source: { port: 'COM4' } })], { cursor: 'c2', has_more: false }));
+  await flush();
+  assert.equal(lastRow().source_firmware, '', 'absent firmware -> empty');
+  // oversized (>512) and non-string firmware -> "" (bounded, lenient)
+  f.control.refresh(); await flush();
+  f.pageCalls[2].resolve(page([
+    row(3, { source: { port: 'COM4', firmware: 'x'.repeat(600) } }),
+    row(4, { source: { port: 'COM4', firmware: 123 } }),
+  ], { cursor: 'c3', has_more: false })); await flush();
+  const rows = f.deliveries[f.deliveries.length - 1].rows;
+  assert.equal(rows[0].source_firmware, '', 'oversized firmware -> empty (bounded)');
+  assert.equal(rows[1].source_firmware, '', 'non-string firmware -> empty');
 });

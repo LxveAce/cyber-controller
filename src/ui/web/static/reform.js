@@ -679,11 +679,20 @@
   // a Target or an action. Loads lazily on first expand of the collapsible card.
   var bleHistoryCount = 0, bleHistoryLoaded = false;
   var BLE_HISTORY_KINDS = { ble_found: "found", ble_observation: "observation" };
+  // Per-category wording for admission rejections — each category is named accurately (only
+  // queue-full is load/rate related), never a blanket "rate limit".
+  var BLE_HISTORY_REJECTIONS = {
+    invalid: "malformed reports",
+    queue_full: "reports arriving faster than they could be recorded",
+    degraded_rejected: "reports while recording was degraded",
+    closing_rejected: "reports arriving while the session was closing",
+  };
   var bleHistory = window.CCBLEHistory.create({
     onPage: function (rows, meta) {
       document.getElementById("ble-history-rows").innerHTML = rows.length ? rows.map(function (r) {
         return "<tr><td>" + esc(r.label) + '</td><td class="r mono">' + esc(r.rssi) +
-          ' dBm</td><td class="mono">' + esc(r.source_port) + "</td><td>" +
+          ' dBm</td><td class="mono" title="' + esc(r.source_firmware ? "firmware: " + r.source_firmware : "") +
+          '">' + esc(r.source_port) + "</td><td>" +
           esc(BLE_HISTORY_KINDS[r.kind] || r.kind) + '</td><td class="r" title="' +
           esc(r.observed_at) + '">' + esc(ageOf(r.observed_at)) + "</td></tr>";
       }).join("") : '<tr><td class="off" colspan="5">No session history in this run.</td></tr>';
@@ -709,6 +718,19 @@
         retained.textContent = "The server retains reports from #" + meta.retained_from +
           " onward; older reports have aged out of its window, though some may still be shown " +
           "here from an earlier load.";
+      }
+      // Admission-rejection notice — a THIRD distinct signal from the server-retention and client-trim
+      // notices above: the recorder declined to record some reports for the named reasons. Categories
+      // only, never an exact count; shown only when a rejection was actually counted (absent/unknown
+      // counters show nothing, so no false zero-loss assurance).
+      var rejected = document.getElementById("ble-history-rejected");
+      rejected.hidden = !meta.rejected;
+      if (meta.rejected) {
+        var reasons = (meta.rejected_kinds || []).map(function (k) {
+          return BLE_HISTORY_REJECTIONS[k];
+        }).filter(Boolean);
+        rejected.textContent = "Some reports were not recorded this session (" +
+          reasons.join("; ") + ").";
       }
     },
     onStatus: function (state) {

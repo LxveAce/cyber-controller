@@ -13,6 +13,7 @@ import os
 import pytest
 
 from src.core import self_update as su
+from tests import exe_images as img
 from src.core import updater
 
 # ── platform_key ──────────────────────────────────────────────────────────────────────────────────
@@ -300,7 +301,7 @@ def _stage_env(monkeypatch, tmp_path, content: bytes):
 
 
 def test_self_update_happy_path_stages_verified_binary(monkeypatch, tmp_path):
-    content = b"NEW BINARY v1.5.1 bytes"
+    content = img.elf64(img.EM_X86_64)   # a valid linux-x64 image: the header gate is real
     cur, releases = _stage_env(monkeypatch, tmp_path, content)
     good = hashlib.sha256(content).hexdigest()
     monkeypatch.setattr(
