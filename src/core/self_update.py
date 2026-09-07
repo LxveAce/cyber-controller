@@ -37,7 +37,7 @@ import tempfile
 import urllib.request
 from typing import Any, Callable, Mapping, Sequence
 
-from src.core import flash_core, install, updater
+from src.core import flash_core, install, update_select, updater
 
 log = logging.getLogger(__name__)
 
@@ -123,18 +123,22 @@ def platform_key(system: str | None = None, machine: str | None = None) -> str:
     """Canonical asset key for the current (or given) platform — matches the release asset naming
     (``cyber-controller-<tag>-<key>``). Parameterized so the mapping is table-testable.
 
-    We only publish x64 Windows and arm64 macOS, so those collapse to a single key regardless of the
-    reported machine; Linux splits x64 vs arm64.
+    Only the four published (system, machine) shapes resolve, through the strict
+    :func:`update_select.supported_platform_key`. Every other host (32-bit or ARM64 Windows, Intel
+    macOS, 32-bit ARM, RISC-V or i686 Linux) is refused with a finite error instead of being coerced
+    to a published key of another architecture: that asset would download, pass its own checksum and
+    replace this binary with one that is not a supported automatic-update target for the host (and
+    that most of these hosts cannot execute at all; Windows on ARM may only emulate it). The UI then
+    offers the release page.
     """
-    system = (system if system is not None else platform.system()).lower()
-    machine = (machine if machine is not None else platform.machine()).lower()
-    if system.startswith("win"):
-        return "windows-x64"
-    if system == "darwin":
-        return "macos-arm64"
-    if system == "linux":
-        return "linux-arm64" if machine in ("aarch64", "arm64") else "linux-x64"
-    raise SelfUpdateError(f"unsupported platform for self-update: {system}/{machine}")
+    system = system if system is not None else platform.system()
+    machine = machine if machine is not None else platform.machine()
+    try:
+        return update_select.supported_platform_key(system, machine)
+    except update_select.UnsupportedPlatform as exc:
+        raise SelfUpdateError(
+            f"no published build for this machine ({system}/{machine}); download the right build "
+            "from the release page") from exc
 
 
 # ── Pure selection + verification ────────────────────────────────────────────────────────────────

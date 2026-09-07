@@ -110,6 +110,7 @@
     }
     let generation = 0, active = null, suspended = false;
     let cursor = null, runId = null, rows = [], hasMore = false, recovered = false, everTrimmed = false;
+    let earliestSeq = null;   // the server's earliest RETAINED seq for the loaded run (memory eviction)
 
     function notify(state, token, extra) {
       if (token !== generation || suspended) return;
@@ -122,9 +123,15 @@
       // can_check_newer: a forward poll of the held cursor is possible (a cursor exists). The UI
       // offers it once caught up (has_more false) to pull reports that arrived AFTER this page,
       // without restarting from the oldest page.
+      // `evicted`/`retained_from` surface SERVER-side retention (the memory journal aged older
+      // reports out of its window: earliest retained seq > 1), a distinct signal from the client-only
+      // `trimmed` (this view dropped its own oldest loaded rows). retained_from is the earliest
+      // retained seq itself — a window-start fact, never a lost-report count.
+      const evicted = Number.isInteger(earliestSeq) && earliestSeq > 1;
       try {
         deliver(rows.slice(), { has_more: hasMore, trimmed: everTrimmed, count: rows.length,
-                                can_check_newer: cursor !== null });
+                                can_check_newer: cursor !== null,
+                                evicted: evicted, retained_from: evicted ? earliestSeq : null });
       }
       catch (_) { /* a render observer cannot strand the read */ }
     }
@@ -132,7 +139,7 @@
     // Drop the whole loaded view (rows + cursor + has_more + trim state). Used before a recovery so a
     // failed recovery can never leave stale rows or an obsolete cursor usable as a continuation.
     function clearView(token) {
-      rows = []; cursor = null; hasMore = false; everTrimmed = false;
+      rows = []; cursor = null; hasMore = false; everTrimmed = false; earliestSeq = null;
       present(token);
     }
 
@@ -142,6 +149,7 @@
       runId = page.run_id;
       cursor = page.cursor;
       hasMore = page.has_more;
+      earliestSeq = page.earliest_seq;   // server's earliest retained seq for this run (may advance)
       for (const row of page.rows) rows.push(row);
       if (rows.length > domCap) { rows = rows.slice(rows.length - domCap); everTrimmed = true; }
       present(token);
