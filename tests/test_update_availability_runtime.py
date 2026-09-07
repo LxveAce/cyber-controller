@@ -10,6 +10,7 @@ from types import ModuleType, SimpleNamespace
 import pytest
 
 from src.config import settings
+from src.core import ble_history_policy
 from src.core import update_checker as uc
 from src.core.cross_comm import EventBus, TargetPool
 from src.core.device_manager import DeviceManager
@@ -17,6 +18,8 @@ from src.core.flash_engine import FlashEngine
 from src.core.lifecycle import CallbackScope
 from src.security import web_auth
 from src.ui.web import app as webapp
+from src.ui.web import ble_history_runtime as blehr
+from src.ui.web.ble_history_runtime import BleHistoryRuntime
 from src.ui.web.server_lifecycle import (
     DesktopCleanupError, OwnedWebServer, cleanup_owner_from, close_preserving_primary,
 )
@@ -49,8 +52,24 @@ class Fetch:
 class Hub:
     captures = router = sensing = None
 
-    def __init__(self, *args):
+    def __init__(self, *args, defer=False):
         self.fences = self.closes = 0
+        self.initialized = False
+        self.injected_journal = None
+        # Eager (default) mirrors the real hub: initialize now with no history sink. Deferred stays
+        # inert until initialize() injects a started sink. Models the one-shot contract exactly;
+        # `defer` is explicit, and arbitrary kwargs are NOT swallowed.
+        if not defer:
+            self._apply(None)
+
+    def initialize(self, *, journal=None):
+        if self.initialized:
+            raise RuntimeError("Hub.initialize() is one-shot")
+        self._apply(journal)
+
+    def _apply(self, journal):
+        self.initialized = True
+        self.injected_journal = journal
 
     def fence(self):
         self.fences += 1
@@ -518,8 +537,8 @@ def test_factory_rollback_preserves_primary_when_cleanup_succeeds(isolated, monk
     primary = SystemExit("factory primary") if control else RuntimeError("factory primary")
     hubs = []
 
-    def hub(*args):
-        instance = Hub()
+    def hub(*args, defer=False):
+        instance = Hub(*args, defer=defer)
         hubs.append(instance)
         return instance
 
@@ -672,3 +691,86 @@ def test_worker_control_retirement_has_no_result_and_cannot_restart(environment,
     assert result["retirement_reason"] == "worker_exit" and result["result"] is None
     assert post(env.app, {"schema_version": 2}).status_code == 503
     assert not env.checker.start() and env.fetch.calls == 1
+
+
+# ── C1: deferred-hub managed factory (BLE memory-history wiring) ──────────────
+
+def _run_factory(monkeypatch, memory):
+    """Build _build_web_runtime with the inert fake Hub and a controlled BLE-history snapshot.
+
+    Returns (app, owner, decide_calls). Spies decide_ble_history_policy to prove exactly ONE BLE
+    policy snapshot per runtime; for memory it injects ble_history.mode onto the real settings.
+    """
+    from src.core import cross_comm_hub
+    monkeypatch.setattr(cross_comm_hub, "CrossCommHub", Hub)
+    real_decide = ble_history_policy.decide_ble_history_policy
+    calls = []
+
+    def counting_decide(*a, **k):
+        calls.append(1)
+        return real_decide(*a, **k)
+
+    monkeypatch.setattr(ble_history_policy, "decide_ble_history_policy", counting_decide)
+    if memory:
+        real_load = settings.load_settings
+
+        def patched_load():
+            data = dict(real_load())
+            data["ble_history"] = {"mode": "memory"}
+            return data
+
+        monkeypatch.setattr(settings, "load_settings", patched_load)
+    app, _socketio, _begin, _finish = webapp._build_web_runtime(
+        DeviceManager(), FlashEngine(), EventBus(), TargetPool(), host="127.0.0.1", port=12345,
+        audit=None, desktop_token=None)
+    return app, app.config["cc_runtime_cleanup"], calls
+
+
+def test_factory_defers_hub_and_injects_one_started_memory_sink(isolated, monkeypatch):
+    app, owner, calls = _run_factory(monkeypatch, memory=True)
+    try:
+        assert calls == [1]                                   # exactly ONE BLE policy snapshot
+        assert isinstance(owner.history, BleHistoryRuntime)   # owner retains the history adapter
+        assert owner.history._started and owner.history.sink is not None
+        assert owner.hub.initialized                          # hub was deferred, then initialized
+        assert owner.hub.injected_journal is owner.history.sink   # SAME started sink, injected
+    finally:
+        owner.close()
+    assert owner.closed
+
+
+def test_factory_disabled_injects_no_sink(isolated, monkeypatch):
+    app, owner, calls = _run_factory(monkeypatch, memory=False)
+    try:
+        assert calls == [1]
+        assert isinstance(owner.history, BleHistoryRuntime)
+        assert owner.history.sink is None                     # disabled -> no journal, no sink
+        assert owner.hub.initialized and owner.hub.injected_journal is None
+    finally:
+        owner.close()
+    assert owner.closed
+
+
+def test_factory_failed_memory_start_keeps_runtime_and_injects_no_sink(isolated, monkeypatch):
+    class _Boom(blehr.BleJournal):
+        def start(self):
+            raise RuntimeError("start failed")
+
+    monkeypatch.setattr(blehr, "BleJournal", _Boom)
+    app, owner, calls = _run_factory(monkeypatch, memory=True)
+    try:
+        assert app is not None                                # a failed sink start never breaks it
+        assert owner.history.status()["reason"] == "start_failed"
+        assert owner.hub.initialized and owner.hub.injected_journal is None   # no sink injected
+    finally:
+        owner.close()
+    assert owner.closed
+
+
+def test_factory_close_drains_hub_then_history(isolated, monkeypatch):
+    app, owner, calls = _run_factory(monkeypatch, memory=True)
+    assert owner.history._started
+    owner.close()
+    assert owner.hub.closes == 1                              # hub drained exactly once
+    assert owner._hub_done and owner._history_done            # dependent history close, after hub
+    assert owner.closed

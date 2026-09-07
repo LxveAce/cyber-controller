@@ -174,6 +174,7 @@ def create_app(
     sensing_model: Any = None,
     lifecycle: CallbackScope | None = None,
     availability=None,
+    ble_history=None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
 
@@ -832,6 +833,41 @@ def create_app(
             return jsonify(antenna_calc.compute(freq, unit, vf))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+
+    @app.route("/api/ble-history")
+    @requires_auth
+    def api_ble_history():
+        """Bounded, read-only view of the in-memory BLE-history journal (opt-in
+        ``ble_history.mode=memory``; default disabled, never on disk). GET only, authenticated,
+        never cached. Reads the journal only -- never starting, flushing, closing, clearing, or
+        exporting it, and never turning a row into a Target/action. Query: ``?cursor=<opaque>``
+        and ``?limit=<1..256>``; a duplicate or unknown query param is a 400 before any journal
+        access. Outcomes map to 200 (rows / disabled), 400 (bad cursor or limit), 410 (expired run
+        or evicted position), 503 (unavailable/unsupported-persistent/start-failed/missing)."""
+        from src.ui.web import ble_history_runtime as hist
+
+        def _resp(body, status):
+            out = jsonify(body)
+            out.status_code = status
+            out.headers["Cache-Control"] = "no-store"
+            return out
+
+        if ble_history is None:
+            return _resp({"error": "ble_history_unavailable"}, 503)
+        allowed = ("cursor", "limit")
+        unknown = sorted(k for k in request.args.keys() if k not in allowed)
+        if unknown:
+            return _resp({"error": "unknown_query_param", "params": unknown}, 400)
+        for key in allowed:
+            if len(request.args.getlist(key)) > 1:
+                return _resp({"error": "duplicate_query_param", "param": key}, 400)
+        result = ble_history.read_page(
+            cursor=request.args.get("cursor"), limit=request.args.get("limit"))
+        status = {
+            hist.OUTCOME_OK: 200, hist.OUTCOME_DISABLED: 200, hist.OUTCOME_UNAVAILABLE: 503,
+            hist.OUTCOME_BAD_REQUEST: 400, hist.OUTCOME_EXPIRED: 410,
+        }.get(result.outcome, 503)
+        return _resp(result.body, status)
 
     @app.route("/api/nodes-status")
     @requires_auth
@@ -3325,16 +3361,26 @@ def _compute_allowed_origins(host: str, port: int) -> list[str]:
 def _build_web_runtime(device_manager, flash_engine, event_bus, target_pool, *,
                        host, port, audit, desktop_token):
     """Construct owned app/hub resources and roll back incomplete assembly."""
+    from src.config import settings as app_settings
+    from src.core.ble_history_policy import decide_ble_history_policy
     from src.core.cross_comm_hub import CrossCommHub
     from src.core.update_checker import UpdateChecker
+    from src.ui.web.ble_history_runtime import BleHistoryRuntime
     from src.ui.web.server_lifecycle import close_preserving_primary
     from src.ui.web.update_runtime import UpdateAvailability, WebRuntimeCleanup
     from src.version import __version__
 
     callbacks = CallbackScope()
-    hub = CrossCommHub(device_manager, event_bus, target_pool)
-    owner = WebRuntimeCleanup(callbacks, hub)
+    # One settings snapshot fixes this runtime's BLE-history policy for its whole lifetime (restart
+    # to change; a later /api/settings edit never swaps the sink or relabels the run). Default
+    # disabled; memory is opt-in and never touches disk. The hub is deferred so the started memory
+    # sink can be injected BEFORE any subscription is admitted that could submit into it.
+    history = BleHistoryRuntime(decide_ble_history_policy(app_settings.load_settings()))
+    hub = CrossCommHub(device_manager, event_bus, target_pool, defer=True)
+    owner = WebRuntimeCleanup(callbacks, hub, history=history)
     try:
+        history.start()
+        hub.initialize(journal=history.sink)
         owner.checker = UpdateChecker(__version__, enabled=False)
         app, socketio = create_app(
             device_manager, flash_engine, event_bus, target_pool,
@@ -3343,7 +3389,7 @@ def _build_web_runtime(device_manager, flash_engine, event_bus, target_pool, *,
             desktop_token=desktop_token, capture_store=hub.captures,
             host_shell_loopback=host in ("127.0.0.1", "localhost", "::1"),
             auto_router=hub.router, sensing_model=hub.sensing, lifecycle=callbacks,
-            availability=UpdateAvailability(owner.checker),
+            availability=UpdateAvailability(owner.checker), ble_history=history,
         )
         app.config["cc_hub"] = hub
         owner.attach_app(app)
@@ -3380,12 +3426,20 @@ def launch_web(
     port: int = 5000,
     audit: Any = None,
     desktop_token: str | DesktopBootstrap | None = None,
+    ready: Any = None,
 ) -> int:
     """Create and run the hardened Flask web remote UI.
 
     Defaults to binding 127.0.0.1. Binding to a non-local address requires the
     explicit opt-in CC_WEB_ALLOW_LAN=1 (and TLS via CC_WEB_CERT/CC_WEB_KEY is
     strongly recommended for LAN exposure).
+
+    ``ready`` (optional): a caller-owned readiness signal with a ``serving(url)`` method. When given
+    and the threading dev server is in use, the server is constructed explicitly so ``serving(url)``
+    is called exactly once from the server's own first ``service_actions`` — proving THIS process's
+    listener is serving (never an external port), with ``url`` derived from the real bound address.
+    It is duck-typed and never imported, so there is no dependency on the caller module. ``ready=None``
+    keeps the original ``socketio.run`` behaviour unchanged.
     """
     is_local = host in ("127.0.0.1", "localhost", "::1")
     if desktop_token is not None and not is_local:
@@ -3405,13 +3459,67 @@ def launch_web(
         host=host, port=port, audit=audit, desktop_token=desktop_token,
     )
     try:
-        return _serve_web_runtime(app, socketio, host, port, is_local)
+        return _serve_web_runtime(app, socketio, host, port, is_local, ready)
     finally:
         from src.ui.web.server_lifecycle import close_preserving_primary
         close_preserving_primary(app.config["cc_runtime_cleanup"], sys.exc_info()[1])
 
 
-def _serve_web_runtime(app, socketio, host, port, is_local):
+def _ready_url(scheme: str, host: str, port: int) -> str:
+    """The URL a browser should open, from the REAL bind: wildcard/IPv6 display host + the actual
+    bound port. Never a guess — the port comes from the server that actually bound."""
+    if host in ("0.0.0.0", ""):
+        display = "127.0.0.1"
+    elif host in ("::", "::0"):
+        display = "[::1]"
+    elif ":" in host:            # an IPv6 literal
+        display = f"[{host}]"
+    else:
+        display = host
+    return f"{scheme}://{display}:{port}"
+
+
+def _serve_owned(app, host, port, scheme, ssl_args, ready):
+    """Serve the threading dev server on this (main) thread with an owned readiness signal instead of
+    ``socketio.run``, so the launcher opens the browser only once THIS server is actually serving.
+
+    Equivalent to flask_socketio's threading-mode run (``app.run`` -> ``run_simple`` ->
+    ``make_server(threaded=True)`` + ``serve_forever``) for the same Socket.IO-wrapped app; the
+    reloader is already disabled. Readiness fires from the server's own first ``service_actions`` (the
+    OwnedWebServer pattern), so no external listener or HTTP response can signal it, and a bind failure
+    raises before any serving loop. The URL is derived from the real bound port and published through
+    ``ready.serving`` before the event is set. One main-thread owner: the listener is closed on normal
+    exit and on a serving/hook failure, preserving the primary failure if the close also fails;
+    ``launch_web``'s outer finally still runs the runtime cleanup either way."""
+    from werkzeug.serving import make_server
+
+    ssl_context = (ssl_args["certfile"], ssl_args["keyfile"]) if ssl_args else None
+    server = make_server(host, port, app, threaded=True, ssl_context=ssl_context)
+    url = _ready_url(scheme, host, server.server_port)
+    original_service_actions = server.service_actions
+    signalled = False
+
+    def service_actions():   # called each serve_forever iteration; the instance attr takes no self
+        nonlocal signalled
+        if not signalled:
+            signalled = True
+            ready.serving(url)   # publish the URL, then set the event, exactly once
+        original_service_actions()
+
+    server.service_actions = service_actions
+    try:
+        server.serve_forever()
+    except BaseException:
+        try:
+            server.server_close()
+        except BaseException:
+            pass                 # a close failure must not mask the serving/hook failure
+        raise
+    server.server_close()
+    return 0
+
+
+def _serve_web_runtime(app, socketio, host, port, is_local, ready=None):
     ssl_args: dict[str, Any] = {}
     certfile = os.environ.get("CC_WEB_CERT")
     keyfile = os.environ.get("CC_WEB_KEY")
@@ -3442,7 +3550,19 @@ def _serve_web_runtime(app, socketio, host, port, is_local):
             host,
         )
         return 3
-    run_kwargs: dict[str, Any] = dict(ssl_args)
+    # The SSL keyword contract differs by async mode. The threading Werkzeug dev server serves via
+    # Flask app.run -> werkzeug run_simple, whose parameter is ``ssl_context`` (accepting a
+    # (certfile, keyfile) tuple); run_simple has NO certfile/keyfile keywords, so forwarding those
+    # raises a TypeError before the server ever binds. eventlet/gevent socketio.run DO take
+    # certfile/keyfile. So map to ssl_context only on the threading path and keep the keyword
+    # contract for the other async modes. (The owned-ready path already builds make_server with
+    # ssl_context; this fixes the socketio.run fallback to match.)
+    run_kwargs: dict[str, Any] = {}
+    if ssl_args:
+        if using_dev_server:
+            run_kwargs["ssl_context"] = (certfile, keyfile)
+        else:
+            run_kwargs["certfile"], run_kwargs["keyfile"] = certfile, keyfile
     if using_dev_server:
         # Only the dev-server path takes (and needs) this flag; production workers reject it.
         run_kwargs["allow_unsafe_werkzeug"] = True
@@ -3451,5 +3571,11 @@ def _serve_web_runtime(app, socketio, host, port, is_local):
         "Starting web UI on %s://%s:%d (origins=%s, server=%s)",
         scheme, host, port, _compute_allowed_origins(host, port), server_kind,
     )
+    # With a readiness signal on the threading dev server, own the serving loop so the browser opens
+    # only once this listener is actually serving (see _serve_owned). Any other path (no ready, or a
+    # future non-threading async worker) keeps the original socketio.run behaviour and does NOT signal
+    # readiness — a caller's opener then simply times out, which is the truthful outcome.
+    if ready is not None and using_dev_server:
+        return _serve_owned(app, host, port, scheme, ssl_args, ready)
     socketio.run(app, host=host, port=port, debug=False, **run_kwargs)
     return 0

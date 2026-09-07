@@ -51,15 +51,16 @@ class UpdateAvailability:
 class WebRuntimeCleanup:
     """Retain one runtime's unfinished cleanup, including a factory that never returned an app."""
 
-    def __init__(self, callbacks, hub):
+    def __init__(self, callbacks, hub, history=None):
         self.callbacks = callbacks
         self.hub = hub
+        self.history = history
         self.checker = None
         self.app_begin = self.app_finish = None
         self._close_lock = threading.Lock()
         self._fence_lock = threading.Lock()
         self._fenced = set()
-        self._checker_done = self._app_done = self._hub_done = False
+        self._checker_done = self._app_done = self._hub_done = self._history_done = False
         self.closed = False
 
     def attach_app(self, app):
@@ -129,6 +130,21 @@ class WebRuntimeCleanup:
                 try:
                     self.hub.close()
                     self._hub_done = True
+                except BaseException as exc:
+                    errors.append(exc)
+            # The memory history journal is the last owned resource. An already-admitted ingestion
+            # callback may still hold its final submit until the hub has drained, so history closes
+            # ONLY after the hub, through the core's own bounded close. An unresolved close (a
+            # self-close from an active callback, or an incomplete drain) leaves the SAME owner
+            # pending for a later retry of this exact stage — never a replacement journal, never a
+            # dropped row or handle. No history (disabled/non-memory) resolves this stage at once.
+            if self._hub_done and not self._history_done:
+                try:
+                    result = self.history.close() if self.history is not None else None
+                    if result is None or (result.resolved and result.lock_released):
+                        self._history_done = True
+                    else:
+                        raise RuntimeError("BLE history journal cleanup is incomplete")
                 except BaseException as exc:
                     errors.append(exc)
             if errors:
