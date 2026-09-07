@@ -80,6 +80,31 @@ def launch_desktop(
         close_preserving_primary(server, sys.exc_info()[1])
 
 
+# The frozen Linux bundle ships pywebview's Qt backend (QtPy + QtWebEngine, checked by
+# scripts/verify_linux_bundle.py) and no PyGObject/WebKit2GTK. pywebview itself tries GTK before Qt
+# on Linux unless told otherwise, so every frozen desktop launch would first log a failed GTK probe.
+_FROZEN_LINUX_BACKEND = "qt"
+
+
+def _preferred_backend(*, platform: str | None = None, frozen: bool | None = None,
+                       environ=None) -> str | None:
+    """Backend to pass to ``webview.start(gui=...)``, or None to leave the choice to pywebview.
+
+    Only a frozen Linux build with no explicit ``PYWEBVIEW_GUI`` names the bundled backend
+    outright. An explicit ``PYWEBVIEW_GUI`` (pywebview's own override) is left for pywebview to
+    read; source installs, Windows and macOS keep pywebview's selection. Nothing is written to the
+    environment.
+    """
+    platform = sys.platform if platform is None else platform
+    frozen = bool(getattr(sys, "frozen", False)) if frozen is None else frozen
+    environ = os.environ if environ is None else environ
+    if not frozen or not platform.startswith("linux"):
+        return None
+    if environ.get("PYWEBVIEW_GUI", "").strip():
+        return None
+    return _FROZEN_LINUX_BACKEND
+
+
 def _run_desktop_window(webview, port: int, bootstrap: DesktopBootstrap, token: str) -> int:
 
     # /desktop-auth consumes the one-time token, sets the session cookie, and 302s to /reform (clean
@@ -95,7 +120,13 @@ def _run_desktop_window(webview, port: int, bootstrap: DesktopBootstrap, token: 
             height=820,
             min_size=(900, 600),
         )
-        webview.start()  # blocks until the window is closed
+        backend = _preferred_backend()
+        if backend:
+            log.info("Frozen Linux build: using the bundled %s webview backend "
+                     "(set PYWEBVIEW_GUI to choose another)", backend)
+            webview.start(gui=backend)  # blocks until the window is closed
+        else:
+            webview.start()  # blocks until the window is closed; pywebview picks the backend
         return 0
     except Exception as exc:  # noqa: BLE001 — the system webview backend failed at RUNTIME
         # The most common Windows cause: the WebView2 runtime isn't installed, so pywebview can import

@@ -690,6 +690,9 @@
       bleHistoryCount = meta.count;
       document.getElementById("ble-history-count").textContent = bleHistoryCount;
       document.getElementById("ble-history-more").disabled = !meta.has_more;
+      // "Check for newer" polls the held forward cursor; offer it once caught up (no more pages) when
+      // a cursor exists, so newly-arrived reports are reachable without restarting from oldest.
+      document.getElementById("ble-history-check-newer").disabled = meta.has_more || !meta.can_check_newer;
       var trim = document.getElementById("ble-history-trim");
       trim.hidden = !meta.trimmed;
       if (meta.trimmed) {
@@ -700,12 +703,15 @@
     onStatus: function (state) {
       var el = document.getElementById("ble-history-status");
       var more = document.getElementById("ble-history-more");
+      var checkNewer = document.getElementById("ble-history-check-newer");
       if (state === "loading") {
         el.textContent = "Loading session history. Any rows shown are from the last successful read.";
         more.setAttribute("aria-busy", "true");
+        checkNewer.setAttribute("aria-busy", "true");
         return;
       }
       more.setAttribute("aria-busy", "false");
+      checkNewer.setAttribute("aria-busy", "false");
       el.textContent =
         state === "disabled" ? "Session history is off for this session." :
         state === "unavailable" ? "Session history is unavailable in this session." :
@@ -716,7 +722,7 @@
         state === "idle" ? "No session history loaded. Expand or use Refresh to load (oldest first)." :
         state === "empty" ? "No session history in the current run." :
         bleHistoryCount ? "Oldest first. " + bleHistoryCount + " report" + (bleHistoryCount === 1 ? "" : "s") +
-          " loaded." + (more.disabled ? " Caught up." : "") :
+          " loaded." + (more.disabled ? " Caught up — use Check for newer to poll for new reports." : "") :
         "No session history in the current run.";
     },
   });
@@ -732,6 +738,10 @@
   document.getElementById("ble-history-more").addEventListener("click", function (event) {
     bleHistory.loadMore();
     event.currentTarget.focus();   // keep focus on the button after appending newer rows
+  });
+  document.getElementById("ble-history-check-newer").addEventListener("click", function (event) {
+    bleHistory.checkNewer();
+    event.currentTarget.focus();   // keep focus on the button after appending any newer rows
   });
   window.addEventListener("pagehide", function () { bleHistory.suspend(); });
   window.addEventListener("pageshow", function (event) {
