@@ -62,11 +62,11 @@
         <!-- devices column -->
         <div class="grid" style="align-content:start">
           <div class="card">
-            <h3><span class="t">Devices</span><span class="r">click a row &#183; Connect</span></h3>
-            <table>
-              <tbody id="dash-devices">
+            <h3><span class="t">Devices</span><span class="r">select &#183; Connect</span></h3>
+            <table class="device-picker-table">
+              <tbody id="dash-devices" tabindex="-1" aria-label="Device selection">
                 {% for d in devices %}
-                <tr data-port="{{ d.port }}" class="dev-row"><td class="{{ 'con' if d.connected else 'off' }}">{{ '&#9679;'|safe if d.connected else '&#9675;'|safe }} {{ d.port }} &#8212; {{ d.name or d.firmware or 'device' }}</td></tr>
+                <tr data-port="{{ d.port }}" class="dev-row"><td class="{{ 'con' if d.connected else 'off' }}"><button type="button" class="device-pick" data-picker-port="{{ d.port }}" aria-pressed="false"><span aria-hidden="true">{{ '&#9679;'|safe if d.connected else '&#9675;'|safe }}</span><span>{{ d.port }} &#8212; {{ d.name or d.firmware or 'device' }}</span></button></td></tr>
                 {% else %}
                 <tr><td class="off">&#9675; no devices &#8212; press Scan Ports</td></tr>
                 {% endfor %}
@@ -119,7 +119,7 @@
               {% for c in sel_caps %}<span class="chip cap">{{ c }}</span>{% endfor %}
             </div>
             {% endif %}
-            {% if sel_detail %}<div class="kv mono muted" style="margin-bottom:6px">{{ sel_detail }}</div>{% endif %}
+            {% if sel_detail %}<div class="kv mono muted wrap-value" style="margin-bottom:6px">{{ sel_detail }}</div>{% endif %}
             <div class="kv mono" style="color:var(--blue)">airspace: {{ target_count }} targets in the shared pool</div>
             {% else %}
             <div class="card2">Connect a device to see its capabilities, health, and airspace.</div>
@@ -215,7 +215,7 @@
         </div>
         <div class="card fw-port-panel">
           <h3><span class="t">Target Port</span><span class="r">Scan</span></h3>
-          <table><tbody id="fw-ports"><tr><td class="off">scanning ports&#8230;</td></tr></tbody></table>
+          <table class="device-picker-table"><tbody id="fw-ports" tabindex="-1" aria-label="Firmware device selection"><tr><td class="off">scanning ports&#8230;</td></tr></tbody></table>
           <div class="footnote" id="fw-port-msg" style="margin-top:6px;min-height:14px"></div>
         </div>
         <div class="card fw-catalog">
@@ -269,7 +269,7 @@
         <div class="card">
           <h3><span class="t">Operating System</span><span class="r" id="os-count"></span></h3>
           <select class="field" id="os-select" aria-label="Operating system"><option>loading catalog…</option></select>
-          <div class="footnote" id="os-desc">Downloaded from the official source and SHA-256 verified (plus OpenPGP when the signing key is available) before writing.</div>
+          <div class="footnote wrap-value" id="os-desc">Downloaded from the official source and SHA-256 verified (plus OpenPGP when the signing key is available) before writing.</div>
         </div>
         <div class="card">
           <h3><span class="t">Target USB (removable)</span><span class="r"><button type="button" id="os-rescan" class="linkbtn">Rescan</button></span></h3>
@@ -354,8 +354,8 @@
     <div class="sub" data-sub="tail"><div class="card"><h3><span class="t">Follower / Tail Detection</span><span class="r">counter-surveillance</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Flags a device that keeps reappearing near you across time. Awareness-first &#8212; it never confirms a follower and never acts. Method: ArgeliusLabs/Chasing-Your-Tail-NG (MIT).</div>
       <div class="between" style="margin-bottom:8px"><span>Min persistence <b class="mono">0.50</b></span><span id="tail-summary" class="dim">&#8212;</span></div>
-      <table><thead><tr><th>Device</th><th>Label</th><th class="r">Persistence</th><th class="r">Windows</th></tr></thead>
-        <tbody id="tail-rows"><tr><td class="off" colspan="4">no persistent followers &#8212; a device must reappear across time windows to flag</td></tr></tbody></table>
+      <div class="tail-scroll" tabindex="0" role="region" aria-label="Repeated device observations"><table class="tail-table"><thead><tr><th>Device</th><th>Label</th><th class="r">Persistence</th><th class="r">Windows</th></tr></thead>
+        <tbody id="tail-rows"><tr><td class="off" colspan="4">no persistent followers &#8212; a device must reappear across time windows to flag</td></tr></tbody></table></div>
     </div></div>
     <div class="sub pro" data-sub="sense"><div class="card"><h3><span class="t">Wi-Fi Sense &#8212; presence &amp; motion</span><span class="r" id="sense-room">&#8212;</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Passive Wi-Fi CSI occupancy/motion from a connected sensing node &#8212; it perturbs no one and is NOT a camera. Only presence + motion are real on commodity 2.4&nbsp;GHz (the PROVEN tier); it never identifies a person and a sensed body is never a scan target.</div>
@@ -586,7 +586,7 @@
     <div class="split side">
       <div class="card" style="align-self:start">
         <h3><span class="t">Terminals</span><span class="r">connected ports</span></h3>
-        <div class="termlist" id="reform-termlist"><div class="dim" style="font-size:12px;padding:6px">no connected ports &#8212; connect a device under DEVICE &#9656; Dashboard.</div></div>
+        <div class="termlist" id="reform-termlist" tabindex="-1" role="group" aria-label="Terminal selection"><div class="dim" style="font-size:12px;padding:6px">no connected ports &#8212; connect a device under DEVICE &#9656; Dashboard.</div></div>
         <div class="footnote" style="margin-top:10px">Every connected serial port keeps its own live terminal. Danger verbs still confirm before sending.</div>
       </div>
       <div id="reform-termpanes">

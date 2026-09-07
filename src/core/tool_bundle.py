@@ -49,13 +49,30 @@ _dest_locks: dict[str, threading.Lock] = {}
 _dest_locks_guard = threading.Lock()
 
 
+def _canonical_key(resolved_path: str) -> str:
+    """Pure identity normalizer for an ALREADY-resolved real path. It does NOT call realpath, so the
+    key can never disagree with the captured path it was derived from (the acquire path passes its one
+    captured ``resolved`` string straight in). ``normcase`` folds case on Windows; the extended-length
+    device prefix that Windows ``os.path.realpath`` emits inconsistently run to run — which would
+    otherwise give one destination two different keys — is folded out (the UNC form too). Identity on
+    POSIX. The prefix is built from ``chr(92)`` (the backslash) to stay correct without brittle escaping."""
+    key = os.path.normcase(resolved_path)
+    ext_prefix = chr(92) * 2 + "?" + chr(92)          # Windows extended-length device prefix
+    unc_prefix = ext_prefix + "unc" + chr(92)         # the UNC variant of that prefix (normcase-lowered)
+    if key.startswith(unc_prefix):
+        return chr(92) * 2 + key[len(unc_prefix):]
+    if key.startswith(ext_prefix):
+        return key[len(ext_prefix):]
+    return key
+
+
 def canonical_dest(dest_dir: str) -> str:
     """A platform-appropriate canonical key for a destination dir, shared by the transaction and (later)
     the job layer so they agree on identity. ``os.path.normcase`` folds case on Windows (where
     ``tools/aircrack-ng`` and ``tools/AIRCRACK-NG`` are the SAME dir, but ``realpath`` alone doesn't
     normalize the case of a not-yet-existing trailing segment — T4) and is identity on POSIX (where they
     are distinct). NOTE: these locks are in-process only, not cross-process serialization."""
-    return os.path.normcase(os.path.realpath(dest_dir))
+    return _canonical_key(os.path.realpath(dest_dir))
 
 
 def _lock_for_dest(dest_dir: str) -> threading.Lock:
@@ -117,7 +134,7 @@ def acquire_destination(dest_dir: str) -> _Lease:
     already holds it. Only dict work happens under the guard (never I/O/callbacks)."""
     global _admission_epoch
     resolved = os.path.realpath(dest_dir)
-    key = os.path.normcase(resolved)
+    key = _canonical_key(resolved)   # normalize the ONE captured resolved string; never re-resolve for the key
     with _admissions_guard:
         if key in _admissions:
             raise DestinationBusy(f"another install is already using {dest_dir}")
@@ -189,7 +206,7 @@ def _admission(dest_dir: str, lease: Optional[_Lease]):
         finally:
             release_destination(own)
     else:
-        if not _minted_lease(lease) or os.path.normcase(os.path.realpath(dest_dir)) != lease.dest:
+        if not _minted_lease(lease) or _canonical_key(os.path.realpath(dest_dir)) != lease.dest:
             raise DestinationBusy("lease does not match the requested destination")
         with borrow_destination(lease) as borrowed:
             yield borrowed

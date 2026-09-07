@@ -313,8 +313,14 @@ def test_server_thread_start_failure_closes_listener_and_app(monkeypatch):
 
     monkeypatch.setattr(server_lifecycle, "threading", types.SimpleNamespace(
         Thread=NotStarted, current_thread=threading.current_thread))
-    with pytest.raises(RuntimeError, match="synthetic"):
+    with pytest.raises(server_lifecycle.DesktopCleanupError) as ei:
         server.start()
+    err = ei.value
+    # The accepted contract does not re-raise the raw "synthetic" text: a failed thread start whose
+    # cleanup also cannot complete surfaces a DesktopCleanupError that RETAINS the original startup
+    # failure as its cause and keeps a retry owner, while the listener/app are still torn down.
+    assert isinstance(err.__cause__, RuntimeError) and "synthetic" in str(err.__cause__)
+    assert err.cleanup_owner is not None
     assert_closed(server, dm, bus, conn)
 
 
