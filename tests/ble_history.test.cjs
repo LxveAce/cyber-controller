@@ -348,3 +348,70 @@ test("the trim notice stays sticky across a later non-overflowing page and reset
   f.pageCalls[3].resolve(page([row(5)], { has_more: false })); await r;
   assert.equal(f.lastMeta().trimmed, false, "a refresh resets the trim state for the fresh view");
 });
+
+// ── "Check for newer": bounded forward poll of the held cursor after catching up ─────────────
+
+test("check for newer polls the held cursor and appends rows that arrived after catching up", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1), row(2)], { cursor: "c2", has_more: false })); await flush();
+  assert.equal(f.lastMeta().has_more, false);
+  assert.equal(f.lastMeta().can_check_newer, true, "a held cursor allows a forward poll");
+  const c = f.control.checkNewer(); await flush();
+  assert.equal(f.pageCalls[1].cursor, "c2", "check-newer polls forward from the held cursor, not oldest");
+  f.pageCalls[1].resolve(page([row(3)], { cursor: "c3", has_more: false }));
+  assert.equal(await c, true);
+  assert.deepEqual(f.lastRows(), [1, 2, 3], "newly-arrived rows append; no restart from oldest");
+});
+
+test("check for newer with nothing new stays caught up and appends nothing", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1)], { cursor: "c1", has_more: false })); await flush();
+  const c = f.control.checkNewer(); await flush();
+  f.pageCalls[1].resolve(page([], { cursor: "c1", has_more: false }));
+  await c;
+  assert.deepEqual(f.lastRows(), [1], "no new rows -> no change");
+  assert.equal(f.lastMeta().has_more, false);
+});
+
+test("check for newer is a no-op before any load (no held cursor)", async () => {
+  const f = fixture();
+  assert.equal(await f.control.checkNewer(), false);
+  assert.equal(f.pageCalls.length, 0, "no forward poll without a cursor");
+});
+
+test("a second check-for-newer supersedes the first in-flight read", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1)], { cursor: "c1", has_more: false })); await flush();
+  const first = f.control.checkNewer(); await flush();
+  const second = f.control.checkNewer(); await flush();
+  assert.equal(await first, false, "the superseded poll resolves false");
+  assert.ok(f.pageCalls[1].signal.aborted, "and its request is aborted");
+  f.pageCalls[2].resolve(page([row(2)], { cursor: "c2", has_more: false }));
+  assert.equal(await second, true);
+  assert.deepEqual(f.lastRows(), [1, 2]);
+});
+
+test("check for newer on an expired cursor recovers once from the oldest page", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(5)], { cursor: "c5", has_more: false })); await flush();
+  const c = f.control.checkNewer(); await flush();
+  f.pageCalls[1].resolve({ httpStatus: 410, body: { reason: "cursor_expired" } });
+  await c; await flush();
+  assert.ok(f.states.some(s => s.state === "expired"), "expiry is surfaced");
+  assert.equal(f.pageCalls[2].cursor, null, "the single recovery re-fetches from the oldest page");
+  f.pageCalls[2].resolve(page([row(1)], { cursor: "c1", has_more: false })); await flush();
+  assert.deepEqual(f.lastRows(), [1]);
+});
+
+test("check for newer is a no-op when history is disabled (cursor cleared)", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([], { mode: "disabled", cursor: null, has_more: false, earliest_seq: null }));
+  await flush();
+  assert.equal(f.lastMeta().can_check_newer, false, "disabled clears the held cursor");
+  assert.equal(await f.control.checkNewer(), false);
+});
