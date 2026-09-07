@@ -49,17 +49,55 @@
 
 {% block scripts %}
 <script nonce="{{ csp_nonce }}">
-    function refreshHealth() {
-        fetch('/api/health')
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById('device-count').textContent = data.device_count;
-                document.getElementById('connected-count').textContent = data.connected_count;
-                document.getElementById('target-count').textContent = data.target_count;
-                document.getElementById('health-status').textContent = data.status.toUpperCase();
-            })
-            .catch(() => {});
+    let healthTimer = null;
+    let healthInFlight = false;
+    let healthCatchUp = false;
+    let healthHidden = document.hidden;
+
+    function scheduleHealthPoll() {
+        clearTimeout(healthTimer);
+        healthTimer = null;
+        if (!document.hidden) healthTimer = setTimeout(refreshHealth, 5000);
     }
-    setInterval(refreshHealth, 5000);
+
+    async function refreshHealth() {
+        clearTimeout(healthTimer);
+        healthTimer = null;
+        if (document.hidden) return;
+        if (healthInFlight) {
+            healthCatchUp = true;
+            return;
+        }
+        healthInFlight = true;
+        try {
+            const response = await fetch('/api/health');
+            const data = await response.json();
+            document.getElementById('device-count').textContent = data.device_count;
+            document.getElementById('connected-count').textContent = data.connected_count;
+            document.getElementById('target-count').textContent = data.target_count;
+            document.getElementById('health-status').textContent = data.status.toUpperCase();
+        } catch (_) {
+        } finally {
+            healthInFlight = false;
+            if (document.hidden) {
+                healthCatchUp = false;
+            } else if (healthCatchUp) {
+                healthCatchUp = false;
+                refreshHealth();
+            } else {
+                scheduleHealthPoll();
+            }
+        }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        if (healthHidden === document.hidden) return;
+        healthHidden = document.hidden;
+        clearTimeout(healthTimer);
+        healthTimer = null;
+        if (healthHidden) healthCatchUp = false;
+        else refreshHealth();
+    });
+    scheduleHealthPoll();
 </script>
 {% endblock %}
