@@ -415,3 +415,98 @@ test("check for newer is a no-op when history is disabled (cursor cleared)", asy
   assert.equal(f.lastMeta().can_check_newer, false, "disabled clears the held cursor");
   assert.equal(await f.control.checkNewer(), false);
 });
+
+test("server retention: earliest_seq>1 surfaces evicted + window start, distinct from client trim", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(204), row(205)], { cursor: "c205", has_more: false, earliest_seq: 204 }));
+  await flush();
+  assert.equal(f.lastMeta().evicted, true, "server eviction surfaced when earliest_seq > 1");
+  assert.equal(f.lastMeta().retained_from, 204, "window start is the earliest retained seq, not a lost count");
+  assert.equal(f.lastMeta().trimmed, false, "the client DOM-trim notice stays independent");
+});
+
+test("server retention: earliest_seq==1 is not evicted (window starts at the first report)", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1), row(2)], { cursor: "c2", has_more: false, earliest_seq: 1 }));
+  await flush();
+  assert.equal(f.lastMeta().evicted, false);
+  assert.equal(f.lastMeta().retained_from, null);
+});
+
+test("server retention clears when history is disabled", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(210)], { cursor: "c210", has_more: false, earliest_seq: 210 })); await flush();
+  assert.equal(f.lastMeta().evicted, true);
+  f.control.refresh(); await flush();
+  f.pageCalls[1].resolve(page([], { mode: "disabled", cursor: null, has_more: false, earliest_seq: null, reason: "disabled" }));
+  await flush();
+  assert.equal(f.lastMeta().evicted, false, "disabled clears the retention notice");
+  assert.equal(f.lastMeta().retained_from, null);
+});
+
+test("server retention updates after a 410 recovery to an advanced window", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(1), row(2)], { cursor: "c2", has_more: true, earliest_seq: 1 })); await flush();
+  assert.equal(f.lastMeta().evicted, false);
+  const m = f.control.loadMore(); await flush();
+  f.pageCalls[1].resolve({ httpStatus: 410, body: { reason: "cursor_expired", earliest_seq: 50 } });
+  await m; await flush();
+  f.pageCalls[2].resolve(page([row(50), row(51)], { cursor: "c51", has_more: false, earliest_seq: 50 })); await flush();
+  assert.equal(f.lastMeta().evicted, true, "the advanced retained window now reports eviction");
+  assert.equal(f.lastMeta().retained_from, 50);
+});
+
+test("server retention: an older loaded row is kept when the server window advances past it", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  // caught up holding row 1 at the oldest boundary (earliest_seq 1); the cursor stays valid
+  f.pageCalls[0].resolve(page([row(1)], { cursor: "c1", has_more: false, earliest_seq: 1 })); await flush();
+  assert.equal(f.lastMeta().evicted, false);
+  // a forward poll returns row 2 and the SERVER earliest advances to 2, but cursor 1 (=earliest-1)
+  // is still valid, so row 2 appends and the older row 1 is retained in the view
+  const c = f.control.checkNewer(); await flush();
+  f.pageCalls[1].resolve(page([row(2)], { cursor: "c2", has_more: false, earliest_seq: 2 }));
+  assert.equal(await c, true);
+  assert.deepEqual(f.lastRows(), [1, 2], "the older loaded row (#1) is retained, never dropped to fit a label");
+  assert.equal(f.lastMeta().evicted, true, "eviction surfaced: the server window advanced past #1");
+  assert.equal(f.lastMeta().retained_from, 2,
+    "retained_from is the SERVER boundary (#2), not the displayed first row (#1)");
+});
+
+test("server retention and client trim coexist independently (both flags true at once)", async () => {
+  const f = fixture({ domCap: 2 });
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(10), row(11)], { cursor: "c11", has_more: true, earliest_seq: 10 }));
+  await flush();
+  assert.equal(f.lastMeta().evicted, true, "server evicted (earliest_seq 10 > 1)");
+  assert.equal(f.lastMeta().trimmed, false, "no client trim yet (2 rows == cap)");
+  const m = f.control.loadMore(); await flush();
+  f.pageCalls[1].resolve(page([row(12)], { cursor: "c12", has_more: false, earliest_seq: 10 }));
+  await m;
+  assert.deepEqual(f.lastRows(), [11, 12], "client cap trimmed the oldest loaded row (#10)");
+  assert.equal(f.lastMeta().trimmed, true, "client-trim notice");
+  assert.equal(f.lastMeta().evicted, true, "server-retention notice is independent and still true");
+  assert.equal(f.lastMeta().retained_from, 10);
+});
+
+test("server retention: a failed read (503) preserves the prior evicted view and its notice meta", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(page([row(204)], { cursor: "c204", has_more: false, earliest_seq: 204 })); await flush();
+  assert.equal(f.lastMeta().evicted, true);
+  assert.equal(f.lastMeta().retained_from, 204);
+  const deliveriesBefore = f.deliveries.length;
+  // a subsequent refresh whose read fails 503: the reader notifies unavailable, preserves the rows,
+  // and does NOT re-present -- so the last delivered meta is unchanged. The UI must therefore not
+  // pre-hide the retention/trim notices on refresh (they would desync from the preserved rows).
+  f.control.refresh(); await flush();
+  f.pageCalls[1].resolve({ httpStatus: 503, body: { reason: "unavailable" } }); await flush();
+  assert.equal(f.lastState(), "unavailable");
+  assert.equal(f.deliveries.length, deliveriesBefore, "no new delivery on 503; the prior view is preserved");
+  assert.equal(f.lastMeta().evicted, true, "the retention meta stays as last delivered (not cleared)");
+  assert.equal(f.lastMeta().retained_from, 204);
+});

@@ -699,6 +699,17 @@
         trim.textContent = "Showing the most recent " + rows.length +
           " loaded reports; older rows were trimmed from view.";
       }
+      // Server-side retention notice — distinct from the client trim above: the memory journal aged
+      // older reports out of its window (earliest retained seq > 1). retained_from is the SERVER's
+      // window start, NOT the displayed first row (older reports loaded earlier may still be shown
+      // below it) and NOT a lost count.
+      var retained = document.getElementById("ble-history-retained");
+      retained.hidden = !meta.evicted;
+      if (meta.evicted) {
+        retained.textContent = "The server retains reports from #" + meta.retained_from +
+          " onward; older reports have aged out of its window, though some may still be shown " +
+          "here from an earlier load.";
+      }
     },
     onStatus: function (state) {
       var el = document.getElementById("ble-history-status");
@@ -732,7 +743,10 @@
   });
   document.getElementById("ble-history-refresh").addEventListener("click", function () {
     bleHistoryLoaded = true;
-    document.getElementById("ble-history-trim").hidden = true;
+    // Do NOT pre-hide the trim/retained notices here: a refresh whose read then FAILS (503/error)
+    // preserves the prior rows WITHOUT re-presenting, so pre-hiding would leave the notices gone
+    // while the rows they describe stay shown. present() re-sets both on the next successful load,
+    // keeping notice and rows consistent in every outcome.
     bleHistory.refresh();
   });
   document.getElementById("ble-history-more").addEventListener("click", function (event) {
