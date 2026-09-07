@@ -19,9 +19,7 @@ from src.core import updater
 
 @pytest.mark.parametrize("system,machine,expected", [
     ("Windows", "AMD64", "windows-x64"),
-    ("windows", "x86", "windows-x64"),
     ("Darwin", "arm64", "macos-arm64"),
-    ("Darwin", "x86_64", "macos-arm64"),   # we only ship arm64 mac
     ("Linux", "x86_64", "linux-x64"),
     ("Linux", "aarch64", "linux-arm64"),
     ("Linux", "arm64", "linux-arm64"),
@@ -30,9 +28,16 @@ def test_platform_key(system, machine, expected):
     assert su.platform_key(system, machine) == expected
 
 
-def test_platform_key_unsupported():
-    with pytest.raises(su.SelfUpdateError):
-        su.platform_key("Plan9", "pdp11")
+@pytest.mark.parametrize("system,machine", [
+    ("windows", "x86"),       # 32-bit Windows cannot run the published 64-bit binary
+    ("Windows", "ARM64"),     # no windows-arm64 asset is published
+    ("Darwin", "x86_64"),     # only arm64 macOS is published
+    ("Linux", "armv7l"),      # 32-bit ARM cannot run the linux-x64 or linux-arm64 asset
+    ("Plan9", "pdp11"),
+])
+def test_platform_key_refuses_hosts_without_a_published_build(system, machine):
+    with pytest.raises(su.SelfUpdateError, match="no published build"):
+        su.platform_key(system, machine)
 
 
 # ── select_asset ────────────────────────────────────────────────────────────────────────────────

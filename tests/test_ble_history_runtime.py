@@ -14,6 +14,7 @@ import pytest
 
 from src.core.ble_fact_projection import project_addressed
 from src.core.ble_history_policy import decide_ble_history_policy
+from src.core.ble_journal import JournalLimits
 from src.ui.web import ble_history_runtime as hr
 from src.ui.web.ble_history_runtime import BleHistoryRuntime
 
@@ -38,6 +39,17 @@ def _submit(rt, n):
         assert fact is not None
         assert sink.submit(fact) == "queued"
     return sink
+
+
+def _submit_many(sink, n):
+    """Submit *n* valid addressed facts, varying the MAC across two octets so counts past 255 stay
+    well-formed. Used to flood past the memory retention cap so the oldest positions are evicted."""
+    for i in range(n):
+        mac = f"aa:bb:cc:dd:{(i >> 8) & 0xff:02x}:{i & 0xff:02x}"
+        fact = project_addressed(
+            {"mac": mac, "name": f"n{i}", "rssi": -50, "type": "public"}, _SRC)
+        assert fact is not None
+        assert sink.submit(fact) == "queued"
 
 
 def _ready(n=0):
@@ -152,6 +164,40 @@ def test_foreign_run_cursor_is_expired_not_rebased():
     rt = _ready(2)
     res = rt.read_page(cursor="0:ffffffffffffffff:1:0")
     assert res.outcome == hr.OUTCOME_EXPIRED and res.body["reason"] == "cursor_expired"
+
+
+@pytest.fixture(scope="module")
+def evicted_runtime():
+    """A started memory adapter flooded past the retention cap so the oldest seq positions have
+    aged out of the retained window. Shared read-only by the same-run eviction-contract tests."""
+    rt = _ready()
+    _submit_many(rt.sink, JournalLimits().max_mem_rows + 10)
+    yield rt
+    rt.close()
+
+
+def test_same_run_evicted_position_is_expired_not_silent_empty(evicted_runtime):
+    """A same-run cursor whose position aged out of the retained window returns 410 expired -- so
+    the client recovers from the oldest page -- never a silent empty 'caught up' page that would
+    hide that observations were lost. This is the in-run eviction path (the foreign-run test above
+    covers a different lifetime); together they protect the whole 410/recovery distinction."""
+    run = evicted_runtime._run_id
+    res = evicted_runtime.read_page(cursor=f"0:{run}:1:0", limit="50")   # seq 1 is long evicted
+    assert res.outcome == hr.OUTCOME_EXPIRED
+    assert res.body["reason"] == "cursor_expired"
+    assert res.body.get("earliest_seq", 0) > 2   # the window advanced well past the held position
+    assert "rows" not in res.body   # an expired outcome carries no rows to misread as caught-up
+
+
+def test_cursor_at_earliest_minus_one_is_valid_not_expired(evicted_runtime):
+    """The boundary just below the retained window is still valid: a cursor at earliest-1 reads
+    forward from the oldest retained row with no false expiry (only a position strictly older than
+    that is evicted)."""
+    run = evicted_runtime._run_id
+    earliest = evicted_runtime.read_page(limit="5").body["earliest_seq"]
+    res = evicted_runtime.read_page(cursor=f"0:{run}:{earliest - 1}:0", limit="5")
+    assert res.outcome == hr.OUTCOME_OK
+    assert res.body["rows"] and res.body["rows"][0]["seq"] == earliest
 
 
 def test_detached_rows_cannot_mutate_retained_state():
