@@ -784,7 +784,7 @@ def validate_flasher_args(
         "app",
         "extra_esptool_args",
     }
-    optional_top = {"ota_data_initial"}
+    optional_top = {"otadata"}
     actual_top = set(document)
     if not required_top <= actual_top or actual_top - required_top - optional_top:
         raise EspSemanticError(
@@ -848,10 +848,10 @@ def validate_flasher_args(
         ("partition-table", ESP_PARTITION_TABLE_OFFSET),
         ("app", app_offset),
     ]
-    if "ota_data_initial" in document and flash_size_bytes != 8 * 1024 * 1024:
-        raise EspSemanticError("flasher_args.json ota_data_initial is only valid for 8 MiB OTA")
-    if "ota_data_initial" in document:
-        expected_entries.append(("ota_data_initial", 0xF000))
+    if "otadata" in document and flash_size_bytes != 8 * 1024 * 1024:
+        raise EspSemanticError("flasher_args.json otadata is only valid for 8 MiB OTA")
+    if "otadata" in document:
+        expected_entries.append(("otadata", 0xF000))
     expected_offsets: set[int] = set()
     for name, expected_offset in expected_entries:
         entry = _mapping_field(document.get(name), name)

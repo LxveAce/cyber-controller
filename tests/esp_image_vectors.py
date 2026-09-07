@@ -247,6 +247,13 @@ def flasher_args_bytes(
             "chip": chip,
         },
     }
+    if flash_size_bytes == 8 * MIB:
+        value["otadata"] = {
+            "offset": "0xf000",
+            "file": "ota_data_initial.bin",
+            "encrypted": "false",
+        }
+        flash_files["0xf000"] = "ota_data_initial.bin"
     return (json.dumps(value, sort_keys=True, indent=2) + "\n").encode("utf-8")
 
 

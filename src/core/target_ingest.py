@@ -17,6 +17,12 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 from src.core import oui
+from src.core.ble_fact_projection import (
+    RECEIPT_UNKNOWN,
+    SUBMIT_RECEIPTS,
+    project_addressed,
+    project_report,
+)
 from src.core.crack_pipeline import bssid_from_hashline, essid_from_hashline, is_wpa_hashline
 from src.models.capture import CaptureRecord
 from src.models.target import Target, TargetType
@@ -33,7 +39,8 @@ class TargetIngestor:
     """Bridges connected devices' serial output into a shared :class:`TargetPool` (and, when given a
     :class:`~src.core.capture_store.CaptureStore`, the shared capture log too)."""
 
-    def __init__(self, pool: Any, captures: Any = None, devices: Any = None) -> None:
+    def __init__(self, pool: Any, captures: Any = None, devices: Any = None,
+                 journal: Any = None) -> None:
         from src.core.lifecycle import CallbackScope
 
         self._callbacks = CallbackScope()
@@ -61,6 +68,16 @@ class TargetIngestor:
         self._ble_sessions: dict[str, tuple[int, int, Any]] = {}
         self._ble_epoch = 0
         self._ble_sequence = 0
+        # Optional caller-owned BLE journal sink (adapter slice 1). Default None -> the ingestor
+        # behaves exactly as before. The caller owns its construction, start, close and filesystem
+        # policy; this class never creates, starts, paths or persists it. Counters are adapter
+        # observations only, not core durability.
+        self._journal = journal
+        self._journal_lock = threading.Lock()
+        self._journal_projection_rejected = 0
+        self._journal_submit_exceptions = 0
+        self._journal_receipts = {name: 0 for name in (*SUBMIT_RECEIPTS, RECEIPT_UNKNOWN)}
+        self._journal_last_result: str | None = None
 
     def attach(self, conn: Any, protocol: Any) -> Callable[[str], None]:
         """Register an on_line handler on *conn* that parses each line with *protocol* and adds any
@@ -99,6 +116,17 @@ class TargetIngestor:
             previous_session = self._ble_sessions.get(port)
             self._ble_epoch += 1
             connection_epoch = self._ble_epoch
+        # Immutable journal provenance (rule 5), captured NOW before any callback can replace the
+        # device/parser: the parser-family name, port and this attachment's connection epoch.
+        # connection_id is LOCAL attachment provenance (a parser switch bumps the epoch), scoped by
+        # the journal's own run id — not a new-physical-device claim; never a later device lookup.
+        try:
+            firmware = protocol.protocol_name
+        except Exception:  # noqa: BLE001 — an unavailable parser name is unknown provenance, not fatal
+            firmware = ""
+        if type(firmware) is not str:
+            firmware = ""
+        source_ctx = {"port": port, "firmware": firmware, "connection_id": str(connection_epoch)}
 
         def current_attachment() -> bool:
             current = self._ble_sessions.get(port)
@@ -127,11 +155,30 @@ class TargetIngestor:
             with self._attachment_lock:
                 if not current_attachment():
                     return
+                retained = None
+                addressed_fact = None
+                # Capture the event kind (and its projected fact) from the pristine event BEFORE
+                # _route: _route's synchronous pool callbacks can mutate ev.event_type and ev.data
+                # (e.g. flip a sighting to device_info or ble_observation), so the single later
+                # journal offer is decided by this captured kind, so a mutated event can never drop
+                # or mis-file the captured fact. Live routing and observers still see the event.
+                eligible_kind = ev.event_type
                 try:
-                    if ev.event_type == "ble_observation":
-                        if not self._retain_ble_observation(ev, port, connection_epoch):
+                    if eligible_kind == "ble_observation":
+                        retained = self._retain_ble_observation(ev, port, connection_epoch)
+                        if not retained:
                             return
+                    elif eligible_kind == "ble_found" and self._journal is not None:
+                        addressed_fact = project_addressed(ev.data, source_ctx)
                     self._route(ev, port)
+                    # Passive journal sink (slice 1): offer the pre-route projected fact AFTER live
+                    # admission; _offer_to_journal never affects retention/pool/observer handling or
+                    # later events.
+                    if self._journal is not None:
+                        if eligible_kind == "ble_observation":
+                            self._offer_to_journal(project_report(retained, source_ctx))
+                        elif eligible_kind == "ble_found":
+                            self._offer_to_journal(addressed_fact)
                 except Exception:
                     log.exception("TargetIngestor: routing error on %s", port)
                 # Observer failures remain isolated from routing and from other observers.
@@ -218,15 +265,59 @@ class TargetIngestor:
             if current is None or current[0] != connection_epoch:
                 return False  # A retained callback from an earlier connection is stale.
             self._ble_sequence += 1
-            self._ble_history.append({
+            record = {
                 "observation_id": str(self._ble_sequence),
                 "label": label, "rssi": rssi, "reported_index": index,
                 "format": record_format, "label_truncated": truncated,
                 "addressable": False, "device_source": port,
                 "connection_epoch": str(current[0]), "scan_epoch": str(current[1]),
                 "observed_at": datetime.now(timezone.utc).isoformat(),
-            })
-        return True
+            }
+            self._ble_history.append(record)
+        return record
+
+    def _offer_to_journal(self, fact) -> None:
+        """Submit one projected BLE fact to the caller-owned journal, at most once per eligible
+        event and never affecting live report/pool/observer handling. A None fact is a counted
+        projection rejection; an ordinary submit failure is counted and swallowed (never retried);
+        a control exception keeps its original identity. Passive sink: it never creates,
+        paths, or persists the journal."""
+        journal = self._journal
+        if journal is None:
+            return
+        if fact is None:
+            with self._journal_lock:
+                self._journal_projection_rejected += 1
+            return
+        try:
+            receipt = journal.submit(fact)
+        except Exception:  # noqa: BLE001 — an ordinary sink failure must not break live handling; no retry
+            log.exception("TargetIngestor: BLE journal submit failed (not retried)")
+            with self._journal_lock:
+                self._journal_submit_exceptions += 1
+            return
+        # Recognize only an exact str receipt (a type check, not isinstance) before the membership
+        # test: a str subclass may define a custom __hash__/__eq__ (side effects, raises, or being
+        # unhashable) and the exact-primitive contract must never invoke it. Every non-exact-str
+        # return is counted once as the constant RECEIPT_UNKNOWN -- no coercion, no call, no retry.
+        known = type(receipt) is str and receipt in self._journal_receipts
+        key = receipt if known else RECEIPT_UNKNOWN
+        with self._journal_lock:
+            self._journal_receipts[key] += 1
+            self._journal_last_result = key
+
+    def journal_status(self) -> dict:
+        """Read-only snapshot of this adapter's BLE-journal admission accounting (slice 1):
+        whether a sink is attached, projection rejections, submit receipts by category, submit
+        exceptions and the last receipt. These are adapter observations, NOT core durability."""
+        with self._journal_lock:
+            return {
+                "sink": self._journal is not None,
+                "projection_rejected": self._journal_projection_rejected,
+                "submit_exceptions": self._journal_submit_exceptions,
+                "receipts": dict(self._journal_receipts),
+                "last_result": self._journal_last_result,
+            }
 
     def add_event_observer(self, cb: "Callable[[Any, str], None]") -> None:
         """Register *cb*, called cb(parsed_event, port) for every parsed serial event after it is

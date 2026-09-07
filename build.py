@@ -236,11 +236,9 @@ def _build() -> int:
     if platform.system() == "Linux":
         cmd.extend(["--collect-all", "qtpy"])
 
-    # esp-idf-nvs-partition-gen: the Dead Man's Switch provisioner (deadmans-switch/host/provision.py)
-    # imports this ESP-IDF tool DYNAMICALLY at runtime to bake the guardcfg NVS image, so PyInstaller's
-    # static analysis never sees it — the frozen app raised "Could not find the NVS partition generator"
-    # on Dead Man's Switch provisioning. Collect it fully when present. Guarded so a build env without it
-    # (the linux-arm --no-deps job) still builds; DMS NVS provisioning just isn't bundled there.
+    # The provisioner imports esp_idf_nvs_partition_gen dynamically, so collect the complete package.
+    # The current native Linux ARM workflow installs the desktop package with dependencies;
+    # _require_linux_runtime() rejects a missing NVS generator before freezing on Linux.
     try:
         import esp_idf_nvs_partition_gen  # noqa: F401
         cmd.extend(["--collect-all", "esp_idf_nvs_partition_gen"])
@@ -256,10 +254,9 @@ def _build() -> int:
     except ImportError:
         print("note: pyzipper not installed — bundled crack-tool packs can't be unpacked in this build.")
 
-    # Flask + Flask-SocketIO serve the reformed `--ui qtweb` GUI (now the default) and `--ui web`: the
-    # desktop shell runs an in-process Flask/SocketIO server that QtWebEngine renders. Collect them and the
-    # Engine.IO / Socket.IO stack fully so the frozen app can serve reform.html. Guarded so a --no-deps
-    # build env (e.g. the linux-arm job) still builds; the qtweb/web UI just isn't bundled there.
+    # Collect the Flask/Socket.IO web runtime and template dependencies for the Reform UI.
+    # Linux builds must pass _require_linux_runtime() before collection; missing required web or
+    # renderer imports stop the build. The per-package guards remain for other build environments.
     for _webpkg in ("flask", "flask_socketio", "engineio", "socketio", "jinja2", "werkzeug"):
         try:
             __import__(_webpkg)

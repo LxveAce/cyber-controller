@@ -1022,7 +1022,16 @@
       var collapseBtn = document.getElementById("fw-collapse-all");
       var rows = Array.prototype.slice.call(document.querySelectorAll(".fwrow[data-name]"));
       var groups = Array.prototype.slice.call(document.querySelectorAll(".fwgroup"));
+      function syncCollapseButton() {
+        if (!collapseBtn) return;
+        var visibleGroups = groups.filter(function (g) { return g.style.display !== "none"; });
+        var anyOpen = visibleGroups.some(function (g) { return g.open; });
+        collapseBtn.textContent = anyOpen ? "Collapse all" : "Expand all";
+        collapseBtn.disabled = !visibleGroups.length;
+      }
+      syncCollapseButton();
       if (!rows.length) return;
+      groups.forEach(function (g) { g.addEventListener("toggle", syncCollapseButton); });
       function apply() {
         var q = ((search && search.value) || "").trim().toLowerCase();
         var cat = (catSel && catSel.value) || "";
@@ -1042,13 +1051,14 @@
           if (filtering && any) g.open = true;
         });
         if (noMatch) noMatch.style.display = shown ? "none" : "";
+        syncCollapseButton();
       }
       if (search) search.addEventListener("input", apply);
       if (catSel) catSel.addEventListener("change", apply);
       if (collapseBtn) collapseBtn.addEventListener("click", function () {
         var anyOpen = groups.some(function (g) { return g.open && g.style.display !== "none"; });
         groups.forEach(function (g) { g.open = !anyOpen; });
-        collapseBtn.textContent = anyOpen ? "Expand all" : "Collapse all";
+        syncCollapseButton();
       });
     })();
 
