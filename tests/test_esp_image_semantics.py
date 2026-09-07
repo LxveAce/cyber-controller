@@ -880,15 +880,18 @@ def test_flasher_offsets_keep_compact_suffixes_without_csv_whitespace_relaxation
     )
 
 
-def test_optional_ota_initial_entry_is_cross_checked_but_never_followed():
+@pytest.mark.parametrize("chip,bootloader_offset", [("esp32", 0x1000), ("esp32s3", 0)])
+def test_optional_otadata_entry_is_cross_checked_but_never_followed(
+    chip, bootloader_offset, monkeypatch
+):
     raw = flasher_args_bytes(
-        chip="esp32s3",
+        chip=chip,
         flash_size_bytes=8 * MIB,
-        bootloader_offset=0,
+        bootloader_offset=bootloader_offset,
         app_offset=0x20000,
     )
     value = json.loads(raw)
-    value["ota_data_initial"] = {
+    value["otadata"] = {
         "offset": "0xf000",
         "file": "../../opaque/ota_data_initial.bin",
         "encrypted": "false",
@@ -896,13 +899,104 @@ def test_optional_ota_initial_entry_is_cross_checked_but_never_followed():
     value["flash_files"]["0xf000"] = "../../opaque/ota_data_initial.bin"
     changed = (json.dumps(value, sort_keys=True) + "\n").encode()
 
+    def reject_open(*args, **kwargs):
+        pytest.fail("metadata paths must remain opaque")
+
+    with monkeypatch.context() as guard:
+        guard.setattr("builtins.open", reject_open)
+        guard.setattr("io.open", reject_open)
+        guard.setattr("os.open", reject_open)
+        semantics.validate_flasher_args(
+            changed,
+            chip=chip,
+            flash_size_bytes=8 * MIB,
+            bootloader_offset=bootloader_offset,
+            app_offset=0x20000,
+        )
+
+
+@pytest.mark.parametrize("chip", ["esp32", "esp32s3"])
+def test_otadata_metadata_matches_real_shaped_8mib_layout(chip):
+    merged, csv, raw = merged_image_bytes(chip=chip, flash_size_bytes=8 * MIB)
+    value = json.loads(raw)
+    assert value["otadata"] == {
+        "offset": "0xf000", "file": "ota_data_initial.bin", "encrypted": "false"
+    }
+    assert value["flash_files"]["0xf000"] == "ota_data_initial.bin"
     semantics.validate_flasher_args(
-        changed,
-        chip="esp32s3",
-        flash_size_bytes=8 * MIB,
-        bootloader_offset=0,
-        app_offset=0x20000,
+        raw, chip=chip, flash_size_bytes=8 * MIB,
+        bootloader_offset=0x1000 if chip == "esp32" else 0, app_offset=0x20000,
     )
+    result = semantics.validate_lxveos_idf602_merged(
+        merged, chip=chip, flash_size_bytes=8 * MIB, partition_csv=csv, flasher_args=raw,
+    )
+    assert result.app_partition.name == "ota_0"
+
+
+@pytest.mark.parametrize("chip", ["esp32", "esp32s3"])
+@pytest.mark.parametrize("keep_real_key", [False, True], ids=["invented-alias", "both-keys"])
+def test_otadata_rejects_invented_top_level_alias(chip, keep_real_key):
+    value = json.loads(flasher_args_bytes(
+        chip=chip, flash_size_bytes=8 * MIB,
+        bootloader_offset=0x1000 if chip == "esp32" else 0, app_offset=0x20000,
+    ))
+    value["ota_data_initial"] = value["otadata"]
+    if not keep_real_key:
+        del value["otadata"]
+    with pytest.raises(semantics.SemanticValidationError, match="top-level keys"):
+        semantics.validate_flasher_args(
+            json.dumps(value).encode(), chip=chip, flash_size_bytes=8 * MIB,
+            bootloader_offset=0x1000 if chip == "esp32" else 0, app_offset=0x20000,
+        )
+
+
+@pytest.mark.parametrize("chip", ["esp32", "esp32s3"])
+@pytest.mark.parametrize("mutation,match", [
+    (lambda value: value["otadata"].__setitem__("offset", "0xe000"), "otadata.offset"),
+    (lambda value: value["otadata"].__setitem__("encrypted", "true"), "plaintext"),
+    (lambda value: value["otadata"].__setitem__("encrypted", False), "plaintext"),
+    (lambda value: value["flash_files"].__setitem__("0xf000", "wrong.bin"), "disagrees"),
+    (lambda value: value["flash_files"].pop("0xf000"), "disagrees"),
+    (lambda value: value["flash_files"].__setitem__("0x12000", "extra.bin"), "outside"),
+])
+def test_otadata_entry_reaches_its_offset_plaintext_and_map_checks(chip, mutation, match):
+    raw = flasher_args_bytes(
+        chip=chip, flash_size_bytes=8 * MIB,
+        bootloader_offset=0x1000 if chip == "esp32" else 0, app_offset=0x20000,
+    )
+    with pytest.raises(semantics.SemanticValidationError, match=match):
+        semantics.validate_flasher_args(
+            _replace_json(raw, mutation), chip=chip, flash_size_bytes=8 * MIB,
+            bootloader_offset=0x1000 if chip == "esp32" else 0, app_offset=0x20000,
+        )
+
+
+@pytest.mark.parametrize("chip", ["esp32", "esp32s3"])
+def test_otadata_omission_preserves_existing_8mib_policy(chip):
+    merged, csv, raw = merged_image_bytes(chip=chip, flash_size_bytes=8 * MIB)
+    value = json.loads(raw)
+    del value["otadata"]
+    del value["flash_files"]["0xf000"]
+    result = semantics.validate_lxveos_idf602_merged(
+        merged, chip=chip, flash_size_bytes=8 * MIB, partition_csv=csv,
+        flasher_args=json.dumps(value).encode(),
+    )
+    assert result.app_partition.name == "ota_0"
+
+
+def test_otadata_entry_stays_invalid_in_4mib_factory_metadata():
+    value = json.loads(flasher_args_bytes(
+        chip="esp32", flash_size_bytes=4 * MIB, bootloader_offset=0x1000, app_offset=0x10000,
+    ))
+    value["otadata"] = {
+        "offset": "0xf000", "file": "ota_data_initial.bin", "encrypted": "false"
+    }
+    value["flash_files"]["0xf000"] = "ota_data_initial.bin"
+    with pytest.raises(semantics.SemanticValidationError, match="only valid for 8 MiB OTA"):
+        semantics.validate_flasher_args(
+            json.dumps(value).encode(), chip="esp32", flash_size_bytes=4 * MIB,
+            bootloader_offset=0x1000, app_offset=0x10000,
+        )
 
 
 def test_flasher_args_size_limit_is_inclusive_and_checked_before_decode():
