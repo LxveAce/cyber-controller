@@ -81,7 +81,7 @@
           </div>
           <div class="card pro">
             <h3><span class="t">Device Health</span></h3>
-            <table>
+            <table class="device-health-table">
               <thead><tr><th>Port</th><th>FW</th><th class="r">Up</th><th class="r">Sig</th></tr></thead>
               <tbody id="dash-health-rows">
                 {% for d in devices %}
@@ -107,23 +107,25 @@
             <div class="gps"><span class="muted">GPS:</span> <span class="{{ 'con' if sys.gps else 'dim' }}" style="font-weight:600" id="dash-gps">{{ '&#9679; GPS fix'|safe if sys.gps else '&#9675; no fix'|safe }}</span></div>
           </div>
 
-          <div class="card">
-            <h3><span class="t">Selected Device</span><span class="r" id="sel-title">{% if selected %}{{ selected.port }} &#183; {{ selected.firmware }}{% else %}none connected{% endif %}</span></h3>
-            {% if selected %}
-            <div class="between" style="margin-bottom:9px">
-              <span class="armlamp" id="armlamp-sel" role="status"><span class="d"></span> <span class="lt">SAFE</span></span>
-              <span class="chip on">&#9679; {{ selected.health if selected.health and selected.health != 'unknown' else 'connected' }}</span>
+          <div class="card" id="selected-device-card">
+            <h3><span class="t">Selected Device</span><span class="r wrap-value" id="sel-title">none selected</span></h3>
+            <div class="footnote" id="sel-inventory-status" role="status">Loading device inventory…</div>
+            <div class="card2" id="sel-empty">Select a device to view its reported details.</div>
+            <div id="sel-body" hidden>
+              <div class="row sel-section">
+                <span class="chip wrap-value" id="sel-connection"></span>
+              </div>
+              <div class="row sel-section">
+                <span class="muted">Operator consent</span>
+                <span class="armlamp" id="armlamp-sel" role="status"><span class="d"></span> <span class="lt">SAFE</span></span>
+              </div>
+              <div class="footnote" id="sel-cap-label">Reported capabilities</div>
+              <div class="row sel-section wrap-value" id="sel-capabilities"></div>
+              <div class="footnote" id="sel-detail-label">Last reported details</div>
+              <div class="kv mono muted wrap-value sel-section" id="sel-detail"></div>
             </div>
-            {% if sel_caps %}
-            <div class="row" style="margin-bottom:9px">
-              {% for c in sel_caps %}<span class="chip cap">{{ c }}</span>{% endfor %}
-            </div>
-            {% endif %}
-            {% if sel_detail %}<div class="kv mono muted wrap-value" style="margin-bottom:6px">{{ sel_detail }}</div>{% endif %}
-            <div class="kv mono" style="color:var(--blue)">airspace: {{ target_count }} targets in the shared pool</div>
-            {% else %}
-            <div class="card2">Connect a device to see its capabilities, health, and airspace.</div>
-            {% endif %}
+            <div class="kv mono wrap-value" id="sel-pool-count">Shared pool: waiting for targets</div>
+            <div class="footnote" id="sel-pool-status" data-target-status role="status" hidden></div>
           </div>
 
           <div class="card">

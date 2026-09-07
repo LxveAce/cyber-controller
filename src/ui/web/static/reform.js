@@ -302,6 +302,7 @@
   // ── Dashboard device actions (Connect / Disconnect / Scan) ─────────
   var selectedPort = null;
   var lastDevices = [];
+  var deviceInventory = { status: "loading", issued: 0, settled: 0 };
   function replacePickerRows(container, html) {
     if (container._ccPickerHtml === html) return;
     var active = document.activeElement;
@@ -355,15 +356,79 @@
     updateSelectedPanel(selDev);
     subscribeSerial(streamDev ? streamDev.port : null, streamDev ? streamDev.firmware : null);
   }
-  // The "Selected Device" panel reflects the ACTION target (what's highlighted + what Connect will use),
-  // including when it's disconnected — so panel, highlighted row and status message all agree (N01).
+  function reportedText(value) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+  function reportedDetails(device) {
+    var t = device.telemetry;
+    if (!t || typeof t !== "object" || Array.isArray(t)) t = {};
+    var ident = [reportedText(t.board), reportedText(t.chip)].filter(Boolean).join("/") ||
+      reportedText(device.detected_chip);
+    var parts = ident ? [ident] : [];
+    ["fw", "ui"].forEach(function (key) {
+      var value = reportedText(t[key]);
+      if (value) parts.push(key + " " + value);
+    });
+    if (t.ops && typeof t.ops === "object" && !Array.isArray(t.ops)) {
+      var counts = ["ready", "planned", "attachable_unavailable"].map(function (key) {
+        var count = t.ops[key];
+        return Number.isSafeInteger(count) && count >= 0 ? String(count) : "—";
+      });
+      if (counts.some(function (count) { return count !== "—"; })) parts.push("ops " + counts.join("/"));
+    }
+    if (Number.isSafeInteger(t.heap) && t.heap >= 0) parts.push("heap " + Math.floor(t.heap / 1024) + " KB");
+    return parts.join("  ·  ");
+  }
   function updateSelectedPanel(selDev) {
     var selTitle = document.getElementById("sel-title");
     if (!selTitle) return;
-    if (!selectedPort) { selTitle.textContent = "none selected"; return; }
-    var fw = selDev && (selDev.firmware || selDev.name);
-    selTitle.textContent = selectedPort + " · " +
-      (selDev && selDev.connected ? (fw || "device") : "disconnected");
+    var status = deviceInventory.status;
+    var messages = {
+      loading: "Loading device inventory…",
+      ready: "",
+      stale: "Device inventory could not refresh; showing the last successful read.",
+      unavailable: "Device inventory is unavailable. Try Scan Ports again.",
+      unauthorized: "Sign in again to load device details.",
+    };
+    var notice = document.getElementById("sel-inventory-status");
+    notice.textContent = messages[status];
+    notice.hidden = !messages[status];
+    var show = !!(selectedPort && selDev && status !== "unauthorized");
+    document.getElementById("sel-body").hidden = !show;
+    document.getElementById("sel-empty").hidden = show;
+    document.getElementById("sel-empty").textContent = status === "unauthorized" ?
+      "Selected device details are unavailable." : "Select a device to view its reported details.";
+    var fw = show ? reportedText(selDev.firmware) || reportedText(selDev.name) : "";
+    selTitle.textContent = status === "unauthorized" ? "sign-in required" : !show ? "none selected" :
+      selectedPort + " · " + (selDev.connected ? fw || "device" : "disconnected");
+    var connection = document.getElementById("sel-connection");
+    connection.textContent = "";
+    connection.classList.toggle("on", !!(show && selDev.connected && status === "ready"));
+    if (show) {
+      connection.textContent = selDev.connected ? "Connected at last read" : "Disconnected at last read";
+      var probe = selDev.health === "alive" ? "responded" : selDev.health === "no-reply" ? "no reply" :
+        selDev.health === "no-cli" ? "no CLI" : "";
+      if (selDev.connected && probe) connection.textContent += " · Last probe: " + probe;
+    }
+    document.getElementById("sel-cap-label").textContent = show && !selDev.connected ?
+      "Previously reported capabilities" : "Reported capabilities";
+    var caps = document.getElementById("sel-capabilities");
+    caps.textContent = "";
+    if (show) {
+      var reported = Array.isArray(selDev.runtime_capabilities) ? selDev.runtime_capabilities : [];
+      var labels = Array.from(new Set(reported.map(reportedText).filter(Boolean).map(function (s) { return s.toUpperCase(); }))).sort();
+      labels.forEach(function (label) {
+        var chip = document.createElement("span");
+        chip.className = "chip cap";
+        chip.textContent = label;
+        caps.appendChild(chip);
+      });
+      if (!labels.length) caps.textContent = "No capabilities reported";
+    }
+    document.getElementById("sel-detail-label").textContent = show && !selDev.connected ?
+      "Previously reported details" : "Last reported details";
+    document.getElementById("sel-detail").textContent = show ? reportedDetails(selDev) || "No details reported" : "";
+    refreshArmed();
   }
   var devTable = document.getElementById("dash-devices");
   if (devTable) {
@@ -453,11 +518,29 @@
   }
 
   function refreshDevices() {
+    var request = ++deviceInventory.issued;
     return getJSON("/api/devices").then(function (devs) {
+      if (!Array.isArray(devs)) throw new Error("Invalid device inventory");
+      var ports = new Set();
+      devs.forEach(function (d) {
+        if (!d || typeof d !== "object" || Array.isArray(d) ||
+            typeof d.port !== "string" || !d.port.trim() || ports.has(d.port) || typeof d.connected !== "boolean") {
+          throw new Error("Invalid device inventory");
+        }
+        ["name", "firmware"].forEach(function (key) {
+          if (d[key] != null && typeof d[key] !== "string") throw new Error("Invalid device label");
+        });
+        ports.add(d.port);
+      });
+      return devs;
+    }).then(function (devs) {
+      if (request < deviceInventory.settled) return;
+      deviceInventory.settled = request;
+      deviceInventory.status = "ready";
       // Detect connect-state transitions vs the previous inventory so serial subscriptions survive a
       // same-port reconnect (N02): a port that just dropped forgets its stale subscription; a port that
       // just came back (or a still-connected port that vanished then returned) re-subscribes its sinks.
-      var wasConnected = {};
+      var wasConnected = Object.create(null);
       lastDevices.forEach(function (d) { wasConnected[d.port] = d.connected; });
       devs.forEach(function (d) {
         if (wasConnected[d.port] === true && !d.connected) invalidateSubscription(d.port);
@@ -483,7 +566,6 @@
       var rc = document.getElementById("rail-device-count");
       if (rc) rc.textContent = count;
 
-      // the SELECTED (else first) connected device drives Selected Device + the serial subscription
       lastDevices = devs;
       applySelectedDevice();
       if (huntSelection) huntSelection.control.setDevices(devs);
@@ -493,7 +575,15 @@
       if (window.__macroSyncDevices) window.__macroSyncDevices(devs);
       if (window.__rulesSyncDevices) window.__rulesSyncDevices(devs);
       if (window.__bcSyncDevices) window.__bcSyncDevices(devs);
-    }).catch(function () {});
+    }, function (error) {
+      if (request < deviceInventory.settled) return;
+      deviceInventory.settled = request;
+      if (error === 401 || error === 403) deviceInventory.status = "unauthorized";
+      else if (deviceInventory.status !== "unauthorized") {
+        deviceInventory.status = deviceInventory.status === "ready" || deviceInventory.status === "stale" ? "stale" : "unavailable";
+      }
+      updateSelectedPanel(lastDevices.filter(function (d) { return d.port === selectedPort; })[0] || null);
+    });
   }
 
   var huntSelection = window.CCTargetSelection.mount({
@@ -533,6 +623,9 @@
       }
       var xc = document.getElementById("xc-count");
       if (xc) xc.textContent = ts.length;
+      var poolCount = document.getElementById("sel-pool-count");
+      if (poolCount) poolCount.textContent = event && event.kind === "auth-loss" ? "Shared pool unavailable" :
+        "Shared pool: " + ts.length + " targets at last refresh";
       renderHunt(ts);
       huntSelection.afterRender();
       if (window.__ccRefreshTails) window.__ccRefreshTails();
