@@ -167,6 +167,14 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .termrow .st{flex-shrink:0}
 .device-pick:focus-visible,.termrow:focus-visible,#dash-devices:focus-visible,#fw-ports:focus-visible,#reform-termlist:focus-visible,.tail-scroll:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 .wrap-value{min-width:0;overflow-wrap:anywhere}
+#selected-device-card .sel-section{margin-bottom:9px}
+#selected-device-card .footnote{margin-bottom:5px}
+#sel-capabilities .chip{max-width:100%;overflow-wrap:anywhere}
+#selected-device-card #sel-title{white-space:normal}
+#sel-pool-count{color:var(--blue)}
+.device-health-table{table-layout:fixed}
+.device-health-table td{overflow-wrap:anywhere}
+.device-health-table th.r{width:3rem}
 .tail-scroll{max-width:100%;overflow:auto}
 .tail-table{table-layout:fixed;min-width:440px}
 .tail-table th:first-child{width:10rem}
