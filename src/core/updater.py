@@ -19,6 +19,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -33,9 +35,23 @@ log = logging.getLogger(__name__)
 RELEASES_API = "https://api.github.com/repos/LxveAce/cyber-controller/releases"
 # Fallback deep-link when a specific release carries no html_url.
 RELEASES_PAGE = "https://github.com/LxveAce/cyber-controller/releases"
+# The only release links the desktop update dialog and its browser handoff are ever handed:
+# the repository releases page itself, or one of its tag pages. Anything else in the metadata
+# falls back to RELEASES_PAGE. The character policy is checked on the ORIGINAL string before
+# any parsing, because urlsplit silently strips ASCII controls and some whitespace, which
+# would let a link carrying them pass the parsed checks and be returned raw.
+_RELEASES_HOST = "github.com"
+_RELEASES_PATH = "/LxveAce/cyber-controller/releases"
+_RELEASE_TAG = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]*\Z")
+_LINK_CHARS = re.compile(r"[A-Za-z0-9:/._-]+\Z")     # every canonical release link, nothing else
 
 # Hard, short default timeout so the check never lingers (it also runs off the UI thread).
 DEFAULT_TIMEOUT = 6.0
+
+# The releases-list document is read under a fixed byte bound. One page of the live endpoint is
+# a few hundred kilobytes; a document beyond this limit is refused as an offline result rather
+# than buffered and parsed.
+MAX_RELEASES_BYTES = 8 * 1024 * 1024
 
 # Result statuses.
 UP_TO_DATE = "UP_TO_DATE"
@@ -67,14 +83,19 @@ def latest_releases(timeout: float = DEFAULT_TIMEOUT) -> list[dict]:
     """GET the GitHub releases list for the repo. Raise :class:`UpdaterOffline` on any failure.
 
     Reuses flash_core's SSRF guard + redirect-allowlisted opener so the fetch (and any redirect)
-    can only ever reach the trusted GitHub host set.
+    can only ever reach the trusted GitHub host set. At most :data:`MAX_RELEASES_BYTES` plus one
+    byte are ever read; a longer document is refused as offline, never parsed.
     """
     try:
         flash_core._require_allowed_url(RELEASES_API)
         req = urllib.request.Request(RELEASES_API, headers=flash_core._UA)
         with flash_core._OPENER.open(req, timeout=timeout) as resp:
-            raw = resp.read()
+            raw = resp.read(MAX_RELEASES_BYTES + 1)
+        if len(raw) > MAX_RELEASES_BYTES:
+            raise UpdaterOffline(f"releases payload exceeds {MAX_RELEASES_BYTES} bytes")
         data = json.loads(raw.decode("utf-8"))
+    except UpdaterOffline:
+        raise
     except Exception as exc:  # noqa: BLE001 — any failure is "offline" for our purposes
         raise UpdaterOffline(str(exc)) from exc
     if not isinstance(data, list):
@@ -106,6 +127,38 @@ def behind_count(installed: str, tags: list[str]) -> int:
     return sum(1 for t in tags if install._parse(t) > iv)
 
 
+def release_page_url(html_url: object) -> str:
+    """Return *html_url* only when it is this repository's HTTPS releases page or a tag page
+    directly under it; otherwise :data:`RELEASES_PAGE`.
+
+    Pure and finite: absent, non-string or malformed metadata yields the fallback. The original
+    string must consist only of the characters canonical release links use (letters, digits,
+    colon, slash, dot, underscore, hyphen), so ASCII controls, DEL and any whitespace are refused
+    before parsing. Then the host must be exactly ``github.com`` (so userinfo or a port in the
+    authority is refused), the scheme ``https``, the path the releases page or
+    ``.../releases/tag/<tag>`` with a plain tag, and there must be no query or fragment. A link
+    that passes is returned unchanged.
+    """
+    if not isinstance(html_url, str) or not html_url:
+        return RELEASES_PAGE
+    if not _LINK_CHARS.match(html_url):
+        return RELEASES_PAGE
+    try:
+        parts = urllib.parse.urlsplit(html_url)
+    except ValueError:
+        return RELEASES_PAGE
+    if parts.scheme != "https" or parts.netloc != _RELEASES_HOST:
+        return RELEASES_PAGE
+    if parts.query or parts.fragment or "\\" in html_url:
+        return RELEASES_PAGE
+    if parts.path == _RELEASES_PATH:
+        return html_url
+    prefix = _RELEASES_PATH + "/tag/"
+    if parts.path.startswith(prefix) and _RELEASE_TAG.match(parts.path[len(prefix):]):
+        return html_url
+    return RELEASES_PAGE
+
+
 def _newest(releases: list[dict]) -> tuple[str, str]:
     """Return (tag, html_url) of the newest published release, or ('', '') if none."""
     best_rel: dict | None = None
@@ -116,7 +169,7 @@ def _newest(releases: list[dict]) -> tuple[str, str]:
             best_ver, best_rel = ver, rel
     if best_rel is None:
         return "", ""
-    return str(best_rel.get("tag_name") or ""), str(best_rel.get("html_url") or RELEASES_PAGE)
+    return str(best_rel.get("tag_name") or ""), release_page_url(best_rel.get("html_url"))
 
 
 def check(installed: str, settings_updates: Mapping[str, Any] | None = None,

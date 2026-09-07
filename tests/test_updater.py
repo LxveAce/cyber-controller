@@ -12,9 +12,11 @@ Every network call is mocked — no test touches the real GitHub. Covers:
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
-from src.core import updater
+from src.core import flash_core, updater
 
 
 def _rel(tag: str, *, prerelease: bool = False, draft: bool = False,
@@ -204,3 +206,217 @@ def test_releases_api_targets_allowlisted_host():
     from src.core import flash_core
     # Raises ValueError if not https + allowlisted host; returns the url on success.
     assert flash_core._require_allowed_url(updater.RELEASES_API) == updater.RELEASES_API
+
+
+# ---- latest_releases reads the metadata document under a fixed byte bound (U1) -------------------
+
+class _FakeResponse:
+    """A urllib-like response over bytes that honours read(n) and records every request."""
+
+    def __init__(self, data):
+        self.data, self.pos, self.requested = data, 0, []
+
+    def read(self, n=-1):
+        if n is None or n < 0:
+            n = len(self.data) - self.pos
+        self.requested.append(n)
+        chunk = self.data[self.pos:self.pos + n]
+        self.pos += len(chunk)
+        return chunk
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _serve(monkeypatch, data):
+    """Serve *data* from the hardened opener; returns the responses handed out."""
+    made = []
+
+    def fake_open(req, timeout=None):
+        resp = _FakeResponse(data)
+        made.append(resp)
+        return resp
+
+    monkeypatch.setattr(flash_core._OPENER, "open", fake_open)
+    return made
+
+
+def _padded_list(total):
+    """A valid one-release JSON list padded with whitespace (still valid JSON) to *total* bytes."""
+    body = json.dumps([_rel("1.0.0")]).encode()
+    assert len(body) < total
+    return body + b" " * (total - len(body))
+
+
+def test_latest_releases_makes_one_bounded_read(monkeypatch):
+    made = _serve(monkeypatch, json.dumps([_rel("1.0.0")]).encode())
+    assert updater.latest_releases(timeout=0.01)[0]["tag_name"] == "1.0.0"
+    assert made[0].requested == [updater.MAX_RELEASES_BYTES + 1], "bound plus one, single read"
+
+
+def test_latest_releases_accepts_a_valid_document_exactly_at_the_bound(monkeypatch):
+    _serve(monkeypatch, _padded_list(updater.MAX_RELEASES_BYTES))
+    assert updater.latest_releases(timeout=0.01)[0]["tag_name"] == "1.0.0"
+
+
+def test_latest_releases_refuses_one_byte_over_the_bound_as_offline(monkeypatch):
+    made = _serve(monkeypatch, _padded_list(updater.MAX_RELEASES_BYTES + 1))
+    with pytest.raises(updater.UpdaterOffline, match="exceeds"):
+        updater.latest_releases(timeout=0.01)
+    assert made[0].requested == [updater.MAX_RELEASES_BYTES + 1]
+
+
+def test_latest_releases_never_parses_an_oversized_document(monkeypatch):
+    _serve(monkeypatch, b"[" + b" " * (updater.MAX_RELEASES_BYTES + 64))   # would be invalid JSON
+    monkeypatch.setattr(updater.json, "loads",
+                        lambda *a, **k: pytest.fail("an oversized document must not be parsed"))
+    with pytest.raises(updater.UpdaterOffline, match="exceeds"):
+        updater.latest_releases(timeout=0.01)
+
+
+@pytest.mark.parametrize("data", [bytes([0xFF, 0xFE, 0xFD]), b"{not json", b'{"a": 1}', b""],
+                         ids=["not-utf8", "malformed", "not-a-list", "empty"])
+def test_latest_releases_refuses_bad_data_as_offline(monkeypatch, data):
+    _serve(monkeypatch, data)
+    with pytest.raises(updater.UpdaterOffline):
+        updater.latest_releases(timeout=0.01)
+
+
+def test_latest_releases_wraps_a_read_failure_as_offline(monkeypatch):
+    class _Broken(_FakeResponse):
+        def read(self, n=-1):
+            raise OSError("connection reset mid-body")
+
+    monkeypatch.setattr(flash_core._OPENER, "open", lambda req, timeout=None: _Broken(b""))
+    with pytest.raises(updater.UpdaterOffline, match="connection reset") as info:
+        updater.latest_releases(timeout=0.01)
+    assert isinstance(info.value.__cause__, OSError)
+
+
+# ---- release_page_url: the one boundary both UIs receive release links through (U2) -------------
+
+_TAG_LINK = "https://github.com/LxveAce/cyber-controller/releases/tag/v2.0.1"
+
+
+@pytest.mark.parametrize("url", [
+    _TAG_LINK,
+    "https://github.com/LxveAce/cyber-controller/releases/tag/2.0.0",
+    "https://github.com/LxveAce/cyber-controller/releases/tag/v1.7.0-beta",
+    "https://github.com/LxveAce/cyber-controller/releases/tag/v1.8.0_rc.1",
+    updater.RELEASES_PAGE,
+], ids=["published-tag", "bare-version", "prerelease-tag", "underscore-tag", "releases-page"])
+def test_release_page_url_keeps_legitimate_links_unchanged(url):
+    assert updater.release_page_url(url) == url
+
+
+@pytest.mark.parametrize("url", [
+    "http://github.com/LxveAce/cyber-controller/releases/tag/v2.0.1",
+    "https://example.com/LxveAce/cyber-controller/releases/tag/v2.0.1",
+    "https://github.com@example.com/LxveAce/cyber-controller/releases/tag/v2.0.1",
+    "https://github.com:8443/LxveAce/cyber-controller/releases/tag/v2.0.1",
+    "https://github.com.example.com/LxveAce/cyber-controller/releases/tag/v2.0.1",
+    "https://github.com/Other/repo/releases/tag/v2.0.1",
+    "https://github.com/LxveAce/cyber-controller/settings",
+    "https://github.com/LxveAce/cyber-controller/releases/tag/v2.0.1/../../settings",
+    "https://github.com/LxveAce/cyber-controller/releases/tag/v2.0.1?x=1",
+    "https://github.com/LxveAce/cyber-controller/releases/tag/v2.0.1#frag",
+    "https://github.com/LxveAce/cyber-controller/releases/tag/",
+    "https://github.com/LxveAce/cyber-controller/releases/tag/..",
+    "https://github.com/LxveAce/cyber-controller/releases/tag/v2.0.1\\evil",
+    "https://github.com/LxveAce/cyber-controller/releases/tag/v2.0.1/extra",
+    "javascript:alert(1)",
+    "file:///etc/passwd",
+    "not a url",
+    "",
+], ids=["http", "other-host", "userinfo", "port", "lookalike-host", "other-repo", "other-path",
+        "traversal", "query", "fragment", "empty-tag", "dot-dot-tag", "backslash", "trailing-path",
+        "javascript", "file", "garbage", "empty"])
+def test_release_page_url_falls_back_for_unexpected_links(url):
+    assert updater.release_page_url(url) == updater.RELEASES_PAGE
+
+
+@pytest.mark.parametrize("value", [None, 42, 1.5, True, [_TAG_LINK], {"url": _TAG_LINK}, b"x"],
+                         ids=["none", "int", "float", "bool", "list", "dict", "bytes"])
+def test_release_page_url_handles_absent_or_non_string_metadata(value):
+    assert updater.release_page_url(value) == updater.RELEASES_PAGE
+
+
+def test_release_page_url_handles_a_malformed_authority_finitely():
+    assert updater.release_page_url("https://[::1/LxveAce/cyber-controller/releases") \
+        == updater.RELEASES_PAGE
+
+
+def test_consumers_receive_only_the_validated_link(monkeypatch):
+    # Both desktop call sites read apply_update_url(result), whose value _newest sets.
+    _patch_releases(monkeypatch, [_rel("2.0.0", html_url="https://evil.example/LxveAce/x")])
+    result = updater.check("1.0.0")
+    assert result.status == updater.NEWER and result.latest_url == updater.RELEASES_PAGE
+    assert updater.apply_update_url(result) == updater.RELEASES_PAGE
+
+
+def test_consumers_keep_a_legitimate_tag_link(monkeypatch):
+    _patch_releases(monkeypatch, [_rel("2.0.0")])
+    result = updater.check("1.0.0")
+    assert updater.apply_update_url(result) == \
+        "https://github.com/LxveAce/cyber-controller/releases/tag/2.0.0"
+
+
+def test_missing_html_url_falls_back_to_the_releases_page(monkeypatch):
+    rel = _rel("2.0.0")
+    del rel["html_url"]
+    _patch_releases(monkeypatch, [rel])
+    assert updater.apply_update_url(updater.check("1.0.0")) == updater.RELEASES_PAGE
+
+
+# ---- release_page_url checks the original string before parsing -------------------------------
+
+@pytest.mark.parametrize("url", [
+    "\n" + _TAG_LINK,
+    _TAG_LINK.replace("github.com", "git\thub.com"),
+    _TAG_LINK.replace("v2.0.1", "v2.0\n.1"),
+], ids=["leading-newline", "tab-in-host", "newline-in-tag"])
+def test_release_page_url_refuses_the_control_characters_urlsplit_would_strip(url):
+    assert updater.release_page_url(url) == updater.RELEASES_PAGE
+
+
+def _with(char, where):
+    if where == "start":
+        return char + _TAG_LINK
+    if where == "host":
+        return _TAG_LINK.replace("github.com", "git" + char + "hub.com")
+    if where == "tag":
+        return _TAG_LINK.replace("v2.0.1", "v2.0" + char + ".1")
+    return _TAG_LINK + char
+
+
+@pytest.mark.parametrize("code", list(range(0x00, 0x20)) + [0x7F], ids=lambda c: f"0x{c:02x}")
+@pytest.mark.parametrize("where", ["start", "host", "tag", "end"])
+def test_release_page_url_refuses_every_ascii_control_anywhere(code, where):
+    assert updater.release_page_url(_with(chr(code), where)) == updater.RELEASES_PAGE
+
+
+@pytest.mark.parametrize("char", [" ", "\u00a0", "\u2028", "\u2029", "\u3000", "\ufeff"],
+                         ids=["space", "nbsp", "line-sep", "para-sep", "ideographic-space", "bom"])
+@pytest.mark.parametrize("where", ["start", "host", "tag", "end"])
+def test_release_page_url_refuses_raw_whitespace_anywhere(char, where):
+    assert updater.release_page_url(_with(char, where)) == updater.RELEASES_PAGE
+
+
+@pytest.mark.parametrize("char", ["%", "@", "?", "#", "&", "=", "+", "~", "!", "'", "\"", "<", ">",
+                                  "\u00e9", "\u0130"],
+                         ids=["percent", "at", "question", "hash", "amp", "eq", "plus", "tilde",
+                              "bang", "quote", "dquote", "lt", "gt", "e-acute", "dotted-I"])
+def test_release_page_url_refuses_characters_outside_the_canonical_set(char):
+    assert updater.release_page_url(_TAG_LINK.replace("v2.0.1", "v2" + char + ".0.1")) \
+        == updater.RELEASES_PAGE
+
+
+def test_release_page_url_never_returns_a_string_with_controls_or_whitespace():
+    seen = set()
+    for code in list(range(0x00, 0x21)) + [0x7F, 0xA0, 0x2028]:
+        for where in ("start", "host", "tag", "end"):
+            seen.add(updater.release_page_url(_with(chr(code), where)))
+    assert seen == {updater.RELEASES_PAGE}
