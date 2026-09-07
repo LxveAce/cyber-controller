@@ -1,7 +1,7 @@
 """BLE sightings/report journal — bounded, durable M1 core/store. Pure core: no HTTP/UI, no device I/O, no
 ingestor/hub edits, no default-path resolution. A later adapter candidate wires this to the ingestor seam.
 
-Storage contract:
+Contract:
 
 * One typed, allowlisted fact per row — both explicit-address sightings (``ble_found``) and addressless reports
   (``ble_observation``), never a raw event/Target, never raw serial lines or secrets. Null RSSI stays distinct
@@ -450,7 +450,7 @@ class BleJournal:
                 return "rejected:closing"
             if self._degraded:
                 self._counts["degraded_rejected"] += 1
-                return "rejected:degraded"          # reject new work until a deliberate reopen (BJM-02)
+                return "rejected:degraded"          # reject new work until a deliberate reopen
             seq = self._seq + 1
             built = build_row(self._run_id, seq, observed_at, fact, self._limits)
             if built is None:
@@ -484,7 +484,7 @@ class BleJournal:
             while True:
                 with self._admit_lock:
                     if self._degraded:
-                        return                          # stop draining: queued rows remain undrained (BJM-02)
+                        return                          # stop draining: queued rows remain undrained
                     while not self._queue and not self._fenced:
                         self._not_empty.wait()
                     if self._degraded:
@@ -525,7 +525,7 @@ class BleJournal:
             fd = os.open(self._active_path, os.O_WRONLY | os.O_APPEND | _O_BINARY)
             try:
                 n = os.write(fd, payload)               # a single append; a short/zero write is uncertain,
-                if n != len(payload):                   # not retried (no glue) and not acknowledged (BJM-01)
+                if n != len(payload):                   # not retried (no glue) and not acknowledged
                     self._enter_degraded(seq)
                     return
                 os.fsync(fd)

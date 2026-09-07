@@ -14,6 +14,8 @@ import atexit
 import logging
 import multiprocessing
 import sys
+import threading
+import time
 from pathlib import Path
 
 log = logging.getLogger("cyber-controller")
@@ -212,9 +214,10 @@ def _launch_web(dm, fe, bus, pool, vault=None, health=None, macro=None,
         from src.ui.web.app import launch_web
         # The web UI has no window of its own — it serves a browser. In a packaged --windowed build
         # there's no console to show the URL, so a user who picked "Web Remote" from the launcher would
-        # see nothing. Open the default browser at the server URL once it's had a moment to start.
-        _open_browser_when_ready(host, port)
-        return launch_web(dm, fe, bus, pool, host=host, port=port, audit=audit)
+        # see nothing. Open the default browser once the server we start reports that it is serving.
+        ready = LaunchReady()
+        _open_browser_when_ready(ready, host, port)
+        return launch_web(dm, fe, bus, pool, host=host, port=port, audit=audit, ready=ready)
     except ImportError as exc:
         log.exception("Browser UI startup import failed (module: %s)",
                       exc.name or "unspecified; see traceback")
@@ -284,25 +287,61 @@ def _launch_desktop_qt(dm, fe, bus, pool, vault=None, health=None, macro=None, a
         return 1
 
 
-def _open_browser_when_ready(host: str, port: int) -> None:
-    """Open the default browser at the web-UI URL after a short delay (server warm-up), in a daemon
-    thread so it never blocks the server. Localhost is used for display when bound to 0.0.0.0."""
-    import threading
-    import webbrowser
+_BROWSER_READY_SECONDS = 15.0
 
-    shown = "127.0.0.1" if host in ("0.0.0.0", "::") else host
-    url = f"http://{shown}:{port}"
+
+class LaunchReady:
+    """Readiness of the web server this process starts, reported from inside its own serving loop.
+
+    The server publishes the URL it actually serves, logs it, and then sets the event, so a
+    waiter that sees the event always sees the URL, and the log carries the real URL for a manual
+    open whether or not a browser helper is running. Nothing outside this process can set it: a
+    bind failure or an unrelated listener on the port never produces readiness.
+    """
+
+    def __init__(self) -> None:
+        self.event = threading.Event()
+        self.url: str | None = None
+
+    def serving(self, url: str) -> None:
+        self.url = url
+        log.info("Web remote serving at %s", url)
+        self.event.set()
+
+
+def _open_browser_when_ready(ready: LaunchReady, host: str, port: int, *, opener=None,
+                             wait: float = _BROWSER_READY_SECONDS, clock=time.monotonic):
+    """Open the default browser once the server reports serving, in a daemon thread so it never
+    blocks the server. Opens nothing when no report arrives within the deadline or arrives late.
+    Returns the helper thread, or None when the helper itself could not start; the server still
+    runs. Readiness means the owned serving loop was reached, not that a page rendered. Before
+    readiness only the bind configuration is logged; the usable URL is the one the server
+    reports, never a guess from host and port (a guess is wrong for TLS and IPv6 binds)."""
 
     def _go() -> None:
-        import time
-        time.sleep(1.5)
-        try:
-            webbrowser.open(url)
-        except Exception:
-            log.info("Web remote available at %s", url)
+        import webbrowser
 
-    log.info("Web remote starting at %s", url)
-    threading.Thread(target=_go, name="open-web-browser", daemon=True).start()
+        deadline = clock() + wait
+        signalled = ready.event.wait(max(0.0, deadline - clock()))
+        if not signalled or clock() > deadline or not ready.url:
+            log.warning("Web remote did not report serving within %gs; not opening a browser. "
+                        "Check the server log above.", wait)
+            return
+        try:
+            (opener or webbrowser.open)(ready.url)
+        except Exception as exc:  # noqa: BLE001 — no usable browser is not a server failure
+            log.warning("Browser did not open (%s); open %s yourself.", exc, ready.url)
+
+    log.info("Web remote bind configuration: host %s, port %s; the usable URL is logged when "
+             "the server reports serving.", host, port)
+    try:
+        helper = threading.Thread(target=_go, name="open-web-browser", daemon=True)
+        helper.start()
+    except Exception as exc:  # noqa: BLE001 — the browser helper is optional; the server is not
+        log.warning("Browser helper could not start (%s); no browser will open. Open the URL from "
+                    "the 'Web remote serving at' line yourself.", exc)
+        return None
+    return helper
 
 
 _LAUNCHERS = {
