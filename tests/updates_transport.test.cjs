@@ -128,3 +128,24 @@ test('card pagehide retires a body read and a fresh manual retry gets a new iden
   body.resolve(admission('completed',current));await flush();assert.equal(states.at(-1).latestTag,'v2.0.4');
   owner.suspend();assert.equal(f.timers.size,0);
 });
+
+test('transient poll failure shows an error, then a coalesced manual retry completes the same operation',async()=>{
+  const f=fixture(),states=[];
+  const owner=card.create({getVersion:()=>({version:'2.0.1'}),check:f.client.check,onState:x=>states.push(x)});
+  // first check: admission accepted, one poll issued, then that poll fails transiently (503) -> visible error
+  const first=owner.check();await flush();
+  f.reply(0,admission('checking'));await flush();f.tick();await flush();
+  assert.equal(f.calls[1].url,`/api/updates/status?runtime_id=${runtime}&operation_id=${operation}`);
+  f.reply(1,{},503);assert.equal(await first,false);
+  assert.equal(states.at(-1).kind,'error');assert.equal(states.at(-1).busy,false);assert.equal(f.timers.size,0);
+  // user retries: a fresh admission COALESCES to the SAME runtime/operation and then completes
+  const retry=owner.check();await flush();assert.equal(f.calls.length,3);
+  assert.equal(states.at(-1).kind,'checking');
+  f.reply(2,admission('checking',null,{reason:'coalesced'}),202);await flush();f.tick();await flush();
+  assert.equal(f.calls[3].url,`/api/updates/status?runtime_id=${runtime}&operation_id=${operation}`);
+  f.reply(3,view('completed',newer));assert.equal(await retry,true);
+  // op2's completion wins; the first operation's error was superseded, never overwriting the newer result
+  assert.equal(states.at(-1).kind,'newer');assert.equal(states.at(-1).latestTag,'v2.0.4');
+  assert(states.some(s=>s.kind==='error'));
+  owner.suspend();assert.equal(f.timers.size,0);
+});

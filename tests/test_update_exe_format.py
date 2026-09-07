@@ -413,3 +413,180 @@ def test_real_amd64_pe_validates():
         header = fh.read(ef.RECOMMENDED_HEADER_BYTES)
     assert ef.validate_windows_installer(header) == ef._PE_AMD64
     ef.validate_onefile_executable(header, "windows-x64")
+
+
+# ── Bounded prefix planning ──────────────────────────────────────────────────────────────────────
+
+from tests import exe_images as img  # noqa: E402 — appended section
+
+
+def _reader(data, short_at=None):
+    calls = []
+
+    def read(offset, length):
+        calls.append((offset, length))
+        chunk = data[offset:offset + length]
+        if short_at is not None and offset == short_at:
+            chunk = chunk[:-1]
+        return chunk
+
+    read.calls = calls
+    return read
+
+
+BEYOND_4096 = [
+    ("linux-x64", img.elf64(phoff=8192), 8248),
+    ("windows-x64", img.pe32plus(lfanew=0x2000), 8496),
+    ("macos-arm64", img.macho_thin_arm64(sizeofcmds=4104), 4136),
+    ("macos-arm64", img.macho_fat(first_offset=16384, stride=16384), 32896),
+]
+BEYOND_IDS = ["elf-phdrs-at-8192", "pe-lfanew-8192", "thin-cmds-4104", "fat-slice-at-32768"]
+
+
+@pytest.mark.parametrize("key,image,expected", [
+    ("linux-x64", img.elf64(img.EM_X86_64), 120),
+    ("linux-arm64", img.elf64(img.EM_AARCH64), 120),
+    ("windows-x64", img.pe32plus(), 432),
+    ("macos-arm64", img.macho_thin_arm64(), 128),
+    ("macos-arm64", img.macho_thin_arm64(endian=">"), 128),
+    ("macos-arm64", img.macho_fat(), 1152),
+    *BEYOND_4096,
+], ids=["elf-x64", "elf-arm64", "pe-amd64", "thin-le", "thin-be", "fat", *BEYOND_IDS])
+def test_planned_prefix_is_exactly_what_the_validator_needs(key, image, expected):
+    read = _reader(image)
+    need = ef.required_prefix_length(read, key, len(image))
+    assert need == expected
+    ef.validate_onefile_executable(image[:need], key)          # the planned prefix validates
+    with pytest.raises(ef.ExecutableFormatError):
+        ef.validate_onefile_executable(image[:need - 1], key)  # one byte fewer is incomplete
+    assert all(o >= 0 and n > 0 and o + n <= len(image) for o, n in read.calls), "reads bounded"
+
+
+@pytest.mark.parametrize("key,image,_", BEYOND_4096, ids=BEYOND_IDS)
+def test_a_fixed_4096_byte_prefix_refuses_these_valid_files(key, image, _):
+    with pytest.raises(ef.ExecutableFormatError):
+        ef.validate_onefile_executable(image[:4096], key)
+
+
+def test_extent_beyond_the_file_length_is_refused_not_clamped():
+    image = img.elf64(phoff=8192)
+    with pytest.raises(ef.ExecutableFormatError, match="beyond the file length"):
+        ef.required_prefix_length(_reader(image), "linux-x64", 8000)
+
+
+def test_extent_beyond_the_inspected_limit_is_refused_not_clamped():
+    b = bytearray(img.elf64())
+    struct.pack_into("<Q", b, 32, ef.MAX_INSPECTED_PREFIX_BYTES)   # e_phoff at the limit
+    with pytest.raises(ef.ExecutableFormatError, match="inspected-prefix limit"):
+        ef.required_prefix_length(_reader(bytes(b)), "linux-x64",
+                                  ef.MAX_INSPECTED_PREFIX_BYTES + 4096)
+
+
+@pytest.mark.parametrize("key,image,short_at", [
+    ("windows-x64", img.pe32plus(), 0x80),        # the PE header read
+    ("macos-arm64", img.macho_fat(), 8),          # the descriptor table
+    ("macos-arm64", img.macho_fat(), 1024),       # the arm64 slice header
+    ("linux-x64", img.elf64(), 0),                # the ELF header itself
+], ids=["pe-header", "fat-table", "fat-slice-header", "elf-header"])
+def test_short_intermediate_read_is_a_finite_refusal(key, image, short_at):
+    with pytest.raises(ef.ExecutableFormatError, match="short read"):
+        ef.required_prefix_length(_reader(image, short_at=short_at), key, len(image))
+
+
+def test_fat_count_over_64_is_refused_before_its_table_is_read():
+    b = bytearray(4096)
+    struct.pack_into(">II", b, 0, 0xCAFEBABE, 65)
+    read = _reader(bytes(b))
+    assert ef.required_prefix_length(read, "macos-arm64", len(b)) == ef.MIN_HEADER_BYTES
+    assert read.calls == [(0, 8)], "nothing beyond the 8-byte header was read"
+    with pytest.raises(ef.ExecutableFormatError, match="implausible"):
+        ef.validate_onefile_executable(bytes(b[:64]), "macos-arm64")
+
+
+def test_declared_fat_slice_beyond_the_file_is_refused():
+    b = bytearray(img.macho_fat())
+    struct.pack_into(">I", b, 8 + 20 + 12, 1 << 20)                # arm64 entry size: 1 MiB
+    with pytest.raises(ef.ExecutableFormatError, match="declared member"):
+        ef.required_prefix_length(_reader(bytes(b)), "macos-arm64", len(b))
+
+
+def test_fat_without_arm64_slice_plans_the_table_and_the_validator_refuses():
+    image = img.macho_fat(cpus=(img.CPU_X86_64,))
+    need = ef.required_prefix_length(_reader(image), "macos-arm64", len(image))
+    assert need == ef.MIN_HEADER_BYTES
+    with pytest.raises(ef.ExecutableFormatError, match="no arm64 slice"):
+        ef.validate_onefile_executable(image[:need], "macos-arm64")
+
+
+@pytest.mark.parametrize("key", ["linux-x64", "windows-x64", "macos-arm64"])
+def test_wrong_format_plans_the_floor_and_the_validator_names_the_reason(key):
+    image = b"\x00" * 512
+    assert ef.required_prefix_length(_reader(image), key, len(image)) == ef.MIN_HEADER_BYTES
+    with pytest.raises(ef.ExecutableFormatError):
+        ef.validate_onefile_executable(image[:64], key)
+
+
+@pytest.mark.parametrize("length", [0, 63])
+def test_files_below_the_public_floor_are_refused_before_any_read(length):
+    read = _reader(b"\x7fELF" + b"\x00" * 60)
+    with pytest.raises(ef.ExecutableFormatError, match="too short"):
+        ef.required_prefix_length(read, "linux-x64", length)
+    assert read.calls == []
+
+
+def test_unsupported_key_and_bad_length_are_refused():
+    with pytest.raises(ef.ExecutableFormatError):
+        ef.required_prefix_length(_reader(img.elf64()), "windows-arm64", 512)
+    with pytest.raises(ef.ExecutableFormatError):
+        ef.required_prefix_length(_reader(img.elf64()), "linux-x64", -1)
+    with pytest.raises(ef.ExecutableFormatError):
+        ef.required_prefix_length(_reader(img.elf64()), "linux-x64", True)
+
+
+@pytest.mark.parametrize("seed", range(12))
+@pytest.mark.parametrize("key", ["linux-x64", "windows-x64", "macos-arm64"])
+def test_arbitrary_bytes_never_raise_struct_error(seed, key):
+    import random
+    rnd = random.Random(seed)
+    image = bytes(rnd.getrandbits(8) for _ in range(rnd.randint(64, 300)))
+    try:
+        need = ef.required_prefix_length(_reader(image), key, len(image))
+        assert ef.MIN_HEADER_BYTES <= need <= len(image)
+        ef.validate_onefile_executable(image[:need], key)
+    except ef.ExecutableFormatError:
+        pass
+
+
+# ---- a short fat member never plans below the public floor ---------------------------------
+
+def _fat_at_28(size, slice_bytes=b""):
+    """The smallest fat layout the planner can meet: a 64-byte canonical fat header with one arm64
+    descriptor whose member starts right after the table (offset 28, align 0) and declares *size*
+    bytes."""
+    data = bytearray(64)
+    struct.pack_into(">II", data, 0, 0xCAFEBABE, 1)
+    struct.pack_into(">iiIII", data, 8, 0x0100000C, 0, 28, size, 0)
+    data[28:28 + len(slice_bytes)] = slice_bytes
+    return bytes(data)
+
+
+_TINY_SLICE = struct.pack("<IiiIIII", 0xFEEDFACF, 0x0100000C, 0, 2, 0, 0, 0) + bytes(4)
+
+
+@pytest.mark.parametrize("image,reads", [
+    (_fat_at_28(1), [(0, 8), (8, 20)]),                            # 28 + 1 = 29 without the floor
+    (_fat_at_28(32, bytes([0xAA]) * 32), [(0, 8), (8, 20), (28, 32)]),   # 28 + 32 = 60
+    (_fat_at_28(32, _TINY_SLICE), [(0, 8), (8, 20), (28, 32)]),    # 28 + min(32, 32 + 0) = 60
+], ids=["member-size-1", "non-macho-slice-at-28", "macho-slice-at-28-cmds-0"])
+def test_short_fat_member_never_plans_below_the_public_floor(image, reads):
+    seen = []
+
+    def read(offset, length):
+        seen.append((offset, length))
+        return image[offset:offset + length]
+
+    need = ef.required_prefix_length(read, "macos-arm64", len(image))
+    assert need == ef.MIN_HEADER_BYTES, "the promised floor, never 29 or 60"
+    assert seen == reads, "only the header, the table and (when 32 bytes exist) the slice header"
+    with pytest.raises(ef.ExecutableFormatError):
+        ef.validate_onefile_executable(image[:need], "macos-arm64")

@@ -291,3 +291,146 @@ def validate_windows_installer(header: bytes) -> int:
     if not isinstance(header, (bytes, bytearray)) or len(header) < MIN_HEADER_BYTES:
         raise ExecutableFormatError("header is too short to validate")
     return _parse_pe(bytes(header))
+
+
+# ── Bounded prefix planning (for the staging/apply boundary) ──────────────────────────────────────
+
+# Named resource limit on the leading bytes a caller may read to validate a staged file. It bounds a
+# read, not validity: a file whose required extent exceeds it is refused as over-limit, never
+# clamped into an accepted shorter prefix.
+MAX_INSPECTED_PREFIX_BYTES = 64 * 1024 * 1024
+
+
+def _read_exact(read, offset: int, length: int, file_length: int) -> bytes:
+    """Bounds-check a read BEFORE it happens (file length and the inspected-prefix limit),
+    then require exactly *length* bytes back; a short read is a finite refusal."""
+    if offset < 0 or length <= 0:
+        raise ExecutableFormatError(
+            f"invalid read request (offset={offset}, length={length})")
+    end = offset + length
+    if end > file_length:
+        raise ExecutableFormatError(
+            f"required bytes [{offset}, {end}) lie beyond the file length {file_length} "
+            "(incomplete)")
+    if end > MAX_INSPECTED_PREFIX_BYTES:
+        raise ExecutableFormatError(
+            f"required bytes [{offset}, {end}) exceed the inspected-prefix limit "
+            f"{MAX_INSPECTED_PREFIX_BYTES}")
+    data = read(offset, length)
+    if not isinstance(data, (bytes, bytearray)) or len(data) != length:
+        got = len(data) if isinstance(data, (bytes, bytearray)) else "non-bytes"
+        raise ExecutableFormatError(
+            f"short read at offset {offset}: wanted {length} bytes, got {got}")
+    return bytes(data)
+
+
+def _within_file(extent: int, file_length: int, what: str) -> int:
+    if extent > file_length:
+        raise ExecutableFormatError(
+            f"{what} extends to byte {extent}, beyond the file length {file_length} (incomplete)")
+    return extent
+
+
+def _bounded_extent(extent: int, file_length: int, what: str) -> int:
+    """An extent the validator must be given: refuse (never clamp) beyond the file or the limit."""
+    _within_file(extent, file_length, what)
+    if extent > MAX_INSPECTED_PREFIX_BYTES:
+        raise ExecutableFormatError(
+            f"{what} extends to byte {extent}, beyond the inspected-prefix limit "
+            f"{MAX_INSPECTED_PREFIX_BYTES}")
+    return extent
+
+
+def required_prefix_length(read, key: str, file_length: int) -> int:
+    """How many leading bytes :func:`validate_onefile_executable` needs for *key*, computed from the
+    file's own fixed headers through the caller's bounded ``read(offset, length) -> bytes``.
+
+    Every intermediate read is bounds-checked against *file_length* and
+    :data:`MAX_INSPECTED_PREFIX_BYTES` BEFORE it happens and must return exactly the requested
+    bytes; a short or out-of-range read, an implausible count, or an extent beyond the file or the
+    limit is a finite :class:`ExecutableFormatError` (never a ``struct.error``) and never a clamped
+    smaller answer. A declared fat slice is bounded against the real file length separately from the
+    shorter prefix needed to inspect its header and commands. When the fixed header is not the
+    expected format at all, the public validation floor (:data:`MIN_HEADER_BYTES`) is returned so
+    the validator states the precise reason. The result is always >= 64 and
+    <= min(*file_length*, the limit).
+    """
+    if key not in _ONEFILE_KEYS:
+        raise ExecutableFormatError(f"unsupported onefile key {key!r}")
+    if type(file_length) is not int or file_length < 0:
+        raise ExecutableFormatError(
+            f"file length must be a non-negative integer, got {file_length!r}")
+    if file_length < MIN_HEADER_BYTES:
+        raise ExecutableFormatError(
+            f"file is too short to validate ({file_length} bytes < {MIN_HEADER_BYTES})")
+    floor = MIN_HEADER_BYTES
+    if key in ("linux-x64", "linux-arm64"):
+        head = _read_exact(read, 0, _ELF_EHSIZE, file_length)
+        if head[:4] != b"\x7fELF" or head[4] != 2 or head[5] not in (1, 2):
+            return floor
+        endian = "<" if head[5] == 1 else ">"
+        e_phoff = struct.unpack_from(endian + "Q", head, 32)[0]
+        e_phentsize, e_phnum = struct.unpack_from(endian + "HH", head, 54)
+        if e_phnum == 0 or e_phentsize != _ELF_PHENTSIZE:
+            return floor
+        return _bounded_extent(max(floor, e_phoff + e_phnum * _ELF_PHENTSIZE), file_length,
+                               "ELF program-header table")
+    if key == "windows-x64":
+        head = _read_exact(read, 0, 0x40, file_length)
+        if head[:2] != b"MZ":
+            return floor
+        e_lfanew = struct.unpack_from("<I", head, 0x3C)[0]
+        if e_lfanew < 0x40:
+            return floor
+        coff_end = e_lfanew + 4 + 20
+        _bounded_extent(coff_end, file_length, "PE/COFF header")
+        pe = _read_exact(read, e_lfanew, 24, file_length)
+        if pe[:4] != b"PE\x00\x00":
+            return coff_end
+        nsections = struct.unpack_from("<H", pe, 6)[0]
+        opt_size = struct.unpack_from("<H", pe, 20)[0]
+        return _bounded_extent(coff_end + opt_size + nsections * 40, file_length,
+                               "PE section table")
+    # macos-arm64: fat (canonical big-endian) or thin, either byte order.
+    head = _read_exact(read, 0, 8, file_length)
+    magic_be = struct.unpack_from(">I", head, 0)[0]
+    if magic_be == _FAT_MAGIC:
+        nfat = struct.unpack_from(">I", head, 4)[0]
+        if nfat == 0 or nfat > _FAT_MAX_ARCHES:
+            return floor        # implausible count: the validator refuses; the table is never read
+        table_end = 8 + nfat * _FAT_ARCH_SIZE
+        table = _read_exact(read, 8, nfat * _FAT_ARCH_SIZE, file_length)
+        for i in range(nfat):
+            cputype, _sub, offset, size, _align = struct.unpack_from(
+                ">iiIII", table, i * _FAT_ARCH_SIZE)
+            if (cputype & 0xFFFFFFFF) != _CPU_ARM64:
+                continue
+            if size == 0 or offset < table_end:
+                return max(floor, table_end)     # the validator names the refusal
+            _within_file(offset + size, file_length, "fat Mach-O arm64 slice (declared member)")
+            if size < 32:
+                return _bounded_extent(max(floor, offset + size), file_length,
+                                       "fat Mach-O arm64 slice")
+            slice_head = _read_exact(read, offset, 32, file_length)
+            if struct.unpack_from("<I", slice_head, 0)[0] == _MACHO_MAGIC_64:
+                endian = "<"
+            elif struct.unpack_from(">I", slice_head, 0)[0] == _MACHO_MAGIC_64:
+                endian = ">"
+            else:
+                return _bounded_extent(max(floor, offset + 32), file_length,
+                                       "fat Mach-O arm64 slice header")
+            sizeofcmds = struct.unpack_from(endian + "I", slice_head, 20)[0]
+            return _bounded_extent(max(floor, offset + min(size, 32 + sizeofcmds)), file_length,
+                                   "fat Mach-O arm64 slice commands")
+        return max(floor, table_end)             # no arm64 slice: the validator says so
+    if magic_be == _FAT_CIGAM:
+        return floor                             # non-canonical fat header: the validator refuses
+    thin = _read_exact(read, 0, 32, file_length)
+    if struct.unpack_from("<I", thin, 0)[0] == _MACHO_MAGIC_64:
+        endian = "<"
+    elif magic_be == _MACHO_MAGIC_64:
+        endian = ">"
+    else:
+        return floor
+    sizeofcmds = struct.unpack_from(endian + "I", thin, 20)[0]
+    return _bounded_extent(max(floor, 32 + sizeofcmds), file_length, "Mach-O load commands")

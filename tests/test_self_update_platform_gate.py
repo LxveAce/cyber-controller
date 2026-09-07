@@ -19,6 +19,7 @@ import pytest
 
 from src.core import self_update as su
 from src.core import update_select as us
+from tests import exe_images as img
 
 TAG = "v9.9.9"
 NAMES = [
@@ -28,7 +29,8 @@ NAMES = [
     f"cyber-controller-{TAG}-linux-arm64",
     f"cyber-controller-{TAG}-macos-arm64",
 ]
-CONTENT = {name: f"{name} bytes (double)\n".encode() for name in NAMES}
+# Structurally valid images per asset (the staging header gate is real, not bypassed).
+CONTENT = {name: img.image_for(next(k for k in img.IMAGE_FOR_KEY if k in name)) for name in NAMES}
 BASE = f"https://github.com/LxveAce/cyber-controller/releases/download/{TAG}/"
 
 SUPPORTED = [

@@ -31,13 +31,14 @@ import hashlib
 import logging
 import os
 import platform
+import struct
 import subprocess
 import sys
 import tempfile
 import urllib.request
 from typing import Any, Callable, Mapping, Sequence
 
-from src.core import flash_core, install, update_select, updater
+from src.core import flash_core, install, update_exe_format, update_select, updater
 
 log = logging.getLogger(__name__)
 
@@ -197,6 +198,41 @@ def sha256_file(path: str, _chunk: int = 1 << 20) -> str:
         for block in iter(lambda: fh.read(_chunk), b""):
             h.update(block)
     return h.hexdigest()
+
+
+def validate_staged_executable(path: str, key: str) -> None:
+    """Read-only header and architecture check of *path* for the published *key*, before any swap.
+
+    One open handle and its fstat length; the exact prefix the validator needs, planned from the
+    file's own headers by :func:`update_exe_format.required_prefix_length` under its named
+    inspected-prefix limit; then :func:`update_exe_format.validate_onefile_executable`. Deletes
+    nothing: the caller decides what it owns. Any refusal, short read or filesystem error becomes a
+    finite :class:`SelfUpdateError` with the underlying error as context; no ``struct.error`` or
+    ``OSError`` escapes to the UI. Format and CPU only, never runtime compatibility.
+    """
+    name = os.path.basename(path)
+    try:
+        with open(path, "rb") as fh:
+            length = os.fstat(fh.fileno()).st_size
+
+            def read(offset: int, size: int) -> bytes:
+                fh.seek(offset)
+                return fh.read(size)
+
+            need = update_exe_format.required_prefix_length(read, key, length)
+            fh.seek(0)
+            prefix = fh.read(need)
+            if len(prefix) != need:
+                raise update_exe_format.ExecutableFormatError(
+                    f"short read of the validation prefix: wanted {need} bytes, got {len(prefix)}")
+            update_exe_format.validate_onefile_executable(prefix, key)
+    except update_exe_format.ExecutableFormatError as exc:
+        raise SelfUpdateError(f"{name} is not a {key} executable: {exc}") from exc
+    except struct.error as exc:  # defence in depth; planner and validator bound every unpack
+        raise SelfUpdateError(
+            f"{name} could not be parsed as a {key} executable: {exc}") from exc
+    except OSError as exc:
+        raise SelfUpdateError(f"could not inspect {name}: {exc}") from exc
 
 
 def find_release(releases: Sequence[Mapping[str, Any]], tag: str) -> dict | None:
@@ -417,6 +453,9 @@ def apply(cur_exe: str, staged: str, key: str, pid: int | None = None,
     kind = installed_kind()
     if kind != "onefile":
         raise SelfUpdateError(_non_onefile_refusal(kind))
+    # Read-only guard before the irreversible step: the caller owns *staged*, so a refusal
+    # raises and deletes nothing.
+    validate_staged_executable(staged, key)
     if key.startswith("windows"):
         _apply_windows(cur_exe, staged, pid if pid is not None else os.getpid())
     else:
@@ -472,6 +511,15 @@ def self_update(result: "updater.CheckResult", releases: list[dict] | None = Non
         _quiet_remove(part)
         raise SelfUpdateError(
             f"checksum mismatch for {name}: got {got[:12]}…, expected {expected[:12]}…")
+
+    # Header/architecture gate BEFORE the file becomes a staged .new. The only file this attempt
+    # owns is the .part it downloaded above (owned by construction, not by its suffix), so a
+    # refusal removes exactly that and stages nothing; the UI is never handed a rejected file.
+    try:
+        validate_staged_executable(part, key)
+    except SelfUpdateError:
+        _quiet_remove(part)
+        raise
 
     staged = os.path.join(dst_dir, name + ".new")
     os.replace(part, staged)
