@@ -1,16 +1,9 @@
 name: Tests
-# Runs the pytest suite on push/PR — closes the gap where CI gated on Ruff-F only while ~3,989 tests
-# ran locally. Windows runner (CC is Windows-developed + shipped) with offscreen Qt + software GL.
-#
-# The Qt-GUI-render layer (the ~120 test files that take the `qapp` fixture) is EXCLUDED here: at least
-# one of them hard-exits the hosted runner's process (no GPU / real display — offscreen + software-GL
-# don't stop it, and it can't be pinpointed remotely because the crash prevents any report and it does
-# NOT reproduce on a real Windows desktop). Those tests pass on the dev rig and the GUI is
-# visually/HW-verified + the frozen build is smoke-tested, so excluding them here (like the frozen
-# smoke) is honest, not a coverage hole in the release-critical logic. This CI covers the ~260 non-GUI
-# test files (core, device/flash, web/API, sensing, crack, security, parsers, wardrive, firmware
-# profiles). To restore GUI coverage in CI, add a self-hosted Windows runner (a real desktop session);
-# that's an owner infra decision, not blind hosted-runner bisection.
+# Hosted Windows source tests exclude tests/test_*.py files whose text contains `qapp`.
+# These exclusions leave Qt GUI coverage outside this job.
+# The release workflow separately runs a limited frozen Linux chooser/resource/renderer smoke
+# with an inert Reform fixture; it bypasses normal startup, access gates and application routes.
+# Native product behavior and final package startup/lifecycle still require separate qualification.
 on:
   push:
   pull_request:

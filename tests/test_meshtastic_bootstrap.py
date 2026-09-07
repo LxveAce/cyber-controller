@@ -860,7 +860,7 @@ def test_b22_gap_envelope_transfer_does_not_reseed_or_rebind_previous_owner():
     "phase", ["A", "B", "refresh", "drain", "partial", "debug", "loss", "retired"]
 )
 def test_b22_gap_refuses_active_partial_and_uncertain_ownership(phase):
-    h = Harness()
+    h = Harness(monotonic=Clock())
     if phase == "A":
         h.begin()
     elif phase == "B":
