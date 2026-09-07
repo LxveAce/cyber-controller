@@ -3036,14 +3036,17 @@ def create_app(
     def on_subscribe_serial(data: dict) -> None:
         if not _socket_authed():
             return
-        if not cmd_limiter.allow(_client_ip()):  # subscribe is now rate-limited too
-            emit("serial_output", {"port": "", "line": "[Rate limited]"})
-            return
         # Coerce any non-object payload (a bare scalar/array) to {} — mirrors _json_body() on the HTTP
         # twin so .get() below can't AttributeError on e.g. a list. `data or {}` only handles falsy.
         if not isinstance(data, dict):
             data = {}
         port = str(data.get("port", ""))
+        # Route a rate-limit refusal to the request's OWN port (a portless line is dropped by both
+        # clients): normalized here, after the auth check and before any subscription work. The
+        # limiter, its ordering and the rejection return are unchanged — only the port field.
+        if not cmd_limiter.allow(_client_ip()):  # subscribe is now rate-limited too
+            emit("serial_output", {"port": port, "line": "[Rate limited]"})
+            return
         if not _known_port(port):
             emit("serial_output", {"port": port, "line": f"[Unknown port {port}]"})
             return
@@ -3110,14 +3113,17 @@ def create_app(
     def on_send_command(data: dict) -> None:
         if not _socket_authed():
             return
-        if not cmd_limiter.allow(_client_ip()):
-            emit("serial_output", {"port": "", "line": "[Rate limited]"})
-            return
         # Coerce any non-object payload (a bare scalar/array) to {} — mirrors _json_body() on the HTTP
         # twin so .get() below can't AttributeError on e.g. a list. `data or {}` only handles falsy.
         if not isinstance(data, dict):
             data = {}
         port = str(data.get("port", ""))
+        # Route a rate-limit refusal to the request's OWN port (a portless line is dropped by both
+        # clients): normalized here, after the auth check and before any command work. The limiter,
+        # its ordering and the rejection return are unchanged — only the port field.
+        if not cmd_limiter.allow(_client_ip()):
+            emit("serial_output", {"port": port, "line": "[Rate limited]"})
+            return
         command = str(data.get("command", ""))
         # Reject an empty command, mirroring the /api/command HTTP twin (which 400s on
         # `not command`). Without this the WS path fell through to conn.write(""), which appends

@@ -1351,7 +1351,7 @@
       var clearBtn = document.createElement("button"); clearBtn.className = "btn sm"; clearBtn.textContent = "Clear";
       var headRow = document.createElement("div"); headRow.className = "row"; headRow.appendChild(clearBtn);
       head.appendChild(headRow);
-      var term = document.createElement("div"); term.className = "term termbig"; term.style.whiteSpace = "pre-wrap";
+      var term = document.createElement("div"); term.className = "term termbig"; term.style.whiteSpace = "pre-wrap"; term.tabIndex = 0; term.setAttribute("aria-label", "Host shell output");
       hostOutEl = term;
       var inp = document.createElement("div"); inp.className = "terminput"; inp.style.marginTop = "8px";
       inp.innerHTML = '<span class="pr">$</span>';
@@ -1403,6 +1403,8 @@
       head.innerHTML = '<h3 style="margin:0 0 8px"><span class="t">' + esc(port) + "</span> <span class=\"dim\">· " + esc(fw || "serial") + "</span></h3>";
       var term = document.createElement("div");
       term.className = "term termbig";
+      term.tabIndex = 0;
+      term.setAttribute("aria-label", port + " serial output");
       var inp = document.createElement("div");
       inp.className = "terminput";
       inp.style.marginTop = "8px";

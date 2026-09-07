@@ -608,7 +608,9 @@ def test_b21_profile_before_metadata_echo_and_stale_rx():
     "phase", ["initial", "A", "barrier", "B", "ready", "refresh", "failed", "retired"]
 )
 def test_b31_managed_public_and_generic_sends_refuse_without_writer_or_false_success(phase):
-    h = Harness()
+    # Freeze the clock so the countdown (remaining_seconds) is identical across the two
+    # snapshots; a live monotonic clock drifts it and breaks the full-state equality check.
+    h = Harness(monotonic=Clock())
     if phase in {"ready", "refresh"}:
         h.ready()
         if phase == "refresh":
