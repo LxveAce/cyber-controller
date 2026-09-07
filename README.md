@@ -46,7 +46,7 @@ Development source may contain changes that are not in the downloaded release. [
 
 ## ✨ Highlights
 
-Firmware profiles describe download sources, board variants, and flashing backends. Support includes esptool, qFlipper, ADB, SD-image writing, and the Realtek RTL8720 loader. Other backend paths have source/test coverage without complete physical qualification. Check the [hardware test matrix](docs/HARDWARE-FIRMWARE-MATRIX.md) for the particular device and operation you need.
+Firmware profiles describe download sources, board variants, and flashing backends. Support includes esptool, qFlipper, ADB, SD-image writing, and the Realtek RTL8720 loader. Other backend paths have source/test coverage but are not yet validated on real silicon. Check the [hardware test matrix](docs/HARDWARE-FIRMWARE-MATRIX.md) for the particular device and operation you need.
 
 Offline Vault controls are still being connected to the single-window interface. The existing cache supports selected merged images; it cannot store firmware that needs separate bootloader, partition and application files.
 
