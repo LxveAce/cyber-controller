@@ -449,20 +449,56 @@ def _apply_windows(cur_exe: str, new_exe: str, pid: int) -> None:
             f"cannot encode the self-update swap script for path {cur_exe!r} in the console code "
             f"page ({exc}); update staged but not applied") from exc
     # Binary mode: the script's CRLF line endings are written verbatim (no text-mode translation).
-    fd, script = tempfile.mkstemp(prefix="cc-update-", suffix=".cmd")
-    with os.fdopen(fd, "wb") as fh:
-        fh.write(data)
-    subprocess.Popen(["cmd", "/c", script], close_fds=True, creationflags=_DETACHED)  # noqa: S603,S607
+    # The script is this attempt's own temporary file until the helper is running (the helper
+    # then deletes it). Any failure before that closes the descriptor and removes only that
+    # file, and surfaces as a finite error while the verified .new stays staged.
+    try:
+        fd, script = tempfile.mkstemp(prefix="cc-update-", suffix=".cmd")
+    except OSError as exc:
+        raise SelfUpdateError(
+            f"could not create the self-update swap script: {exc}; update staged but not "
+            "applied") from exc
+    try:
+        fh = os.fdopen(fd, "wb")
+    except Exception as exc:  # noqa: BLE001
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        _quiet_remove(script)
+        raise SelfUpdateError(
+            f"could not open the self-update swap script {script}: {exc}; update staged but "
+            "not applied") from exc
+    try:
+        with fh:
+            fh.write(data)
+        subprocess.Popen(["cmd", "/c", script], close_fds=True,
+                         creationflags=_DETACHED)  # noqa: S603,S607
+    except OSError as exc:
+        _quiet_remove(script)
+        raise SelfUpdateError(
+            f"could not launch the self-update swap helper: {exc}; update staged but not "
+            "applied") from exc
     log.info("self-update: swap helper spawned (%s); app should exit now", script)
 
 
 def _apply_unix(cur_exe: str, new_file: str, argv: Sequence[str]) -> None:
     """Replace the binary in place (safe while running — the kernel holds the old inode) and re-exec
     the new one. Does not return on success (os.execv replaces the process image)."""
-    os.chmod(new_file, 0o755)
-    os.replace(new_file, cur_exe)  # same-dir staging guarantees same filesystem → atomic
+    try:
+        os.chmod(new_file, 0o755)
+        os.replace(new_file, cur_exe)  # same-dir staging guarantees the same filesystem
+    except OSError as exc:
+        raise SelfUpdateError(
+            f"could not replace the running binary with the staged update: {exc}; the "
+            f"verified update is left at {new_file}") from exc
     log.info("self-update: replaced %s, re-executing", cur_exe)
-    os.execv(cur_exe, [cur_exe, *list(argv)[1:]])
+    try:
+        os.execv(cur_exe, [cur_exe, *list(argv)[1:]])
+    except OSError as exc:
+        raise SelfUpdateError(
+            f"the update was installed but relaunch failed: {exc}; it takes effect on the "
+            "next launch") from exc
 
 
 def apply(cur_exe: str, staged: str, key: str, pid: int | None = None,
@@ -529,7 +565,11 @@ def self_update(result: "updater.CheckResult", releases: list[dict] | None = Non
     download_asset(str(asset["browser_download_url"]), part, timeout, progress,
                    expected_size=size)
 
-    got = sha256_file(part)
+    try:
+        got = sha256_file(part)
+    except OSError as exc:
+        _quiet_remove(part)
+        raise SelfUpdateError(f"could not read the downloaded {name}: {exc}") from exc
     if got != expected:
         _quiet_remove(part)
         raise SelfUpdateError(
@@ -545,7 +585,16 @@ def self_update(result: "updater.CheckResult", releases: list[dict] | None = Non
         raise
 
     staged = os.path.join(dst_dir, name + ".new")
-    os.replace(part, staged)
+    # This is the designated staging destination for the asset. Staging replaces whatever the
+    # destination holds with the freshly verified download; that is the existing recovery
+    # behaviour after a failed swap. The name establishes neither what the previous contents
+    # were nor who wrote them, and nothing here relies on that. A directory, a lock or any
+    # other rename failure is a finite refusal that removes only this attempt's own .part.
+    try:
+        os.replace(part, staged)
+    except OSError as exc:
+        _quiet_remove(part)
+        raise SelfUpdateError(f"could not stage {name} at {staged}: {exc}") from exc
     log.info("self-update: %s verified + staged at %s", name, staged)
     if restart:
         apply(cur, staged, key)
