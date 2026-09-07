@@ -13,6 +13,7 @@ import argparse
 import atexit
 import logging
 import multiprocessing
+import os
 import sys
 import threading
 import time
@@ -375,6 +376,58 @@ def _run_mission_cli(path: str) -> int:
         return 1
 
 
+_PACKAGED_WINDOW_NOTE = ("the packaged window requires X11 or XWayland (xcb); no Wayland platform "
+                         "support is claimed")
+
+
+def _default_ui(*, platform=None, frozen=None, environ=None):
+    """Decide the default UI before anything from Qt is imported.
+
+    Returns ``(ui, message)``: ``ui`` is ``"web"`` when this process must not try a window, or
+    None to run the chooser; ``message`` explains a non-default decision, or is None. Only the
+    environment is consulted: no plugin file, socket or display is probed, because a plugin
+    file's presence proves neither that it loads nor that a compositor accepts it. Source
+    installs keep the chooser on any display; only the frozen bundle, whose window requires X11
+    or XWayland (xcb), routes a Wayland-only session to the browser. QT_QPA_PLATFORM does not
+    change that: it can be inherited from a launcher and is not a --ui request, and neither
+    xcb without an X display nor a platform the bundle does not ship can open the window.
+    """
+    platform = sys.platform if platform is None else platform
+    frozen = bool(getattr(sys, "frozen", False)) if frozen is None else frozen
+    environ = os.environ if environ is None else environ
+    if not platform.startswith("linux"):
+        return None, None
+    display = environ.get("DISPLAY")
+    wayland = environ.get("WAYLAND_DISPLAY")
+    if not display and not wayland:
+        return "web", "No graphical display; defaulting to --ui web"
+    if frozen and wayland and not display:
+        override = (environ.get("QT_QPA_PLATFORM") or "").strip()
+        named = f" (QT_QPA_PLATFORM={override} is set and left unchanged)" if override else ""
+        return "web", (
+            f"Wayland session without X11 (DISPLAY unset){named}; {_PACKAGED_WINDOW_NOTE}; "
+            "defaulting to --ui web (set DISPLAY for XWayland, or pass --ui desktop to try "
+            "the window anyway)")
+    return None, None
+
+
+def _window_caveat(*, platform=None, frozen=None, environ=None):
+    """Warning for an explicitly requested desktop window on a frozen Linux Wayland-only
+    session: the request is honoured and the limit is stated. None when there is nothing to
+    say."""
+    platform = sys.platform if platform is None else platform
+    frozen = bool(getattr(sys, "frozen", False)) if frozen is None else frozen
+    environ = os.environ if environ is None else environ
+    if (platform.startswith("linux") and frozen and environ.get("WAYLAND_DISPLAY")
+            and not environ.get("DISPLAY")):
+        override = (environ.get("QT_QPA_PLATFORM") or "").strip()
+        named = f" (QT_QPA_PLATFORM={override} is set and left unchanged)" if override else ""
+        return (
+            f"Desktop window requested on a Wayland session without X11 (DISPLAY unset){named}; "
+            f"{_PACKAGED_WINDOW_NOTE}, so the window may fail to open; use --ui web if it does not")
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     # Frozen-build esptool dispatcher. In a PyInstaller build sys.executable is CyberController.exe, so
     # flash_core routes every esptool op back to this binary as `--_run-esptool <args>`. Run the BUNDLED
@@ -541,16 +594,16 @@ def main(argv: list[str] | None = None) -> int:
     except Exception:
         pass  # absent in source/onedir builds; splash IPC failure must not alter authentication
 
-    # Qt aborts the process (not a catchable Python exception) when no display is available.
-    # Select the console-gated browser mode before importing the chooser on headless Linux.
+    # Qt aborts the process (not a catchable Python exception) when no display is usable, so the
+    # default UI is decided from the environment alone, before the chooser is imported.
     if args.ui is None:
-        import os
-        if sys.platform.startswith("linux") and not (
-            os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")
-        ):
-            log.info("No graphical display; defaulting to --ui web")
-            args.ui = "web"
+        ui, why = _default_ui()
+        if ui:
+            log.info(why)
+            args.ui = ui
         else:
+            if why:
+                log.warning(why)
             try:
                 from src.ui.launcher import select_ui
                 args.ui = select_ui()
@@ -563,6 +616,10 @@ def main(argv: list[str] | None = None) -> int:
         mapped = _UI_LEGACY[args.ui]
         log.warning("--ui %s is retired; launching '%s' instead", args.ui, mapped)
         args.ui = mapped
+    if args.ui == "desktop":
+        caveat = _window_caveat()
+        if caveat:
+            log.warning(caveat)
 
     log.info("Cyber Controller starting — ui=%s", args.ui)
 

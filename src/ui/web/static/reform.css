@@ -10,7 +10,7 @@
 :root{
   /* Ace Purple — purple is the action color; the neutrals carry a purple bias, green stays semantic (live/SAFE/ok). */
   --bg:#0e0b14; --rail:#080510; --card:#171221; --card2:#120d1c;
-  --bd:#2d2440; --bd2:#241b35; --tx:#ece8f5; --tx2:#faf8ff; --mut:#9a8fb5; --dim:#7a6f94;
+  --bd:#2d2440; --bd2:#241b35; --tx:#ece8f5; --tx2:#faf8ff; --mut:#9a8fb5; --dim:#877ca3;
   --acc:#8257e6; --acc-dim:#4c357d; --acc-lt:#c4b5fd; --green:#34d399; --amber:#fbbf24; --orange:#f0883e;
   --red:#fb7185; --blue:#58a6ff; --yellow:#ffd700;
   --mono:ui-monospace,"Cascadia Code","Cascadia Mono",Consolas,"Courier New",monospace;
@@ -350,3 +350,4 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .hunt-local-draft ul{max-height:180px;overflow:auto;padding-left:20px;margin:8px 0}
 .hunt-target-scroll:focus-visible,.target-checkbox input:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 .navitem:focus-visible,.card.collapsible>summary:focus-visible,.btn:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+@media(prefers-reduced-motion:reduce){.card.collapsible>summary::before,.fwgroup>summary::before{transition:none}}

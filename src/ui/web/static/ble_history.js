@@ -119,7 +119,13 @@
       if (token !== generation || suspended) return;
       // `trimmed` is sticky for the view's lifetime once any older loaded rows were dropped, so a
       // later non-overflowing (or empty) page never wrongly clears the "older rows trimmed" notice.
-      try { deliver(rows.slice(), { has_more: hasMore, trimmed: everTrimmed, count: rows.length }); }
+      // can_check_newer: a forward poll of the held cursor is possible (a cursor exists). The UI
+      // offers it once caught up (has_more false) to pull reports that arrived AFTER this page,
+      // without restarting from the oldest page.
+      try {
+        deliver(rows.slice(), { has_more: hasMore, trimmed: everTrimmed, count: rows.length,
+                                can_check_newer: cursor !== null });
+      }
       catch (_) { /* a render observer cannot strand the read */ }
     }
 
@@ -235,6 +241,15 @@
       // Load the next (newer) page after the held cursor (a user action).
       loadMore: function () {
         if (suspended || !hasMore || cursor === null) return Promise.resolve(false);
+        return start(false, undefined, true);
+      },
+      // Poll the held forward cursor for reports that arrived AFTER catching up (has_more=false),
+      // appending only genuinely newer rows. Distinct from refresh (which restarts from the oldest
+      // page): this is a bounded, user-triggered forward read of existing journal data from the
+      // cursor we already hold — never a scan/device command or a new page we don't have a cursor
+      // for. It shares the single-flight slot, run/expiry invalidation and cancellation of loadMore.
+      checkNewer: function () {
+        if (suspended || cursor === null) return Promise.resolve(false);
         return start(false, undefined, true);
       },
       hasMore: function () { return hasMore; },
