@@ -10,7 +10,7 @@
 {% endif %}
 
 <div class="terminal-container">
-    <div id="terminal-output" class="terminal-output"></div>
+    <div id="terminal-output" class="terminal-output" tabindex="0" aria-label="Terminal output"></div>
     <div class="terminal-input-row">
         <input type="text" id="cmd-input" class="form-control terminal-input"
                placeholder="Type command..." autocomplete="off">
@@ -38,6 +38,7 @@
         }
         line.textContent = data.line;
         output.appendChild(line);
+        while (output.childNodes.length > 300) output.removeChild(output.firstChild);
         output.scrollTop = output.scrollHeight;
     }
 

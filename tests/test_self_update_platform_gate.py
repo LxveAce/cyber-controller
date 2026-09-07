@@ -116,7 +116,7 @@ def test_published_host_still_stages_its_own_asset(monkeypatch, frozen_onefile, 
                                                    key):
     host(monkeypatch, system, machine)
 
-    def download(url, dest, timeout=0, progress=None):
+    def download(url, dest, timeout=0, progress=None, **kw):
         with open(dest, "wb") as fh:
             fh.write(CONTENT[url.rsplit("/", 1)[1]])
 

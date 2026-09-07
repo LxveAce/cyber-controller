@@ -11,6 +11,14 @@ Layering (why this is separate from :mod:`src.core.updater`)
   small functions that **refuse to run unless we are a frozen onefile build**, so the unit tests
   can exercise all the selection/verification logic without ever touching a real binary.
 
+Selection
+---------
+The apply path pins exactly one PUBLISHED release with the exact target tag, the one asset whose
+name equals the canonical published filename for this platform, that asset's plain published
+size, and the one ``SHA256SUMS.txt`` manifest, all through the strict helpers in
+:mod:`src.core.update_select`. A near-match, archive, installer-only, duplicate or ambiguous
+catalog is refused, and every metadata refusal happens before any file is created.
+
 Trust model
 -----------
 HTTPS to the allowlisted GitHub host set (reusing :mod:`src.core.flash_core`'s SSRF-hardened opener
@@ -38,15 +46,20 @@ import tempfile
 import urllib.request
 from typing import Any, Callable, Mapping, Sequence
 
-from src.core import flash_core, install, update_exe_format, update_select, updater
+from src.core import flash_core, update_exe_format, update_select, updater
 
 log = logging.getLogger(__name__)
 
 # Match the check layer's short, non-lingering default.
 DEFAULT_TIMEOUT = 30.0
 
-# (bytes_done, bytes_total) — total may be 0 if the server sends no Content-Length.
+# (bytes_done, bytes_total): total is the validated published size, never Content-Length.
 ProgressCb = Callable[[int, int], None]
+
+# The one checksum manifest a release publishes, selected by exact name, and the bound on how
+# many of its bytes are ever read: the real file is a few hundred bytes, one line per asset.
+SUMS_ASSET_NAME = "SHA256SUMS.txt"
+MAX_SUMS_BYTES = 64 * 1024
 
 
 class SelfUpdateError(Exception):
@@ -144,51 +157,28 @@ def platform_key(system: str | None = None, machine: str | None = None) -> str:
 
 # ── Pure selection + verification ────────────────────────────────────────────────────────────────
 
-def select_asset(assets: Sequence[Mapping[str, Any]], key: str, *,
-                 installer: bool = False) -> dict | None:
-    """Pick a release asset for *key*. For a Windows key, ``installer=True`` selects the setup
-    installer (``…-setup.exe`` — the correct upgrade for a onedir/installer build); the default
-    selects the standalone onefile binary (skipping the installer, since the in-place swap replaces
-    that binary). ``installer`` is a no-op for non-Windows keys. Returns the raw asset dict, or None
-    when this release has no matching asset."""
-    want_exe = key.startswith("windows")
-    for a in assets:
-        name = str(a.get("name", ""))
-        low = name.lower()
-        if low.startswith("sha256sums"):
-            continue
-        is_setup = "setup" in low
-        if want_exe:
-            if installer != is_setup:   # want the installer XOR this is the installer → not a match
-                continue
-        elif is_setup:
-            continue
-        if key not in name:
-            continue
-        if want_exe and not low.endswith(".exe"):
-            continue
-        if not want_exe and low.endswith((".exe", ".txt", ".sha256")):
-            continue
-        return dict(a)
-    return None
+def _strict(call, *args, **kwargs):
+    """Run a strict selector and convert its finite refusal into this module's error type,
+    keeping the original as the cause."""
+    try:
+        return call(*args, **kwargs)
+    except update_select.ReleaseSelectionError as exc:
+        raise SelfUpdateError(str(exc)) from exc
 
 
-def parse_sha256sums(text: str) -> dict[str, str]:
-    """Parse a ``sha256sum``-style file (``<64-hex>  <name>`` per line; binary marker ``*``
-    tolerated) into ``{filename: digest}``. Malformed / comment lines are skipped, not fatal."""
-    sums: dict[str, str] = {}
-    for line in text.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        parts = line.split()
-        if len(parts) < 2:
-            continue
-        digest = parts[0].lower()
-        name = parts[-1].lstrip("*")
-        if len(digest) == 64 and all(c in "0123456789abcdef" for c in digest):
-            sums[name] = digest
-    return sums
+def select_sums_asset(assets: Sequence[Mapping[str, Any]]) -> dict:
+    """The one ``SHA256SUMS.txt`` asset of a release, by exact name. A release without one
+    cannot be verified, and one with several is ambiguous; both refuse."""
+    matches = [dict(a) for a in assets
+               if isinstance(a, Mapping) and str(a.get("name") or "") == SUMS_ASSET_NAME]
+    if not matches:
+        raise SelfUpdateError(
+            f"release has no {SUMS_ASSET_NAME}; refusing to self-update unverified")
+    if len(matches) > 1:
+        raise SelfUpdateError(
+            f"release publishes {len(matches)} assets named {SUMS_ASSET_NAME}; "
+            "refusing an ambiguous manifest")
+    return matches[0]
 
 
 def sha256_file(path: str, _chunk: int = 1 << 20) -> str:
@@ -235,18 +225,6 @@ def validate_staged_executable(path: str, key: str) -> None:
         raise SelfUpdateError(f"could not inspect {name}: {exc}") from exc
 
 
-def find_release(releases: Sequence[Mapping[str, Any]], tag: str) -> dict | None:
-    """The release dict whose tag matches *tag* (tolerant of a ``v`` prefix/suffix via _parse)."""
-    want = install._parse(tag)
-    for rel in releases:
-        if not isinstance(rel, Mapping):
-            continue
-        rel_tag = str(rel.get("tag_name") or "")
-        if rel_tag == tag or install._parse(rel_tag) == want:
-            return dict(rel)
-    return None
-
-
 # ── Network (SSRF-hardened, reuses the check layer's trusted opener) ──────────────────────────────
 
 def _open(url: str, timeout: float):
@@ -258,39 +236,84 @@ def _open(url: str, timeout: float):
 
 def fetch_sums(assets: Sequence[Mapping[str, Any]],
                timeout: float = DEFAULT_TIMEOUT) -> dict[str, str]:
-    """Download + parse the release's ``SHA256SUMS.txt`` asset. Raise if the release has none — with
-    no checksums we cannot verify, and self-update fails CLOSED rather than install unverified
-    bytes."""
-    for a in assets:
-        if str(a.get("name", "")).lower().startswith("sha256sums"):
-            url = str(a.get("browser_download_url") or "")
-            try:
-                with _open(url, timeout) as resp:
-                    return parse_sha256sums(resp.read().decode("utf-8"))
-            except Exception as exc:  # noqa: BLE001
-                raise SelfUpdateError(f"could not fetch SHA256SUMS.txt: {exc}") from exc
-    raise SelfUpdateError("release has no SHA256SUMS.txt — refusing to self-update unverified")
+    """Fetch and strictly parse the release's one ``SHA256SUMS.txt``. Refuses a missing or
+    duplicated manifest asset, a manifest beyond :data:`MAX_SUMS_BYTES` (only that many bytes
+    plus one are ever read), bytes that are not UTF-8, and a name carrying two different
+    digests. With no trustworthy checksums, self-update fails CLOSED."""
+    sums_asset = select_sums_asset(assets)
+    url = str(sums_asset.get("browser_download_url") or "")
+    try:
+        with _open(url, timeout) as resp:
+            raw = resp.read(MAX_SUMS_BYTES + 1)
+    except Exception as exc:  # noqa: BLE001
+        raise SelfUpdateError(f"could not fetch {SUMS_ASSET_NAME}: {exc}") from exc
+    if len(raw) > MAX_SUMS_BYTES:
+        raise SelfUpdateError(
+            f"{SUMS_ASSET_NAME} exceeds {MAX_SUMS_BYTES} bytes; refusing an implausible manifest")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise SelfUpdateError(f"{SUMS_ASSET_NAME} is not UTF-8 text") from exc
+    return _strict(update_select.parse_sums_strict, text)
 
 
 def download_asset(url: str, dest: str, timeout: float = DEFAULT_TIMEOUT,
-                   progress: ProgressCb | None = None) -> str:
-    """Stream *url* to *dest*. On ANY failure, delete the partial file and raise SelfUpdateError,
-    so a torn download can never be mistaken for a complete one."""
+                   progress: ProgressCb | None = None, *, expected_size: int) -> str:
+    """Stream *url* into a file this call CREATES at *dest*, bounded by the validated published
+    *expected_size*.
+
+    Ownership is by exclusive creation: a pre-existing file at *dest* is never opened, truncated
+    or removed (the call refuses instead), and on any later failure the only file removed is the
+    one this call created. The stream is read at most one byte past *expected_size*, so an
+    overrun is refused before any excess byte is written; a stream that ends early is refused
+    as short. ``Content-Length`` is never consulted, so a missing or malformed header cannot
+    defeat a valid download; progress reports against *expected_size*."""
+    if type(expected_size) is not int or expected_size <= 0:
+        raise SelfUpdateError(f"expected size must be a positive integer, got {expected_size!r}")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    created = False
     try:
-        with _open(url, timeout) as resp:
-            total = int(resp.headers.get("Content-Length") or 0)
-            done = 0
-            with open(dest, "wb") as fh:
-                while True:
-                    chunk = resp.read(1 << 16)
-                    if not chunk:
-                        break
-                    fh.write(chunk)
-                    done += len(chunk)
-                    if progress:
-                        progress(done, total)
+        fd = os.open(dest, flags, 0o600)
+    except FileExistsError as exc:
+        raise SelfUpdateError(f"refusing to overwrite an existing file at {dest}") from exc
+    except OSError as exc:
+        raise SelfUpdateError(f"could not create {dest}: {exc}") from exc
+    created = True
+    try:
+        fh = os.fdopen(fd, "wb")
     except Exception as exc:  # noqa: BLE001
+        # The raw descriptor is still this attempt's to close. Without closing it first, the
+        # removal below fails on Windows and leaves the owned partial file locked behind.
+        try:
+            os.close(fd)
+        except OSError:
+            pass
         _quiet_remove(dest)
+        raise SelfUpdateError(f"could not open {dest} for writing: {exc}") from exc
+    try:
+        with fh, _open(url, timeout) as resp:
+            done = 0
+            while True:
+                chunk = resp.read(min(1 << 16, expected_size - done + 1))
+                if not chunk:
+                    break
+                if done + len(chunk) > expected_size:
+                    raise SelfUpdateError(
+                        f"download exceeds the published size {expected_size}; refusing")
+                fh.write(chunk)
+                done += len(chunk)
+                if progress:
+                    progress(done, expected_size)
+            if done != expected_size:
+                raise SelfUpdateError(
+                    f"download ended at {done} bytes, expected {expected_size}")
+    except SelfUpdateError:
+        if created:
+            _quiet_remove(dest)
+        raise
+    except Exception as exc:  # noqa: BLE001
+        if created:
+            _quiet_remove(dest)
         raise SelfUpdateError(f"download failed: {exc}") from exc
     return dest
 
@@ -467,12 +490,16 @@ def apply(cur_exe: str, staged: str, key: str, pid: int | None = None,
 def self_update(result: "updater.CheckResult", releases: list[dict] | None = None,
                 timeout: float = DEFAULT_TIMEOUT, progress: ProgressCb | None = None,
                 restart: bool = True) -> str:
-    """Full download → verify → swap for the newest release in *result*.
+    """Full download, verify and swap for the release named by *result*.
 
-    Steps, each failing CLOSED: resolve the release for ``result.latest_tag`` → pick this platform's
-    asset → fetch + require its checksum → download to a sibling ``*.part`` of the running binary
-    (same filesystem, so the later replace is atomic) → verify SHA-256 (delete + raise on mismatch)
-    → stage as ``*.new`` → (if *restart*) apply + relaunch. Returns the staged path.
+    Steps, each failing CLOSED and every metadata refusal before any file exists: refuse a
+    non-frozen or non-onefile build; pin the exact published release for ``result.latest_tag``;
+    pin this platform's canonical asset by exact name; validate its published size; fetch and
+    strictly parse the one ``SHA256SUMS.txt``; require the digest for that exact name; then
+    download to a sibling ``*.part`` of the running binary (same filesystem, so the later
+    replace is atomic) bounded by the published size; verify SHA-256 (delete and raise on
+    mismatch); validate the executable header; stage as ``*.new``; and, if *restart*, apply and
+    relaunch. Returns the staged path.
     """
     if not is_frozen():
         raise SelfUpdateError("refusing to self-update a non-frozen (source) build")
@@ -487,24 +514,20 @@ def self_update(result: "updater.CheckResult", releases: list[dict] | None = Non
         raise SelfUpdateError("no target release tag to update to")
     if releases is None:
         releases = updater.latest_releases(timeout)
-    rel = find_release(releases, tag)
-    if rel is None:
-        raise SelfUpdateError(f"release {tag!r} not found")
+    rel = _strict(update_select.select_published_release, releases, tag)
     assets = list(rel.get("assets") or [])
     key = platform_key()
-    asset = select_asset(assets, key)
-    if asset is None:
-        raise SelfUpdateError(f"release {tag} has no {key} binary")
+    asset = _strict(update_select.select_release_asset, assets, tag, key)
+    size = _strict(update_select.validate_asset_size, asset)
     name = str(asset["name"])
     sums = fetch_sums(assets, timeout)
-    expected = sums.get(name)
-    if not expected:
-        raise SelfUpdateError(f"no checksum published for {name}")
+    expected = _strict(update_select.checksum_for, sums, name)
 
     cur = current_exe()
     dst_dir = os.path.dirname(cur)
     part = os.path.join(dst_dir, name + ".part")
-    download_asset(str(asset["browser_download_url"]), part, timeout, progress)
+    download_asset(str(asset["browser_download_url"]), part, timeout, progress,
+                   expected_size=size)
 
     got = sha256_file(part)
     if got != expected:
