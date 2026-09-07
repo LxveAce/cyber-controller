@@ -505,29 +505,70 @@ def test_append_then_fail_serial_registration_is_removed_on_close():
         server.close()
 
 
+# The stalled worker parks on the release Event with NO worker-side timeout, so it cannot self-fail before
+# the owning test releases it in ``finally``. The prior ``release.wait(30)`` still gave the worker its own
+# deadline that a delayed observer could reach (the review's native witness fired at 30.016s with the
+# release still unset). There is no in-worker watchdog now; a genuinely hung test is bounded by an OUTER
+# process timeout on the whole test command, not by the worker. (The original ``release.wait(5)`` raced
+# close's 5s join, so under tight CI scheduling the worker self-failed before release — a 5.170s dev/current
+# failure vs ~8.1s passes elsewhere.) The guarantee is structural (no worker deadline), not inferred from
+# a few repeats.
+
+
+def _park_until_released(entered, release):
+    entered.set()
+    release.wait()  # no worker-side timeout: park until the owning test releases it in finally
+
+
 def test_thread_stalled_before_serving_closes_listener_and_reports_incomplete_cleanup(monkeypatch):
     dm, engine, bus, pool, conn = environment()
     server = webapp.create_desktop_server(dm, engine, bus, pool)
     entered, release = threading.Event(), threading.Event()
-
-    def stalled_loop(**kwargs):
-        entered.set()
-        assert release.wait(5)
-
-    monkeypatch.setattr(server._server, "serve_forever", stalled_loop)
+    monkeypatch.setattr(server._server, "serve_forever",
+                        lambda **kwargs: _park_until_released(entered, release))
     monkeypatch.setattr(server._ready, "wait", lambda timeout: False)
-    server.start()
     try:
+        server.start()  # inside try/finally: a start (or any later op) that raises still releases + closes
         assert entered.wait(5)
         with pytest.raises(DesktopCleanupError):
             server.close()
+        # The incomplete-cleanup carrier kept the worker parked (not self-failed) and closed the listener.
+        assert server._failure is None, "the stalled worker self-failed before the deliberate release"
         assert server.alive  # no false success and no permission for a replacement runtime
         with socket.socket() as probe:
             assert probe.connect_ex(("127.0.0.1", server.port)) != 0
     finally:
         release.set()
-        server._thread.join(5)
+        if server._thread is not None:
+            server._thread.join(5)
         server.close()
+    assert_closed(server, dm, bus, conn)
+
+
+def test_stalled_worker_is_released_and_closed_even_when_the_body_fails(monkeypatch):
+    # Fixture-body-failure cleanup control: a failure inside the ownership-window body must still release
+    # the parked worker and close the runtime in finally, leaving no leaked thread. try/finally begins
+    # before server.start(), so a start (or later) failure still releases and closes.
+    dm, engine, bus, pool, conn = environment()
+    server = webapp.create_desktop_server(dm, engine, bus, pool)
+    entered, release = threading.Event(), threading.Event()
+    monkeypatch.setattr(server._server, "serve_forever",
+                        lambda **kwargs: _park_until_released(entered, release))
+    monkeypatch.setattr(server._ready, "wait", lambda timeout: False)
+    worker = None
+    with pytest.raises(RuntimeError, match="synthetic body failure"):
+        try:
+            server.start()
+            worker = server._thread
+            assert entered.wait(5)
+            assert server.alive
+            raise RuntimeError("synthetic body failure")
+        finally:
+            release.set()
+            if server._thread is not None:
+                server._thread.join(5)
+            server.close()
+    assert worker is not None and not worker.is_alive()  # released + joined in finally despite the failure
     assert_closed(server, dm, bus, conn)
 
 
