@@ -36,3 +36,34 @@ jobs:
           name: pytest-report
           path: pytest-report.xml
           if-no-files-found: warn
+
+  node-tests:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout (minimal scope, no credential persistence)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node 24 (explicit no package-manager auto-cache; no dependency install)
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+      - name: Run node:test regression suites (tests/*.test.cjs; built-in runner, no npm)
+        shell: bash
+        run: >
+          node --test
+          --test-reporter=spec --test-reporter-destination=stdout
+          --test-reporter=junit --test-reporter-destination=node-test-report.xml
+          "tests/*.test.cjs"
+      - name: Upload node test report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: node-test-report
+          path: node-test-report.xml
+          if-no-files-found: warn
+          retention-days: 7

@@ -170,8 +170,11 @@ def test_launch_web_passes_shared_holder_to_factory_unchanged(monkeypatch):
     holder = DesktopBootstrap("one")
     received = {}
     import src.core.cross_comm_hub as hub_module
-    monkeypatch.setattr(hub_module, "CrossCommHub", lambda *_: types.SimpleNamespace(
-        captures=object(), router=object(), sensing=object(), fence=lambda: None, close=lambda: None))
+    # Deferred hub double: constructed with defer=True, then initialize(journal=) once (a no-op
+    # here; the started-sink injection is exercised by test_ble_history_runtime_wiring).
+    monkeypatch.setattr(hub_module, "CrossCommHub", lambda *_, **__: types.SimpleNamespace(
+        captures=object(), router=object(), sensing=object(),
+        initialize=lambda **_k: None, fence=lambda: None, close=lambda: None))
 
     def create(*_args, **kwargs):
         received.update(kwargs)

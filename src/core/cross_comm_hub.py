@@ -56,6 +56,8 @@ class CrossCommHub:
         bus: EventBus | None = None,
         pool: TargetPool | None = None,
         captures_persist_path: str | None = None,
+        *,
+        defer: bool = False,
     ) -> None:
         self.dm = device_manager
         self.bus = bus or EventBus()
@@ -68,16 +70,38 @@ class CrossCommHub:
         self._mesh_callbacks: dict = {}
         self._mesh_attach_lock = threading.RLock()
         self._mesh_state_lock = threading.Lock()
-        try:
-            self._initialize(captures_persist_path)
-        except BaseException as original:
+        self._captures_persist_path = captures_persist_path
+        self._init_lock = threading.Lock()
+        self._initialized = False
+        # Eager (default): init now with no sink, preserving bare/test/legacy behavior.
+        # Deferred: keep the hub inert until initialize() injects a started sink.
+        if not defer:
             try:
-                self.close()
-            except BaseException as cleanup_error:
-                raise original from cleanup_error
-            raise
+                self._initialize(captures_persist_path)   # eager: original call, no history sink
+                self._initialized = True
+            except BaseException as original:
+                try:
+                    self.close()
+                except BaseException as cleanup_error:
+                    raise original from cleanup_error
+                raise
 
-    def _initialize(self, captures_persist_path: str | None) -> None:
+    def initialize(self, *, journal=None) -> None:
+        """One-shot deferred init with an optional ALREADY-STARTED history sink. Reserves the
+        attempt under a short state lock (rejecting a repeat or a fenced/closed hub), then runs the
+        subscription-bearing init inside a CallbackScope activity lease so a concurrent close
+        fences and waits. On failure the exception propagates and the lease is released before the
+        owner's failure-driven close; a partially failed initialize is not retried."""
+        with self._init_lock:
+            if self._initialized:
+                raise RuntimeError("CrossCommHub.initialize() is one-shot")
+            if self._callbacks.closed:
+                raise RuntimeError("cannot initialize a fenced/closed hub")
+            self._initialized = True   # reserve before unlocking; never held across callbacks
+        with self._callbacks.activity():
+            self._initialize(self._captures_persist_path, journal=journal)
+
+    def _initialize(self, captures_persist_path: str | None, *, journal=None) -> None:
 
         # The shared capture log — captured WPA handshakes / PMKIDs, keyed like the pool and on
         # the same bus (capture.* mirroring target.*). The ingestor auto-registers a capture
@@ -94,7 +118,8 @@ class CrossCommHub:
         # a scan on device A -> target.added -> AutoRouter -> a command on device B. The hub owns the one
         # instance everyone shares AND auto-attaches it to every connection the moment it opens (below).
         # It also feeds captured handshakes/PMKIDs into the shared capture log.
-        self.ingestor = TargetIngestor(self.pool, captures=self.captures, devices=self.dm)
+        self.ingestor = TargetIngestor(
+            self.pool, captures=self.captures, devices=self.dm, journal=journal)
 
         # Wi-Fi CSI sensing rollup: a connected sensing node's `sensing_verdict` events (parsed
         # by csi_sensor) fold into per-node room state here — RX-only awareness, NEVER a Target row.

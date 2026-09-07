@@ -675,6 +675,72 @@
   window.addEventListener("pagehide", function () { bleReports.suspend(); });
   window.addEventListener("pageshow", function (event) { if (event.persisted) bleReports.resume(); });
 
+  // BLE session history (memory-only, OLDEST-first with a forward cursor). Read-only: a row is never
+  // a Target or an action. Loads lazily on first expand of the collapsible card.
+  var bleHistoryCount = 0, bleHistoryLoaded = false;
+  var BLE_HISTORY_KINDS = { ble_found: "found", ble_observation: "observation" };
+  var bleHistory = window.CCBLEHistory.create({
+    onPage: function (rows, meta) {
+      document.getElementById("ble-history-rows").innerHTML = rows.length ? rows.map(function (r) {
+        return "<tr><td>" + esc(r.label) + '</td><td class="r mono">' + esc(r.rssi) +
+          ' dBm</td><td class="mono">' + esc(r.source_port) + "</td><td>" +
+          esc(BLE_HISTORY_KINDS[r.kind] || r.kind) + '</td><td class="r" title="' +
+          esc(r.observed_at) + '">' + esc(ageOf(r.observed_at)) + "</td></tr>";
+      }).join("") : '<tr><td class="off" colspan="5">No session history in this run.</td></tr>';
+      bleHistoryCount = meta.count;
+      document.getElementById("ble-history-count").textContent = bleHistoryCount;
+      document.getElementById("ble-history-more").disabled = !meta.has_more;
+      var trim = document.getElementById("ble-history-trim");
+      trim.hidden = !meta.trimmed;
+      if (meta.trimmed) {
+        trim.textContent = "Showing the most recent " + rows.length +
+          " loaded reports; older rows were trimmed from view.";
+      }
+    },
+    onStatus: function (state) {
+      var el = document.getElementById("ble-history-status");
+      var more = document.getElementById("ble-history-more");
+      if (state === "loading") {
+        el.textContent = "Loading session history. Any rows shown are from the last successful read.";
+        more.setAttribute("aria-busy", "true");
+        return;
+      }
+      more.setAttribute("aria-busy", "false");
+      el.textContent =
+        state === "disabled" ? "Session history is off for this session." :
+        state === "unavailable" ? "Session history is unavailable in this session." :
+        state === "unauthorized" ? "Sign in again to load session history." :
+        state === "expired" ? "The retained history window moved; reloading from the oldest still-available report." :
+        state === "stale" ? "The retained history window moved past the last reload. Use Refresh to load the current oldest page." :
+        state === "error" ? "Session history could not refresh. Any rows shown are from the last successful read. Use Refresh to retry." :
+        state === "idle" ? "No session history loaded. Expand or use Refresh to load (oldest first)." :
+        state === "empty" ? "No session history in the current run." :
+        bleHistoryCount ? "Oldest first. " + bleHistoryCount + " report" + (bleHistoryCount === 1 ? "" : "s") +
+          " loaded." + (more.disabled ? " Caught up." : "") :
+        "No session history in the current run.";
+    },
+  });
+  var bleHistoryCard = document.getElementById("ble-history-card");
+  bleHistoryCard.addEventListener("toggle", function () {
+    if (bleHistoryCard.open && !bleHistoryLoaded) { bleHistoryLoaded = true; bleHistory.refresh(); }
+  });
+  document.getElementById("ble-history-refresh").addEventListener("click", function () {
+    bleHistoryLoaded = true;
+    document.getElementById("ble-history-trim").hidden = true;
+    bleHistory.refresh();
+  });
+  document.getElementById("ble-history-more").addEventListener("click", function (event) {
+    bleHistory.loadMore();
+    event.currentTarget.focus();   // keep focus on the button after appending newer rows
+  });
+  window.addEventListener("pagehide", function () { bleHistory.suspend(); });
+  window.addEventListener("pageshow", function (event) {
+    // A bfcache/persisted restore must un-suspend the reader whether or not the card is open, and
+    // WITHOUT reloading (loaded rows + the restored DOM are preserved) — so a later expand or
+    // Refresh issues requests again instead of staying permanently suspended.
+    if (event.persisted) bleHistory.wake();
+  });
+
   // Address-bearing targets keep their existing shared-pool identity.
   function tile(cls, n, label) {
     return '<div class="tile ' + cls + '"><div class="n">' + esc(n) + '</div><div class="l">' + esc(label) + "</div></div>";

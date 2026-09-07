@@ -44,6 +44,8 @@ def _detect_platform() -> str:
     system = platform.system().lower()
     machine = platform.machine().lower()
     if system == "windows":
+        if "arm" in machine or "aarch64" in machine:
+            return "windows-arm64" if "64" in machine else "windows-arm"
         return "windows-x64" if "64" in machine or machine == "amd64" else "windows-x86"
     if system == "linux":
         if "arm" in machine or "aarch64" in machine:
@@ -54,17 +56,35 @@ def _detect_platform() -> str:
     return f"{system}-{machine}"
 
 
-def _build() -> int:
-    onedir = "--onedir" in sys.argv[1:]
-    plat = _detect_platform()
-    if platform.system() == "Linux":
-        _require_linux_runtime()
-    print(f"Platform : {plat}")
-    print(f"Mode     : {'--onedir (folder; instant startup, for the installer)' if onedir else '--onefile'}")
-    print(f"Entry    : {_ENTRY}")
-    print(f"Icon     : {_ICON if _ICON.exists() else '(not found, skipping)'}")
-    print()
+def _module_available(name: str) -> bool:
+    """Discoverable without executing anything: the build decides on presence, PyInstaller imports.
 
+    Each dotted part is resolved by a path-based lookup (builtin/frozen finders first for the top
+    level), so a parent package's __init__ never runs here; importlib.util.find_spec would import
+    the parent. A missing level reports unavailable. A namespace-only package (a directory with no
+    __init__) is reported unavailable on purpose: directory existence is not module availability.
+    """
+    from importlib.machinery import BuiltinImporter, FrozenImporter, PathFinder
+
+    parts = name.split(".")
+    search = None
+    for depth in range(len(parts)):
+        qualified = ".".join(parts[: depth + 1])
+        spec = None
+        if depth == 0:
+            spec = BuiltinImporter.find_spec(qualified) or FrozenImporter.find_spec(qualified)
+        if spec is None:
+            if depth and not search:
+                return False
+            spec = PathFinder.find_spec(qualified, search)
+        if spec is None or spec.origin is None:
+            return False
+        search = spec.submodule_search_locations
+    return True
+
+
+def _assemble_command(onedir: bool, *, available=_module_available) -> list[str]:
+    """The PyInstaller argv for this checkout; optional inputs are decided through *available*."""
     cmd: list[str] = [
         sys.executable, "-m", "PyInstaller",
         # Non-interactive: overwrite an existing dist/ without the "…will be REMOVED! Continue? (y/N)"
@@ -206,13 +226,23 @@ def _build() -> int:
         # Without this the module + its qsvg icon-engine plugin can be dropped from the frozen build and the
         # icons render blank. Assets themselves already ship via --add-data assets above.
         "--hidden-import", "PyQt5.QtSvg",
-        # QtWebEngine powers the reformed `--ui qtweb` "Full GUI" (now the default). Importing
-        # QtWebEngineWidgets triggers PyInstaller's PyQt5 hook to bundle QtWebEngineProcess + the Chromium
-        # resources/ICU; the rest are used by the desktop shell + the QWebChannel bridge
-        # (src/ui/web/desktop_qt.py). Without these the packaged app has no reformed GUI at all — it was
-        # falling back to the legacy `qt` interface on every release.
-        "--hidden-import", "PyQt5.QtWebEngineWidgets",
-        "--hidden-import", "PyQt5.QtWebEngineCore",
+    ])
+    # QtWebEngine powers the Qt desktop shell (src/ui/web/desktop_qt.py). Importing
+    # QtWebEngineWidgets triggers PyInstaller's PyQt5 hook to bundle QtWebEngineProcess + the
+    # Chromium resources/ICU. It is an OPTIONAL extra: the Windows [desktop] extra ships pywebview
+    # instead, so on such a build these names would only produce "hidden import not found" errors.
+    # Linux builds are required to have it (_require_linux_runtime), so this gate can never
+    # silently drop the Linux renderer.
+    if available("PyQt5.QtWebEngineWidgets"):
+        cmd.extend([
+            "--hidden-import", "PyQt5.QtWebEngineWidgets",
+            "--hidden-import", "PyQt5.QtWebEngineCore",
+        ])
+    else:
+        print("note: PyQtWebEngine not installed — the Qt desktop shell will not be bundled; "
+              "pywebview (system webview) and the browser fallback remain.")
+    cmd.extend([
+        # QWebChannel ships with base PyQt5 and backs the native file bridge of the Qt shell.
         "--hidden-import", "PyQt5.QtWebChannel",
         "--hidden-import", "PyQt5.QtNetwork",
         "--hidden-import", "PyQt5.QtPrintSupport",
@@ -239,29 +269,26 @@ def _build() -> int:
     # The provisioner imports esp_idf_nvs_partition_gen dynamically, so collect the complete package.
     # The current native Linux ARM workflow installs the desktop package with dependencies;
     # _require_linux_runtime() rejects a missing NVS generator before freezing on Linux.
-    try:
-        import esp_idf_nvs_partition_gen  # noqa: F401
+    if available("esp_idf_nvs_partition_gen"):
         cmd.extend(["--collect-all", "esp_idf_nvs_partition_gen"])
         print("Bundling esp_idf_nvs_partition_gen (Dead Man's Switch NVS provisioning).")
-    except ImportError:
+    else:
         print("note: esp_idf_nvs_partition_gen not installed — DMS NVS provisioning won't be bundled.")
 
     # pyzipper (+ its pycryptodome AES backend) decrypts the bundled crack-tool packs at runtime
     # (src/core/tool_bundle.py). Collect it fully so the frozen app can unpack aircrack-ng/... on opt-in.
-    try:
-        import pyzipper  # noqa: F401
+    if available("pyzipper"):
         cmd.extend(["--collect-all", "pyzipper"])
-    except ImportError:
+    else:
         print("note: pyzipper not installed — bundled crack-tool packs can't be unpacked in this build.")
 
     # Collect the Flask/Socket.IO web runtime and template dependencies for the Reform UI.
     # Linux builds must pass _require_linux_runtime() before collection; missing required web or
     # renderer imports stop the build. The per-package guards remain for other build environments.
     for _webpkg in ("flask", "flask_socketio", "engineio", "socketio", "jinja2", "werkzeug"):
-        try:
-            __import__(_webpkg)
+        if available(_webpkg):
             cmd.extend(["--collect-all", _webpkg])
-        except ImportError:
+        else:
             print(f"note: {_webpkg} not installed — the qtweb/web UI won't be fully bundled in this build.")
 
     # pywebview is the system-webview shell for the DEFAULT "Normal GUI" (WebView2 on Windows,
@@ -269,15 +296,14 @@ def _build() -> int:
     # never sees it — collect it explicitly (with its per-platform backends) or the packaged app has NO
     # webview, the Normal GUI can't open a window, and a --windowed build "installs but won't launch".
     # (The install step must include the [desktop] extra so pywebview is present to collect.)
-    try:
-        __import__("webview")
+    if available("webview"):
         cmd.extend(["--collect-all", "webview"])
         # pywebview's WINDOWS WebView2 backend is .NET via pythonnet (clr). PyInstaller auto-follows the
         # `import clr` from webview.platforms.edgechromium and bundles it — BUT only if pythonnet is
         # actually installed. The [desktop] extra pulls `pythonnet` on win32 so the CI build gets a real
         # native window instead of dropping to the browser fallback. (Verified: with pythonnet present,
         # the frozen build opens the native window; without it, ~16 MB smaller and browser-only.)
-    except ImportError:
+    else:
         print("note: pywebview not installed — the Normal GUI (system webview) will NOT be bundled; "
               "the packaged app would fall back to the browser UI. Install .[desktop] before building.")
 
@@ -290,6 +316,21 @@ def _build() -> int:
     ])
 
     cmd.append(str(_ENTRY))
+    return cmd
+
+
+def _build() -> int:
+    onedir = "--onedir" in sys.argv[1:]
+    plat = _detect_platform()
+    if platform.system() == "Linux":
+        _require_linux_runtime()
+    print(f"Platform : {plat}")
+    print(f"Mode     : {'--onedir (folder; instant startup, for the installer)' if onedir else '--onefile'}")
+    print(f"Entry    : {_ENTRY}")
+    print(f"Icon     : {_ICON if _ICON.exists() else '(not found, skipping)'}")
+    print()
+
+    cmd = _assemble_command(onedir)
 
     print(f"Running: {' '.join(cmd)}")
     print()

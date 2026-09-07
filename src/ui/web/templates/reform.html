@@ -339,6 +339,18 @@
             <tbody id="ble-observation-rows"><tr><td class="off" colspan="5">No reports loaded.</td></tr></tbody></table>
         </div>
       </div>
+      <details class="card collapsible" id="ble-history-card">
+        <summary><span class="t">BLE session history</span><span class="r"><span id="ble-history-count">0</span> reports</span></summary>
+        <p class="footnote">Oldest first, newest at the bottom. Memory only &#8212; not saved to disk and cleared when CC restarts. These are reports, not devices: no address or selection authority. Off unless session history is turned on at startup.</p>
+        <p class="footnote" id="ble-history-status" role="status" aria-live="polite">Expand to load session history.</p>
+        <p class="footnote" id="ble-history-trim" hidden></p>
+        <div class="ble-observation-scroll" tabindex="0" role="region" aria-label="BLE session history, oldest first">
+          <table><thead><tr><th>Reported label</th><th class="r">RSSI</th><th>Source</th><th>Kind</th><th class="r">Seen</th></tr></thead>
+            <tbody id="ble-history-rows"><tr><td class="off" colspan="5">No session history loaded.</td></tr></tbody></table>
+        </div>
+        <button type="button" class="btn sm" id="ble-history-more" disabled>Load more (newer)</button>
+        <button type="button" class="btn sm" id="ble-history-refresh">Refresh (oldest first)</button>
+      </details>
       <div class="card"><h3><span class="t">BLE Analyzer</span><span class="r" id="hunt-ble-sub">addresses reported by firmware</span></h3>
         <div class="tiles" id="hunt-ble-tiles" style="margin-bottom:12px"></div>
         <p class="footnote" data-target-status role="status" hidden></p>
@@ -645,6 +657,7 @@
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='tool_jobs_panel.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='target_snapshots.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='ble_reports.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='ble_history.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='target_selection.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_card.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_transport.js') }}"></script>
