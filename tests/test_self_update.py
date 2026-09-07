@@ -1,8 +1,9 @@
 """Tests for the Phase-2 in-place self-updater (:mod:`src.core.self_update`).
 
 Everything destructive (downloads, overwriting a binary, os.execv) is stubbed. These tests only
-cover asset selection, checksum parsing/verification, the frozen guard, the swap-script text,
-and the orchestration wiring. No network, no real binary is ever touched.
+cover the platform key, the checksum-manifest requirement, the frozen guard, the swap-script
+text, and the orchestration wiring (strict selection itself is proven operationally in
+test_self_update_selection.py). No network, no real binary is ever touched.
 """
 
 from __future__ import annotations
@@ -41,63 +42,6 @@ def test_platform_key_refuses_hosts_without_a_published_build(system, machine):
         su.platform_key(system, machine)
 
 
-# ── select_asset ────────────────────────────────────────────────────────────────────────────────
-
-def _assets():
-    return [
-        {"name": "cyber-controller-v1.5.1-windows-x64.exe", "browser_download_url": "u1"},
-        {"name": "cyber-controller-1.5.1-setup.exe", "browser_download_url": "u2"},
-        {"name": "cyber-controller-v1.5.1-linux-x64", "browser_download_url": "u3"},
-        {"name": "cyber-controller-v1.5.1-linux-arm64", "browser_download_url": "u4"},
-        {"name": "cyber-controller-v1.5.1-macos-arm64", "browser_download_url": "u5"},
-        {"name": "SHA256SUMS.txt", "browser_download_url": "u6"},
-    ]
-
-
-@pytest.mark.parametrize("key,url", [
-    ("windows-x64", "u1"),
-    ("linux-x64", "u3"),
-    ("linux-arm64", "u4"),
-    ("macos-arm64", "u5"),
-])
-def test_select_asset_picks_onefile(key, url):
-    got = su.select_asset(_assets(), key)
-    assert got is not None and got["browser_download_url"] == url
-
-
-def test_select_asset_skips_setup_installer():
-    # windows selection must be the standalone .exe, never the setup installer.
-    got = su.select_asset(_assets(), "windows-x64")
-    assert "setup" not in got["name"].lower()
-
-
-def test_select_asset_none_when_absent():
-    only_win = [{"name": "cyber-controller-v1.5.1-windows-x64.exe", "browser_download_url": "u1"}]
-    assert su.select_asset(only_win, "linux-x64") is None
-
-
-def test_select_asset_linux_rejects_exe_and_txt():
-    assets = [{"name": "cyber-controller-v1.5.1-linux-x64.exe", "browser_download_url": "x"}]
-    assert su.select_asset(assets, "linux-x64") is None
-
-
-# ── parse_sha256sums ──────────────────────────────────────────────────────────────────────────────
-
-def test_parse_sha256sums_plain_and_binary_marker():
-    a = "0" * 64
-    b = "a" * 64
-    text = f"{a}  cyber-controller-v1.5.1-linux-x64\n{b} *cyber-controller-v1.5.1-windows-x64.exe\n"
-    sums = su.parse_sha256sums(text)
-    assert sums["cyber-controller-v1.5.1-linux-x64"] == a
-    assert sums["cyber-controller-v1.5.1-windows-x64.exe"] == b
-
-
-def test_parse_sha256sums_skips_junk():
-    text = "# a comment\n\nnot-a-hash file\n" + ("f" * 64) + "  good\n"
-    sums = su.parse_sha256sums(text)
-    assert sums == {"good": "f" * 64}
-
-
 # ── sha256_file ───────────────────────────────────────────────────────────────────────────────────
 
 def test_sha256_file(tmp_path):
@@ -105,15 +49,6 @@ def test_sha256_file(tmp_path):
     data = b"cyber-controller onefile bytes" * 1000
     p.write_bytes(data)
     assert su.sha256_file(str(p)) == hashlib.sha256(data).hexdigest()
-
-
-# ── find_release ──────────────────────────────────────────────────────────────────────────────────
-
-def test_find_release_tolerates_v_prefix():
-    releases = [{"tag_name": "v1.5.0"}, {"tag_name": "v1.5.1"}]
-    assert su.find_release(releases, "1.5.1")["tag_name"] == "v1.5.1"
-    assert su.find_release(releases, "v1.5.1")["tag_name"] == "v1.5.1"
-    assert su.find_release(releases, "v9.9.9") is None
 
 
 # ── win_swap_script ───────────────────────────────────────────────────────────────────────────────
@@ -282,7 +217,9 @@ def _stage_env(monkeypatch, tmp_path, content: bytes):
     # path is exercised — a frozen build with no shape metadata is now 'unknown' and would be refused (U3).
     monkeypatch.setattr(su.sys, "_MEIPASS", str(tmp_path / "_MEI424242"), raising=False)
 
-    def fake_download(url, dest, timeout=su.DEFAULT_TIMEOUT, progress=None):
+    def fake_download(url, dest, timeout=su.DEFAULT_TIMEOUT, progress=None, *,
+                      expected_size=None):
+        assert expected_size == len(content), "bounded by the validated published size"
         with open(dest, "wb") as fh:
             fh.write(content)
         if progress:
@@ -291,9 +228,10 @@ def _stage_env(monkeypatch, tmp_path, content: bytes):
 
     monkeypatch.setattr(su, "download_asset", fake_download)
     releases = [{
-        "tag_name": "v1.5.1",
+        "tag_name": "v1.5.1", "draft": False, "prerelease": False,
         "assets": [
-            {"name": "cyber-controller-v1.5.1-linux-x64", "browser_download_url": "http://dl"},
+            {"name": "cyber-controller-v1.5.1-linux-x64", "browser_download_url": "http://dl",
+             "size": len(content)},
             {"name": "SHA256SUMS.txt", "browser_download_url": "http://sums"},
         ],
     }]

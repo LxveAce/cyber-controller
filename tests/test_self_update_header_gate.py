@@ -48,13 +48,14 @@ def stage(monkeypatch, key, content):
     digest = hashlib.sha256(content).hexdigest()
     monkeypatch.setattr(su, "fetch_sums", lambda assets, timeout=0: {name: digest})
 
-    def download(url, dest, timeout=0, progress=None):
+    def download(url, dest, timeout=0, progress=None, **kw):
         with open(dest, "wb") as fh:
             fh.write(content)
 
     monkeypatch.setattr(su, "download_asset", download)
     release = {"tag_name": TAG, "draft": False, "prerelease": False, "assets": [
-        {"name": name, "browser_download_url": "https://github.com/x/y/d/" + name},
+        {"name": name, "browser_download_url": "https://github.com/x/y/d/" + name,
+         "size": len(content)},
         {"name": "SHA256SUMS.txt", "browser_download_url": "https://github.com/x/y/s"}]}
     return su.self_update(SimpleNamespace(latest_tag=TAG), releases=[release], restart=False)
 
@@ -112,13 +113,13 @@ def test_checksum_still_runs_before_the_header_gate(monkeypatch, frozen_onefile)
     name = asset_name("linux-x64")
     monkeypatch.setattr(su, "fetch_sums", lambda assets, timeout=0: {name: "0" * 64})
 
-    def download(url, dest, timeout=0, progress=None):
+    def download(url, dest, timeout=0, progress=None, **kw):
         with open(dest, "wb") as fh:
             fh.write(content)
 
     monkeypatch.setattr(su, "download_asset", download)
     release = {"tag_name": TAG, "draft": False, "prerelease": False, "assets": [
-        {"name": name, "browser_download_url": "u"},
+        {"name": name, "browser_download_url": "u", "size": len(content)},
         {"name": "SHA256SUMS.txt", "browser_download_url": "s"}]}
     with pytest.raises(su.SelfUpdateError, match="checksum mismatch"):
         su.self_update(SimpleNamespace(latest_tag=TAG), releases=[release], restart=False)

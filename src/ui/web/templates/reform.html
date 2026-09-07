@@ -194,12 +194,12 @@
               </div>
             </div>
             <div class="sub pro" data-sub="hist"><div class="dim" style="font-size:11px">No action history yet.</div></div>
-            <div class="sub pro" data-sub="stream"><div class="term" id="xc-stream" style="height:120px"><div class="p">Bus events appear here in real time&#8230;</div></div></div>
+            <div class="sub pro" data-sub="stream"><div class="term" id="xc-stream" style="height:120px" tabindex="0" aria-label="Cross-Comm bus events"><div class="p">Bus events appear here in real time&#8230;</div></div></div>
           </div>
 
           <details class="card collapsible" id="dash-term-card">
             <summary><span class="t">Serial Terminal</span><span class="r" id="term-title">{% if selected %}{{ selected.port }} &#8212; {{ selected.firmware }}{% else %}no device{% endif %}</span></summary>
-            <div class="term" id="dash-term" style="margin-top:9px">
+            <div class="term" id="dash-term" style="margin-top:9px" tabindex="0" aria-label="Serial terminal output">
               {% if selected %}<div class="p">[Connected to {{ selected.port }}]</div><div class="p">Live serial output streams here&#8230;</div>{% else %}<div class="p">Connect a device to stream its serial output. Full per-port terminals live under TERMINAL.</div>{% endif %}
             </div>
           </details>
@@ -282,7 +282,7 @@
         </div>
       </div>
       <div class="card" style="margin-top:12px"><h3><span class="t">Log</span></h3>
-        <div class="term" id="os-log" style="height:90px"><div class="p">Pick an OS + a removable USB. The catalog + drive list are live.</div></div>
+        <div class="term" id="os-log" style="height:90px" tabindex="0" aria-label="OS flash log"><div class="p">Pick an OS + a removable USB. The catalog + drive list are live.</div></div>
       </div>
     </div>
 
@@ -432,7 +432,7 @@
         </div>
         <div class="card">
           <h3><span class="t">Activity</span><span class="r">shared terminal</span></h3>
-          <div class="term" id="op-term" style="height:min(300px,45vh)"><div class="p">Sent commands and device output appear here.</div></div>
+          <div class="term" id="op-term" style="height:min(300px,45vh)" tabindex="0" aria-label="Operate console output"><div class="p">Sent commands and device output appear here.</div></div>
           <div class="terminput" style="margin-top:8px"><span class="pr">&gt;</span><input class="field mono" id="op-input" aria-label="Raw command" placeholder="type a raw command (danger verbs still confirm)&#8230;"><button class="btn" id="op-send">Send</button></div>
         </div>
       </div>
@@ -513,7 +513,7 @@
         </div>
         <div class="card">
           <h3><span class="t">Log</span><span class="r">tool output</span></h3>
-          <div class="term" id="crack-log" style="height:150px"><div class="p">Run a crack to see live output here.</div></div>
+          <div class="term" id="crack-log" style="height:150px" tabindex="0" aria-label="Crack output"><div class="p">Run a crack to see live output here.</div></div>
         </div>
       </div>
     </div>

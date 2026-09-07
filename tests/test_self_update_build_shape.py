@@ -2,9 +2,9 @@
 
 The shipped Windows build is a onedir Inno-Setup install (CyberController.exe + _internal/). The old
 self-updater picked the portable onefile and swapped it over the onedir bootstrap, orphaning
-_internal/ and corrupting the install. These tests pin: we detect the build shape, we can pick the
-installer asset for a onedir build, in-place update refuses early on a onedir build (the UI already
-falls back to the release page). Nothing destructive runs.
+_internal/ and corrupting the install. These tests pin: we detect the build shape, and in-place
+update refuses early on a onedir build (the UI already falls back to the release page). Nothing
+destructive runs.
 """
 
 from __future__ import annotations
@@ -97,7 +97,7 @@ def test_installed_kind_unknown_when_layout_ambiguous(monkeypatch, tmp_path):
     assert su.can_self_update_in_place() is False   # unknown is never offered an in-place swap
 
 
-# ── select_asset: installer vs portable (real v2.0.x asset shape) ─────────────────────────────
+# ── the real v2.0.x asset catalog (used by the refusal test below) ─────────────────────────────
 
 def _v2_assets():
     return [
@@ -106,22 +106,6 @@ def _v2_assets():
         {"name": "cyber-controller-v2.0.1-linux-x64", "browser_download_url": "linux"},
         {"name": "SHA256SUMS.txt", "browser_download_url": "sums"},
     ]
-
-
-def test_select_asset_installer_picks_setup():
-    got = su.select_asset(_v2_assets(), "windows-x64", installer=True)
-    assert got is not None and got["browser_download_url"] == "setup"
-
-
-def test_select_asset_default_picks_portable_not_setup():
-    got = su.select_asset(_v2_assets(), "windows-x64")
-    assert got is not None and got["browser_download_url"] == "portable"
-
-
-def test_select_asset_installer_none_when_no_setup():
-    no_setup = [{"name": "cyber-controller-v2.0.1-windows-x64.exe",
-                 "browser_download_url": "portable"}]
-    assert su.select_asset(no_setup, "windows-x64", installer=True) is None
 
 
 # ── in-place update refuses on any non-onefile build (onedir AND unknown), at both boundaries ───
