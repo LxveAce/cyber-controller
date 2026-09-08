@@ -718,3 +718,74 @@ test("a reentrant refresh started from a status callback during supersession kee
   assert.ok(!last.signal.aborted, "the newest (reentrant) read's slot is intact");
   last.resolve(page([row(7)], { has_more: false })); await flush();
 });
+
+// ── expiry-message / busy contract: the ONE automatic recovery shows "expired" (reloading) while it
+//    is actually pending, and settles finitely. The recovery no longer emits a second "loading"
+//    that overwrites "expired"; producer sequence is [loading, expired, <terminal>]. The visible/painted
+//    aria-busy claim is proven separately in the headless DOM evidence (a sync sequence is not enough).
+const R410 = (extra) => ({ httpStatus: 410, body: Object.assign({ reason: "cursor_expired", earliest_seq: 5 }, extra || {}) });
+
+test("recovery: expired is shown and NOT overwritten by a second loading, then settles fresh", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(R410()); await flush();                 // 410 -> auto recovery in flight
+  f.pageCalls[1].resolve(page([row(1), row(2)])); await flush(); // recovery loads
+  assert.deepEqual(seq(f), ["loading", "expired", "fresh"], "no second loading between expired and the terminal");
+  assert.equal(seq(f).filter(s => s === "loading").length, 1, "only the user read emits loading; the recovery does not");
+  assert.deepEqual(f.lastRows(), [1, 2]);
+});
+
+test("recovery spent (410 again): expired then stale, no intervening loading", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(R410()); await flush();
+  f.pageCalls[1].resolve(R410({ earliest_seq: 9 })); await flush();
+  assert.deepEqual(seq(f), ["loading", "expired", "stale"]);
+});
+
+test("recovery genuine failure: expired then error", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(R410()); await flush();
+  f.pageCalls[1].reject(new Error("network down")); await flush();
+  assert.deepEqual(seq(f), ["loading", "expired", "error"]);
+});
+
+test("recovery auth-loss: expired then unauthorized", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(R410()); await flush();
+  const err = new Error("unauthorized"); err.status = 401;
+  f.pageCalls[1].reject(err); await flush();
+  assert.deepEqual(seq(f), ["loading", "expired", "unauthorized"]);
+});
+
+test("recovery timeout: expired then error (no timer added to display the message)", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(R410()); await flush();
+  f.expire();                                    // the recovery's own deadline fires
+  await flush();
+  assert.deepEqual(seq(f), ["loading", "expired", "error"]);
+});
+
+test("supersession during recovery: a user refresh replaces the pending recovery, staying busy", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(R410()); await flush();  // recovery in flight (pageCalls[1])
+  const superseding = f.control.refresh(); await flush();  // user refresh supersedes the recovery
+  assert.ok(f.pageCalls[1].signal.aborted, "the in-flight recovery is aborted");
+  f.pageCalls[2].resolve(page([row(9)])); await flush();
+  assert.equal(await superseding, true);
+  assert.deepEqual(seq(f), ["loading", "expired", "loading", "fresh"], "the replacing user read shows loading (busy) again");
+  assert.deepEqual(f.lastRows(), [9]);
+});
+
+test("one automatic recovery per user action is preserved (expired shown at most once)", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve(R410()); await flush();
+  f.pageCalls[1].resolve(R410()); await flush();
+  assert.equal(seq(f).filter(s => s === "expired").length, 1, "the one recovery is bounded; expired is not re-emitted");
+  assert.equal(f.lastState(), "stale");
+});
