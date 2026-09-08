@@ -132,7 +132,7 @@ def swap_recorders(monkeypatch):
     calls = []
     monkeypatch.setattr(su, "_apply_unix", lambda cur, new, argv: calls.append(("unix", new)))
     monkeypatch.setattr(su, "_apply_windows",
-                        lambda cur, new, pid: calls.append(("win", new)))
+                        lambda cur, new, pid, argv: calls.append(("win", new)))
     return calls
 
 

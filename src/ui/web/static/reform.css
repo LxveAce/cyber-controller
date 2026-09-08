@@ -204,6 +204,8 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .term .ok{color:var(--green)} .term .er{color:var(--red)} .term .wa{color:var(--amber)}
 .term .p,.term .rx,.term .tx,.term .ok,.term .er,.term .wa{white-space:pre-wrap;overflow-wrap:anywhere}
 .term:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
+.term-notice{color:var(--amber);font-size:11px;padding:2px 4px;margin:2px 0 0}
+.term-notice:empty{padding:0;margin:0}
 
 /* link strip */
 .linkstrip{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;padding:8px 11px;background:var(--bg);border:1px solid var(--bd);border-radius:6px}

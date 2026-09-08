@@ -95,9 +95,13 @@ def test_apply_windows_writes_non_ascii_path_script(monkeypatch, tmp_path):
 
     monkeypatch.setattr(su.subprocess, "Popen", fake_popen)
 
-    cur = r"C:\Users\José\AppData\Local\Programs\cyber-controller\cyber-controller.exe"
+    # a real (writable) directory whose path carries the accent, so the relaunch-args sidecar write
+    # next to the exe succeeds and the accented path is exercised in the script.
+    d = tmp_path / "José" / "cyber-controller"
+    d.mkdir(parents=True)
+    cur = str(d / "cyber-controller.exe")
     new = cur + ".new"
-    su._apply_windows(cur, new, pid=4242)  # must not raise
+    su._apply_windows(cur, new, 4242, [cur])  # must not raise
 
     script = spawned["argv"][-1]
     assert os.path.isfile(script)
@@ -123,7 +127,8 @@ def test_apply_windows_encode_failure_is_fail_closed(monkeypatch):
     monkeypatch.setattr(su.subprocess, "Popen", _no_spawn)
 
     with pytest.raises(su.SelfUpdateError):
-        su._apply_windows(r"C:\Users\José\app.exe", r"C:\Users\José\app.exe.new", pid=1)
+        su._apply_windows(r"C:\Users\José\app.exe", r"C:\Users\José\app.exe.new", 1,
+                          [r"C:\Users\José\app.exe"])
 
 
 def test_failed_update_marker_roundtrip(tmp_path):
