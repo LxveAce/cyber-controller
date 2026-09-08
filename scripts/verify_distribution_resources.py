@@ -26,6 +26,7 @@ REQUIRED_SUFFIXES = (
     "src/core/default_macros/cc_marauder_ap_scan.json",
     "src/ui/qt/theme/cyber_dark.qss",
     "src/ui/tui/styles.tcss",
+    "src/ui/web/static/map_outline.js",
     "src/ui/web/static/reform.css",
     "src/ui/web/static/reform.js",
     "src/ui/web/static/updates_card.js",
