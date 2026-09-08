@@ -166,11 +166,19 @@ def basemap_paths(geojson: Any, world: float = _WORLD_PX) -> "List[List[Tuple[fl
     """Project a Polygon/MultiPolygon FeatureCollection's rings into shared-plane point lists — each inner
     list is one closed ring's (x, y) world_px points, ready for a QPainterPath. Pure + Qt-free so the
     basemap projection is unit-testable. GeoJSON coords are [lon, lat]; non-polygon / short / non-finite
-    rings are skipped (a hostile/partial world file can't crash the map)."""
+    rings are skipped (a hostile/partial world file can't crash the map). Every container is type-checked at
+    its boundary — a non-list ``features``, a non-dict feature/geometry, or a scalar coordinate container is
+    skipped (not coerced), so one malformed entry can't raise and later valid siblings still project."""
     rings: "List[List[Tuple[float, float]]]" = []
     feats = geojson.get("features") if isinstance(geojson, dict) else None
-    for feat in feats or []:
-        geom = (feat or {}).get("geometry") or {}
+    if not isinstance(feats, list):                       # non-list features: nothing to project
+        return rings
+    for feat in feats:
+        if not isinstance(feat, dict):                    # non-dict feature: skip, keep siblings
+            continue
+        geom = feat.get("geometry")
+        if not isinstance(geom, dict):                    # missing / non-dict geometry: skip
+            continue
         gtype = geom.get("type")
         coords = geom.get("coordinates")
         if gtype == "Polygon":
@@ -179,10 +187,16 @@ def basemap_paths(geojson: Any, world: float = _WORLD_PX) -> "List[List[Tuple[fl
             polys = coords
         else:
             continue
-        for poly in polys or []:
-            for ring in poly or []:
+        if not isinstance(polys, list):                   # coordinates not a list: skip
+            continue
+        for poly in polys:
+            if not isinstance(poly, list):                # scalar / non-list polygon: skip
+                continue
+            for ring in poly:
+                if not isinstance(ring, list):            # scalar / non-list ring: skip
+                    continue
                 pts: "List[Tuple[float, float]]" = []
-                for c in ring or []:
+                for c in ring:
                     if not (isinstance(c, (list, tuple)) and len(c) >= 2):
                         continue
                     lon, lat = c[0], c[1]
