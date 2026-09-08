@@ -867,14 +867,131 @@
   // cookie (whose reconnect the server would just refuse). Bounded to a single attempt: no retry loop.
   var reconnectAfterAuthChange = false;
 
+  var FOLLOW_EPS = 4;   // sub-pixel / HiDPI / fractional-measurement tolerance for "at the bottom"
+  var NO_ECHO = NaN;   // sentinel: no pending programmatic echo -- a retired coordinate never matches a real scroll
+
+  // Per-pane tail-follow controller. A terminal pane keeps receiving output while its DEVICE/OPERATE
+  // view is display:none, so the reader's follow-or-read-history intent must survive the hidden gap
+  // and re-anchor on show. Intent is taken from the ACTUAL scroll position (a scroll still at our last
+  // written position is our own echo; reaching the bottom is always follow) and is reconciled before
+  // each ordinary append; content is anchored to a NODE so it survives 300-cap trims that happen while
+  // hidden. Bound ONCE per pane (idempotent) -- no per-append listener/observer accumulation. dispose()
+  // exists but no current teardown path calls it (panes persist in built{}, not removed on disconnect).
+  function ensurePaneController(el) {
+    if (el._ccPane) return el._ccPane;
+    var s = { follow: true, anchorNode: null, anchorTop: 0, anchorEvicted: false,
+              expected: NO_ECHO, laidOut: el.clientHeight > 0 };
+    el._ccPane = s;
+    el.style.overflowAnchor = "none";   // native anchoring off -> our compensation is the sole adjustment
+    // Eviction notice: a polite, non-focusable status line shown ONCE when a HISTORY reader's own anchor
+    // is removed by the 300-line cap (never for a following reader, who has no anchor). It lives just
+    // above the output (the pane's status area, not a toolbar) and resets when the reader returns to the
+    // tail or the pane starts a new session.
+    s.notice = null; s.evictShown = false;
+    if (el.parentNode) {
+      s.notice = document.createElement("div");
+      s.notice.className = "term-notice";
+      s.notice.setAttribute("role", "status");
+      s.notice.setAttribute("aria-live", "polite");
+      // Rendered and EMPTY from the start, so it is a persistent live region in the a11y tree; setting
+      // its text later is a change INSIDE the existing region (announced exactly once). It is never
+      // display-toggled; `.term-notice:empty` gives it zero height while empty, so no box exists until
+      // a real eviction.
+      el.parentNode.insertBefore(s.notice, el);
+    }
+    s.showEvicted = function () {
+      if (s.evictShown || !s.notice) return;
+      s.evictShown = true;
+      s.notice.textContent = "Older output was removed while you were scrolled up.";   // change inside the existing empty live region -> announced once
+    };
+    s.clearEvicted = function () {
+      if (!s.evictShown || !s.notice) return;
+      s.evictShown = false;
+      s.notice.textContent = "";
+    };
+    // A programmatic scroll write records the position it produced (read back, so it reflects clamping);
+    // a later scroll still at that position is our own echo, any other position is the reader.
+    s.write = function (fn) { fn(); s.expected = el.scrollTop; };
+    function paneTop() { return el.getBoundingClientRect().top; }
+    function offsetOf(n) { return n.getBoundingClientRect().top - paneTop(); }
+    s.snapTail = function () { el.scrollTop = el.scrollHeight; };
+    s.repinAnchor = function () { el.scrollTop += offsetOf(s.anchorNode) - s.anchorTop; };
+    // Apply the reader's intent to the scroll position (after a trim, and on show). Re-pinning the
+    // anchor NODE (not summing trimmed node heights) is exact and fractional-measurement safe.
+    s.apply = function (onShow) {
+      if (s.follow) { s.snapTail(); }
+      else if (s.anchorNode && s.anchorNode.isConnected) { s.repinAnchor(); }
+      else if (onShow) { el.scrollTop = 0; s.anchorEvicted = true; s.showEvicted(); }
+    };
+    s.captureAnchor = function () {
+      var kids = el.childNodes, top = paneTop();
+      for (var i = 0; i < kids.length; i++) {
+        if (kids[i].nodeType === 1 && kids[i].getBoundingClientRect().bottom - top > 0) {
+          s.anchorNode = kids[i]; s.anchorTop = kids[i].getBoundingClientRect().top - top;
+          s.anchorEvicted = false; return;
+        }
+      }
+      s.anchorNode = null;
+    };
+    // Update the reader's intent from an ACTUAL move. A scroll still at our last-written position is
+    // that write's echo (or the browser's restore-on-show, which restores to exactly it) and is ignored;
+    // any other position is the reader -- one test covers wheel, keyboard, drag and touch.
+    s.reconcile = function () {
+      if (el.clientHeight <= 0) return;
+      // Reaching the bottom is ALWAYS follow intent -- our snap's echo OR the reader returning to the
+      // tail in a quiescent stream -- so resume-follow needs no second scroll.
+      if (el.scrollHeight - el.clientHeight - el.scrollTop <= FOLLOW_EPS) { s.follow = true; s.anchorNode = null; s.expected = NO_ECHO; s.clearEvicted(); return; }   // retire the old coordinate so a later return here is not misread as an echo
+      if (Math.abs(el.scrollTop - s.expected) < 1) return;   // non-bottom echo of our own write -> not user intent
+      s.follow = false; s.captureAnchor(); s.expected = NO_ECHO;   // an accepted reader move retires the old coordinate (so A->B->A is not stale)
+    };
+    el.addEventListener("scroll", s.reconcile);
+    var ro = null;
+    if (window.ResizeObserver) {
+      ro = new ResizeObserver(function () {
+        var now = el.clientHeight > 0;
+        if (now && !s.laidOut) {   // hidden -> shown: re-apply the reader's intent
+          s.write(function () { s.apply(true); });   // following -> tail; history -> re-pin anchor; evicted -> top
+        }
+        s.laidOut = now;
+      });
+      ro.observe(el);
+    }
+    s.dispose = function () { el.removeEventListener("scroll", s.reconcile); if (ro) ro.disconnect(); if (s.notice && s.notice.parentNode) s.notice.parentNode.removeChild(s.notice); el._ccPane = null; };
+    return s;
+  }
+
   function appendLine(el, cls, text) {
     if (!el) return;
+    var s = ensurePaneController(el);
+    // A caller that cleared the pane (innerHTML = "") starts a fresh view: follow the tail and drop
+    // any now-detached anchor.
+    if (el.childNodes.length === 0) { s.follow = true; s.anchorNode = null; s.anchorEvicted = false; s.expected = NO_ECHO; s.clearEvicted(); }
+    var laidOut = el.clientHeight > 0;
+    if (!laidOut) {
+      s.laidOut = false;   // output arriving while hidden: track the hidden state here too, not only via the observer
+    } else if (!s.laidOut) {
+      // Output arrived on a pane that just became visible, BEFORE the ResizeObserver fired. Restore the
+      // reader's SAVED intent (retained anchor / tail) from the browser-restored coordinates; do NOT
+      // reconcile them as a fresh scroll, which would re-capture the anchor and lose the reader's line.
+      s.laidOut = true;
+      s.write(function () { s.apply(true); });
+    } else {
+      // Ordinary visible append: honour any scroll the reader made since our last write -- including in
+      // the same frame as an append -- before we react to this line, so a snap never overwrites it.
+      s.reconcile();
+    }
     var div = document.createElement("div");
     div.className = cls;
     div.textContent = text;
     el.appendChild(div);
-    while (el.childNodes.length > 300) el.removeChild(el.firstChild);
-    el.scrollTop = el.scrollHeight;
+    while (el.childNodes.length > 300) {
+      var first = el.firstChild;
+      if (first === s.anchorNode) { s.anchorNode = null; s.anchorEvicted = true; s.showEvicted(); }   // history reader's own line aged out
+      el.removeChild(first);
+    }
+    // Keep a tail follower at the bottom and a history reader pinned to their anchor node (exact
+    // across the top trim); do nothing while hidden -- the show handler re-applies intent then.
+    if (laidOut) s.write(function () { s.apply(false); });
   }
   function ensureSocket() {
     if (socket || !window.io) return socket;
@@ -2099,6 +2216,7 @@
       var id = osSel.value, dev = drvSel.value;
       if (log) {
         log.innerHTML = "";
+        if (log._ccPane) log._ccPane.clearEvicted();   // user cleared this pane -> reset the eviction notice now, without waiting for the next line
         if (!id || !dev) {
           appendLine(log, "er", "Pick an OS and a removable drive first.");
           return;
@@ -2733,7 +2851,7 @@
       if (!crackSel || !consent || !consent.checked) return;
       var wl = document.getElementById("wl-select");
       var wordlist = wl && wl.value ? wl.value : "";
-      if (logEl) logEl.innerHTML = "";
+      if (logEl) { logEl.innerHTML = ""; if (logEl._ccPane) logEl._ccPane.clearEvicted(); }   // user cleared this pane -> reset the eviction notice now
       logLine("[launch] " + (crackSel.ssid || crackSel.bssid), "tx");
       running(true);
       postJSON("/api/crack/run", { consent: true, capture_key: crackSel.key, wordlist: wordlist, engine: (document.getElementById("crack-engine") || {}).value || "native", bssid: crackSel.bssid || "" })

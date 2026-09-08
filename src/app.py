@@ -157,11 +157,19 @@ def _setup_logging(level: str, log_file: str | None = None) -> None:
     except Exception:  # noqa: BLE001 — diagnostics capture must never block startup
         pass
 
-    # Optional file handler
+    # Optional file handler. It is a diagnostic sink, so a path the process cannot create (its
+    # parent is a regular file, it is itself a directory, its drive does not exist, or Python
+    # rejects the name) is reported once through the console and ring handlers above and startup
+    # continues without it; it must never end the launch in a traceback.
     if log_file:
-        path = Path(log_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        fh = logging.FileHandler(str(path), encoding="utf-8")
+        try:
+            path = Path(log_file)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            fh = logging.FileHandler(str(path), encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            log.warning("log file %s could not be opened (%s); logging to the console only",
+                        log_file, exc)
+            return
         fh.setFormatter(logging.Formatter(_LOG_FORMAT, datefmt=_LOG_DATE))
         root.addHandler(fh)
 
@@ -428,7 +436,79 @@ def _window_caveat(*, platform=None, frozen=None, environ=None):
     return None
 
 
+# ── Windows self-update relaunch handoff ────────────────────────────────────────────────────
+
+# The environment variable the swap helper's child carries. Its value is agreed with
+# src.core.relaunch_args.TOKEN_ENV (the module owns the token format, the sidecar path and its
+# bounds); the name is repeated here so the token is scrubbed even on a build without that module.
+_RELAUNCH_TOKEN_ENV = "CC_RELAUNCH_TOKEN"
+
+
+def _relaunch_failure(reason: str, detail: str = "") -> int:
+    """A marked relaunch handoff that cannot be honoured is a finite startup failure, reported the
+    way the other refusals raised before logging is configured are (a stderr line and a nonzero
+    exit) plus the existing failed-update breadcrumb, so the next ordinary launch surfaces it.
+    Never a silent default launch."""
+    message = f"update relaunch could not restore your launch settings ({reason})"
+    if detail and detail != reason:
+        message += f": {detail}"
+    message += ". Start the app again with your usual options."
+    try:
+        if sys.stderr is not None:
+            print(message, file=sys.stderr)
+    except OSError:
+        pass
+    try:
+        from src.core import self_update
+        with open(self_update.failed_update_marker(sys.executable), "w", encoding="ascii",
+                  errors="replace") as fh:
+            fh.write(message)
+    except OSError:
+        log.debug("relaunch failure breadcrumb not written", exc_info=True)
+    return 1
+
+
+def _relaunch_handoff(argv: list[str] | None) -> int | None:
+    """Consume a Windows self-update relaunch handoff, if this launch carries one.
+
+    The token is removed from this process's own environment FIRST and unconditionally, so no
+    child of this process (the bundled esptool, the smoke fixture) can inherit it. The saved
+    arguments are restored only on the intended launch shape: a frozen Windows build started with
+    no arguments at all and no explicit ``argv``; every other launch keeps exactly what it was
+    started with, token or not. Returns None for ordinary startup (restored or not), or a nonzero
+    exit code for a marked handoff that cannot be honoured.
+    """
+    token = os.environ.pop(_RELAUNCH_TOKEN_ENV, None)
+    if token is None:
+        return None
+    intended = (argv is None and not sys.argv[1:] and bool(getattr(sys, "frozen", False))
+                and sys.platform == "win32")
+    if not intended:
+        return None
+    try:
+        from src.core import relaunch_args
+    except ImportError:
+        return _relaunch_failure("unavailable", "this build has no relaunch handoff support")
+    try:
+        restored = relaunch_args.consume_sidecar(sys.executable, token)
+    except relaunch_args.RelaunchArgsError as exc:
+        return _relaunch_failure(getattr(exc, "reason", "error"), str(exc))
+    except Exception as exc:
+        # Outside the module's error contract (a defect, an unexpected payload): still the same
+        # finite diagnostic, never a traceback out of the launcher on a marked handoff.
+        return _relaunch_failure("error", f"{type(exc).__name__}: {exc}")
+    # One normalisation: argparse reads sys.argv when argv is None, and the Qt entry points
+    # construct QApplication(sys.argv), so every reader sees the same restored arguments.
+    sys.argv = [sys.argv[0], *restored]
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
+    # Windows self-update relaunch handoff: scrub the token and restore the saved arguments, or
+    # refuse finitely, before anything else can spawn a child or read sys.argv.
+    _handoff = _relaunch_handoff(argv)
+    if _handoff is not None:
+        return _handoff
     # Frozen-build esptool dispatcher. In a PyInstaller build sys.executable is CyberController.exe, so
     # flash_core routes every esptool op back to this binary as `--_run-esptool <args>`. Run the BUNDLED
     # esptool in-process and exit. This MUST precede the single-instance lock — the esptool "subprocess"

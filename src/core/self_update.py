@@ -46,7 +46,7 @@ import tempfile
 import urllib.request
 from typing import Any, Callable, Mapping, Sequence
 
-from src.core import flash_core, update_exe_format, update_select, updater
+from src.core import flash_core, relaunch_args, update_exe_format, update_select, updater
 
 log = logging.getLogger(__name__)
 
@@ -430,9 +430,17 @@ def _oem_encoding() -> str:
         return "utf-8"
 
 
-def _apply_windows(cur_exe: str, new_exe: str, pid: int) -> None:
+def _apply_windows(cur_exe: str, new_exe: str, pid: int, argv: Sequence[str]) -> None:
     """Spawn the detached swap helper and return; the CALLER then exits so the helper can swap the
     (now unlocked) binary and relaunch it.
+
+    The helper relaunches the exe with NO arguments (a cmd batch cannot carry arbitrary argument
+    values safely), so to preserve the user's launch settings we write ``argv[1:]`` to a per-attempt
+    :mod:`relaunch_args` sidecar (once the swap script exists, before launching) and pass its
+    correlating token in the helper child's COPIED environment (never the global one); the new
+    process reads the token and restores the arguments. A sidecar-write failure ABORTS the swap
+    (nothing spawned, the running binary and verified ``.new`` are retained) as a finite
+    :class:`SelfUpdateError` — arguments are never silently dropped.
 
     The script text embeds the full ``cur_exe``/``new_exe`` paths, which can contain non-ASCII
     characters (e.g. a Windows username with an accent). It is written in the console OEM code page
@@ -449,9 +457,10 @@ def _apply_windows(cur_exe: str, new_exe: str, pid: int) -> None:
             f"cannot encode the self-update swap script for path {cur_exe!r} in the console code "
             f"page ({exc}); update staged but not applied") from exc
     # Binary mode: the script's CRLF line endings are written verbatim (no text-mode translation).
-    # The script is this attempt's own temporary file until the helper is running (the helper
-    # then deletes it). Any failure before that closes the descriptor and removes only that
-    # file, and surfaces as a finite error while the verified .new stays staged.
+    # The script is this attempt's own temporary file until the helper is running (the helper then
+    # deletes it). Every failure below closes the descriptor and removes only this attempt's own
+    # files (the script and, once written, the sidecar), and surfaces as a finite error while the
+    # verified .new stays staged.
     try:
         fd, script = tempfile.mkstemp(prefix="cc-update-", suffix=".cmd")
     except OSError as exc:
@@ -472,10 +481,28 @@ def _apply_windows(cur_exe: str, new_exe: str, pid: int) -> None:
     try:
         with fh:
             fh.write(data)
-        subprocess.Popen(["cmd", "/c", script], close_fds=True,
-                         creationflags=_DETACHED)  # noqa: S603,S607
     except OSError as exc:
         _quiet_remove(script)
+        raise SelfUpdateError(
+            f"could not write the self-update swap script {script}: {exc}; update staged but "
+            "not applied") from exc
+    # Save the launch arguments now that the script exists, before launching. A failure aborts (the
+    # running binary and staged .new are retained) and removes this attempt's own files; the token
+    # reaches the relaunched exe (and nothing else) via the child's COPIED env, never os.environ.
+    token = relaunch_args.new_token()
+    try:
+        sidecar = relaunch_args.write_sidecar(cur_exe, token, list(argv)[1:])
+    except relaunch_args.RelaunchArgsError as exc:
+        _quiet_remove(script)
+        raise SelfUpdateError(
+            f"could not save launch arguments for the self-update relaunch ({exc.reason}); "
+            "update staged but not applied") from exc
+    try:
+        subprocess.Popen(["cmd", "/c", script], close_fds=True, creationflags=_DETACHED,
+                         env={**os.environ, relaunch_args.TOKEN_ENV: token})  # noqa: S603,S607
+    except OSError as exc:
+        _quiet_remove(script)
+        _quiet_remove(sidecar)
         raise SelfUpdateError(
             f"could not launch the self-update swap helper: {exc}; update staged but not "
             "applied") from exc
@@ -516,7 +543,8 @@ def apply(cur_exe: str, staged: str, key: str, pid: int | None = None,
     # raises and deletes nothing.
     validate_staged_executable(staged, key)
     if key.startswith("windows"):
-        _apply_windows(cur_exe, staged, pid if pid is not None else os.getpid())
+        _apply_windows(cur_exe, staged, pid if pid is not None else os.getpid(),
+                       argv if argv is not None else sys.argv)
     else:
         _apply_unix(cur_exe, staged, argv if argv is not None else sys.argv)
 

@@ -7,7 +7,33 @@ from __future__ import annotations
 import threading
 import time
 
+import pytest
+
 from src.core import health_monitor as hm
+
+# Set by the teardown reaper to release a sampler parked in a fake blocking sample (below), so a
+# superseded daemon wakes, sees the newer generation and exits instead of leaking into later tests.
+_SAMPLER_PARK = threading.Event()
+
+
+@pytest.fixture(autouse=True)
+def _reap_cpu_samplers(monkeypatch):
+    """Each test forces a fresh module-global ``cpu-sampler`` daemon (``_reset_sampler`` + a read)
+    but nothing stopped it, so real-psutil samplers leaked into later, unrelated tests. When an
+    earlier module already primed the real sampler, the leaked daemons inherit its generation and
+    never exit; five were live in the Windows CI ``test_tool_bundle`` run when a worker GC-d inside
+    native PBKDF2 and the process took a fatal 0x80000003 (the 30 s fake park is only the
+    accumulation window). Depends on ``monkeypatch`` so it tears down BEFORE real ``psutil`` is
+    restored: it supersedes the generation, wakes any parked sampler and joins it, so the woken
+    daemon exits through the still-fake fast path."""
+    _SAMPLER_PARK.clear()
+    yield
+    with hm._cpu_lock:
+        hm._cpu_gen += 1              # supersede any running sampler
+    _SAMPLER_PARK.set()              # release a parked sampler so it re-checks the generation
+    for t in list(threading.enumerate()):
+        if t.name == "cpu-sampler":
+            t.join(timeout=5.0)
 
 
 def _reset_sampler(monkeypatch):
@@ -20,7 +46,7 @@ def _reset_sampler(monkeypatch):
 def _slow_cpu(value=37.0):
     def fake(interval=None):
         if interval and interval >= 2:
-            time.sleep(30)   # emulate psutil's blocking sample so the loop calls once, never spins
+            _SAMPLER_PARK.wait(30)   # interruptible park; teardown wakes it to reap the daemon
         return value
     return fake
 
@@ -42,7 +68,7 @@ def test_reader_never_samples_psutil_itself(monkeypatch):
     def fake_cpu_percent(interval=None):
         caller_threads.add(threading.current_thread().name)
         if interval and interval >= 2:
-            time.sleep(30)
+            _SAMPLER_PARK.wait(30)
         return 37.0
 
     monkeypatch.setattr(hm.psutil, "cpu_percent", fake_cpu_percent)
