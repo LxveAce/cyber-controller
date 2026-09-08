@@ -737,19 +737,18 @@
       var el = document.getElementById("ble-history-status");
       var more = document.getElementById("ble-history-more");
       var checkNewer = document.getElementById("ble-history-check-newer");
-      if (state === "loading") {
-        el.textContent = "Loading session history. Any rows shown are from the last successful read.";
-        more.setAttribute("aria-busy", "true");
-        checkNewer.setAttribute("aria-busy", "true");
-        return;
-      }
-      more.setAttribute("aria-busy", "false");
-      checkNewer.setAttribute("aria-busy", "false");
+      // "loading" (a user read) AND "expired" (the one automatic recovery reloading from oldest) are
+      // both read-in-flight: keep the controls marked busy for either, so a pending reload is never
+      // reported as settled. Every other state is finite and clears busy.
+      var pending = state === "loading" || state === "expired";
+      more.setAttribute("aria-busy", pending ? "true" : "false");
+      checkNewer.setAttribute("aria-busy", pending ? "true" : "false");
       el.textContent =
+        state === "loading" ? "Loading session history. Any rows shown are from the last successful read." :
+        state === "expired" ? "The retained history window moved; reloading from the oldest still-available report." :
         state === "disabled" ? "Session history is off for this session." :
         state === "unavailable" ? "Session history is unavailable in this session." :
         state === "unauthorized" ? "Sign in again to load session history." :
-        state === "expired" ? "The retained history window moved; reloading from the oldest still-available report." :
         state === "stale" ? "The retained history window moved past the last reload. Use Refresh to load the current oldest page." :
         state === "error" ? "Session history could not refresh. Any rows shown are from the last successful read. Use Refresh to retry." :
         state === "idle" ? "No session history loaded. Expand or use Refresh to load (oldest first)." :

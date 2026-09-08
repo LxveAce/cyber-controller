@@ -259,7 +259,10 @@
       }
       op.cancel = function () { abort.abort(); finish(false, null); };
       active = op;
-      notify("loading", token);
+      // A user-initiated read shows "loading"; the internal one automatic recovery does NOT,
+      // so the "expired" (retained-window moved; reloading) state finish() set stays visible while
+      // the recovery load is actually pending (it is a busy/pending state, not a fresh load).
+      if (userAction) notify("loading", token);
       if (finished || token !== generation || suspended) return op.promise;
       if (now() >= deadline) { abort.abort(); finish(false, null); return op.promise; }
       timer = later(function () { abort.abort(); finish(false, null); }, Math.max(0, deadline - now()));
