@@ -214,8 +214,12 @@
     // page with the held cursor. A superseded call never overwrites a newer read's slot.
     function start(fromOldest, parentToken, userAction) {
       if (suspended) return Promise.resolve(false);
-      if (active) active.cancel();
+      // Advance the generation BEFORE cancelling the active op: a superseded op's finish() then sees
+      // token !== generation and settles false WITHOUT emitting a status, so an intentional replace
+      // no longer produces a spurious "error" notification (the reports reader already orders it this
+      // way). The guard below still catches a cancel that synchronously starts a newer read or suspends.
       const token = parentToken !== undefined ? parentToken : ++generation;
+      if (active) active.cancel();
       if (token !== generation || suspended) return Promise.resolve(false);
       if (userAction) recovered = false;   // a fresh user action re-arms the single auto-recovery
       const useCursor = fromOldest ? null : cursor;
