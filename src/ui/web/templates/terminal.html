@@ -26,9 +26,64 @@
     // Subscribe to serial output for this port
     socket.emit('subscribe_serial', {port: currentPort});
 
+    // Follow the tail only when the reader is at the bottom; when they scroll up to read history, hold
+    // their position -- captured from ACTUAL scroll (not the scroll position at append time) and
+    // re-pinned to their anchor node exactly across the 300-line trim (fractional-measurement safe).
+    // This standalone terminal page is always laid out, so no hidden-view handling is needed here.
+    const output = document.getElementById('terminal-output');
+    const FOLLOW_EPS = 4;
+    const NO_ECHO = NaN;   // sentinel: no pending programmatic echo -- a retired coordinate never matches a real scroll
+    let follow = true, anchorNode = null, anchorTop = 0, expected = NO_ECHO;
+    output.style.overflowAnchor = 'none';
+    // Eviction notice: a polite, non-focusable status line shown once when a history reader's own anchor
+    // is removed by the 300-line cap (never for a following reader). Placed just above the output; reset
+    // when the reader returns to the tail or a new session clears the pane.
+    const notice = document.createElement('div');
+    notice.className = 'term-notice';
+    notice.setAttribute('role', 'status');
+    notice.setAttribute('aria-live', 'polite');
+    notice.style.cssText = 'color:#fbbf24;font-size:12px;padding:0';   // rendered + empty (zero height); a persistent live region, never display-toggled
+    output.parentNode.insertBefore(notice, output);
+    let evictShown = false;
+    function showEvicted() {
+        if (evictShown) return;
+        evictShown = true;
+        notice.style.padding = '2px 0';
+        notice.textContent = 'Older output was removed while you were scrolled up.';   // change inside the existing empty live region -> announce once
+    }
+    function clearEvicted() {
+        if (!evictShown) return;
+        evictShown = false;
+        notice.textContent = '';
+        notice.style.padding = '0';
+    }
+    function write(fn) { fn(); expected = output.scrollTop; }   // record the position our write produced
+    function offsetOf(n) { return n.getBoundingClientRect().top - output.getBoundingClientRect().top; }
+    function captureAnchor() {
+        const kids = output.childNodes, top = output.getBoundingClientRect().top;
+        for (let i = 0; i < kids.length; i++) {
+            if (kids[i].nodeType === 1 && kids[i].getBoundingClientRect().bottom - top > 0) {
+                anchorNode = kids[i]; anchorTop = kids[i].getBoundingClientRect().top - top; return;
+            }
+        }
+        anchorNode = null;
+    }
+    // Update intent from an ACTUAL move: a scroll still at our last-written position is our own echo
+    // and is ignored; any other position is the reader (wheel/keyboard/drag/touch). Used by the scroll
+    // event and at the top of onSerialOutput, so a same-frame scroll is honoured, not overwritten.
+    function reconcile() {
+        // Reaching the bottom is ALWAYS follow intent (our snap's echo or the reader returning to the
+        // tail in a quiescent stream), so resume-follow needs no second scroll.
+        if (output.scrollHeight - output.clientHeight - output.scrollTop <= FOLLOW_EPS) { follow = true; anchorNode = null; expected = NO_ECHO; clearEvicted(); return; }   // retire the old coordinate
+        if (Math.abs(output.scrollTop - expected) < 1) return;   // non-bottom echo of our own write
+        follow = false; captureAnchor(); expected = NO_ECHO;   // an accepted reader move retires the old coordinate
+    }
+    output.addEventListener('scroll', reconcile);
+
     function onSerialOutput(data) {
         if (data.port !== currentPort) return;
-        const output = document.getElementById('terminal-output');
+        if (output.childNodes.length === 0) { follow = true; anchorNode = null; expected = NO_ECHO; clearEvicted(); }   // freshly cleared -> follow
+        reconcile();   // honour a scroll since our last write (incl. same frame) before reacting
         const line = document.createElement('div');
         line.className = 'terminal-line';
         if (data.line.startsWith('>')) {
@@ -38,8 +93,15 @@
         }
         line.textContent = data.line;
         output.appendChild(line);
-        while (output.childNodes.length > 300) output.removeChild(output.firstChild);
-        output.scrollTop = output.scrollHeight;
+        while (output.childNodes.length > 300) {
+            const first = output.firstChild;
+            if (first === anchorNode) { anchorNode = null; showEvicted(); }   // history reader's own line aged out
+            output.removeChild(first);
+        }
+        write(function () {
+            if (follow) output.scrollTop = output.scrollHeight;
+            else if (anchorNode && anchorNode.isConnected) output.scrollTop += offsetOf(anchorNode) - anchorTop;
+        });
     }
 
     function sendCommand() {

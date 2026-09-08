@@ -153,7 +153,7 @@ def test_windows_helper_file_object_failure_closes_descriptor_and_removes_script
     monkeypatch.setattr(su.subprocess, "Popen",
                         lambda *a, **k: pytest.fail("helper must not spawn without a script"))
     with pytest.raises(su.SelfUpdateError, match="could not open") as info:
-        su._apply_windows(str(cur), str(new), pid=4242)
+        su._apply_windows(str(cur), str(new), 4242, [str(cur)])
     assert isinstance(info.value.__cause__, OSError)
     assert closed == fds and len(fds) == 1, "the raw descriptor was closed before removal"
     assert not os.path.exists(scripts[0]), "only this attempt's temp script removed"
@@ -170,7 +170,7 @@ def test_windows_helper_spawn_failure_removes_script_and_keeps_the_staged_update
 
     monkeypatch.setattr(su.subprocess, "Popen", no_cmd)
     with pytest.raises(su.SelfUpdateError, match="could not launch") as info:
-        su._apply_windows(str(cur), str(new), pid=4242)
+        su._apply_windows(str(cur), str(new), 4242, [str(cur)])
     assert isinstance(info.value.__cause__, FileNotFoundError)
     assert not os.path.exists(scripts[0])
     assert new.read_bytes() == b"new" and cur.read_bytes() == b"cur"
@@ -185,7 +185,7 @@ def test_windows_helper_script_creation_failure_is_finite(monkeypatch, win_paths
     monkeypatch.setattr(su.tempfile, "mkstemp", no_temp)
     monkeypatch.setattr(su.subprocess, "Popen", lambda *a, **k: pytest.fail("must not spawn"))
     with pytest.raises(su.SelfUpdateError, match="could not create") as info:
-        su._apply_windows(str(cur), str(new), pid=4242)
+        su._apply_windows(str(cur), str(new), 4242, [str(cur)])
     assert isinstance(info.value.__cause__, OSError)
     assert new.read_bytes() == b"new"
 
@@ -196,7 +196,7 @@ def test_windows_helper_success_leaves_the_script_for_the_helper_and_spawns_it(m
     fds, scripts = _record_mkstemp(monkeypatch)
     spawned = []
     monkeypatch.setattr(su.subprocess, "Popen", lambda argv, **k: spawned.append(argv) or object())
-    su._apply_windows(str(cur), str(new), pid=4242)
+    su._apply_windows(str(cur), str(new), 4242, [str(cur)])
     assert spawned and spawned[0][-1] == scripts[0]
     assert os.path.exists(scripts[0]), "the helper deletes its own script after it runs"
     with open(scripts[0], "rb") as fh:
