@@ -3103,6 +3103,42 @@
   }
   initFlock();
 
+  // ── Offline maps overview (lazy country/coastline outline) ────────────────────────────────────
+  // A separate MAP sub-tab that draws the bundled Natural Earth country/coastline outline via one fixed
+  // same-origin GET, loaded once on first open. It leaves the other MAP sub-tabs and their behaviour
+  // untouched and issues no other request.
+  (function initMapOutline() {
+    var svg = document.getElementById("mapo-svg");
+    if (!svg || !window.CCMapOutline) return;
+    var retry = document.getElementById("mapo-retry");
+    var bboxIn = document.getElementById("mapo-bbox");
+    var controls = [document.getElementById("mapo-area"), document.getElementById("mapo-reset"), bboxIn];
+    var MAX_OUTLINE = 8 * 1024 * 1024;   // the bundled outline is ~245 KB; cap the body well above it
+    var ctl = window.CCMapOutline.create({
+      group: document.getElementById("mapo-paths"),
+      status: document.getElementById("mapo-msg"),
+      width: 1000, height: 380,
+      load: function (signal) {
+        return window.CCMapOutline.boundedLoad(fetch, "/api/maps/world-outline",
+          { "X-CSRF-Token": window.CSRF_TOKEN || "" }, MAX_OUTLINE, signal);
+      },
+      setBusy: function (on) { svg.setAttribute("aria-busy", on ? "true" : "false"); },
+      onState: function (state) {
+        if (retry) retry.hidden = !(state === "error" || state === "unavailable");
+        controls.forEach(function (el) { if (el) el.disabled = state === "loading"; });
+      }
+    });
+    // Lazy-open on first activation of the offline sub-tab (keeps the default sub-tab paint cheap).
+    var bar = document.querySelector('.view[data-view="map"] .subtabs');
+    if (bar) bar.addEventListener("click", function (e) {
+      var b = e.target.closest("button");
+      if (b && b.dataset.sub === "offline") ctl.open();
+    });
+    wireBtn("mapo-area", function () { ctl.area(window.CCMapOutline.parseBbox(bboxIn.value || "")); });
+    wireBtn("mapo-reset", function () { bboxIn.value = ""; ctl.reset(); });
+    wireBtn("mapo-retry", function () { ctl.retry(); });
+  })();
+
   // The shared desktop/browser view currently supports uploading existing CSVs to WiGLE.
   // Survey capture, export and local track rendering are not connected to this view yet.
   function initWardrive() {

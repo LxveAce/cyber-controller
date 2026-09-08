@@ -525,6 +525,7 @@
       <button class="on" data-sub="wardrive">Wardrive</button>
       <button data-sub="multi">Multi-Wardrive</button>
       <button data-sub="flock">Flock / ALPR</button>
+      <button data-sub="offline">Offline maps</button>
     </div>
     <div class="sub on" data-sub="wardrive"><div class="card"><h3><span class="t">Wardrive &#8212; GPS-tagged Wi-Fi survey</span><span class="r">&#8594; WiGLE CSV</span></h3>
       <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-start">Start survey</button><button class="btn sm" id="wd-export">Export WiGLE CSV</button><button class="btn sm" id="wd-upload">Upload CSV to WiGLE&#8230;</button><span class="chip" id="wd-status">live survey unavailable</span></div>
@@ -596,6 +597,25 @@
       </div>
       <div class="footnote" id="flock-attr" style="margin-top:8px"></div>
     </div></div>
+    <div class="sub" data-sub="offline"><div class="card">
+      <h3><span class="t">Offline maps &#8212; country/coastline overview</span><span class="r">coarse &#183; offline</span></h3>
+      <div class="footnote" style="margin:-4px 0 10px">A coarse offline map of the world's countries and coastlines, from bundled Natural Earth data. Use it for orientation &#8212; it shows no streets and needs no download or location. Enter an area as south, west, north, east to zoom in.</div>
+      <div class="row" style="margin-bottom:10px;align-items:center">
+        <label class="dim" for="mapo-bbox" style="font-size:11px">Area</label>
+        <input class="field mono" id="mapo-bbox" aria-label="Area bounds south, west, north, east" style="max-width:240px" placeholder="S,W,N,E e.g. 35,-12,60,30">
+        <button class="btn sm" id="mapo-area">Show area</button>
+        <button class="btn sm" id="mapo-reset">World</button>
+        <button class="btn sm" id="mapo-retry" hidden>Retry</button>
+        <span class="dim" id="mapo-msg" role="status" aria-live="polite" style="font-size:11px"></span>
+      </div>
+      <div class="mapwrap">
+        <svg id="mapo-svg" viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Offline country and coastline overview">
+          <rect width="1000" height="380" fill="#0b0f14"/>
+          <g id="mapo-paths"></g>
+        </svg>
+        <div class="maplegend"><div class="li">Natural Earth &#183; public domain</div></div>
+      </div>
+    </div></div>
   </section>
 
   <!-- ============ TERMINAL (design preview) ============ -->
@@ -661,6 +681,7 @@
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='target_snapshots.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='ble_reports.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='ble_history.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='map_outline.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='target_selection.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_card.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_transport.js') }}"></script>

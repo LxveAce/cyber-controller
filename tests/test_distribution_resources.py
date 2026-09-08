@@ -153,3 +153,22 @@ def test_wheel_verifier_rejects_a_non_zip(tmp_path):
     failures = verify.missing_resources(not_a_wheel)
     assert len(failures) == 1
     assert "could not read wheel" in failures[0]
+
+
+def _complete_wheel_members():
+    members = set(verify.REQUIRED_SUFFIXES)
+    for prefix, minimum in verify.MINIMUM_PREFIX_COUNTS.items():
+        members.update(f"{prefix}fixture-{index}.data" for index in range(minimum))
+    return members
+
+
+def test_wheel_verifier_requires_each_declared_resource(tmp_path):
+    # Dropping any single required resource from an otherwise-complete wheel must be reported, so a
+    # newly declared module (e.g. the offline-map outline) cannot silently fall out of a build.
+    complete = _complete_wheel_members()
+    for suffix in verify.REQUIRED_SUFFIXES:
+        wheel = tmp_path / "cyber_controller-0-py3-none-any.whl"
+        with zipfile.ZipFile(wheel, "w") as archive:
+            for member in complete - {suffix}:
+                archive.writestr(member, b"fixture")
+        assert f"missing resource: {suffix}" in verify.missing_resources(wheel)

@@ -78,6 +78,20 @@ _PROFILES_DIR = resource_path("src", "config", "profiles")
 # TemplateNotFound (HTTP 500) on every page and 404 every /static asset. build.py bundles both dirs.
 _TEMPLATE_DIR = resource_path("src", "ui", "web", "templates")
 _STATIC_DIR = resource_path("src", "ui", "web", "static")
+_MAPS_DIR = resource_path("src", "config", "maps")
+
+
+def _world_outline_response(maps_dir: "Path | None" = None):
+    """Serve the bundled world outline (Natural Earth 1:110m country/coastline) as
+    application/geo+json. Reads only the fixed bundled asset via resource_path -- no request
+    path/provider, no network, no write. A missing asset returns a recoverable 503 JSON, never
+    a fabricated success. ``maps_dir`` is an internal test seam, never request-derived.
+    """
+    directory = Path(maps_dir) if maps_dir is not None else _MAPS_DIR
+    if not (directory / "world_110m.geojson").is_file():
+        return jsonify({"error": "world outline is currently unavailable"}), 503
+    return send_from_directory(directory, "world_110m.geojson", mimetype="application/geo+json")
+
 
 _MAX_CONTENT_LENGTH = 256 * 1024  # cap request bodies (no giant uploads)
 _MAX_COMMAND_LEN = 256
@@ -833,6 +847,13 @@ def create_app(
             return jsonify(antenna_calc.compute(freq, unit, vf))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+
+    @app.route("/api/maps/world-outline")
+    @requires_auth
+    def api_world_outline():
+        """Bundled offline world outline as application/geo+json. Coarse orientation only:
+        no streets, navigation, or location. Delegates to the read-only bundled-asset helper."""
+        return _world_outline_response()
 
     @app.route("/api/ble-history")
     @requires_auth
