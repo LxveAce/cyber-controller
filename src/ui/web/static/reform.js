@@ -3139,6 +3139,186 @@
     wireBtn("mapo-retry", function () { ctl.retry(); });
   })();
 
+  // ── MAP ▸ Offline maps ▸ Cached tiles mode ─────────────────────────────────
+  // A second mode inside Offline maps that draws raster street tiles you ALREADY have cached, in the
+  // accepted web-mercator renderer. It reads the local cache only, after Show — opening the tab or switching
+  // mode issues no request, no download and no location read. Provider names come from the renderer's
+  // code-defined list (no request on open). Each tile counts as cached only when the loader returns a
+  // successfully decoded image; genuine misses are reported apart from HTTP/read/decode/timeout failures, so
+  // an all-error view never claims an empty cache. Stop / mode-switch / a new Show cancels prior work, and a
+  // stale result can't change the new status.
+  (function initCachedTiles() {
+    var view = document.getElementById("rt-view");
+    if (!view) return;
+    var R = window.CCMapRaster;
+    var provSel = document.getElementById("rt-provider");
+    var bboxIn = document.getElementById("rt-bbox");
+    var msg = document.getElementById("rt-msg");
+    var attr = document.getElementById("rt-attr");
+    var coarseBtn = document.getElementById("mapo-mode-coarse");
+    var rasterBtn = document.getElementById("mapo-mode-raster");
+    var coarsePane = document.querySelector('.mapo-pane[data-mode="coarse"]');
+    var rasterPane = document.querySelector('.mapo-pane[data-mode="raster"]');
+
+    if (R && provSel && !provSel.options.length) {
+      R.providerList().providers.forEach(function (p) {
+        var o = document.createElement("option"); o.value = p.id; o.textContent = p.label; provSel.appendChild(o);
+      });
+      provSel.value = R.DEFAULT_PROVIDER;
+    }
+
+    var viewer = null, runToken = 0, tally = null, rasterLoader = null;
+    var curLoad = function () { return Promise.resolve(null); };
+    var lastShow = null, tileImgs = {}, refitting = false;   // stored plan + keyed images for resize refit
+
+    // The loader is a factory: createLoader({}) binds the fixed same-origin fetch (no external host) and
+    // returns { loadTile, viewerLoad }. Create it lazily on the first Show so nothing is set up on open.
+    function loaderInstance() {
+      if (rasterLoader) return rasterLoader;
+      var L = window.CCMapRasterLoader;
+      if (L && L.createLoader) rasterLoader = L.createLoader({});
+      return rasterLoader;
+    }
+
+    function setMode(mode) {
+      var raster = mode === "raster";
+      if (rasterPane) rasterPane.hidden = !raster;
+      if (coarsePane) coarsePane.hidden = raster;
+      if (rasterBtn) { rasterBtn.classList.toggle("on", raster); rasterBtn.setAttribute("aria-pressed", raster ? "true" : "false"); }
+      if (coarseBtn) { coarseBtn.classList.toggle("on", !raster); coarseBtn.setAttribute("aria-pressed", raster ? "false" : "true"); }
+      if (!raster) stop();   // leaving the raster mode cancels any in-flight cache reads
+    }
+    wireBtn("mapo-mode-coarse", function () { setMode("coarse"); });
+    wireBtn("mapo-mode-raster", function () { setMode("raster"); });   // switching mode issues NO request
+
+    function clearView() { while (view.firstChild) view.removeChild(view.firstChild); tileImgs = {}; }
+
+    // Cancel the current run (invalidate its token so stale results are dropped, and abort its loads). If a
+    // load was still IN PROGRESS, settle a "Stopped." status so leaving an active load (mode switch or Stop)
+    // never leaves a stale "Reading cache…"; a completed run keeps its honest status, and a late stale
+    // completion can't change it. `silent` (used by a new Show) skips the message since the new run reports.
+    // Pure: the status to settle when LEAVING a run — "Stopped." only while a load is still in progress
+    // (settled < total); a completed/settled run returns null so its honest status is preserved.
+    function leaveStatus(t) {
+      return (t && (t.cached + t.miss + t.error) < t.total) ? "Stopped." : null;
+    }
+    function stop(silent) {
+      var m = leaveStatus(tally);
+      runToken++;
+      if (viewer) viewer.cancel();
+      if (m && !silent) msg.textContent = m;
+    }
+
+    // Re-fit the ALREADY-loaded tiles to the current viewport when it changes: re-plan the same area at the
+    // same zoom (so nothing is fetched and the zoom doesn't change) and reposition the existing images.
+    // Skipped when the pane is hidden (zero size), so hide/show doesn't distort. Repositioning absolutely-
+    // positioned children can't resize the view, so the ResizeObserver can't feed back; a guard also blocks
+    // re-entrancy.
+    // Pure: refit only when there is a shown plan and the pane is visible (non-zero) — so a hidden pane
+    // (mode switch) doesn't distort geometry and there's nothing to refit before the first Show.
+    function refitGuard(show, w, h) { return !!(show && w > 0 && h > 0); }
+    function refit() {
+      var w = view.clientWidth, h = view.clientHeight;
+      if (refitting || !R || !refitGuard(lastShow, w, h)) return;
+      refitting = true;
+      var plan = R.planView({ bbox: lastShow.bbox, viewport: { width: w, height: h }, provider: lastShow.provider, zoom: lastShow.zoom });
+      if (plan && plan.ok) {
+        for (var i = 0; i < plan.tiles.length; i++) {
+          var t = plan.tiles[i], img = tileImgs[t.z + "/" + t.x + "/" + t.y];
+          if (img) { img.style.left = t.px.left + "px"; img.style.top = t.px.top + "px"; img.style.width = t.px.size + "px"; img.style.height = t.px.size + "px"; }
+        }
+      }
+      refitting = false;
+    }
+    if (typeof ResizeObserver !== "undefined") { try { new ResizeObserver(function () { refit(); }).observe(view); } catch (e) {} }
+
+    function parseSWNE(text) {
+      var parts = String(text || "").split(",");
+      if (parts.length !== 4) return null;
+      var nums = [];
+      for (var i = 0; i < 4; i++) { var t = parts[i].trim(); if (!/^-?\d+(\.\d+)?$/.test(t)) return null; nums.push(Number(t)); }
+      return nums;   // planView's validateBbox range/order-checks it
+    }
+    function planError(reason) {
+      return reason === "invalid-bbox" ? "Enter S,W,N,E within range, with S<N and W<E."
+        : reason === "too-many-tiles" ? "Area too large at this zoom — pick a smaller area."
+        : reason === "unknown-provider" ? "Unknown provider."
+        : "Cannot show this area (" + reason + ").";
+    }
+
+    // Per-tile loader over CCMapRasterLoader.loadTile, whose settled result is one of {status:"ok",url} /
+    // "missing" / "http-error" / "too-large" / "decode-error" / "timeout" / "aborted" / "invalid" (it never
+    // rejects). Records the richer outcome (cached / genuine miss / error) for THIS run and returns a decoded
+    // image url to the renderer, or null (blank). A stale result is dropped by the run token; an abort is a
+    // cancellation, not a miss or an error.
+    function makeLoad(myRun) {
+      var inst = loaderInstance();
+      return function (provider, z, x, y, signal) {
+        var call = (inst && inst.loadTile) ? inst.loadTile(provider, z, x, y, signal)
+                                           : Promise.resolve({ status: "http-error", code: 0 });
+        return Promise.resolve(call).then(function (res) {
+          if (myRun !== runToken) return null;
+          var s = res && res.status;
+          if (s === "ok" && res.url) { tally.cached++; return res.url; }
+          if (s === "aborted") return null;                               // cancellation, not miss/error
+          if (s === "missing") tally.miss++; else tally.error++;          // http-error/too-large/decode/timeout/invalid
+          return null;
+        }, function () { if (myRun === runToken) tally.error++; return null; });   // defensive; loadTile shouldn't reject
+      };
+    }
+    // Pure: a tally { cached, miss, error, total } -> the honest status line. A run still settling shows
+    // progress (not a false empty); a terminal all-error view reports failures, never an empty cache.
+    function statusText(t) {
+      var loaded = t.cached, total = t.total;
+      if (total === 0) return "No tiles in this view.";
+      var settled = t.cached + t.miss + t.error;
+      if (settled < total) return "Reading cache… " + loaded + "/" + total + " so far.";   // still in progress
+      if (loaded === total) return "Complete — all " + total + " tiles cached.";
+      if (loaded > 0) {
+        var extra = [];
+        if (t.error) extra.push(t.error + " failed");
+        if (t.miss) extra.push(t.miss + " not cached");
+        return "Partial — " + loaded + " of " + total + " cached" + (extra.length ? " (" + extra.join(", ") + ")" : "") + ".";
+      }
+      if (t.error > 0) return "Could not load tiles (" + t.error + " failed) — press Show to retry.";
+      return "No tiles cached for this area.";   // a genuine empty cache, distinct from all-error above
+    }
+
+    function show() {
+      if (!R) { msg.textContent = "Offline raster map is unavailable."; return; }
+      stop(true); clearView();
+      var vp = { width: view.clientWidth || 800, height: view.clientHeight || 304 };
+      var b = parseSWNE(bboxIn.value);
+      var plan = R.planView({ bbox: b, viewport: vp, provider: provSel.value });
+      if (!plan.ok) { msg.textContent = planError(plan.reason); attr.textContent = "—"; lastShow = null; return; }
+      attr.textContent = plan.attribution + "  ·  z" + plan.zoom;
+      lastShow = { bbox: b, provider: provSel.value, zoom: plan.zoom };   // remember area+zoom so a resize re-fits without fetching
+      var myRun = ++runToken;
+      tally = { cached: 0, miss: 0, error: 0, total: plan.tiles.length };
+      curLoad = makeLoad(myRun);
+      if (!viewer) viewer = R.createViewer({
+        concurrency: 4,
+        load: function (p, z, x, y, signal) { return curLoad(p, z, x, y, signal); },
+        onTile: function (tile, url) {
+          var img = document.createElement("img"); img.src = url; img.alt = "";
+          img.style.left = tile.px.left + "px"; img.style.top = tile.px.top + "px";
+          img.style.width = tile.px.size + "px"; img.style.height = tile.px.size + "px";
+          view.appendChild(img);
+          tileImgs[tile.z + "/" + tile.x + "/" + tile.y] = img;   // keyed so a resize can reposition it
+          refit();   // a tile can finish loading AFTER a resize — re-fit it (and the rest) to the current viewport
+        },
+        onStatus: function () { msg.textContent = statusText(tally); }
+      });
+      msg.textContent = "Reading cache…";
+      viewer.show(plan);
+    }
+    function reset() { stop(); clearView(); bboxIn.value = ""; msg.textContent = ""; attr.textContent = "—"; lastShow = null; }
+
+    wireBtn("rt-show", show);
+    wireBtn("rt-stop", function () { stop(); });   // stop() settles "Stopped." only if a load was in progress
+    wireBtn("rt-reset", reset);
+  })();
+
   // The shared desktop/browser view currently supports uploading existing CSVs to WiGLE.
   // Survey capture, export and local track rendering are not connected to this view yet.
   function initWardrive() {
