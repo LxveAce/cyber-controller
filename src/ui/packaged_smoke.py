@@ -13,11 +13,44 @@ truthfully when the stop did not finish.
 from __future__ import annotations
 
 import json
+import os
 import sys
 import threading
 
 _ASSETS = ("reform.css", "reform.js", "vendor/socket.io.min.js")
 _WAIT_SECONDS = 3.0
+
+
+def _emit(text: str, stream, fd: int) -> None:
+    """Best-effort, at-most-once delivery of one line to a possibly-absent packaged output channel.
+
+    A frozen ``--windowed`` build runs with ``sys.stdout``/``sys.stderr`` set to None (a silent
+    no-op under bare ``print`` on 3.12) or, when launched onto an unusable descriptor, a stream
+    whose write/flush raises; either way delivering the result must never turn a completed check
+    into a crash. ONE authoritative channel per line: when a stream is given, the line is written
+    and flushed there and any failure is swallowed WITHOUT replaying it elsewhere -- a flush error
+    after a write is ambiguous (the bytes may already be out), so a replay could double-deliver.
+    When no stream exists, the bytes go to the raw descriptor, honouring each ``os.write`` count and
+    advancing through partial writes; zero progress or an ``OSError`` terminates finitely -- never
+    spinning, never restarting the payload. Delivery is not promised when the chosen channel is
+    unusable, nor exactly-once after an ambiguous I/O error. This is the frozen-build reasoning
+    behind the esptool dispatcher in ``src/app.py`` (lines ~512-546)."""
+    if stream is not None:
+        try:
+            stream.write(text + "\n")
+            stream.flush()
+        except (OSError, ValueError):
+            pass
+        return
+    view = memoryview((text + "\n").encode("utf-8", "replace"))
+    while view:
+        try:
+            written = os.write(fd, view)
+        except OSError:
+            return
+        if written <= 0:
+            return
+        view = view[written:]
 
 
 def make_fixture():
@@ -164,7 +197,7 @@ def _release(server, worker, lease: _ListenerLease, outcome: _ServeOutcome, *,
 
 def run() -> int:
     if not getattr(sys, "frozen", False):
-        print("Packaged startup check requires a frozen executable.", file=sys.stderr)
+        _emit("Packaged startup check requires a frozen executable.", sys.stderr, 2)
         return 2
     # These are the same Qt5 layer used by the Linux pywebview backend and direct fallback.
     # Import before QApplication, as required by QtWebEngine.
@@ -283,5 +316,5 @@ def run() -> int:
     if code == 0 and not clean:
         code = 1
         result.update(status="failed", reason="renderer check passed but release was not clean")
-    print(json.dumps(result), flush=True)
+    _emit(json.dumps(result), sys.stdout, 1)
     return code

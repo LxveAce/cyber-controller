@@ -629,3 +629,92 @@ test('source firmware is carried (bounded) for a display-only port tooltip', asy
   assert.equal(rows[0].source_firmware, '', 'oversized firmware -> empty (bounded)');
   assert.equal(rows[1].source_firmware, '', 'non-string firmware -> empty');
 });
+
+// ── cancellation ordering: an intentional supersession is not a failure ──────────
+// The reader advances its generation BEFORE cancelling the active op, so a superseded read settles
+// false WITHOUT emitting a status. These lock the state SEQUENCE (the prior supersede tests only
+// checked promise settlement / no double-delivery, so the spurious "error" went unnoticed).
+const seq = f => f.states.map(s => s.state);
+
+test("replacing an in-flight refresh emits only loading (no spurious error) and the newer read wins", async () => {
+  const f = fixture();
+  const first = f.control.refresh(); await flush();
+  const second = f.control.refresh(); await flush();
+  assert.equal(await first, false, "the superseded read settles false");
+  assert.ok(!seq(f).includes("error"), "an intentional replace is not a failure -> no 'error' status");
+  f.pageCalls[1].resolve(page([row(1)], { has_more: false }));
+  assert.equal(await second, true);
+  assert.deepEqual(seq(f), ["loading", "loading", "fresh"]);
+  assert.deepEqual(f.lastRows(), [1], "only the newer read delivers");
+});
+
+test("a genuine transport failure still reports error (the fix does not silence real failures)", async () => {
+  const f = fixture();
+  const p = f.control.refresh(); await flush();
+  f.pageCalls[0].reject(new Error("network down"));
+  assert.equal(await p, false);
+  assert.equal(f.lastState(), "error");
+});
+
+test("a genuine auth-loss on the surviving read still reports unauthorized", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  const second = f.control.refresh(); await flush();     // supersede -> no error
+  const err = new Error("unauthorized"); err.status = 401;
+  f.pageCalls[1].reject(err);
+  assert.equal(await second, false);
+  assert.equal(f.lastState(), "unauthorized");
+  assert.ok(!seq(f).includes("error"), "supersession stayed silent; only the real 401 spoke");
+});
+
+test("a timeout on the read still reports error", async () => {
+  const f = fixture();
+  const p = f.control.refresh(); await flush();
+  f.expire();
+  assert.equal(await p, false);
+  assert.equal(f.lastState(), "error");
+});
+
+test("replacing the read during an automatic recovery emits no error and the newer read wins", async () => {
+  const f = fixture();
+  f.control.refresh(); await flush();
+  f.pageCalls[0].resolve({ httpStatus: 410, body: { reason: "cursor_expired", earliest_seq: 5 } }); await flush();
+  const before = seq(f).length;                          // recovery (from oldest) now in flight
+  const replace = f.control.refresh(); await flush();    // a fresh user refresh replaces the recovery
+  assert.ok(!seq(f).slice(before).includes("error"), "replacing the recovery is not a failure");
+  f.pageCalls[f.pageCalls.length - 1].resolve(page([row(9)], { has_more: false }));
+  assert.equal(await replace, true);
+  assert.deepEqual(f.lastRows(), [9]);
+});
+
+test("a superseded read completing late delivers no stale rows and no error", async () => {
+  const f = fixture();
+  const first = f.control.refresh(); await flush();
+  const second = f.control.refresh(); await flush();
+  f.pageCalls[1].resolve(page([row(2)], { has_more: false }));
+  assert.equal(await second, true);
+  assert.deepEqual(f.lastRows(), [2]);
+  f.pageCalls[0].resolve(page([row(99)], { has_more: false })); await flush();   // the superseded op completes LATE
+  assert.equal(await first, false);
+  assert.deepEqual(f.lastRows(), [2], "the late superseded read delivers nothing");
+  assert.ok(!seq(f).includes("error"), "the late completion is silent");
+});
+
+test("a reentrant refresh started from a status callback during supersession keeps the newest slot", async () => {
+  const states = [], pageCalls = [];
+  let arm = false, control;
+  control = history.create({
+    fetchPage: (cursor, signal) => new Promise((resolve, reject) => pageCalls.push({ cursor, signal, resolve, reject })),
+    onPage: () => {}, setTimeout: () => 0, clearTimeout: () => {}, now: () => 0, domCap: 500,
+    onStatus: state => { states.push(state); if (arm && state === "loading") { arm = false; control.refresh(); } },
+  });
+  const first = control.refresh(); await flush();        // op1
+  arm = true;
+  const second = control.refresh(); await flush();       // op2; its "loading" reentrantly starts op3
+  assert.equal(await first, false, "op1 superseded");
+  assert.equal(await second, false, "op2 superseded by the reentrant op3");
+  assert.ok(!states.includes("error"), "no spurious error across nested supersession");
+  const last = pageCalls[pageCalls.length - 1];          // op3's request survives
+  assert.ok(!last.signal.aborted, "the newest (reentrant) read's slot is intact");
+  last.resolve(page([row(7)], { has_more: false })); await flush();
+});
