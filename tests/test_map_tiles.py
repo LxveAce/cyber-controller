@@ -228,3 +228,26 @@ def test_carto_provider_set():
         assert style in mt.get_provider(key).url_template
         assert mt.get_provider(key).url(0, 0, 0).lower().startswith("https://")
     assert mt.get_provider("osm").key == "osm"           # OSM providers still available
+
+
+def test_image_mime_reads_content_not_suffix():
+    assert mt.image_mime(_PNG) == "image/png"
+    assert mt.image_mime(_JPEG) == "image/jpeg"
+    assert mt.image_mime(b"<html>rate limited</html>") is None
+    assert mt.image_mime(b"\xff\xd8") is None                 # too short to classify
+    # the existing store gate delegates to image_mime, so its behaviour is unchanged
+    assert mt._looks_like_png_or_jpeg(_PNG) is True
+    assert mt._looks_like_png_or_jpeg(_JPEG) is True
+    assert mt._looks_like_png_or_jpeg(b"<html>") is False
+
+
+def test_read_bounded_ok_missing_and_too_large(tmp_path):
+    c = mt.TileCache(provider="osm", root=tmp_path)
+    assert c.store(1, 2, 3, _PNG) is True
+    assert c.read_bounded(1, 2, 3, max_bytes=4096) == ("ok", _PNG)      # in budget -> bytes
+    assert c.read_bounded(9, 9, 9, max_bytes=4096) == ("missing", None)  # uncached tile
+    big = _JPEG + b"\x00" * 10_000
+    assert c.store(4, 5, 6, big) is True
+    status, data = c.read_bounded(4, 5, 6, max_bytes=64)                 # above budget -> rejected
+    assert status == "too_large" and data is None
+    assert c.get(1, 2, 3) == _PNG                                       # get() unchanged

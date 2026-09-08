@@ -202,12 +202,24 @@ def default_cache_root() -> Path:
     return Path.home() / ".cyber-controller" / "map-tiles"
 
 
+def image_mime(data: bytes) -> Optional[str]:
+    """The supported image MIME implied by *data*'s magic bytes -- content, never a filename suffix.
+    PNG -> ``image/png``; JPEG -> ``image/jpeg``; anything else (e.g. an HTML error page cached with
+    a 200) -> ``None``, so it is never served or cached as a tile. The cache stores either kind
+    under a ``.png`` name, so the true type must be read from the bytes."""
+    if len(data) < 4:
+        return None
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    return None
+
+
 def _looks_like_png_or_jpeg(data: bytes) -> bool:
     """A cheap magic-byte check so a fetch that returned an HTML error page (rate-limit / captcha / 404 body
     with a 200) is never cached or drawn as if it were a tile."""
-    if len(data) < 4:
-        return False
-    return data[:8] == b"\x89PNG\r\n\x1a\n" or data[:3] == b"\xff\xd8\xff"
+    return image_mime(data) is not None
 
 
 class TileCache:
@@ -249,6 +261,27 @@ class TileCache:
         except OSError:
             return None
         return None
+
+    def read_bounded(self, x: int, y: int, z: int, max_bytes: int) -> Tuple[str, Optional[bytes]]:
+        """Cache-only bounded read for the web tile route. Returns ``(status, data)``:
+        ``('ok', bytes)`` for a readable cached tile within *max_bytes*; ``('missing', None)`` if
+        the tile is absent or empty; ``('too_large', None)`` if the file exceeds *max_bytes*;
+        ``('unreadable', None)`` on an OS error. Reads at most ``max_bytes + 1`` bytes, so an
+        oversized file is rejected before it is ever fully allocated. Never fetches, writes, or
+        scans -- ``get`` / ``get_or_fetch`` / ``store`` / ``fetch`` callers are unchanged."""
+        p = self.path_for(x, y, z)
+        try:
+            if not p.is_file():
+                return ("missing", None)
+            with open(p, "rb") as fh:
+                data = fh.read(max_bytes + 1)
+        except OSError:
+            return ("unreadable", None)
+        if not data:
+            return ("missing", None)
+        if len(data) > max_bytes:
+            return ("too_large", None)
+        return ("ok", data)
 
     def store(self, x: int, y: int, z: int, data: bytes) -> bool:
         """Cache *data* for a tile, atomically (temp file + replace so a crash mid-write can't leave a torn
