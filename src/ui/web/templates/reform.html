@@ -598,22 +598,47 @@
       <div class="footnote" id="flock-attr" style="margin-top:8px"></div>
     </div></div>
     <div class="sub" data-sub="offline"><div class="card">
-      <h3><span class="t">Offline maps &#8212; country/coastline overview</span><span class="r">coarse &#183; offline</span></h3>
-      <div class="footnote" style="margin:-4px 0 10px">A coarse offline map of the world's countries and coastlines, from bundled Natural Earth data. Use it for orientation &#8212; it shows no streets and needs no download or location. Enter an area as south, west, north, east to zoom in.</div>
-      <div class="row" style="margin-bottom:10px;align-items:center">
-        <label class="dim" for="mapo-bbox" style="font-size:11px">Area</label>
-        <input class="field mono" id="mapo-bbox" aria-label="Area bounds south, west, north, east" style="max-width:240px" placeholder="S,W,N,E e.g. 35,-12,60,30">
-        <button class="btn sm" id="mapo-area">Show area</button>
-        <button class="btn sm" id="mapo-reset">World</button>
-        <button class="btn sm" id="mapo-retry" hidden>Retry</button>
-        <span class="dim" id="mapo-msg" role="status" aria-live="polite" style="font-size:11px"></span>
+      <h3><span class="t">Offline maps</span><span class="r">coarse &#183; offline</span></h3>
+      <div class="row" style="margin:-2px 0 10px;gap:6px" role="tablist" aria-label="Offline map mode">
+        <button class="btn sm on" id="mapo-mode-coarse" data-mode="coarse" aria-pressed="true">Coarse overview</button>
+        <button class="btn sm" id="mapo-mode-raster" data-mode="raster" aria-pressed="false">Cached tiles</button>
       </div>
-      <div class="mapwrap">
-        <svg id="mapo-svg" viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Offline country and coastline overview">
-          <rect width="1000" height="380" fill="#0b0f14"/>
-          <g id="mapo-paths"></g>
-        </svg>
-        <div class="maplegend"><div class="li">Natural Earth &#183; public domain</div></div>
+
+      <div class="mapo-pane" data-mode="coarse">
+        <div class="footnote" style="margin:-2px 0 10px">A coarse offline map of the world's countries and coastlines, from bundled Natural Earth data. Use it for orientation &#8212; it shows no streets and needs no download or location. Enter an area as south, west, north, east to zoom in.</div>
+        <div class="row" style="margin-bottom:10px;align-items:center">
+          <label class="dim" for="mapo-bbox" style="font-size:11px">Area</label>
+          <input class="field mono" id="mapo-bbox" aria-label="Area bounds south, west, north, east" style="max-width:240px" placeholder="S,W,N,E e.g. 35,-12,60,30">
+          <button class="btn sm" id="mapo-area">Show area</button>
+          <button class="btn sm" id="mapo-reset">World</button>
+          <button class="btn sm" id="mapo-retry" hidden>Retry</button>
+          <span class="dim" id="mapo-msg" role="status" aria-live="polite" style="font-size:11px"></span>
+        </div>
+        <div class="mapwrap">
+          <svg id="mapo-svg" viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Offline country and coastline overview">
+            <rect width="1000" height="380" fill="#0b0f14"/>
+            <g id="mapo-paths"></g>
+          </svg>
+          <div class="maplegend"><div class="li">Natural Earth &#183; public domain</div></div>
+        </div>
+      </div>
+
+      <div class="mapo-pane" data-mode="raster" hidden>
+        <div class="footnote" style="margin:-2px 0 10px">Shows raster street tiles you already have cached, drawn in web-mercator. Nothing is downloaded or requested until you press Show &#8212; it only reads the local cache and leaves uncached tiles blank.</div>
+        <div class="row" style="margin-bottom:8px;align-items:center;flex-wrap:wrap">
+          <label class="dim" for="rt-provider" style="font-size:11px">Provider</label>
+          <select class="field" id="rt-provider" style="max-width:200px"></select>
+          <label class="dim" for="rt-bbox" style="font-size:11px">Area</label>
+          <input class="field mono" id="rt-bbox" aria-label="Area bounds south, west, north, east" style="max-width:220px" placeholder="S,W,N,E e.g. 40.70,-74.02,40.75,-73.96">
+          <button class="btn green sm" id="rt-show">Show</button>
+          <button class="btn sm" id="rt-stop">Stop</button>
+          <button class="btn sm" id="rt-reset">Reset</button>
+          <span class="dim" id="rt-msg" role="status" aria-live="polite" style="font-size:11px"></span>
+        </div>
+        <div class="mapwrap">
+          <div id="rt-view" class="rasterview" role="img" aria-label="Cached raster tiles"></div>
+          <div class="maplegend"><div class="li" id="rt-attr">&#8212;</div></div>
+        </div>
       </div>
     </div></div>
   </section>
@@ -682,6 +707,8 @@
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='ble_reports.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='ble_history.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='map_outline.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='map_raster.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='map_raster_loader.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='target_selection.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_card.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_transport.js') }}"></script>

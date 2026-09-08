@@ -227,6 +227,9 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 /* map surface */
 .mapwrap{position:relative;border:1px solid var(--bd);border-radius:8px;overflow:hidden;background:var(--bg)}
 .mapwrap svg{display:block;width:100%;height:auto}
+.mapo-pane[hidden]{display:none}
+.rasterview{position:relative;width:100%;aspect-ratio:1000 / 380;background:#0b0f14;overflow:hidden}
+.rasterview img{position:absolute;display:block;image-rendering:auto}
 .maplegend{position:absolute;left:10px;bottom:10px;background:rgba(1,4,9,.85);border:1px solid var(--bd);border-radius:7px;padding:8px 10px;font-size:11px;display:flex;flex-direction:column;gap:5px}
 .maplegend .li{display:flex;align-items:center;gap:7px;color:var(--mut)}
 .maplegend .dot9{width:9px;height:9px;border-radius:50%;flex:0 0 auto}

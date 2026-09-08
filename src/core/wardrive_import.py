@@ -78,7 +78,7 @@ def iter_wigle_rows(text: str) -> Iterator[Dict[str, str]]:
     """
     idx = dict(_DEFAULT_INDEX)  # 1.6 positions until a usable header rebinds them
     first = True
-    for row in csv.reader(io.StringIO(text)):
+    for row in csv.reader(io.StringIO(text, newline="")):
         if first:
             first = False
             if row and row[0][:1] == "﻿":  # strip a UTF-8 BOM off field 0 of the first line
@@ -211,7 +211,7 @@ def div_native_to_points(text: str) -> "list[tuple[float, float, str, str]]":
 
     best: Dict[str, tuple] = {}
     try:
-        reader = csv.reader(io.StringIO(text))
+        reader = csv.reader(io.StringIO(text, newline=""))
         cols: Optional[Dict[str, int]] = None
         for row in reader:
             if not row:

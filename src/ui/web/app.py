@@ -60,6 +60,7 @@ from src.core.lifecycle import CallbackScope, ScopeClosedError
 from src.core.nodes_controller import NodesController
 from src.core.resources import resource_path
 from src.core.target_freshness import summarize_freshness
+from src.ui.web import map_cache_api
 from src.security import physical_key
 from src.security.desktop_bootstrap import BootstrapResult, DesktopBootstrap
 from src.security.web_auth import (
@@ -854,6 +855,21 @@ def create_app(
         """Bundled offline world outline as application/geo+json. Coarse orientation only:
         no streets, navigation, or location. Delegates to the read-only bundled-asset helper."""
         return _world_outline_response()
+
+    @app.route("/api/maps/tile-providers")
+    @requires_auth
+    def api_tile_providers():
+        """Code-defined XYZ tile providers (id/label/attribution/max_zoom) + default id. No paths,
+        location, cache inventory, or upstream URLs."""
+        return map_cache_api.tile_providers_response()
+
+    @app.route("/api/map-tiles/<provider>/<int:z>/<int:x>/<int:y>.png")
+    @requires_auth
+    def api_map_tile(provider, z, x, y):
+        """One CACHED offline raster tile as its content-sniffed PNG/JPEG; 204 uncached, 404 unknown
+        provider, 400 out-of-range coordinate, 502 unusable cached content. Read-only, no
+        network."""
+        return map_cache_api.tile_response(provider, z, x, y)
 
     @app.route("/api/ble-history")
     @requires_auth
