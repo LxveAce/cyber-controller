@@ -1714,6 +1714,7 @@
       function toggleChip() {
         if (el.getAttribute("aria-disabled") === "true") return;
         setChip(el, !chipOn(el));
+        markEdited();   // a toggle is an edit -> invalidate a stale saved-confirmation
       }
       el.addEventListener("click", toggleChip);
       el.addEventListener("keydown", function (e) {
@@ -1722,7 +1723,7 @@
     });
 
     var statusEl = document.getElementById("set-status");
-    var settingsReady = false, settingsWriting = false, settingsLoading = false;
+    var settingsReady = false, settingsWriting = false, settingsLoading = false, savedShown = false;
     var settingIds = ["set-serial-baud", "set-flash-baud", "set-touch-mode", "set-wigle-token",
       "set-vault-dir", "set-updates-enabled", "set-confirm-dangerous", "set-suppress-warnings",
       "set-secure-container", "set-save", "set-reset"];
@@ -1744,6 +1745,13 @@
       statusEl.textContent = t || "";
       statusEl.style.color = err ? "var(--red)" : "var(--dim)";
     }
+    // A "saved ✓" / "reset to defaults ✓" confirmation is only truthful until the form changes again. Clear it
+    // on the first edit so the status never shows a saved-state that no longer matches the visible form.
+    function markEdited() { if (savedShown) { savedShown = false; setStatus(""); } }
+    ["set-serial-baud", "set-flash-baud", "set-touch-mode", "set-vault-dir", "set-wigle-token"].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) { el.addEventListener("change", markEdited); el.addEventListener("input", markEdited); }
+    });
 
     // Validate the entire form response before touching any controls. A partial response must not
     // replace part of a user's draft or leave HTML defaults looking like loaded settings.
@@ -1788,7 +1796,8 @@
     function loadGeneralSettings() {
       if (settingsLoading || settingsWriting) return;
       settingsLoading = true;
-      if (retryBtn) retryBtn.hidden = true;
+      savedShown = false;
+      if (retryBtn) { retryBtn.hidden = true; retryBtn.textContent = "Retry loading"; }
       updateSettingControls();
       setStatus("loading settings…");
       getJSON("/api/settings").then(function (r) {
@@ -1837,6 +1846,7 @@
     if (saveBtn) saveBtn.addEventListener("click", function () {
       if (!settingsReady || settingsWriting || settingsLoading) return;
       settingsWriting = true;
+      savedShown = false;
       updateSettingControls();
       setStatus("saving…");
       postJSON("/api/settings", gather()).then(function (r) {
@@ -1848,6 +1858,7 @@
         }
         hydrate(confirmed);
         setStatus("saved ✓");
+        savedShown = true;
       }).catch(function () { setStatus("save failed — your edits are still here; check the values and retry", true); })
         .then(function () { settingsWriting = false; updateSettingControls(); });
     });
@@ -1857,6 +1868,7 @@
       if (!settingsReady || settingsWriting || settingsLoading) return;
       if (!window.confirm("Reset all settings to defaults?")) return;
       settingsWriting = true;
+      savedShown = false;
       updateSettingControls();
       setStatus("resetting…");
       postJSON("/api/settings", { reset: true }).then(function (r) {
@@ -1868,6 +1880,7 @@
         }
         hydrate(confirmed);
         setStatus("reset to defaults ✓");
+        savedShown = true;
       }).catch(function () { setStatus("reset failed", true); })
         .then(function () { settingsWriting = false; updateSettingControls(); });
     });
