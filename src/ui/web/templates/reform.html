@@ -35,29 +35,29 @@
   </div>
 
   <nav class="rail" id="rail">
-    <div class="navitem on" data-view="device"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg></span><span class="lbl">DEVICE</span><span class="sub" id="rail-device-count">{{ device_count }}</span></div>
-    <div class="navitem" data-view="hunt"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span><span class="lbl">HUNT</span><span class="sub">live</span></div>
-    <div class="navitem" data-view="operate"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></span><span class="lbl">OPERATE</span></div>
-    <div class="navitem" data-view="crack"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="9" r="4"/><path d="M12 12 4 20M7 17l2 2M5 19l1.5 1.5"/></svg></span><span class="lbl">CRACK</span></div>
-    <div class="navitem" data-view="map"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg></span><span class="lbl">MAP</span></div>
+    <div class="navitem on" data-view="device" id="railtab-device" aria-controls="view-device"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/></svg></span><span class="lbl">DEVICE</span><span class="sub" id="rail-device-count">{{ device_count }}</span></div>
+    <div class="navitem" data-view="hunt" id="railtab-hunt" aria-controls="view-hunt"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg></span><span class="lbl">HUNT</span><span class="sub">live</span></div>
+    <div class="navitem" data-view="operate" id="railtab-operate" aria-controls="view-operate"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></span><span class="lbl">OPERATE</span></div>
+    <div class="navitem" data-view="crack" id="railtab-crack" aria-controls="view-crack"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="9" r="4"/><path d="M12 12 4 20M7 17l2 2M5 19l1.5 1.5"/></svg></span><span class="lbl">CRACK</span></div>
+    <div class="navitem" data-view="map" id="railtab-map" aria-controls="view-map"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg></span><span class="lbl">MAP</span></div>
     <div class="grow"></div>
-    <div class="navitem" data-view="terminal"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l5 5-5 5M12 17h7"/></svg></span><span class="lbl">TERMINAL</span><span class="sub">{{ device_count }}</span></div>
-    <div class="navitem" data-view="settings"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><span class="lbl">SETTINGS</span></div>
+    <div class="navitem" data-view="terminal" id="railtab-terminal" aria-controls="view-terminal"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l5 5-5 5M12 17h7"/></svg></span><span class="lbl">TERMINAL</span><span class="sub">{{ device_count }}</span></div>
+    <div class="navitem" data-view="settings" id="railtab-settings" aria-controls="view-settings"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><span class="lbl">SETTINGS</span></div>
   </nav>
 
   <main class="main" id="main">
 
   <!-- ============ DEVICE ============ -->
-  <section class="view on" data-view="device">
+  <section class="view on" data-view="device" id="view-device" role="tabpanel" aria-labelledby="railtab-device">
     <div class="subtabs" data-tabs="device">
-      <button class="on" data-sub="dash">Dashboard</button>
-      <button data-sub="fw">Firmware</button>
-      <button data-sub="sw">Software OS</button>
-      <button data-sub="mesh">Mesh</button>
+      <button class="on" data-sub="dash" id="subtab-device-dash" aria-controls="subpanel-device-dash">Dashboard</button>
+      <button data-sub="fw" id="subtab-device-fw" aria-controls="subpanel-device-fw">Firmware</button>
+      <button data-sub="sw" id="subtab-device-sw" aria-controls="subpanel-device-sw">Software OS</button>
+      <button data-sub="mesh" id="subtab-device-mesh" aria-controls="subpanel-device-mesh">Mesh</button>
     </div>
 
     <!-- Dashboard (landing) — LIVE -->
-    <div class="sub on" data-sub="dash">
+    <div class="sub on" data-sub="dash" id="subpanel-device-dash" role="tabpanel" aria-labelledby="subtab-device-dash">
       <div class="grid dash">
         <!-- devices column -->
         <div class="grid" style="align-content:start">
@@ -151,12 +151,12 @@
           <div class="card">
             <h3><span class="t">Cross-Comm</span><span class="r"><span id="xc-count">{{ target_count }}</span> targets</span></h3>
             <div class="subtabs" style="margin:-4px 0 9px" data-tabs="xcomm">
-              <button class="on" data-sub="pool">Pool</button>
-              <button data-sub="rules" class="pro-tab">Rules</button>
-              <button data-sub="hist" class="pro-tab">History</button>
-              <button data-sub="stream" class="pro-tab">Stream</button>
+              <button class="on" data-sub="pool" id="subtab-xcomm-pool" aria-controls="subpanel-xcomm-pool">Pool</button>
+              <button data-sub="rules" class="pro-tab" id="subtab-xcomm-rules" aria-controls="subpanel-xcomm-rules">Rules</button>
+              <button data-sub="hist" class="pro-tab" id="subtab-xcomm-hist" aria-controls="subpanel-xcomm-hist">History</button>
+              <button data-sub="stream" class="pro-tab" id="subtab-xcomm-stream" aria-controls="subpanel-xcomm-stream">Stream</button>
             </div>
-            <div class="sub on" data-sub="pool">
+            <div class="sub on" data-sub="pool" id="subpanel-xcomm-pool" role="tabpanel" aria-labelledby="subtab-xcomm-pool">
               <p class="footnote" data-target-status role="status" hidden></p>
               <details class="card collapsible pool-disclosure" id="cross-comm-pool" open>
                 <summary><span class="t">Discovered targets</span><span class="r">Expand / collapse</span></summary>
@@ -176,7 +176,7 @@
               </details>
               <div class="row" style="margin-top:8px"><button class="btn sm" id="pool-refresh">Refresh</button><button class="btn sm danger" id="pool-clear">Clear Pool</button></div>
             </div>
-            <div class="sub pro" data-sub="rules">
+            <div class="sub pro" data-sub="rules" id="subpanel-xcomm-rules" role="tabpanel" aria-labelledby="subtab-xcomm-rules">
               <div class="footnote" style="margin:-2px 0 8px">A rule auto-fires its command on a matching target. Offensive rules are added <b>disabled</b> and need "authorized use" to arm.</div>
               <div id="xc-rules" style="margin-bottom:9px"><div class="dim" style="font-size:11px">no rules</div></div>
               <div class="row" style="gap:5px">
@@ -193,8 +193,8 @@
                 <span class="dim" id="rule-msg" style="font-size:11px"></span>
               </div>
             </div>
-            <div class="sub pro" data-sub="hist"><div class="dim" style="font-size:11px">No action history yet.</div></div>
-            <div class="sub pro" data-sub="stream"><div class="term" id="xc-stream" style="height:120px" tabindex="0" aria-label="Cross-Comm bus events"><div class="p">Bus events appear here in real time&#8230;</div></div></div>
+            <div class="sub pro" data-sub="hist" id="subpanel-xcomm-hist" role="tabpanel" aria-labelledby="subtab-xcomm-hist"><div class="dim" style="font-size:11px">No action history yet.</div></div>
+            <div class="sub pro" data-sub="stream" id="subpanel-xcomm-stream" role="tabpanel" aria-labelledby="subtab-xcomm-stream"><div class="term" id="xc-stream" style="height:120px" tabindex="0" aria-label="Cross-Comm bus events"><div class="p">Bus events appear here in real time&#8230;</div></div></div>
           </div>
 
           <details class="card collapsible" id="dash-term-card">
@@ -208,7 +208,7 @@
     </div>
 
     <!-- Firmware — board/port-first flashing (LIVE, wired to /api/flash) -->
-    <div class="sub" data-sub="fw">
+    <div class="sub" data-sub="fw" id="subpanel-device-fw" role="tabpanel" aria-labelledby="subtab-device-fw">
       <div class="fw-workspace">
         <div class="fw-setup" tabindex="0" aria-label="Firmware setup">
         <div class="fw-guidance">
@@ -265,7 +265,7 @@
     </div>
 
     <!-- Software OS — design preview -->
-    <div class="sub" data-sub="sw">
+    <div class="sub" data-sub="sw" id="subpanel-device-sw" role="tabpanel" aria-labelledby="subtab-device-sw">
       <div class="notebar">Write a verified bootable OS to a USB stick &#8212; PC/USB operating systems only. Board firmware is under DEVICE &#9656; Firmware.</div>
       <div class="split two">
         <div class="card">
@@ -287,7 +287,7 @@
     </div>
 
     <!-- Mesh — design preview -->
-    <div class="sub" data-sub="mesh">
+    <div class="sub" data-sub="mesh" id="subpanel-device-mesh" role="tabpanel" aria-labelledby="subtab-device-mesh">
       <div class="split two">
         <div class="card">
           <h3><span class="t">&#9673; Meshtastic &#8212; owned node</span><span class="r" id="mesh-status-state">loading</span></h3>
@@ -306,15 +306,15 @@
   </section>
 
   <!-- ============ HUNT (live: Wi-Fi/BLE/Targets/Tail from the pool) ============ -->
-  <section class="view" data-view="hunt">
+  <section class="view" data-view="hunt" id="view-hunt" role="tabpanel" aria-labelledby="railtab-hunt">
     <div class="subtabs" data-tabs="hunt">
-      <button data-sub="wifi">Wi-Fi</button>
-      <button class="on" data-sub="ble">BLE</button>
-      <button data-sub="incidents">Incidents</button>
-      <button data-sub="targets">Targets</button>
-      <button data-sub="tail">Tail Detect</button>
-      <button data-sub="sense" class="pro-tab">Sense</button>
-      <button data-sub="graph">Node Graph</button>
+      <button data-sub="wifi" id="subtab-hunt-wifi" aria-controls="subpanel-hunt-wifi">Wi-Fi</button>
+      <button class="on" data-sub="ble" id="subtab-hunt-ble" aria-controls="subpanel-hunt-ble">BLE</button>
+      <button data-sub="incidents" id="subtab-hunt-incidents" aria-controls="subpanel-hunt-incidents">Incidents</button>
+      <button data-sub="targets" id="subtab-hunt-targets" aria-controls="subpanel-hunt-targets">Targets</button>
+      <button data-sub="tail" id="subtab-hunt-tail" aria-controls="subpanel-hunt-tail">Tail Detect</button>
+      <button data-sub="sense" class="pro-tab" id="subtab-hunt-sense" aria-controls="subpanel-hunt-sense">Sense</button>
+      <button data-sub="graph" id="subtab-hunt-graph" aria-controls="subpanel-hunt-graph">Node Graph</button>
     </div>
     <p id="hunt-selection-status" class="footnote" role="status" aria-live="polite"></p>
     <details id="hunt-selection-summary" class="card hunt-selection-summary" hidden>
@@ -322,7 +322,7 @@
       <p class="footnote">Selection stays in this browser tab. No targets are sent to a device.</p>
       <ul id="hunt-selected-list"></ul><p id="hunt-drafts-summary" class="footnote"></p>
     </details>
-    <div class="sub" data-sub="wifi">
+    <div class="sub" data-sub="wifi" id="subpanel-hunt-wifi" role="tabpanel" aria-labelledby="subtab-hunt-wifi">
       <div class="card"><h3><span class="t">Wi-Fi Analyzer</span><span class="r">from the shared target pool &#183; awareness</span></h3>
         <div class="tiles" id="hunt-wifi-tiles" style="margin-bottom:12px"></div>
         <p class="footnote" data-target-status role="status" hidden></p>
@@ -331,7 +331,7 @@
           <tbody id="hunt-wifi-rows"><tr><td class="off" colspan="7">no Wi-Fi targets yet &#8212; scan from OPERATE or a connected device</td></tr></tbody></table></div>
       </div>
     </div>
-    <div class="sub on" data-sub="ble">
+    <div class="sub on" data-sub="ble" id="subpanel-hunt-ble" role="tabpanel" aria-labelledby="subtab-hunt-ble">
       <div class="card"><h3><span class="t">BLE scan reports</span><span class="r"><span id="ble-observation-count">0</span> reports</span></h3>
         <p class="footnote">Recent scan output from connected devices. Some firmware reports a name or address in the same field, so these labels cannot identify a device. The latest 200 reports stay here until CC closes.</p>
         <p class="footnote" id="ble-observation-status" role="status">Open this tab to load scan reports.</p>
@@ -365,24 +365,24 @@
           <tbody id="hunt-ble-rows"><tr><td class="off" colspan="6">no BLE targets yet &#8212; scan BLE from a connected device</td></tr></tbody></table></div>
       </div>
     </div>
-    <div class="sub" data-sub="targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span><span class="r"><span id="hunt-tgt-count">0</span> targets &#183; <a href="/api/targets/export" download="cc-targets.csv" style="color:var(--acc)">Export CSV</a></span></h3>
+    <div class="sub" data-sub="targets" id="subpanel-hunt-targets" role="tabpanel" aria-labelledby="subtab-hunt-targets"><div class="card"><h3><span class="t">Targets &#8212; shared pool</span><span class="r"><span id="hunt-tgt-count">0</span> targets &#183; <a href="/api/targets/export" download="cc-targets.csv" style="color:var(--acc)">Export CSV</a></span></h3>
       <p class="footnote" data-target-status role="status" hidden></p>
       <div class="hunt-selection-toolbar"><span data-hunt-count>0 selected</span><button type="button" class="btn sm" data-hunt-visible="hunt-targets-rows">Select visible</button><button type="button" class="btn sm" data-hunt-actions="hunt-targets-rows" aria-label="Shared target actions" aria-haspopup="menu" aria-expanded="false" aria-controls="hunt-target-menu">Actions</button></div>
       <div class="hunt-target-scroll" tabindex="0" role="region" aria-label="Shared targets"><table><thead><tr><th>Select</th><th>Type</th><th>SSID / Name</th><th>MAC</th><th>Vendor</th><th class="r">RSSI</th><th class="r">Ch</th><th>Source</th></tr></thead>
         <tbody id="hunt-targets-rows"><tr><td class="off" colspan="8">pool empty</td></tr></tbody></table></div></div></div>
-    <div class="sub" data-sub="tail"><div class="card"><h3><span class="t">Follower / Tail Detection</span><span class="r">counter-surveillance</span></h3>
+    <div class="sub" data-sub="tail" id="subpanel-hunt-tail" role="tabpanel" aria-labelledby="subtab-hunt-tail"><div class="card"><h3><span class="t">Follower / Tail Detection</span><span class="r">counter-surveillance</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Flags a device that keeps reappearing near you across time. Awareness-first &#8212; it never confirms a follower and never acts. Method: ArgeliusLabs/Chasing-Your-Tail-NG (MIT).</div>
       <div class="between" style="margin-bottom:8px"><span>Min persistence <b class="mono">0.50</b></span><span id="tail-summary" class="dim">&#8212;</span></div>
       <div class="tail-scroll" tabindex="0" role="region" aria-label="Repeated device observations"><table class="tail-table"><thead><tr><th>Device</th><th>Label</th><th class="r">Persistence</th><th class="r">Windows</th></tr></thead>
         <tbody id="tail-rows"><tr><td class="off" colspan="4">no persistent followers &#8212; a device must reappear across time windows to flag</td></tr></tbody></table></div>
     </div></div>
-    <div class="sub pro" data-sub="sense"><div class="card"><h3><span class="t">Wi-Fi Sense &#8212; presence &amp; motion</span><span class="r" id="sense-room">&#8212;</span></h3>
+    <div class="sub pro" data-sub="sense" id="subpanel-hunt-sense" role="tabpanel" aria-labelledby="subtab-hunt-sense"><div class="card"><h3><span class="t">Wi-Fi Sense &#8212; presence &amp; motion</span><span class="r" id="sense-room">&#8212;</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Passive Wi-Fi CSI occupancy/motion from a connected sensing node &#8212; it perturbs no one and is NOT a camera. Only presence + motion are real on commodity 2.4&nbsp;GHz (the PROVEN tier); it never identifies a person and a sensed body is never a scan target.</div>
       <div class="between" style="margin-bottom:8px"><span id="sense-occupied" class="chip">room state &#8212;</span><span id="sense-summary" class="dim">&#8212;</span></div>
       <table><thead><tr><th>Node</th><th class="r">Presence</th><th class="r">Motion</th><th class="r">Confidence</th><th class="r">Tier</th></tr></thead>
         <tbody id="sense-rows"><tr><td class="off" colspan="5">no sensing node connected &#8212; flash the CSI node firmware + connect it to see live presence/motion</td></tr></tbody></table>
     </div></div>
-    <div class="sub" data-sub="incidents">
+    <div class="sub" data-sub="incidents" id="subpanel-hunt-incidents" role="tabpanel" aria-labelledby="subtab-hunt-incidents">
       <div class="card">
         <h3><span class="t">Incidents &#8212; local report</span><span class="r" id="incident-state">empty</span></h3>
         <div class="footnote" style="margin:-4px 0 10px">Open a local AntiHunter <code>incidents.jsonl</code> export (up to 2 MiB). Its bytes are read in this browser tab and sent once to CC for normalizing &#8212; nothing is stored, and source authenticity is unknown. Rows are shown in the file's physical line order, never sorted across mixed clocks. Zero admitted events is never an all-clear.</div>
@@ -423,7 +423,7 @@
         <pre id="incident-preview" class="mono" style="white-space:pre-wrap;word-break:break-word;max-height:280px;overflow:auto;margin:0"></pre>
       </div>
     </div>
-    <div class="sub" data-sub="graph"><div class="card"><h3><span class="t">Node Graph</span><span class="r">mesh topology &#183; illustrative preview</span></h3>
+    <div class="sub" data-sub="graph" id="subpanel-hunt-graph" role="tabpanel" aria-labelledby="subtab-hunt-graph"><div class="card"><h3><span class="t">Node Graph</span><span class="r">mesh topology &#183; illustrative preview</span></h3>
       <div class="footnote" style="margin:-4px 0 8px">Illustration of the mesh layout. Live topology renders once a Meshtastic mesh is connected under DEVICE &#9656; Mesh.</div>
       <div class="mapwrap">
         <svg viewBox="0 0 1000 320" preserveAspectRatio="xMidYMid meet" role="img" aria-label="mesh node graph">
@@ -448,14 +448,14 @@
   </section>
 
   <!-- ============ OPERATE (live: quick-commands console + consent-gated Macros) ============ -->
-  <section class="view" data-view="operate">
+  <section class="view" data-view="operate" id="view-operate" role="tabpanel" aria-labelledby="railtab-operate">
     <div class="subtabs" data-tabs="operate">
-      <button class="on" data-sub="console">Console</button>
-      <button data-sub="macros">Macros</button>
-      <button data-sub="broadcast" class="pro-tab">Broadcast</button>
-      <button data-sub="antenna">Antenna</button>
+      <button class="on" data-sub="console" id="subtab-operate-console" aria-controls="subpanel-operate-console">Console</button>
+      <button data-sub="macros" id="subtab-operate-macros" aria-controls="subpanel-operate-macros">Macros</button>
+      <button data-sub="broadcast" class="pro-tab" id="subtab-operate-broadcast" aria-controls="subpanel-operate-broadcast">Broadcast</button>
+      <button data-sub="antenna" id="subtab-operate-antenna" aria-controls="subpanel-operate-antenna">Antenna</button>
     </div>
-    <div class="sub on" data-sub="console">
+    <div class="sub on" data-sub="console" id="subpanel-operate-console" role="tabpanel" aria-labelledby="subtab-operate-console">
       <div class="card" style="margin-bottom:12px">
         <div class="between">
           <div class="row" style="align-items:center">
@@ -480,7 +480,7 @@
         </div>
       </div>
     </div>
-    <div class="sub" data-sub="macros"><div class="card"><h3><span class="t">Saved Macros</span><span class="r" id="macros-count"></span></h3>
+    <div class="sub" data-sub="macros" id="subpanel-operate-macros" role="tabpanel" aria-labelledby="subtab-operate-macros"><div class="card"><h3><span class="t">Saved Macros</span><span class="r" id="macros-count"></span></h3>
       <div class="row" style="align-items:center;margin-bottom:9px">
         <span class="muted">Play on</span>
         <select class="field" id="macro-device" aria-label="Macro playback device" style="width:auto"><option value="">no connected device</option></select>
@@ -492,7 +492,7 @@
       <div class="footnote" id="macro-status" style="min-height:14px"></div>
       <div class="footnote">Playback replays the steps to the selected device. A transmitting/offensive macro is refused unless "authorized use" is checked (the engine hard-gates it too); every step still passes the serial write-guard.</div>
     </div></div>
-    <div class="sub pro" data-sub="broadcast"><div class="card"><h3><span class="t">Broadcast</span><span class="r">one command &#8594; many devices</span></h3>
+    <div class="sub pro" data-sub="broadcast" id="subpanel-operate-broadcast" role="tabpanel" aria-labelledby="subtab-operate-broadcast"><div class="card"><h3><span class="t">Broadcast</span><span class="r">one command &#8594; many devices</span></h3>
       <div class="footnote" style="margin:-2px 0 10px">Sends the SAME command to every checked device at once. Because fan-out amplifies, a transmitting/offensive command is refused unless "authorized use" is checked (re-checked server-side); recon commands fan out freely. Each device is gated on its own &#8212; a busy/disconnected one is skipped, not a whole-batch failure.</div>
       <div id="bc-devices" class="row" style="flex-wrap:wrap;gap:10px;margin-bottom:10px"><span class="dim" style="font-size:12px">no connected devices &#8212; connect some in DEVICE &#9656; Dashboard</span></div>
       <div class="terminput" style="margin-bottom:9px"><span class="pr">&gt;</span><input class="field mono" id="bc-input" aria-label="Broadcast command" placeholder="command to send to all checked devices&#8230;"><button class="btn" id="bc-send">Broadcast</button></div>
@@ -500,7 +500,7 @@
       <div class="footnote" id="bc-status" style="min-height:14px;margin-top:8px"></div>
       <table style="margin-top:4px"><thead><tr><th>Device</th><th>Result</th></tr></thead><tbody id="bc-results"></tbody></table>
     </div></div>
-    <div class="sub" data-sub="antenna"><div class="card"><h3><span class="t">Antenna Length Calculator</span><span class="r">wavelength &#8594; element lengths</span></h3>
+    <div class="sub" data-sub="antenna" id="subpanel-operate-antenna" role="tabpanel" aria-labelledby="subtab-operate-antenna"><div class="card"><h3><span class="t">Antenna Length Calculator</span><span class="r">wavelength &#8594; element lengths</span></h3>
       <div class="footnote" style="margin:-2px 0 10px">Pure math, no radio &#8212; enter a frequency to get the wavelength and cut lengths (full / 5&#8260;8 / half / quarter / eighth) in metric and imperial. Set a velocity factor for real wire (~0.95) or coax (RG-58 ~0.66).</div>
       <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px">
         <input class="field mono" id="ant-freq" aria-label="Frequency" placeholder="e.g. 433 or 2.4GHz" style="width:150px">
@@ -516,7 +516,7 @@
   </section>
 
   <!-- ============ CRACK (live: tools/wordlists/captures + gated run) ============ -->
-  <section class="view" data-view="crack">
+  <section class="view" data-view="crack" id="view-crack" role="tabpanel" aria-labelledby="railtab-crack">
     <div class="notebar">Offline WPA/WPA2 key recovery: capture &#8594; wordlist &#8594; per-run consent &#8594; crack. Dictionary-only; the consent gate is never bypassed.</div>
     <div class="split crack-layout">
       <div class="grid" style="align-content:start">
@@ -563,14 +563,14 @@
   </section>
 
   <!-- ============ MAP (live: Flock/ALPR OSINT import) ============ -->
-  <section class="view" data-view="map">
+  <section class="view" data-view="map" id="view-map" role="tabpanel" aria-labelledby="railtab-map">
     <div class="subtabs" data-tabs="map">
-      <button class="on" data-sub="wardrive">Wardrive</button>
-      <button data-sub="multi">Multi-Wardrive</button>
-      <button data-sub="flock">Flock / ALPR</button>
-      <button data-sub="offline">Offline maps</button>
+      <button class="on" data-sub="wardrive" id="subtab-map-wardrive" aria-controls="subpanel-map-wardrive">Wardrive</button>
+      <button data-sub="multi" id="subtab-map-multi" aria-controls="subpanel-map-multi">Multi-Wardrive</button>
+      <button data-sub="flock" id="subtab-map-flock" aria-controls="subpanel-map-flock">Flock / ALPR</button>
+      <button data-sub="offline" id="subtab-map-offline" aria-controls="subpanel-map-offline">Offline maps</button>
     </div>
-    <div class="sub on" data-sub="wardrive"><div class="card"><h3><span class="t">Wardrive &#8212; GPS-tagged Wi-Fi survey</span><span class="r">&#8594; WiGLE CSV</span></h3>
+    <div class="sub on" data-sub="wardrive" id="subpanel-map-wardrive" role="tabpanel" aria-labelledby="subtab-map-wardrive"><div class="card"><h3><span class="t">Wardrive &#8212; GPS-tagged Wi-Fi survey</span><span class="r">&#8594; WiGLE CSV</span></h3>
       <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-start">Start survey</button><button class="btn sm" id="wd-export">Export WiGLE CSV</button><button class="btn sm" id="wd-upload">Upload CSV to WiGLE&#8230;</button><span class="chip" id="wd-status">live survey unavailable</span></div>
       <div class="row" id="wd-upload-row" hidden style="margin-bottom:10px"><input class="field mono" id="wd-upload-path" placeholder="path to a WiGLE .csv you exported" aria-label="WiGLE CSV path"><button class="btn sm" id="wd-upload-browse" data-native-only hidden>Browse&#8230;</button><button class="btn green sm" id="wd-upload-go">Upload to WiGLE</button><label class="dim" style="font-size:11px;white-space:nowrap"><input type="checkbox" id="wd-upload-donate"> donate to WiGLE</label></div>
       <div class="footnote" id="wd-msg" style="margin:-4px 0 8px;min-height:14px"></div>
@@ -604,7 +604,7 @@
       </div>
       <div class="footnote" style="margin-top:6px">Illustration &#8212; sample track and counts. Live surveys and recorded-track viewing are not available in this view yet. Upload CSV sends an existing survey to WiGLE.</div>
     </div></div>
-    <div class="sub" data-sub="multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3>
+    <div class="sub" data-sub="multi" id="subpanel-map-multi" role="tabpanel" aria-labelledby="subtab-map-multi"><div class="card"><h3><span class="t">Multi-Wardrive</span><span class="r">concurrent boards</span></h3>
       <div class="row" style="margin-bottom:10px"><button class="btn green sm" id="wd-multi-start">Start all</button><span class="chip">merged &#8594; 1 CSV</span><span class="dim" id="wd-multi-msg" style="font-size:11px"></span></div>
       <div class="mapwrap">
         <svg viewBox="0 0 1000 380" preserveAspectRatio="xMidYMid slice" role="img" aria-label="multi-wardrive map">
@@ -619,7 +619,7 @@
       </div>
       <div class="footnote" style="margin-top:6px">Illustration &#8212; sample tracks. Live multi-device surveys are not available in this view yet.</div>
     </div></div>
-    <div class="sub" data-sub="flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r" id="flock-count">awareness &#183; OSINT</span></h3>
+    <div class="sub" data-sub="flock" id="subpanel-map-flock" role="tabpanel" aria-labelledby="subtab-map-flock"><div class="card"><h3><span class="t">Flock / ALPR camera map</span><span class="r" id="flock-count">awareness &#183; OSINT</span></h3>
       <div class="footnote" style="margin:-4px 0 10px">Awareness map of publicly-visible ALPR cameras, imported from OpenStreetMap (Overpass). Passive OSINT &#8212; CC transmits nothing and drives no device.</div>
       <div class="row" style="margin-bottom:10px;align-items:center">
         <button class="btn sm" id="flock-follow" aria-pressed="false" title="Center the map on a connected device's GPS and load only the area around you, freeing areas you leave">&#9678; Follow GPS</button>
@@ -640,7 +640,7 @@
       </div>
       <div class="footnote" id="flock-attr" style="margin-top:8px"></div>
     </div></div>
-    <div class="sub" data-sub="offline"><div class="card">
+    <div class="sub" data-sub="offline" id="subpanel-map-offline" role="tabpanel" aria-labelledby="subtab-map-offline"><div class="card">
       <h3><span class="t">Offline maps</span><span class="r">coarse &#183; offline</span></h3>
       <div class="row" style="margin:-2px 0 10px;gap:6px" role="tablist" aria-label="Offline map mode">
         <button class="btn sm on" id="mapo-mode-coarse" data-mode="coarse" aria-pressed="true">Coarse overview</button>
@@ -687,7 +687,7 @@
   </section>
 
   <!-- ============ TERMINAL (design preview) ============ -->
-  <section class="view" data-view="terminal">
+  <section class="view" data-view="terminal" id="view-terminal" role="tabpanel" aria-labelledby="railtab-terminal">
     <div class="split side">
       <div class="card" style="align-self:start">
         <h3><span class="t">Terminals</span><span class="r">connected ports</span></h3>
@@ -701,7 +701,7 @@
   </section>
 
   <!-- ============ SETTINGS ============ -->
-  <section class="view" data-view="settings">
+  <section class="view" data-view="settings" id="view-settings" role="tabpanel" aria-labelledby="railtab-settings">
     <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">
       <div class="card"><h3><span class="t">Serial Defaults</span></h3><label class="dim" style="font-size:11px">Default baud</label><select class="field" id="set-serial-baud" aria-label="Default baud"><option>9600</option><option>115200</option><option>230400</option><option>460800</option><option>921600</option></select></div>
       <div class="card"><h3><span class="t">Flash Defaults</span></h3><label class="dim" style="font-size:11px">Flash baud</label><select class="field" id="set-flash-baud" aria-label="Flash baud"><option value="auto">Auto (firmware default)</option><option>921600</option><option>460800</option><option>230400</option><option>115200</option></select></div>
