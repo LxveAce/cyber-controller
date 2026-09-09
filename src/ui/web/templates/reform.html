@@ -290,9 +290,10 @@
     <div class="sub" data-sub="mesh">
       <div class="split two">
         <div class="card">
-          <h3><span class="t">&#9673; Meshtastic &#8212; LoRa mesh</span><span class="r">preview</span></h3>
-          <div class="footnote" style="margin:-4px 0 10px">Licensed ISM-band comms (US 915 MHz). CC reads nodes/channels and sends text over the node&#8217;s own StreamAPI &#8212; it authors no RF/interference frames.</div>
-          <div class="card2">Connect a Meshtastic node to read its mesh (nodes / channels / SNR). Live read wiring lands next.</div>
+          <h3><span class="t">&#9673; Meshtastic &#8212; owned node</span><span class="r" id="mesh-status-state">loading</span></h3>
+          <div class="footnote" style="margin:-4px 0 10px">Read-only status of the node you already own &#8212; identity, battery/power, link SNR, and how fresh the reading is. CC opens no transport here and shows no location, neighbors, or channel config.</div>
+          <div id="mesh-status-body" role="status" aria-live="polite" aria-label="Meshtastic owned-node status"><div class="card2">Reading mesh status&#8230;</div></div>
+          <div style="margin-top:8px"><button id="mesh-status-refresh" type="button">Refresh</button></div>
         </div>
         <div class="card">
           <h3><span class="t">Provisioned Nodes</span><span class="r" id="mesh-nodes-state">access gate</span></h3>
@@ -309,6 +310,7 @@
     <div class="subtabs" data-tabs="hunt">
       <button data-sub="wifi">Wi-Fi</button>
       <button class="on" data-sub="ble">BLE</button>
+      <button data-sub="incidents">Incidents</button>
       <button data-sub="targets">Targets</button>
       <button data-sub="tail">Tail Detect</button>
       <button data-sub="sense" class="pro-tab">Sense</button>
@@ -380,6 +382,47 @@
       <table><thead><tr><th>Node</th><th class="r">Presence</th><th class="r">Motion</th><th class="r">Confidence</th><th class="r">Tier</th></tr></thead>
         <tbody id="sense-rows"><tr><td class="off" colspan="5">no sensing node connected &#8212; flash the CSI node firmware + connect it to see live presence/motion</td></tr></tbody></table>
     </div></div>
+    <div class="sub" data-sub="incidents">
+      <div class="card">
+        <h3><span class="t">Incidents &#8212; local report</span><span class="r" id="incident-state">empty</span></h3>
+        <div class="footnote" style="margin:-4px 0 10px">Open a local AntiHunter <code>incidents.jsonl</code> export (up to 2 MiB). Its bytes are read in this browser tab and sent once to CC for normalizing &#8212; nothing is stored, and source authenticity is unknown. Rows are shown in the file's physical line order, never sorted across mixed clocks. Zero admitted events is never an all-clear.</div>
+        <div class="row" style="align-items:center;gap:8px;flex-wrap:wrap">
+          <input type="file" id="incident-file" accept=".jsonl,application/octet-stream" aria-label="Choose incidents.jsonl report">
+          <button type="button" id="incident-clear">Clear</button>
+          <button type="button" id="incident-preview-btn">Preview full report</button>
+          <button type="button" id="incident-download-btn">Download report</button>
+        </div>
+        <p id="incident-message" class="footnote" role="status" aria-live="polite" style="min-height:14px"></p>
+        <div class="card2" style="margin-top:8px">
+          <div id="incident-digest" class="footnote mono"></div>
+          <div id="incident-counts" class="footnote"></div>
+          <div id="incident-allclear-note" class="footnote"></div>
+          <div id="incident-clock" class="footnote"></div>
+        </div>
+        <div class="row" style="align-items:center;gap:8px;margin-top:8px;flex-wrap:wrap">
+          <label class="dim" style="font-size:11px" for="incident-filter-status">Status</label>
+          <select class="field" id="incident-filter-status" style="width:auto">
+            <option value="all">all</option><option value="admitted">admitted</option><option value="unsupported">unsupported</option><option value="malformed">malformed</option>
+          </select>
+          <label class="dim" style="font-size:11px" for="incident-filter-category">Category</label>
+          <select class="field" id="incident-filter-category" style="width:auto">
+            <option value="all">all</option><option value="EVILTWIN">EVILTWIN</option><option value="BEACON_FORGE">BEACON_FORGE</option><option value="DEAUTH_FORGE">DEAUTH_FORGE</option><option value="DEAUTH_FLOOD">DEAUTH_FLOOD</option><option value="PROBE_FLOOD">PROBE_FLOOD</option><option value="CSA_SPOOF">CSA_SPOOF</option><option value="SSID_CONFUSION">SSID_CONFUSION</option>
+          </select>
+          <span id="incident-filtered-count" class="footnote"></span>
+        </div>
+        <div class="incident-scroll" tabindex="0" role="region" aria-label="Incident rows in physical line order" style="margin-top:6px">
+          <table><thead><tr><th class="r">Line</th><th>Status / category</th><th class="r">Claimed uptime</th><th class="r">Claimed RTC</th><th>Reason</th></tr></thead>
+            <tbody id="incident-rows"></tbody></table>
+        </div>
+        <div class="row" style="align-items:center;gap:8px;margin-top:6px">
+          <button type="button" id="incident-prev">Prev</button>
+          <button type="button" id="incident-next">Next</button>
+        </div>
+        <h3 style="margin-top:12px"><span class="t">Full report preview</span></h3>
+        <div class="footnote" style="margin:-4px 0 6px">Preview and download use the entire redacted report even while a table filter is active &#8212; never only the visible page.</div>
+        <pre id="incident-preview" class="mono" style="white-space:pre-wrap;word-break:break-word;max-height:280px;overflow:auto;margin:0"></pre>
+      </div>
+    </div>
     <div class="sub" data-sub="graph"><div class="card"><h3><span class="t">Node Graph</span><span class="r">mesh topology &#183; illustrative preview</span></h3>
       <div class="footnote" style="margin:-4px 0 8px">Illustration of the mesh layout. Live topology renders once a Meshtastic mesh is connected under DEVICE &#9656; Mesh.</div>
       <div class="mapwrap">
@@ -712,6 +755,8 @@
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='target_selection.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_card.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_transport.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='mesh_status.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='incident_workspace.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='reform.js') }}"></script>
 </body>
 </html>

@@ -76,6 +76,8 @@
     if (window.history && history.replaceState) history.replaceState(null, "", "#" + v);
     if (window.__ccPollTick) { window.__ccPollTick(); }   // instant refresh for the surface just shown
     if (v === "crack" && window.__ccRefreshCaptures) { window.__ccRefreshCaptures(); }
+    if (window.CCMeshStatus) window.CCMeshStatus.syncVisibility();   // main-nav enter/leave invalidates + refreshes the Mesh read
+    if (window.CCIncidents) window.CCIncidents.syncVisibility();     // Incidents workspace: main-nav leave aborts an in-flight import
     if (focusIt) it.focus();
   }
 
@@ -114,6 +116,8 @@
         x.setAttribute("aria-selected", on ? "true" : "false");
       });
       scope.querySelectorAll(":scope > .sub").forEach(function (s) { s.classList.toggle("on", s.dataset.sub === b.dataset.sub); });
+      if (window.CCMeshStatus) window.CCMeshStatus.syncVisibility();   // Mesh workspace: refresh on enter, drop in-flight on leave
+      if (window.CCIncidents) window.CCIncidents.syncVisibility();     // Incidents workspace: drop in-flight import on subtab leave
       updateFwMode();   // entering/leaving the FW sub-tab toggles the full-height workspace layout
       if (bar.dataset.tabs && crumbNames[scope.dataset.view]) {
         crumb.innerHTML = "<b>" + crumbNames[scope.dataset.view] + "</b> ▸ " + b.textContent;

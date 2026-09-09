@@ -1,0 +1,260 @@
+name: Linux Build Qualification
+
+# MANUAL-ONLY, BUILD + STATIC INSPECTION ONLY. Produces exact-source Linux build evidence for a
+# pinned commit WITHOUT touching any release, tag, ref, or deployment. It never publishes: there is
+# no release-upload, ref push, tag, or deploy step anywhere in this file. Build-run evidence
+# (dependency-resolution logs, build identity, architecture, MEASURED ELF/glibc requirements, the
+# renderer/module/QPA/arch checks, the application-resource-content check, and artifact hashes) is
+# retained only as a run Actions artifact, uploaded even when a build or verification step FAILS so a
+# failed qualification keeps its diagnostics. It reuses the repository's existing build + inspection
+# tools (build.py, scripts/verify_linux_bundle.py, scripts/verify_frozen_app_resources.py,
+# scripts/gen_frozen_resource_manifest.py) unchanged, and reuses the Actions the repo already uses.
+#
+# Scope boundary (deliberate): this workflow BUILDS the frozen binary and STATICALLY inspects it —
+# native renderer / Python modules / QPA libraries / architecture / measured glibc requirements, AND
+# the bundled application-resource CONTENT (Reform template, web scripts/styles, world map, a profile,
+# os_catalog, OUI/BLE tables, a macro, the Qt/TUI stylesheets, logo, How-To) verified byte-for-byte
+# against the exact source it was built from, via a source-derived manifest. That manifest is the
+# reviewed generator's COMPLETE selected source inventory: every build.py --add-data declared
+# resource plus the conditional pinned-submodule data, git-derived from the pinned commit and each
+# verified byte-identical to it (generated platform/dependency data is out of scope; opaque .pack
+# payloads are inventoried/hashed, not executed). It does NOT launch the app, run the packaged smoke
+# fixture, discover hardware, touch a device or radio, or change any firewall. build.py freezes the
+# app; it does not launch it; the resource checker reads archive bytes only (no import, no member
+# execution, no decryption; opaque .pack inventoried/hashed only).
+#
+# Dependency installation runs inside GitHub's disposable hosted runner during the build; that is
+# build-time package fetching, NOT the application making network calls at runtime.
+#
+# Native ARM64 uses a real arm64 runner with the distribution's own Qt packages, never a
+# dependency-skipping QEMU cross-build.
+#
+# Depends on scripts/verify_frozen_app_resources.py and scripts/gen_frozen_resource_manifest.py being
+# present at the built source commit (root integrates the reviewed checker + generator first).
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: "REVIEWED full 40-hex commit SHA containing the resource checker and manifest generator. No tag or branch."
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linux-build-qualification-${{ inputs.source_commit }}
+  cancel-in-progress: false
+
+env:
+  QT_API: pyqt5
+
+jobs:
+  validate-source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Reject anything but a full commit SHA
+        env:
+          SRC: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          # Whole-value match (not line-oriented): a full 40-hex commit SHA only.
+          if [[ ! "$SRC" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::source_commit must be a full 40-hex commit SHA (no tag, branch, or short SHA): $SRC"
+            exit 1
+          fi
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - name: Confirm the checkout resolved to exactly that commit
+        env:
+          SRC: ${{ inputs.source_commit }}
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          test "$head" = "$SRC" || { echo "::error::checkout HEAD $head != requested $SRC"; exit 1; }
+          echo "Validated exact source: $head"
+
+  build-linux-x64:
+    needs: validate-source
+    runs-on: ubuntu-22.04
+    timeout-minutes: 40
+    env:
+      SRC: ${{ inputs.source_commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+          submodules: recursive
+          persist-credentials: false
+      - name: Re-assert exact source
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          test "$head" = "$SRC" || { echo "::error::HEAD $head != $SRC"; exit 1; }
+      # Create the evidence directory and an initial status record BEFORE dependency work, so a later
+      # build/verify failure still has a diagnostics artifact to upload.
+      - name: Initialize evidence
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "runner=$(uname -srvmo)"
+            echo "status=started"
+          } > evidence/qualification-status.txt
+      - uses: actions/setup-python@v5   # tag pin, matching the repo's existing convention (not a full SHA)
+        with:
+          python-version: "3.12"
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libgl1-mesa-dri libxkbcommon0 \
+            libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 \
+            libxcb-render-util0 libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
+      - name: Install Python deps (resolution log retained)
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip 2>&1 | tee evidence/pip-x64.log
+          pip install pyinstaller pyelftools 2>&1 | tee -a evidence/pip-x64.log
+          pip install ".[desktop]" 2>&1 | tee -a evidence/pip-x64.log
+          pip freeze > evidence/pip-freeze-x64.txt
+      - name: Build the frozen binary (build.py; no app launch)
+        run: python build.py
+      - name: Static bundle inspection (native renderer + modules + QPA + arch/glibc; NOT app-resource content)
+        run: |
+          set -euo pipefail
+          python scripts/verify_linux_bundle.py dist/CyberController \
+            --machine EM_X86_64 --max-glibc 2.35 | tee evidence/bundle-x64.json
+      - name: Generate app-resource manifest from the built source
+        run: |
+          set -euo pipefail
+          python scripts/gen_frozen_resource_manifest.py --source-root . \
+            --commit "$SRC" --tree "$(git rev-parse HEAD^{tree})" \
+            --out evidence/app-resources-manifest-x64.json
+      - name: Verify frozen app-resource content (bundle bytes vs source)
+        run: |
+          set -euo pipefail
+          python scripts/verify_frozen_app_resources.py \
+            --archive dist/CyberController \
+            --manifest evidence/app-resources-manifest-x64.json \
+            --out evidence/app-resources-x64.json
+      - name: Build identity + artifact hash (labels a missing binary as missing)
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          if [ -f dist/CyberController ]; then
+            art_sha="$(sha256sum dist/CyberController | cut -d' ' -f1)"
+            art_bytes="$(stat -c %s dist/CyberController)"
+            sha256sum dist/CyberController > evidence/SHA256SUMS-x64.txt
+          else
+            art_sha="MISSING (no binary produced)"
+            art_bytes="0"
+          fi
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "python=$(python --version 2>&1)"
+            echo "runner=$(uname -srvmo)"
+            echo "artifact_sha256=$art_sha"
+            echo "artifact_bytes=$art_bytes"
+            echo "status=finished"
+          } | tee evidence/identity-x64.txt
+      - name: Upload evidence even on failure (NO release, NO tag, NO push)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-x64-qualification-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14
+
+  build-linux-arm64:
+    needs: validate-source
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    env:
+      SRC: ${{ inputs.source_commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+          submodules: recursive
+          persist-credentials: false
+      - name: Re-assert exact source
+        run: |
+          set -euo pipefail
+          head="$(git rev-parse HEAD)"
+          test "$head" = "$SRC" || { echo "::error::HEAD $head != $SRC"; exit 1; }
+      - name: Initialize evidence
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "runner=$(uname -srvmo)"
+            echo "status=started"
+          } > evidence/qualification-status.txt
+      - name: Install native ARM Qt + build deps (distribution packages)
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y python3-venv python3-dev python3-tk binutils \
+            python3-pyqt5 python3-pyqt5.qtsvg python3-pyqt5.qtwebengine python3-qtpy \
+            libegl1 libgl1 libgl1-mesa-dri libxkbcommon0 libxkbcommon-x11-0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-render-util0 \
+            libxcb-shape0 libxcb-xinerama0 libxcb-xkb1
+          /usr/bin/python3 -m venv --system-site-packages .linux-build-venv
+          .linux-build-venv/bin/python -m pip install --upgrade pip 2>&1 | tee evidence/pip-arm64.log
+          .linux-build-venv/bin/python -m pip install pyinstaller pyelftools ".[desktop]" 2>&1 \
+            | tee -a evidence/pip-arm64.log
+          .linux-build-venv/bin/python -m pip freeze > evidence/pip-freeze-arm64.txt
+      - name: Build the frozen binary (build.py; no app launch)
+        run: .linux-build-venv/bin/python build.py
+      - name: Static bundle inspection (native renderer + modules + QPA + arch/glibc; NOT app-resource content)
+        run: |
+          set -euo pipefail
+          .linux-build-venv/bin/python scripts/verify_linux_bundle.py dist/CyberController \
+            --machine EM_AARCH64 --max-glibc 2.39 | tee evidence/bundle-arm64.json
+      - name: Generate app-resource manifest from the built source
+        run: |
+          set -euo pipefail
+          .linux-build-venv/bin/python scripts/gen_frozen_resource_manifest.py --source-root . \
+            --commit "$SRC" --tree "$(git rev-parse HEAD^{tree})" \
+            --out evidence/app-resources-manifest-arm64.json
+      - name: Verify frozen app-resource content (bundle bytes vs source)
+        run: |
+          set -euo pipefail
+          .linux-build-venv/bin/python scripts/verify_frozen_app_resources.py \
+            --archive dist/CyberController \
+            --manifest evidence/app-resources-manifest-arm64.json \
+            --out evidence/app-resources-arm64.json
+      - name: Build identity + artifact hash (labels a missing binary as missing)
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          if [ -f dist/CyberController ]; then
+            art_sha="$(sha256sum dist/CyberController | cut -d' ' -f1)"
+            art_bytes="$(stat -c %s dist/CyberController)"
+            sha256sum dist/CyberController > evidence/SHA256SUMS-arm64.txt
+          else
+            art_sha="MISSING (no binary produced)"
+            art_bytes="0"
+          fi
+          {
+            echo "commit=$(git rev-parse HEAD)"
+            echo "python=$(.linux-build-venv/bin/python --version 2>&1)"
+            echo "runner=$(uname -srvmo)"
+            echo "artifact_sha256=$art_sha"
+            echo "artifact_bytes=$art_bytes"
+            echo "status=finished"
+          } | tee evidence/identity-arm64.txt
+      - name: Upload evidence even on failure (NO release, NO tag, NO push)
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-arm64-qualification-evidence
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 14

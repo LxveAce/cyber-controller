@@ -357,3 +357,9 @@ td.mono,th.r,td.r{font-family:var(--mono)} .r{text-align:right}
 .hunt-target-scroll:focus-visible,.target-checkbox input:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 .navitem:focus-visible,.card.collapsible>summary:focus-visible,.btn:focus-visible{outline:2px solid var(--acc);outline-offset:-2px}
 @media(prefers-reduced-motion:reduce){.card.collapsible>summary::before,.fwgroup>summary::before{transition:none}}
+
+/* HUNT ▸ Incidents workspace (local imported-report viewer) */
+.incident-scroll { max-height: 340px; overflow: auto; }
+.incident-scroll table { width: 100%; border-collapse: collapse; }
+#incident-allclear-note:not(:empty) { color: #e0a34e; }
+#incident-preview:empty { display: none; }

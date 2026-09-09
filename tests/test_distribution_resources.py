@@ -172,3 +172,45 @@ def test_wheel_verifier_requires_each_declared_resource(tmp_path):
             for member in complete - {suffix}:
                 archive.writestr(member, b"fixture")
         assert f"missing resource: {suffix}" in verify.missing_resources(wheel)
+
+
+def test_wheel_requires_mesh_status_card_script(tmp_path):
+    # 2245: the Mesh status card script is a required wheel resource, so a wheel that omits the new
+    # card script fails and one that includes it passes. (mesh_status.js ships with the Mesh feature
+    # that is awaiting acceptance; root integrates this check with or after that feature.)
+    resource = "src/ui/web/static/mesh_status.js"
+    assert resource in verify.REQUIRED_SUFFIXES
+
+    complete = _complete_wheel_members()
+    without_it = tmp_path / "without-mesh.whl"
+    with zipfile.ZipFile(without_it, "w") as archive:
+        for member in complete - {resource}:
+            archive.writestr(member, b"fixture")
+    assert f"missing resource: {resource}" in verify.missing_resources(without_it)
+
+    with_it = tmp_path / "with-mesh.whl"
+    with zipfile.ZipFile(with_it, "w") as archive:
+        for member in complete:
+            archive.writestr(member, b"fixture")
+    assert verify.missing_resources(with_it) == []
+
+
+def test_wheel_requires_incident_workspace_script(tmp_path):
+    # 2345: the HUNT > Incidents workspace script must be a required wheel resource, so a wheel that
+    # omits it fails and one that includes it passes. (incident_workspace.js ships with the incident
+    # workspace feature that is awaiting integration; root integrates this check with or after it.)
+    resource = "src/ui/web/static/incident_workspace.js"
+    assert resource in verify.REQUIRED_SUFFIXES
+
+    complete = _complete_wheel_members()
+    without_it = tmp_path / "without-incident.whl"
+    with zipfile.ZipFile(without_it, "w") as archive:
+        for member in complete - {resource}:
+            archive.writestr(member, b"fixture")
+    assert f"missing resource: {resource}" in verify.missing_resources(without_it)
+
+    with_it = tmp_path / "with-incident.whl"
+    with zipfile.ZipFile(with_it, "w") as archive:
+        for member in complete:
+            archive.writestr(member, b"fixture")
+    assert verify.missing_resources(with_it) == []
