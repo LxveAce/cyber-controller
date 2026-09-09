@@ -102,18 +102,22 @@
 
   document.querySelectorAll(".subtabs").forEach(function (bar) {
     bar.setAttribute("role", "tablist");
-    bar.querySelectorAll("button").forEach(function (x) {
+    var subButtons = Array.prototype.slice.call(bar.querySelectorAll("button"));
+    subButtons.forEach(function (x) {
+      var on = x.classList.contains("on");
       x.setAttribute("role", "tab");
-      x.setAttribute("aria-selected", x.classList.contains("on") ? "true" : "false");
+      x.setAttribute("aria-selected", on ? "true" : "false");
+      x.setAttribute("tabindex", on ? "0" : "-1");   // roving tabindex: only the active tab is a Tab stop
     });
-    bar.addEventListener("click", function (e) {
-      var b = e.target.closest("button");
-      if (!b) return;
+    // Activate button b within THIS bar: move selection + roving tabindex, switch its panel, and fire the same
+    // visibility/crumb/poll notifications the click path always has. Selection follows focus, like the rail.
+    function activateSub(b, focusIt) {
       var scope = bar.parentElement;
-      bar.querySelectorAll("button").forEach(function (x) {
+      subButtons.forEach(function (x) {
         var on = x === b;
         x.classList.toggle("on", on);
         x.setAttribute("aria-selected", on ? "true" : "false");
+        x.setAttribute("tabindex", on ? "0" : "-1");
       });
       scope.querySelectorAll(":scope > .sub").forEach(function (s) { s.classList.toggle("on", s.dataset.sub === b.dataset.sub); });
       if (window.CCMeshStatus) window.CCMeshStatus.syncVisibility();   // Mesh workspace: refresh on enter, drop in-flight on leave
@@ -123,6 +127,51 @@
         crumb.innerHTML = "<b>" + crumbNames[scope.dataset.view] + "</b> ▸ " + b.textContent;
       }
       if (window.__ccPollTick) window.__ccPollTick();
+      if (focusIt && b.focus) b.focus();
+    }
+    bar.addEventListener("click", function (e) {
+      var b = e.target.closest("button");
+      if (b && subButtons.indexOf(b) >= 0) activateSub(b, false);
+    });
+    // A tab hidden by Simple mode is not a keyboard target. Simple mode is #app.pro-hidden (set by the depth
+    // toggle), which CSS uses to hide .pro-tab buttons — checked at EVENT time so a Simple/Pro switch after
+    // setup is honored without re-wiring.
+    function subVisible(btn) {
+      if (!btn.classList.contains("pro-tab")) return true;
+      var app = document.getElementById("app");
+      return !(app && app.classList && app.classList.contains("pro-hidden"));
+    }
+    function stepTo(fromIdx, dir) {   // next visible tab in a direction, wrapping; the current index if none other
+      var n = subButtons.length;
+      for (var i = 1; i <= n; i++) {
+        var j = ((fromIdx + dir * i) % n + n) % n;
+        if (subVisible(subButtons[j])) return j;
+      }
+      return fromIdx;
+    }
+    function edgeVisible(dir) {   // dir 1 -> first visible tab, dir -1 -> last visible tab
+      var n = subButtons.length;
+      for (var i = 0; i < n; i++) {
+        var j = dir > 0 ? i : n - 1 - i;
+        if (subVisible(subButtons[j])) return j;
+      }
+      return -1;
+    }
+    // Arrow/Home/End move selection + focus within THIS bar only, skipping tabs hidden by Simple mode (a roving
+    // tablist, matching the primary rail: WCAG 2.1.1 keyboard + 4.1.2 name/role/value). Enter/Space are left to
+    // the native button click, so a keyboard activation never fires twice.
+    bar.addEventListener("keydown", function (e) {
+      var cur = document.activeElement && document.activeElement.closest ? document.activeElement.closest("button") : null;
+      var idx = subButtons.indexOf(cur);
+      if (idx < 0) return;   // focus is not on one of this bar's tabs (e.g. a different bar) — ignore
+      var next;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") next = stepTo(idx, 1);
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = stepTo(idx, -1);
+      else if (e.key === "Home") next = edgeVisible(1);
+      else if (e.key === "End") next = edgeVisible(-1);
+      else return;   // Enter/Space and everything else: the native button behavior stands
+      e.preventDefault();
+      if (next >= 0 && next !== idx) activateSub(subButtons[next], true);
     });
   });
   updateFwMode();   // reflect whatever sub-tab the page loaded with (e.g. a #view deep-link)
