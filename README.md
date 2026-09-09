@@ -32,29 +32,47 @@ The desktop window and browser interface share the same dashboard. Support depen
 
 > ⚠️ **Lawful, authorized use only.** Use it only on hardware and networks you own or have explicit permission to test. Provided as-is, no warranty; you assume all risk. See [DISCLAIMER.md](DISCLAIMER.md).
 
-**Jump to:** [Highlights](#-highlights) · [Firmware](#-supported-firmware) · [Hardware](#-supported-hardware) · [Interfaces](#-interfaces) · [Quick start](#-quick-start) · [Security](#-security) · [Learn more](#-learn-more--get-help)
+**Jump to:** [Start here](#-start-here) · [Highlights](#-highlights) · [Firmware](#-supported-firmware) · [Hardware](#-supported-hardware) · [Interfaces](#-interfaces) · [Quick start](#-quick-start) · [Security](#-security) · [Learn more](#-learn-more--get-help)
+
+## 🚀 Start here
+
+**Prebuilt build** — download the [latest release](https://github.com/LxveAce/cyber-controller/releases/latest) (Windows · Linux · macOS · ARM), each with `SHA256SUMS.txt` and a VirusTotal report. Check the platform requirements in [Quick start](#-quick-start) first.
+
+**From source** — Python 3.12+:
+
+```bash
+pip install -e ".[full]"
+cyber-controller              # native desktop window
+cyber-controller --ui web     # browser UI, binds 127.0.0.1:5000
+```
+
+New here? [Quick start](#-quick-start) has the per-platform steps, and [Highlights](#-highlights) summarizes what CC can do today and where each part stands.
 
 <!-- STATUS-ROADMAP:START -->
 ## 📦 Latest release
 
 **[v2.0.1](https://github.com/LxveAce/cyber-controller/releases/latest)** keeps flash output visible beside the firmware workflow, adds a collapsible target list, and improves connection recovery, Flipper controls, Rayhunter reports, web-session handling and installation reliability. Linux builds now include the native renderer and check the packaged interface before upload. See the platform requirements below before downloading.
 
-See the [Changelog](CHANGELOG.md) and [Releases](https://github.com/LxveAce/cyber-controller/releases) for version history. [Development status](docs/DEVELOPMENT-STATUS.md) covers the current source snapshot and remaining work.
+See the [Changelog](CHANGELOG.md) and [Releases](https://github.com/LxveAce/cyber-controller/releases) for version history.
 
-Development source may contain changes that are not in the downloaded release. [Development status](docs/DEVELOPMENT-STATUS.md) separates published source from pending integration and qualification. A source update does not replace existing release binaries.
+Development source may contain changes that are not in the downloaded release, and a source update does not replace existing release binaries. Published source and released binaries are versioned separately.
 <!-- STATUS-ROADMAP:END -->
 
 ## ✨ Highlights
 
-Firmware profiles describe download sources, board variants, and flashing backends. Support includes esptool, qFlipper, ADB, SD-image writing, and the Realtek RTL8720 loader. Other backend paths have source/test coverage but are not yet validated on real silicon. Check the [hardware test matrix](docs/HARDWARE-FIRMWARE-MATRIX.md) for the particular device and operation you need.
+CC groups its work by the job you want to do. Support depends on the board, firmware, and operation — a listing here is not a guarantee that every variant is qualified.
 
-Offline Vault controls are still being connected to the single-window interface. The existing cache supports selected merged images; it cannot store firmware that needs separate bootloader, partition and application files.
+| Workflow | What it does | Where it stands |
+|----------|--------------|-----------------|
+| **Flash firmware** | Choose a profile, resolve its download, and flash over the matching backend | esptool, qFlipper, ADB, SD-image writing, and the Realtek RTL8720 loader are in use; other backends have source/test coverage not yet validated on real silicon — check the [hardware test matrix](docs/HARDWARE-FIRMWARE-MATRIX.md) |
+| **Serial & device tools** | Protocol-aware serial monitor, per-device firmware selection, firmware-specific controls | Parser support does not mean every control is qualified on every board; use the current dashboard rather than the older Qt screens |
+| **Observe connected devices** | Devices share scan observations in the dashboard | An observation is not a completed device operation or a remote acknowledgement; durable BLE history and Mesh integration are still in progress |
+| **Mesh status card** | Read-only decoded status of your own Meshtastic node — identity, battery/power, link SNR, and how fresh the reading is | Presentation only: no production transport provider is wired, so it reports unavailable until one is. Not Mesh chat or device qualification |
+| **Incidents workspace** | Import a locally selected `incidents.jsonl` report (the AntiHunter SD log format) and read a redacted, source-order summary | Local import only — no acquisition or network fetch; a redacted summary, never raw identifiers |
+| **Settings** | Live read and owner write-back of the real settings store, with save and reload feedback | Controller-tested |
+| **Maps, updates, reports** | Update checks, offline maps, and supported report import/export | An update check is distinct from a full download/apply/restart/rollback; live survey capture and track rendering in the Map view remain in development |
 
-Device tools include a protocol-aware serial monitor, per-device firmware selection, and firmware-specific controls. Parser support does not mean every control has been qualified on every board. Older Qt screens and the current dashboard also differ in coverage; use the current interface and documentation when checking a feature.
-
-Connected devices can share observations in the dashboard. Work is continuing on durable BLE history, Mesh integration, and clearer connection and capability state. Selecting an observation should not be confused with a completed device operation or a remote acknowledgement.
-
-Other areas include update checks, optional access controls, maps and supported report/import/export tools. Update availability checks are distinct from a complete download/apply/restart/rollback workflow. Windows installer upgrades still use the installer, and live survey capture and track rendering in the current Map view remain in development.
+Offline Vault caching is still being connected to the single-window interface: it holds selected merged images and cannot store firmware that needs separate bootloader, partition, and application files.
 
 ## 🧩 Supported firmware
 
