@@ -10,6 +10,7 @@ import json
 import os
 import shutil
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -135,6 +136,77 @@ def _node_bin():
         (p for p in (r"C:\nvm4w\nodejs\node.exe", "/c/nvm4w/nodejs/node.exe") if os.path.exists(p)), None)
 
 
+_DIAG_MAX_STDERR_LINES = 15
+_DIAG_MAX_LINE_CHARS = 200       # per-line cap: one giant line cannot inflate the report
+_DIAG_MAX_STDERR_CHARS = 2000    # cap decoded stderr BEFORE splitting/formatting
+_DIAG_MAX_CHARS = 500            # stdout-tail cap
+_DIAG_MAX_TOTAL_CHARS = 4000     # final total-output cap (covers metadata + fallback)
+
+
+def _diag_decode(raw):
+    """Decode child output to text, never raising. Bytes are decoded with replacement (so real newlines are
+    preserved rather than rendered as escapes by str(bytes)); anything else is str()."""
+    try:
+        if raw is None:
+            return ""
+        if isinstance(raw, (bytes, bytearray)):
+            return bytes(raw).decode("utf-8", "replace")
+        return str(raw)
+    except Exception:  # noqa: BLE001 — decoding must never raise into the diagnostic
+        return ""
+
+
+def _sw_gate_diagnostic(kind, elapsed, stdout, stderr, **info):
+    """Build a BOUNDED, non-raising failure diagnostic for the SW-gate harness subprocess. Names the failure
+    kind (timeout / nonzero-exit / malformed-output), the within-process monotonic elapsed, and the last few
+    STDERR phase markers — never an unbounded dump. The output is bounded three ways: each line is capped, the
+    decoded stderr is capped before splitting, and the whole report (metadata and fallback included) is capped.
+    Read the markers carefully: a MISSING marker does not prove the child never started, and a FINAL marker
+    does not prove stdout was flushed or the process exited. This function never raises, so a problem building
+    the diagnostic cannot mask the original test outcome."""
+    try:
+        parts = ["SW-gate harness failed: %s" % kind]
+        if elapsed is not None:
+            parts.append("elapsed=%.1fs (within-process monotonic; not a cross-process clock)" % elapsed)
+        for key, value in info.items():
+            parts.append(("%s=%r" % (key, value))[:_DIAG_MAX_LINE_CHARS])  # bound each metadata line
+        text = _diag_decode(stderr)[-_DIAG_MAX_STDERR_CHARS:]              # decode + keep the recent tail, bounded
+        lines = [ln[:_DIAG_MAX_LINE_CHARS] for ln in text.splitlines() if ln.strip()][-_DIAG_MAX_STDERR_LINES:]
+        tail = "\n  ".join(lines)
+        parts.append("last stderr phase markers (bounded; absence != 'never started', final != 'flushed/exited'):"
+                     + ("\n  " + tail if tail else " <none captured>"))
+        preview = _diag_decode(stdout)[-_DIAG_MAX_CHARS:]
+        parts.append("stdout tail (bounded, %d chars): %r" % (len(preview), preview))
+        report = "\n".join(parts)
+        if len(report) > _DIAG_MAX_TOTAL_CHARS:
+            report = report[:_DIAG_MAX_TOTAL_CHARS - 20] + " ...[diag truncated]"
+        return report
+    except Exception as diag_exc:  # noqa: BLE001 — diagnostics must never mask the underlying failure
+        return ("SW-gate harness failed: %s (diagnostic unavailable: %r)" % (kind, diag_exc))[:_DIAG_MAX_TOTAL_CHARS]
+
+
+def _run_sw_gate_harness(node, harness, timeout=30):
+    """Run the Node SW-gate harness and return its STDOUT on success (the JSON contract, unchanged). On a
+    failed run raise AssertionError carrying a bounded diagnostic that PRESERVES the original cause and
+    distinguishes timeout vs nonzero-exit. Uses within-process monotonic elapsed only (never subtracts two
+    processes' absolute clocks). Does not weaken any assertion or the 30-second deadline."""
+    start = time.monotonic()
+    try:
+        proc = subprocess.run([node, harness], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as exc:
+        raise AssertionError(_sw_gate_diagnostic(
+            "timeout", time.monotonic() - start, exc.stdout, exc.stderr, timeout_s=timeout)) from exc
+    elapsed = time.monotonic() - start
+    if proc.returncode != 0:
+        # Preserve the underlying nonzero-exit as an explicit cause (parity with the timeout/JSON paths, which
+        # already chain their originals): the old check_output raised CalledProcessError, so keep one as __cause__.
+        cause = subprocess.CalledProcessError(proc.returncode, [node, harness], output=proc.stdout,
+                                              stderr=proc.stderr)
+        raise AssertionError(_sw_gate_diagnostic(
+            "nonzero-exit", elapsed, proc.stdout, proc.stderr, returncode=proc.returncode)) from cause
+    return proc.stdout
+
+
 def test_sw_gate_behavioral():
     """Execute the REAL isShellAsset (real URL parser) against adversarial URLs — the only test that would
     catch a gate regression (inverted return, reordered branch) the lexical checks would miss."""
@@ -142,8 +214,11 @@ def test_sw_gate_behavioral():
     if not node:
         pytest.skip("node not available for the behavioral SW-gate harness")
     harness = Path(__file__).parent / "_sw_gate_harness.js"
-    out = subprocess.check_output([node, str(harness)], text=True, timeout=30)
-    results = json.loads(out)
+    out = _run_sw_gate_harness(node, str(harness))
+    try:
+        results = json.loads(out)
+    except json.JSONDecodeError as exc:
+        raise AssertionError(_sw_gate_diagnostic("malformed-output", None, out, "", parse_error=str(exc))) from exc
     for r in results:
         assert r["got"] == r["want"], f"gate({r['name']}) returned {r['got']}, expected {r['want']}"
     names = {r["name"] for r in results}
