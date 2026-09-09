@@ -61,6 +61,7 @@ from src.core.nodes_controller import NodesController
 from src.core.resources import resource_path
 from src.core.target_freshness import summarize_freshness
 from src.ui.web import map_cache_api
+from src.ui.web import mesh_status_api
 from src.security import physical_key
 from src.security.desktop_bootstrap import BootstrapResult, DesktopBootstrap
 from src.security.web_auth import (
@@ -190,6 +191,7 @@ def create_app(
     lifecycle: CallbackScope | None = None,
     availability=None,
     ble_history=None,
+    mesh_snapshot_provider=None,
 ) -> tuple[Flask, SocketIO]:
     """Create and configure the hardened Flask application and SocketIO instance.
 
@@ -449,6 +451,20 @@ def create_app(
                 # None -> a clean 403, instead of AttributeError -> an ungraceful 500.
                 token = _json_body().get("_csrf")
             if not csrf_valid(session.get("csrf"), token):
+                _audit("web_csrf_fail", path=request.path)
+                abort(403)
+            return f(*args, **kwargs)
+
+        return decorated
+
+    def requires_csrf_header(f):
+        """CSRF for routes that read a RAW request body: validates ONLY the ``X-CSRF-Token`` header and never
+        falls back to ``_json_body()`` (unlike ``requires_csrf``), so a missing/invalid token is rejected
+        before the body is ever read or parsed. Same token mechanism; other callers keep ``requires_csrf`` and
+        its body fallback unchanged."""
+        @functools.wraps(f)
+        def decorated(*args, **kwargs):
+            if not csrf_valid(session.get("csrf"), request.headers.get("X-CSRF-Token")):
                 _audit("web_csrf_fail", path=request.path)
                 abort(403)
             return f(*args, **kwargs)
@@ -862,6 +878,35 @@ def create_app(
         """Code-defined XYZ tile providers (id/label/attribution/max_zoom) + default id. No paths,
         location, cache inventory, or upstream URLs."""
         return map_cache_api.tile_providers_response()
+
+    @app.route("/api/mesh/status")
+    @requires_auth
+    def api_mesh_status():
+        """Read-only status of the OWNED Meshtastic node (identity / battery / link SNR / observation
+        freshness). Reads only the injected ``mesh_snapshot_provider`` (the caller-owned
+        ``MeshConnectionSession.snapshot()``); when absent it reports unavailable. It never opens, scans,
+        probes, prepares, or writes a transport, and surfaces no GPS/neighbors/config/raw."""
+        import time as _time
+        return jsonify(mesh_status_api.build_status(mesh_snapshot_provider, now=_time.time()))
+
+    @app.route("/api/incidents/import", methods=["POST"])
+    @requires_auth
+    @requires_csrf_header
+    def api_incidents_import():
+        """Normalize a locally-selected AntiHunter ``incidents.jsonl`` upload into the accepted default-redacted
+        report. Header-only CSRF (never reads the body to find a token). Reads only the request BYTES (never a
+        client path), bounded to a route-specific 2 MiB via a raw ``wsgi.input`` read that does NOT widen the
+        global request cap and never touches ``request.get_data``/``.stream``/``.data``/``.form``. The declared
+        length is parsed from the raw ``CONTENT_LENGTH`` (an invalid/negative declaration -> 411, not a
+        framework-normalized 0). Returns the ``export_bytes`` projection with ``no-store``. Sends nothing,
+        persists nothing, touches no device."""
+        from src.ui.web import incident_workspace_api
+        status, body, headers = incident_workspace_api.import_response(
+            content_type=request.content_type,
+            content_length=incident_workspace_api.validated_content_length(request.environ.get("CONTENT_LENGTH")),
+            read_body=lambda limit: request.environ["wsgi.input"].read(limit),
+        )
+        return Response(body, status=status, headers=headers)
 
     @app.route("/api/map-tiles/<provider>/<int:z>/<int:x>/<int:y>.png")
     @requires_auth
