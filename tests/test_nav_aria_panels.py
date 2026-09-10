@@ -21,7 +21,7 @@ _TEMPLATE = os.path.join(_HERE, "..", "src", "ui", "web", "templates", "reform.h
 
 # The six real tablists and their tabs, enumerated from the template. ``<bar>`` is the rail (view)
 # name or the subtab bar's ``data-tabs`` value; each pair yields the expected tab/panel id strings.
-RAIL_VIEWS = ["device", "hunt", "operate", "crack", "map", "terminal", "settings"]
+RAIL_VIEWS = ["device", "hunt", "operate", "crack", "map", "offline-data", "terminal", "settings"]
 SUBTAB_BARS = {
     "device": ["dash", "fw", "sw", "mesh"],
     "xcomm": ["pool", "rules", "hist", "stream"],
