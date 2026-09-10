@@ -17,6 +17,22 @@
   var MAX_BYTES = 262144; // matches the parser + route cap; enforced client-side BEFORE any request (server also enforces)
   var MAX_VALUE_CHARS = 2000; // bound for a single rendered metadata value (structured values -> bounded JSON text)
 
+  // The ONLY status/error pairs the backend documents (API contract da117f25) as DEFINITE pre-summary
+  // rejections, established before the summarizer runs. A status alone, an unknown error code, or a known
+  // error on a different status does NOT establish this contract, so those outcomes are reported as
+  // unconfirmed rather than as a proven rejection.
+  var KNOWN_REJECTIONS = {
+    "400": ["incomplete-body", "invalid-body"],
+    "411": ["length-required"],
+    "413": ["payload-too-large"],
+    "415": ["unsupported-content-type"],
+  };
+  function isEstablishedRejection(status, error) {
+    if (!error) return false;
+    var allowed = KNOWN_REJECTIONS[String(status)];
+    return !!allowed && allowed.indexOf(error) !== -1;
+  }
+
   // Byte length of a string as UTF-8 (what the server will receive). Primary path is TextEncoder; when it is
   // absent or throws, count the bytes directly -- surrogate pairs are one 4-byte code point, and an unpaired
   // surrogate encodes as the U+FFFD replacement character (3 bytes), matching TextEncoder exactly. Both paths
@@ -209,8 +225,16 @@
         try { parsed = JSON.parse(r.text); } catch (e) { parsed = null; }
         if (!r.ok) {
           var code = parsed && parsed.error ? parsed.error : ("http-" + r.status);
-          setState("request-failure", "Request failed (" + code + ").");
-          detailEl.textContent = "The request was rejected before analysis. No metadata was interpreted.";
+          if (isEstablishedRejection(r.status, parsed && parsed.error)) {
+            // A documented status/error pair: the API guarantees rejection before the summarizer runs.
+            setState("request-failure", "Request failed (" + code + ").");
+            detailEl.textContent = "The request was rejected before analysis. No metadata was interpreted.";
+          } else {
+            // A status alone, an unknown error code, or a known code on an unexpected status does not
+            // establish rejection-before-analysis; keep the outcome uncertain rather than overclaim it.
+            setState("request-failure", "Request outcome unconfirmed (" + code + ").");
+            detailEl.textContent = "The backend reported an error, but the processing outcome could not be confirmed. No summary was shown.";
+          }
           return;
         }
         if (!parsed) { setState("request-failure", "Malformed backend response."); detailEl.textContent = ""; return; }
@@ -219,8 +243,11 @@
         if (myGen !== gen || !viewActive()) return;   // aborted or navigated away: not a user-facing failure
         if (err && err.name === "AbortError") return;
         controller = null;
-        setState("request-failure", "Request failed (network).");
-        detailEl.textContent = "Could not reach the backend. No metadata was interpreted.";
+        // The fetch promise (or reading its response) rejected. This can be a network failure OR a
+        // received-but-unreadable response, so do not assert the backend was never reached or that no
+        // bytes arrived; report the outcome as unconfirmed.
+        setState("request-failure", "Request outcome unconfirmed.");
+        detailEl.textContent = "The request could not be completed, so its outcome could not be confirmed. The backend may not have been reached, or a response may not have been readable.";
       });
     }
 
