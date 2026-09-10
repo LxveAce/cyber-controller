@@ -33,7 +33,7 @@ function makeEnv() {
   const doc = { querySelector: () => null };
   const calls = [];
   const pending = [];
-  const fetchImpl = (url, opts) => { calls.push({ url, opts }); return new Promise((resolve) => pending.push({ resolve })); };
+  const fetchImpl = (url, opts) => { calls.push({ url, opts }); return new Promise((resolve, reject) => pending.push({ resolve, reject })); };
   return { root, reg, doc, calls, pending, fetchImpl };
 }
 function respond(env, i, ok, status, bodyObj) {
@@ -41,6 +41,11 @@ function respond(env, i, ok, status, bodyObj) {
 }
 function respondText(env, i, ok, status, bodyText) {
   env.pending[i].resolve({ ok, status, text: () => Promise.resolve(bodyText) });
+}
+// outcome-clarity helpers: reject the fetch promise, or resolve a received response whose body read rejects.
+function rejectFetch(env, i, err) { env.pending[i].reject(err); }
+function respondTextReject(env, i, ok, status, err) {
+  env.pending[i].resolve({ ok, status, text: () => Promise.reject(err) });
 }
 const tick = () => new Promise((r) => setTimeout(r, 0));
 function withFetch(fetchImpl, fn) {
@@ -302,5 +307,132 @@ test("primary path (TextEncoder present): over-cap multibyte rejected before fet
     h.analyze();
     assert.strictEqual(env.calls.length, 0, "primary path counted code units, not bytes");
     assert.match(env.reg["#od-status"].textContent, /262146 bytes; exceeds the 262144-byte limit/);
+  });
+});
+
+// ---- outcome clarity: honest failure/uncertain copy (repair CC-OFFLINE-OUTCOME) ----
+// Only the documented status/error pairs are proven pre-summary rejections; unknown errors, mismatched
+// pairs, rejected fetches and unreadable responses are reported as "unconfirmed", never as a proven
+// rejection or a proven network failure.
+
+test("outcome clarity: known fixed rejection (415/unsupported-content-type) keeps definite rejected-before-analysis", async () => {
+  const env = makeEnv();
+  await withFetch(env.fetchImpl, async () => {
+    const h = mod.create(env.doc, env.root);
+    env.reg["#od-input"].value = META; h.analyze();
+    respond(env, 0, false, 415, { error: "unsupported-content-type" });
+    await tick();
+    assert.strictEqual(env.root.getAttribute("data-state"), "request-failure");
+    assert.match(env.reg["#od-status"].textContent, /unsupported-content-type/);
+    assert.match(env.reg["#od-detail"].textContent, /rejected before analysis/);
+    assert.match(env.reg["#od-detail"].textContent, /No metadata was interpreted/);
+  });
+});
+
+test("outcome clarity: known fixed rejection (413/payload-too-large) keeps definite copy", async () => {
+  const env = makeEnv();
+  await withFetch(env.fetchImpl, async () => {
+    const h = mod.create(env.doc, env.root);
+    env.reg["#od-input"].value = META; h.analyze();
+    respond(env, 0, false, 413, { error: "payload-too-large" });
+    await tick();
+    assert.strictEqual(env.root.getAttribute("data-state"), "request-failure");
+    assert.match(env.reg["#od-detail"].textContent, /rejected before analysis/);
+  });
+});
+
+test("outcome clarity: unknown HTTP error (500, non-JSON body) -> unconfirmed, not a proven rejection", async () => {
+  const env = makeEnv();
+  await withFetch(env.fetchImpl, async () => {
+    const h = mod.create(env.doc, env.root);
+    env.reg["#od-input"].value = META; h.analyze();
+    respondText(env, 0, false, 500, "upstream boom");
+    await tick();
+    assert.strictEqual(env.root.getAttribute("data-state"), "request-failure");
+    assert.match(env.reg["#od-status"].textContent, /unconfirmed/);
+    assert.match(env.reg["#od-status"].textContent, /http-500/);
+    assert.match(env.reg["#od-detail"].textContent, /could not be confirmed/);
+    assert.strictEqual(env.reg["#od-detail"].textContent.indexOf("rejected before analysis"), -1, "overclaimed rejection for unknown error");
+  });
+});
+
+test("outcome clarity: known error code on unexpected status (500 + invalid-body) -> unconfirmed", async () => {
+  const env = makeEnv();
+  await withFetch(env.fetchImpl, async () => {
+    const h = mod.create(env.doc, env.root);
+    env.reg["#od-input"].value = META; h.analyze();
+    respond(env, 0, false, 500, { error: "invalid-body" });
+    await tick();
+    assert.strictEqual(env.root.getAttribute("data-state"), "request-failure");
+    assert.match(env.reg["#od-status"].textContent, /unconfirmed/);
+    assert.strictEqual(env.reg["#od-detail"].textContent.indexOf("rejected before analysis"), -1, "known error on wrong status overclaimed rejection");
+  });
+});
+
+test("outcome clarity: documented status with undocumented error (400 + surprise-error) -> unconfirmed", async () => {
+  const env = makeEnv();
+  await withFetch(env.fetchImpl, async () => {
+    const h = mod.create(env.doc, env.root);
+    env.reg["#od-input"].value = META; h.analyze();
+    respond(env, 0, false, 400, { error: "surprise-error" });
+    await tick();
+    assert.strictEqual(env.root.getAttribute("data-state"), "request-failure");
+    assert.match(env.reg["#od-status"].textContent, /unconfirmed/);
+    assert.match(env.reg["#od-status"].textContent, /surprise-error/);
+    assert.strictEqual(env.reg["#od-detail"].textContent.indexOf("rejected before analysis"), -1);
+  });
+});
+
+test("outcome clarity: rejected fetch -> unconfirmed, not a proven network failure", async () => {
+  const env = makeEnv();
+  await withFetch(env.fetchImpl, async () => {
+    const h = mod.create(env.doc, env.root);
+    env.reg["#od-input"].value = META; h.analyze();
+    rejectFetch(env, 0, new TypeError("Failed to fetch"));
+    await tick();
+    assert.strictEqual(env.root.getAttribute("data-state"), "request-failure");
+    assert.match(env.reg["#od-status"].textContent, /unconfirmed/);
+    assert.match(env.reg["#od-detail"].textContent, /could not be confirmed/);
+    assert.strictEqual(env.reg["#od-detail"].textContent.indexOf("No metadata was interpreted"), -1, "catch overclaimed no-metadata-interpreted");
+  });
+});
+
+test("outcome clarity: response-text rejection -> unconfirmed (received-but-unreadable; not labeled unreachable)", async () => {
+  const env = makeEnv();
+  await withFetch(env.fetchImpl, async () => {
+    const h = mod.create(env.doc, env.root);
+    env.reg["#od-input"].value = META; h.analyze();
+    respondTextReject(env, 0, true, 200, new Error("stream read error"));
+    await tick();
+    assert.strictEqual(env.root.getAttribute("data-state"), "request-failure");
+    assert.match(env.reg["#od-status"].textContent, /unconfirmed/);
+    assert.strictEqual(env.reg["#od-detail"].textContent.indexOf("Could not reach the backend"), -1, "labeled a received-but-unreadable response as unreachable");
+  });
+});
+
+test("outcome clarity: busy -> request-failure with exactly one submission and no automatic retry", async () => {
+  const env = makeEnv();
+  await withFetch(env.fetchImpl, async () => {
+    const h = mod.create(env.doc, env.root);
+    env.reg["#od-input"].value = META; h.analyze();
+    assert.strictEqual(env.root.getAttribute("data-state"), "busy");
+    assert.strictEqual(env.calls.length, 1);
+    respondText(env, 0, false, 500, "boom");
+    await tick();
+    assert.strictEqual(env.root.getAttribute("data-state"), "request-failure");
+    assert.strictEqual(env.calls.length, 1, "an automatic retry was issued after a failure");
+  });
+});
+
+test("outcome clarity: a late fetch rejection after Clear is not painted", async () => {
+  const env = makeEnv();
+  await withFetch(env.fetchImpl, async () => {
+    const h = mod.create(env.doc, env.root);
+    env.reg["#od-input"].value = META; h.analyze();
+    h.clear();
+    rejectFetch(env, 0, new TypeError("late network error"));
+    await tick();
+    assert.strictEqual(env.root.getAttribute("data-state"), "empty", "late rejection repainted a discarded request");
+    assert.strictEqual(env.reg["#od-detail"].textContent, "");
   });
 });
