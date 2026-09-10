@@ -908,6 +908,27 @@ def create_app(
         )
         return Response(body, status=status, headers=headers)
 
+    @app.route("/api/offline-metadata/summarize", methods=["POST"])
+    @requires_auth
+    @requires_csrf_header
+    def api_offline_metadata_summarize():
+        """Summarize pasted SigMF ``.sigmf-meta`` text for the Offline Data view. Header-only CSRF (never
+        reads the body to find a token). Reads only the request BYTES (never a client path), bounded to the
+        accepted parser's 262144-byte cap via a raw ``wsgi.input`` read that does not widen the global
+        request cap and never touches ``request.get_data``/``.stream``/``.data``/``.form``. The declared
+        length is parsed from the raw ``CONTENT_LENGTH`` (invalid/negative -> 411). Runs the accepted
+        ``summarize_sigmf_metadata`` on the bounded bytes and returns its JSON result with ``no-store``.
+        Sends nothing, persists nothing, opens no file, touches no device."""
+        from src.ui.web import offline_metadata_api
+        from src.core.sigmf_metadata import summarize_sigmf_metadata
+        status, body, headers = offline_metadata_api.summarize_response(
+            content_type=request.content_type,
+            content_length=offline_metadata_api.validated_content_length(request.environ.get("CONTENT_LENGTH")),
+            read_body=lambda limit: request.environ["wsgi.input"].read(limit),
+            summarize=summarize_sigmf_metadata,
+        )
+        return Response(body, status=status, headers=headers)
+
     @app.route("/api/map-tiles/<provider>/<int:z>/<int:x>/<int:y>.png")
     @requires_auth
     def api_map_tile(provider, z, x, y):

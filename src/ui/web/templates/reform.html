@@ -8,6 +8,7 @@
   <meta name="theme-color" content="#a371f7">
   <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='favicon.svg') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='reform.css') }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='offline_metadata.css') }}">
   <!-- Socket.IO client is VENDORED + served same-origin (no CDN) — same policy as base.html. -->
   <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='vendor/socket.io.min.js') }}"></script>
   <script nonce="{{ csp_nonce }}">window.CSRF_TOKEN = {{ csrf_token|tojson }};</script>
@@ -41,6 +42,7 @@
     <div class="navitem" data-view="crack" id="railtab-crack" aria-controls="view-crack"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="15" cy="9" r="4"/><path d="M12 12 4 20M7 17l2 2M5 19l1.5 1.5"/></svg></span><span class="lbl">CRACK</span></div>
     <div class="navitem" data-view="map" id="railtab-map" aria-controls="view-map"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-5.3-6-10a6 6 0 0 1 12 0c0 4.7-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg></span><span class="lbl">MAP</span></div>
     <div class="grow"></div>
+    <div class="navitem" data-view="offline-data" id="railtab-offline-data" aria-controls="view-offline-data"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v12c0 1.7 3.1 3 7 3s7-1.3 7-3V6M5 12c0 1.7 3.1 3 7 3s7-1.3 7-3"/></svg></span><span class="lbl">OFFLINE DATA</span></div>
     <div class="navitem" data-view="terminal" id="railtab-terminal" aria-controls="view-terminal"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7l5 5-5 5M12 17h7"/></svg></span><span class="lbl">TERMINAL</span><span class="sub">{{ device_count }}</span></div>
     <div class="navitem" data-view="settings" id="railtab-settings" aria-controls="view-settings"><span class="g"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span><span class="lbl">SETTINGS</span></div>
   </nav>
@@ -687,6 +689,19 @@
   </section>
 
   <!-- ============ TERMINAL (design preview) ============ -->
+  <!-- ============ OFFLINE DATA ============ -->
+  <section class="view" data-view="offline-data" id="view-offline-data" role="tabpanel" aria-labelledby="railtab-offline-data" data-state="empty">
+    <div class="card od-wrap">
+      <h3><span class="t">Offline Data &#8212; SigMF metadata</span><span class="r">paste &amp; summarize (no device needed)</span></h3>
+      <div class="footnote">Paste a SigMF <code>.sigmf-meta</code> descriptor (JSON) and Analyze. The pasted text is sent to this CC server to summarize &#8212; a same-origin request that contacts no outside service; no file is opened and no sample data is read. Filenames, URLs and location values are shown as inert text only.</div>
+      <label for="od-input" class="footnote" style="margin-top:8px">Metadata (paste JSON)</label>
+      <textarea id="od-input" spellcheck="false" aria-label="SigMF metadata JSON"></textarea>
+      <div class="od-actions"><button type="button" id="od-analyze">Analyze</button><button type="button" id="od-clear">Clear</button></div>
+      <div id="od-status" role="status" aria-live="polite">Paste SigMF metadata, then Analyze.</div>
+      <pre id="od-detail" tabindex="0" aria-label="Metadata summary"></pre>
+    </div>
+  </section>
+
   <section class="view" data-view="terminal" id="view-terminal" role="tabpanel" aria-labelledby="railtab-terminal">
     <div class="split side">
       <div class="card" style="align-self:start">
@@ -757,6 +772,7 @@
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='updates_transport.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='mesh_status.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='incident_workspace.js') }}"></script>
+<script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='offline_metadata.js') }}"></script>
 <script nonce="{{ csp_nonce }}" src="{{ url_for('static', filename='reform.js') }}"></script>
 </body>
 </html>
