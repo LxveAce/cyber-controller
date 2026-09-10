@@ -1,0 +1,31 @@
+/* Offline Data view — scoped styles (all selectors under #view-offline-data so nothing leaks into Reform).
+   Reuses the app's existing color variables; no external resources/fonts. */
+
+#view-offline-data .od-wrap { display: flex; flex-direction: column; gap: 10px; max-width: 780px; }
+
+#view-offline-data #od-input {
+  width: 100%; box-sizing: border-box; min-height: 160px; resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+  padding: 8px; border: 1px solid var(--line, #333); border-radius: 6px;
+  background: var(--panel, #111); color: var(--fg, #ddd); overflow: auto;
+}
+#view-offline-data #od-input:focus { outline: 2px solid var(--acc, #1a73e8); outline-offset: 1px; }
+
+#view-offline-data .od-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+#view-offline-data #od-status {
+  font-size: 12px; padding: 4px 0; min-height: 1.2em;
+}
+/* distinct, non-color-only cues per state (also carry a text label in #od-status) */
+#view-offline-data[data-state="busy"] #od-status { opacity: 0.8; }
+#view-offline-data[data-state="summarized"] #od-status { color: var(--ok, #3fb950); }
+#view-offline-data[data-state="unsupported"] #od-status { color: var(--amber, #d29922); }
+#view-offline-data[data-state="invalid"] #od-status { color: var(--amber, #d29922); }
+#view-offline-data[data-state="request-failure"] #od-status { color: var(--bad, #f85149); }
+
+#view-offline-data #od-detail {
+  white-space: pre-wrap; overflow-wrap: anywhere; overflow: auto; max-height: 46vh;
+  margin: 0; padding: 8px; border: 1px solid var(--line, #333); border-radius: 6px;
+  background: var(--panel2, #0c0c0c); color: var(--fg, #ddd);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px;
+}
