@@ -24,7 +24,7 @@
   }
 
   // ── mockup navigation ─────────────────────────────────────────────
-  var crumbNames = { device: "DEVICE", hunt: "HUNT", operate: "OPERATE", crack: "CRACK", map: "MAP", terminal: "TERMINAL", settings: "SETTINGS" };
+  var crumbNames = { device: "DEVICE", hunt: "HUNT", operate: "OPERATE", crack: "CRACK", map: "MAP", "offline-data": "OFFLINE DATA", terminal: "TERMINAL", settings: "SETTINGS" };
   var crumb = document.getElementById("crumb");
 
   // The rail is a real tablist so keyboard/switch users can reach every surface, not just mouse
@@ -78,6 +78,7 @@
     if (v === "crack" && window.__ccRefreshCaptures) { window.__ccRefreshCaptures(); }
     if (window.CCMeshStatus) window.CCMeshStatus.syncVisibility();   // main-nav enter/leave invalidates + refreshes the Mesh read
     if (window.CCIncidents) window.CCIncidents.syncVisibility();     // Incidents workspace: main-nav leave aborts an in-flight import
+    if (window.CCOfflineData) window.CCOfflineData.syncVisibility();  // Offline Data: main-nav leave aborts an in-flight summarize
     if (focusIt) it.focus();
   }
 
