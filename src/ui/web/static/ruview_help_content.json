@@ -1,0 +1,446 @@
+{
+  "schema_version": 1,
+  "locale": "en",
+  "title": "RuView help",
+  "summary": "Connect a configured source, understand its limits, and manage local recordings. Reading help does not start sensing or change a recording.",
+  "journey": [
+    "start",
+    "connect",
+    "capabilities",
+    "sensing",
+    "models",
+    "calibration",
+    "recording-start",
+    "recording-stop",
+    "recording-list",
+    "recording-delete",
+    "recording-caps",
+    "privacy",
+    "recovery",
+    "shutdown"
+  ],
+  "topics": [
+    {
+      "id": "start",
+      "title": "Start here",
+      "summary": "Use this workspace to view receive-only sensing and the controls your source supports.",
+      "area": "capabilities",
+      "sections": [
+        {
+          "heading": "Before you connect",
+          "paragraphs": [
+            "Use a source you are authorized to observe. RuView upstream and CC-native CSI are separate providers with different capabilities.",
+            "A reading is an estimate from its named source. It is not a person's identity or a medical result."
+          ],
+          "steps": [
+            "Choose a configured profile.",
+            "Check the provider, source mode and capability labels.",
+            "Use an enabled control only when its status is current."
+          ]
+        },
+        {
+          "heading": "Read without changing anything",
+          "paragraphs": [
+            "Help and the walkthrough do not connect, calibrate, start recording or delete data. You choose those actions in the workspace controls."
+          ]
+        }
+      ],
+      "related": [
+        "connect",
+        "privacy",
+        "capabilities"
+      ]
+    },
+    {
+      "id": "connect",
+      "title": "Choose a profile and connect",
+      "summary": "Use an existing configured profile for the RuView upstream service.",
+      "area": "controls",
+      "sections": [
+        {
+          "heading": "Connect to the intended source",
+          "steps": [
+            "Open the connection controls and load the configured profile list.",
+            "Choose the intended enabled profile. Check its name before connecting.",
+            "Connect, then wait for a current connected status."
+          ],
+          "paragraphs": [
+            "A disabled or missing profile cannot be used here. Ask the person who manages Cyber Controller to configure it. Do not paste a service URL, password or token into this screen.",
+            "Connecting attaches to the configured sensing service. It does not mean a local sensor or model has become available."
+          ]
+        },
+        {
+          "heading": "If connecting fails",
+          "paragraphs": [
+            "Keep the selected profile in view. Read the status and use the recovery help. Repeated clicks do not fix an authentication or capability problem."
+          ]
+        }
+      ],
+      "related": [
+        "capabilities",
+        "recovery",
+        "shutdown"
+      ]
+    },
+    {
+      "id": "capabilities",
+      "title": "Understand availability",
+      "summary": "A supported feature can still be unavailable right now.",
+      "area": "capabilities",
+      "sections": [
+        {
+          "heading": "Read the labels",
+          "bullets": [
+            "Available means the source currently reports that capability available. The corresponding control must also be enabled.",
+            "Unavailable means the capability is known but cannot be used now. Refresh current state and read the reason.",
+            "Unsupported means this provider does not offer the feature. Changing a checkbox cannot add it.",
+            "Missing status means availability is not established. Do not treat an absent reading as a zero."
+          ]
+        },
+        {
+          "heading": "Keep providers separate",
+          "paragraphs": [
+            "Switching the viewing provider changes which readings you inspect. It does not give CC-native CSI the upstream provider's capabilities.",
+            "CC-native CSI does not support pose, imaging, through-wall imaging, biometric identification, multi-person separation or metric tracking. An upstream estimate does not remove those limits."
+          ]
+        }
+      ],
+      "related": [
+        "sensing",
+        "models",
+        "recovery"
+      ]
+    },
+    {
+      "id": "sensing",
+      "title": "Sensing is different from a scan",
+      "summary": "This workspace shows receive-only sensing from a configured source.",
+      "area": "views",
+      "sections": [
+        {
+          "heading": "Know what the view represents",
+          "paragraphs": [
+            "This view does not scan for networks or devices, identify people, or transmit radio signals.",
+            "Live, replay and simulation are different source modes. Replay shows recorded data. Simulation is generated data. Neither is a new live observation.",
+            "Check the provider, last-received time and stale labels before interpreting a change."
+          ]
+        },
+        {
+          "heading": "Treat estimates as estimates",
+          "paragraphs": [
+            "Pose and vital-sign views, when supplied by RuView upstream, are non-diagnostic estimates. They do not establish identity, health or sensing accuracy.",
+            "A missing value means not reported or unavailable. A displayed zero is meaningful only when the source actually reports a current value."
+          ]
+        }
+      ],
+      "related": [
+        "capabilities",
+        "recovery",
+        "privacy"
+      ]
+    },
+    {
+      "id": "models",
+      "title": "Use models and profiles",
+      "summary": "Use only model and profile choices the connected source actually supports.",
+      "area": "controls",
+      "capability": "ruview.models",
+      "sections": [
+        {
+          "heading": "Choose an existing model",
+          "steps": [
+            "Check the current provider and model availability.",
+            "Select an existing reported model or configured profile.",
+            "Use an enabled action and wait for its reported result."
+          ],
+          "paragraphs": [
+            "An accepted click is not proof that weights were loaded or a profile was applied. Check the resulting model status.",
+            "Model download, arbitrary file paths, training-job management and unsupported activation actions are not provided by help. Some model controls can remain unavailable even when the source reports model support."
+          ]
+        },
+        {
+          "heading": "Keep calibration separate",
+          "paragraphs": [
+            "Loading or choosing a model does not calibrate the room. Use calibration only when its own control is available."
+          ]
+        }
+      ],
+      "related": [
+        "calibration",
+        "capabilities",
+        "recovery"
+      ]
+    },
+    {
+      "id": "calibration",
+      "title": "Calibrate the intended setup",
+      "summary": "Calibration belongs to a specific source, room setup and set of sensors.",
+      "area": "controls",
+      "capability": "ruview.calibration",
+      "sections": [
+        {
+          "heading": "Start deliberately",
+          "steps": [
+            "Check that the connected source and sensor selection are the intended ones.",
+            "Use the calibration control with the current confirmed setup.",
+            "Wait for the reported calibration state before finalizing or cancelling."
+          ],
+          "paragraphs": [
+            "Do not guess a missing setup or session. If the screen cannot establish the current calibration, leave the action unavailable.",
+            "Finalizing calibration, cancelling unfinished calibration and resetting saved calibration are different actions. Read the confirmation before resetting."
+          ]
+        },
+        {
+          "heading": "When the setup changes",
+          "paragraphs": [
+            "A new source, restarted service or changed sensor setup can make an earlier calibration unsuitable. Check the current state before reusing it.",
+            "Calibration does not add unsupported capabilities or make estimates diagnostic."
+          ]
+        }
+      ],
+      "related": [
+        "models",
+        "sensing",
+        "recovery"
+      ]
+    },
+    {
+      "id": "recording-start",
+      "title": "Start a local recording",
+      "summary": "Recording starts only after your explicit action.",
+      "area": "controls",
+      "capability": "ruview.recording",
+      "sections": [
+        {
+          "heading": "Before starting",
+          "steps": [
+            "Check that the intended upstream source is connected and current.",
+            "Review the local recording policy and available capacity.",
+            "Use Start recording once, then wait for the confirmed recording result."
+          ],
+          "paragraphs": [
+            "Keep the confirmed recording identity with that recording. Stop and any retry must refer to the same recording.",
+            "If the result is uncertain, inspect current state before doing anything else. Do not assume that a timed-out start failed.",
+            "If local retention or safe recording state cannot be established, capture stays unavailable. Help cannot enable it."
+          ]
+        },
+        {
+          "heading": "Where it stays",
+          "paragraphs": [
+            "Recordings stay in the configured local store until you manually delete them. Starting a recording does not enable automatic export or expiry."
+          ]
+        }
+      ],
+      "related": [
+        "recording-stop",
+        "recording-caps",
+        "privacy"
+      ]
+    },
+    {
+      "id": "recording-stop",
+      "title": "Stop the recording you started",
+      "summary": "Stopping ends capture and preserves the retained recording.",
+      "area": "controls",
+      "capability": "ruview.recording",
+      "sections": [
+        {
+          "heading": "Stop the same recording",
+          "steps": [
+            "Use the Stop control for the recording whose start was confirmed.",
+            "Wait for the reported terminal result.",
+            "If a retry is needed, keep the same recording identity."
+          ],
+          "paragraphs": [
+            "Never switch a delayed stop to whichever recording is active now. If the screen has lost the original identity or reports a mismatch, leave Stop unavailable and inspect the retained recordings.",
+            "Stopping a local wait, closing help, disconnecting a view or closing the browser is not confirmation that capture stopped."
+          ]
+        },
+        {
+          "heading": "After stopping",
+          "paragraphs": [
+            "Check the retained recording list and final result. Stopping does not delete the recording."
+          ]
+        }
+      ],
+      "related": [
+        "recording-list",
+        "recovery",
+        "shutdown"
+      ]
+    },
+    {
+      "id": "recording-list",
+      "title": "Inspect retained recordings",
+      "summary": "Use the reported local list to distinguish retained recordings from current capture.",
+      "area": "controls",
+      "capability": "ruview.recording",
+      "sections": [
+        {
+          "heading": "Check what was retained",
+          "steps": [
+            "Open the recording controls and inspect the reported retained list.",
+            "Match the recording identity to the start and stop results.",
+            "Check the reported status and limits before replay or deletion."
+          ],
+          "paragraphs": [
+            "An unavailable list is not an empty store. Refresh current state before deciding that a recording is missing.",
+            "A stale list can describe an earlier state. Do not infer a successful stop or deletion from it.",
+            "Help does not browse raw filesystem paths or export recordings. If the list control is unavailable, it stays unavailable here too."
+          ]
+        }
+      ],
+      "related": [
+        "recording-stop",
+        "recording-delete",
+        "recovery"
+      ]
+    },
+    {
+      "id": "recording-delete",
+      "title": "Delete one retained recording",
+      "summary": "Manual deletion permanently removes the exact recording you confirm.",
+      "area": "controls",
+      "capability": "ruview.recording",
+      "sections": [
+        {
+          "heading": "Confirm the exact target",
+          "steps": [
+            "Inspect the current retained list.",
+            "Select the intended retained recording and check its identity.",
+            "Read the deletion confirmation, then explicitly confirm that recording.",
+            "Wait for the result and refresh the retained list."
+          ],
+          "paragraphs": [
+            "Do not use a stale selection, guess a missing recording, or delete to resolve an uncertain stop.",
+            "If the target or its retained state cannot be confirmed, deletion stays unavailable.",
+            "Capacity limits never authorize automatic deletion of an older recording."
+          ]
+        }
+      ],
+      "related": [
+        "recording-list",
+        "recording-caps",
+        "privacy"
+      ]
+    },
+    {
+      "id": "recording-caps",
+      "title": "Understand recording limits",
+      "summary": "At capacity, capture stops or is rejected without deleting retained data.",
+      "area": "controls",
+      "capability": "ruview.recording",
+      "sections": [
+        {
+          "heading": "Product limits",
+          "bullets": [
+            "Up to 64 retained recordings and 1 GiB of retained data in total.",
+            "Each recording is bounded by 128 MiB, 100,000 frames and 15 minutes.",
+            "The first reached limit can stop capture. A completed recording can report that capacity was reached."
+          ]
+        },
+        {
+          "heading": "Make space deliberately",
+          "paragraphs": [
+            "Inspect the retained list. Manually delete only recordings you no longer need, with confirmation of each exact target.",
+            "Do not keep pressing Start when capacity is reached. A limit does not trigger export, automatic expiry or deletion.",
+            "A storage or retention problem can keep capture unavailable until the application can establish safe current state."
+          ]
+        }
+      ],
+      "related": [
+        "recording-delete",
+        "recording-list",
+        "recovery"
+      ]
+    },
+    {
+      "id": "privacy",
+      "title": "Keep sensing and recordings local",
+      "summary": "Choose the intended source and keep credentials out of browser-visible content.",
+      "area": "controls",
+      "sections": [
+        {
+          "heading": "Local recording policy",
+          "paragraphs": [
+            "Recordings remain local until explicit manual deletion. There is no automatic capture, export, expiry or deletion.",
+            "This help feature does not save walkthrough progress, profile choices or search text to browser storage. It sends no telemetry or product commands."
+          ]
+        },
+        {
+          "heading": "Protect the source",
+          "paragraphs": [
+            "Use only a configured profile you are authorized to observe. Service credentials belong in the private configuration, not in help, screenshots or shared logs.",
+            "The view does not identify people. Upstream estimates are not medical results."
+          ]
+        }
+      ],
+      "related": [
+        "connect",
+        "recording-delete",
+        "sensing"
+      ]
+    },
+    {
+      "id": "recovery",
+      "title": "Recover from stale or failed state",
+      "summary": "Restore a current observation before repeating an action.",
+      "area": "warnings",
+      "sections": [
+        {
+          "heading": "Stale, offline or timed out",
+          "steps": [
+            "Check the browser connection and the workspace status.",
+            "Refresh state and wait for the provider's current reading.",
+            "If an action's result is uncertain, inspect its state before retrying."
+          ],
+          "paragraphs": [
+            "Last-known values can stay visible while updates are unavailable. A stale reading is not a current observation.",
+            "Retry a stop only for the original confirmed recording. Do not replace an uncertain target with a newer one."
+          ]
+        },
+        {
+          "heading": "Authentication or unavailable state",
+          "paragraphs": [
+            "If Cyber Controller asks you to sign in, sign in again and reload the page. Do not paste a token into a browser field.",
+            "If the source reports an authentication error, check the configured profile with the person who manages it.",
+            "If refresh still cannot establish current state, leave affected actions unavailable. Do not manufacture a missing result or bypass a disabled control."
+          ]
+        }
+      ],
+      "related": [
+        "connect",
+        "recording-stop",
+        "shutdown"
+      ]
+    },
+    {
+      "id": "shutdown",
+      "title": "Finish and leave the workspace",
+      "summary": "Confirm ongoing work before disconnecting or leaving.",
+      "area": "controls",
+      "sections": [
+        {
+          "heading": "Finish deliberately",
+          "steps": [
+            "Check for a recording or calibration that is still in progress.",
+            "Stop the exact recording you started, or finish or cancel the intended calibration through its own control.",
+            "Wait for the reported result and inspect retained recordings if needed.",
+            "Disconnect the intended upstream profile when you are ready to detach.",
+            "Close the workspace."
+          ],
+          "paragraphs": [
+            "Closing help only closes help. Closing the page or cancelling a local wait is not a confirmed stop of an upstream action.",
+            "Disconnecting does not delete recordings. It does not shut down an independently operated sensing service."
+          ]
+        }
+      ],
+      "related": [
+        "recording-stop",
+        "recording-list",
+        "recovery"
+      ]
+    }
+  ]
+}
+
